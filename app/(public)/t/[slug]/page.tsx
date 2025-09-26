@@ -22,7 +22,7 @@ export default function PublicScoreboardPage() {
       <div className="min-h-screen bg-gray-50 flex justify-center items-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament Not Found</h1>
-          <p className="text-gray-600">The tournament you're looking for doesn't exist or isn't publicly available.</p>
+          <p className="text-gray-600">The tournament you&apos;re looking for doesn&apos;t exist or isn&apos;t publicly available.</p>
         </div>
       </div>
     )
