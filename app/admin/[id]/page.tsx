@@ -52,8 +52,11 @@ export default function TournamentDetailPage() {
   }
 
   // Debug info
+  console.log('=== DEBUG INFO ===')
   console.log('showCreateDivision:', showCreateDivision)
   console.log('tournamentId:', tournamentId)
+  console.log('Component loaded successfully!')
+  console.log('==================')
 
   if (isLoading) {
     return (
@@ -76,7 +79,7 @@ export default function TournamentDetailPage() {
   }
 
   return (
-    <div>
+    <div style={{ position: 'relative', zIndex: 1 }}>
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">{tournament.title}</h1>
@@ -84,6 +87,17 @@ export default function TournamentDetailPage() {
             <p className="text-gray-600 mt-2">{tournament.description}</p>
           )}
         </div>
+        
+        {/* Test button */}
+        <button 
+          onClick={() => {
+            console.log('TEST BUTTON CLICKED!')
+            alert('Test button works!')
+          }}
+          className="bg-red-500 text-white px-4 py-2 rounded mr-2"
+        >
+          TEST
+        </button>
         <div className="flex space-x-2">
           {tournament.isPublicBoardEnabled && (
             <Link
