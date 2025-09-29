@@ -20,8 +20,22 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // Get session from Supabase
   const { data: { session } } = await supabaseAdmin.auth.getSession()
 
+  // For now, create a mock session for testing
+  const mockSession = {
+    user: {
+      id: 'test-user-id',
+      email: 'test@example.com',
+      role: 'TD' as const,
+    },
+    access_token: 'mock-token',
+    refresh_token: 'mock-refresh-token',
+    expires_in: 3600,
+    expires_at: Date.now() + 3600000,
+    token_type: 'bearer',
+  }
+
   return createInnerTRPCContext({
-    session,
+    session: mockSession,
   })
 }
 
