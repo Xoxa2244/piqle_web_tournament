@@ -4,7 +4,7 @@
 
 ### 1. DATABASE_URL (Transaction pooler - РЕКОМЕНДУЕТСЯ)
 ```
-postgresql://postgres.angwdmyswzztmlrdzgxm:Kwpc75md8!!!@aws-1-us-east-2.pooler.supabase.com:6543/postgres
+postgresql://postgres.angwdmyswzztmlrdzgxm:Kwpc75md8!!!@aws-1-us-east-2.pooler.supabase.com:6543/postgres?pgbouncer=true&prepared_statements=false
 ```
 
 ### 2. NEXT_PUBLIC_SUPABASE_URL
