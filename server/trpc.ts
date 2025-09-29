@@ -25,14 +25,17 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
     user: {
       id: 'test-user-id',
       email: 'test@example.com',
-      role: 'TD' as const,
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
     },
     access_token: 'mock-token',
     refresh_token: 'mock-refresh-token',
     expires_in: 3600,
     expires_at: Date.now() + 3600000,
     token_type: 'bearer',
-  }
+  } as Session
 
   return createInnerTRPCContext({
     session: mockSession,
