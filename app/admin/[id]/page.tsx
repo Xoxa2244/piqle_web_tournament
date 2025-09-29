@@ -51,6 +51,10 @@ export default function TournamentDetailPage() {
     })
   }
 
+  // Debug info
+  console.log('showCreateDivision:', showCreateDivision)
+  console.log('tournamentId:', tournamentId)
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -150,9 +154,13 @@ export default function TournamentDetailPage() {
               <p className="text-gray-500">Дивизионы не созданы</p>
             )}
             <Button 
-              className="w-full mt-4" 
+              className="w-full mt-4 relative z-10" 
               variant="outline"
-              onClick={() => setShowCreateDivision(true)}
+              onClick={() => {
+                console.log('Кнопка "Создать дивизион" нажата!')
+                setShowCreateDivision(true)
+              }}
+              style={{ pointerEvents: 'auto' }}
             >
               Создать дивизион
             </Button>
