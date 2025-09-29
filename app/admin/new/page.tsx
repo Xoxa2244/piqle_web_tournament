@@ -40,8 +40,8 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
-      startDate: new Date(formData.startDate),
-      endDate: new Date(formData.endDate),
+      startDate: formData.startDate,
+      endDate: formData.endDate,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
     })
