@@ -217,18 +217,22 @@ export default function TournamentDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Button variant="outline" className="h-20">
-                <div className="text-center">
-                  <div className="font-medium">Команды</div>
-                  <div className="text-sm text-gray-500">Управление участниками</div>
-                </div>
-              </Button>
-              <Button variant="outline" className="h-20">
-                <div className="text-center">
-                  <div className="font-medium">Расписание</div>
-                  <div className="text-sm text-gray-500">RR и плей-офф</div>
-                </div>
-              </Button>
+              <Link href={`/admin/${tournamentId}/teams`}>
+                <Button variant="outline" className="h-20 w-full">
+                  <div className="text-center">
+                    <div className="font-medium">Команды</div>
+                    <div className="text-sm text-gray-500">Управление участниками</div>
+                  </div>
+                </Button>
+              </Link>
+              <Link href={`/admin/${tournamentId}/schedule`}>
+                <Button variant="outline" className="h-20 w-full">
+                  <div className="text-center">
+                    <div className="font-medium">Расписание</div>
+                    <div className="text-sm text-gray-500">RR и плей-офф</div>
+                  </div>
+                </Button>
+              </Link>
               <Button variant="outline" className="h-20">
                 <div className="text-center">
                   <div className="font-medium">Результаты</div>
