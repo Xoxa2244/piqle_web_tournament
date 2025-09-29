@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,8 +10,46 @@ import Link from 'next/link'
 export default function TournamentDetailPage() {
   const params = useParams()
   const tournamentId = params.id as string
+  const [showCreateDivision, setShowCreateDivision] = useState(false)
+  const [divisionForm, setDivisionForm] = useState({
+    name: '',
+    teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
+    pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
+    poolsEnabled: false,
+    maxTeams: undefined as number | undefined,
+  })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
+  const createDivision = trpc.division.create.useMutation({
+    onSuccess: () => {
+      setShowCreateDivision(false)
+      setDivisionForm({
+        name: '',
+        teamKind: 'DOUBLES_2v2',
+        pairingMode: 'FIXED',
+        poolsEnabled: false,
+        maxTeams: undefined,
+      })
+      // Refetch tournament data to show new division
+      window.location.reload()
+    },
+  })
+
+  const handleCreateDivision = () => {
+    if (!divisionForm.name.trim()) {
+      alert('Пожалуйста, введите название дивизиона')
+      return
+    }
+
+    createDivision.mutate({
+      tournamentId,
+      name: divisionForm.name,
+      teamKind: divisionForm.teamKind,
+      pairingMode: divisionForm.pairingMode,
+      poolsEnabled: divisionForm.poolsEnabled,
+      maxTeams: divisionForm.maxTeams,
+    })
+  }
 
   if (isLoading) {
     return (
@@ -110,7 +149,11 @@ export default function TournamentDetailPage() {
             ) : (
               <p className="text-gray-500">Дивизионы не созданы</p>
             )}
-            <Button className="w-full mt-4" variant="outline">
+            <Button 
+              className="w-full mt-4" 
+              variant="outline"
+              onClick={() => setShowCreateDivision(true)}
+            >
               Создать дивизион
             </Button>
           </CardContent>
@@ -183,6 +226,100 @@ export default function TournamentDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Create Division Modal */}
+      {showCreateDivision && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-bold mb-4">Создать дивизион</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Название дивизиона *
+                </label>
+                <input
+                  type="text"
+                  value={divisionForm.name}
+                  onChange={(e) => setDivisionForm({ ...divisionForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Например: Мужской 2v2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Тип команд
+                </label>
+                <select
+                  value={divisionForm.teamKind}
+                  onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="SINGLES_1v1">1v1 (Одиночки)</option>
+                  <option value="DOUBLES_2v2">2v2 (Пары)</option>
+                  <option value="SQUAD_4v4">4v4 (Команды)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Режим пар
+                </label>
+                <select
+                  value={divisionForm.pairingMode}
+                  onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="FIXED">Фиксированные пары</option>
+                  <option value="MIX_AND_MATCH">Смешанные пары</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={divisionForm.poolsEnabled}
+                    onChange={(e) => setDivisionForm({ ...divisionForm, poolsEnabled: e.target.checked })}
+                    className="mr-2"
+                  />
+                  <span className="text-sm text-gray-700">Включить пулы</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Максимум команд (необязательно)
+                </label>
+                <input
+                  type="number"
+                  value={divisionForm.maxTeams || ''}
+                  onChange={(e) => setDivisionForm({ ...divisionForm, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Например: 16"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateDivision(false)}
+                disabled={createDivision.isPending}
+              >
+                Отмена
+              </Button>
+              <Button
+                onClick={handleCreateDivision}
+                disabled={createDivision.isPending}
+              >
+                {createDivision.isPending ? 'Создание...' : 'Создать'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
