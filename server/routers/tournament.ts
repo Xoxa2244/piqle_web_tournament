@@ -16,10 +16,21 @@ export const tournamentRouter = createTRPCRouter({
       publicSlug: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Generate unique publicSlug
+      let publicSlug = input.publicSlug || input.title.toLowerCase().replace(/\s+/g, '-')
+      
+      // Check if slug already exists and make it unique
+      let counter = 1
+      let baseSlug = publicSlug
+      while (await ctx.prisma.tournament.findUnique({ where: { publicSlug } })) {
+        publicSlug = `${baseSlug}-${counter}`
+        counter++
+      }
+
       const tournament = await ctx.prisma.tournament.create({
         data: {
           ...input,
-          publicSlug: input.publicSlug || input.title.toLowerCase().replace(/\s+/g, '-'),
+          publicSlug,
         },
       })
 
