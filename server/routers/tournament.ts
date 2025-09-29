@@ -73,7 +73,15 @@ export const tournamentRouter = createTRPCRouter({
           divisions: {
             include: {
               constraints: true,
-              teams: true,
+              teams: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               pools: true,
               matches: {
                 include: {
