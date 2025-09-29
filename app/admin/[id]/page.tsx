@@ -17,6 +17,11 @@ export default function TournamentDetailPage() {
     pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
     poolsEnabled: false,
     maxTeams: undefined as number | undefined,
+    // Constraints
+    minDupr: undefined as number | undefined,
+    maxDupr: undefined as number | undefined,
+    minAge: undefined as number | undefined,
+    maxAge: undefined as number | undefined,
   })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
@@ -29,6 +34,10 @@ export default function TournamentDetailPage() {
         pairingMode: 'FIXED',
         poolsEnabled: false,
         maxTeams: undefined,
+        minDupr: undefined,
+        maxDupr: undefined,
+        minAge: undefined,
+        maxAge: undefined,
       })
       // Refetch tournament data to show new division
       window.location.reload()
@@ -48,15 +57,13 @@ export default function TournamentDetailPage() {
       pairingMode: divisionForm.pairingMode,
       poolsEnabled: divisionForm.poolsEnabled,
       maxTeams: divisionForm.maxTeams,
+      minDupr: divisionForm.minDupr,
+      maxDupr: divisionForm.maxDupr,
+      minAge: divisionForm.minAge,
+      maxAge: divisionForm.maxAge,
     })
   }
 
-  // Debug info
-  console.log('=== DEBUG INFO ===')
-  console.log('showCreateDivision:', showCreateDivision)
-  console.log('tournamentId:', tournamentId)
-  console.log('Component loaded successfully!')
-  console.log('==================')
 
   if (isLoading) {
     return (
@@ -88,16 +95,6 @@ export default function TournamentDetailPage() {
           )}
         </div>
         
-        {/* Test button */}
-        <button 
-          onClick={() => {
-            console.log('TEST BUTTON CLICKED!')
-            alert('Test button works!')
-          }}
-          className="bg-red-500 text-white px-4 py-2 rounded mr-2"
-        >
-          TEST
-        </button>
         <div className="flex space-x-2">
           {tournament.isPublicBoardEnabled && (
             <Link
@@ -321,6 +318,75 @@ export default function TournamentDetailPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Например: 16"
                 />
+              </div>
+
+              {/* Constraints Section */}
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Ограничения участия</h3>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      DUPR рейтинг от
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="6"
+                      value={divisionForm.minDupr || ''}
+                      onChange={(e) => setDivisionForm({ ...divisionForm, minDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Например: 3.0"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      DUPR рейтинг до
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="6"
+                      value={divisionForm.maxDupr || ''}
+                      onChange={(e) => setDivisionForm({ ...divisionForm, maxDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Например: 4.5"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Возраст от
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={divisionForm.minAge || ''}
+                      onChange={(e) => setDivisionForm({ ...divisionForm, minAge: e.target.value ? parseInt(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Например: 18"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Возраст до
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={divisionForm.maxAge || ''}
+                      onChange={(e) => setDivisionForm({ ...divisionForm, maxAge: e.target.value ? parseInt(e.target.value) : undefined })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Например: 65"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

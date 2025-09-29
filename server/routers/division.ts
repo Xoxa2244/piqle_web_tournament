@@ -10,10 +10,27 @@ export const divisionRouter = createTRPCRouter({
       pairingMode: z.enum(['FIXED', 'MIX_AND_MATCH']),
       poolsEnabled: z.boolean().default(false),
       maxTeams: z.number().optional(),
+      // Constraints
+      minDupr: z.number().optional(),
+      maxDupr: z.number().optional(),
+      minAge: z.number().optional(),
+      maxAge: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const { minDupr, maxDupr, minAge, maxAge, ...divisionData } = input
+      
       const division = await ctx.prisma.division.create({
-        data: input,
+        data: {
+          ...divisionData,
+          constraints: {
+            create: {
+              minDupr: minDupr ? minDupr : null,
+              maxDupr: maxDupr ? maxDupr : null,
+              minAge: minAge ? minAge : null,
+              maxAge: maxAge ? maxAge : null,
+            }
+          }
+        },
       })
 
       // Log the creation
