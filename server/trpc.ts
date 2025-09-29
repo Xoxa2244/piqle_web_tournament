@@ -25,7 +25,7 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
     user: {
       id: 'test-user-id',
       email: 'test@example.com',
-      app_metadata: {},
+      app_metadata: { role: 'TD' },
       user_metadata: {},
       aud: 'authenticated',
       created_at: new Date().toISOString(),
@@ -67,7 +67,8 @@ export const tdProcedure = t.procedure.use(({ ctx, next }) => {
 
   // Check if user is TD
   const user = ctx.session.user
-  if (user.role !== 'TD') {
+  const userRole = user.app_metadata?.role || 'ASSISTANT'
+  if (userRole !== 'TD') {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Tournament Director access required' })
   }
 
