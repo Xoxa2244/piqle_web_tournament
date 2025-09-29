@@ -10,12 +10,6 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
       url: process.env.DATABASE_URL,
     },
   },
-  // Disable prepared statements for Transaction pooler compatibility
-  __internal: {
-    engine: {
-      preparedStatements: false,
-    },
-  },
 })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
