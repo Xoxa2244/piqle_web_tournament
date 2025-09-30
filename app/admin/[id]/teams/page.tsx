@@ -168,7 +168,7 @@ function SortablePlayer({ teamPlayer, onEdit, onDelete, onContextMenu }: {
 }
 
 // Sortable Team Component
-function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextMenu, onDeletePlayer }: {
+function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextMenu, onDeletePlayer, onPlayerContextMenu }: {
   team: Team
   onEdit: () => void
   onDelete: () => void
@@ -176,6 +176,7 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextM
   isExpanded: boolean
   onContextMenu: (e: React.MouseEvent, type: 'team', id: string) => void
   onDeletePlayer: (teamPlayerId: string, playerName: string) => void
+  onPlayerContextMenu: (e: React.MouseEvent, type: 'player', id: string) => void
 }) {
   const {
     attributes,
@@ -279,7 +280,7 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextM
                   onDelete={() => {
                     onDeletePlayer(teamPlayer.id, `${teamPlayer.player.firstName} ${teamPlayer.player.lastName}`)
                   }}
-                  onContextMenu={handleContextMenu}
+                  onContextMenu={onPlayerContextMenu}
                 />
               ))}
             </SortableContext>
@@ -670,6 +671,7 @@ export default function TeamsPage() {
                                     isExpanded={expandedTeams.has(team.id)}
                                     onContextMenu={handleContextMenu}
                                     onDeletePlayer={handleDeletePlayer}
+                                    onPlayerContextMenu={handleContextMenu}
                                   />
                                 ))
                               ) : (
@@ -703,6 +705,7 @@ export default function TeamsPage() {
                               isExpanded={expandedTeams.has(team.id)}
                               onContextMenu={handleContextMenu}
                               onDeletePlayer={handleDeletePlayer}
+                              onPlayerContextMenu={handleContextMenu}
                             />
                           ))
                         ) : (
