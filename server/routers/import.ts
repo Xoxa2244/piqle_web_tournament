@@ -170,7 +170,7 @@ export const importRouter = createTRPCRouter({
         createdDivisions.set(divisionName, division)
         
         // Create teams and players
-        for (const [teamName, teamParticipants] of Array.from(teams.entries())) {
+        for (const [teamName, teamParticipants] of Array.from(teams.entries() as any[])) {
           const team = await ctx.prisma.team.create({
             data: {
               divisionId: division.id,
