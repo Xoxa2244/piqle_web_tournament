@@ -26,7 +26,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronRight, GripVertical, Users, Edit, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Users, Edit, Trash2, MoreVertical } from 'lucide-react'
 
 interface Team {
   id: string
@@ -94,7 +94,7 @@ function DroppableDivision({ division, children, onTeamMove }: {
 }
 
 // Sortable Player Component
-function SortablePlayer({ teamPlayer, onEdit, onDelete }: {
+function SortablePlayer({ teamPlayer, onEdit, onDelete, onContextMenu }: {
   teamPlayer: {
     id: string
     player: {
@@ -107,6 +107,7 @@ function SortablePlayer({ teamPlayer, onEdit, onDelete }: {
   }
   onEdit: () => void
   onDelete: () => void
+  onContextMenu: (e: React.MouseEvent, type: 'player', id: string) => void
 }) {
   const {
     attributes,
@@ -154,18 +155,26 @@ function SortablePlayer({ teamPlayer, onEdit, onDelete }: {
         <Button size="sm" variant="ghost" onClick={onDelete}>
           <Trash2 className="h-3 w-3" />
         </Button>
+        <Button 
+          size="sm" 
+          variant="ghost" 
+          onContextMenu={(e) => onContextMenu(e, 'player', teamPlayer.id)}
+        >
+          <MoreVertical className="h-3 w-3" />
+        </Button>
       </div>
     </div>
   )
 }
 
 // Sortable Team Component
-function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
+function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextMenu }: {
   team: Team
   onEdit: () => void
   onDelete: () => void
   onExpand: () => void
   isExpanded: boolean
+  onContextMenu: (e: React.MouseEvent, type: 'team', id: string) => void
 }) {
   const {
     attributes,
@@ -241,6 +250,13 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
           <Button size="sm" variant="outline" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
           </Button>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onContextMenu={(e) => onContextMenu(e, 'team', team.id)}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -264,6 +280,7 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
                       removePlayerMutation.mutate({ id: teamPlayer.id })
                     }
                   }}
+                  onContextMenu={handleContextMenu}
                 />
               ))}
             </SortableContext>
@@ -282,6 +299,12 @@ export default function TeamsPage() {
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [showEditTeam, setShowEditTeam] = useState(false)
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    type: 'team' | 'player' | null
+    id: string | null
+    x: number
+    y: number
+  }>({ type: null, id: null, x: 0, y: 0 })
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<Team | null>(null)
   const [activePlayer, setActivePlayer] = useState<{
@@ -523,6 +546,21 @@ export default function TeamsPage() {
     }
   }
 
+  const handleContextMenu = (e: React.MouseEvent, type: 'team' | 'player', id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({
+      type,
+      id,
+      x: e.clientX,
+      y: e.clientY,
+    })
+  }
+
+  const closeContextMenu = () => {
+    setContextMenu({ type: null, id: null, x: 0, y: 0 })
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -543,7 +581,7 @@ export default function TeamsPage() {
   }
 
   return (
-    <div>
+    <div onClick={closeContextMenu}>
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Команды</h1>
@@ -625,6 +663,7 @@ export default function TeamsPage() {
                                     onDelete={() => handleDeleteTeam(team)}
                                     onExpand={() => toggleTeamExpansion(team.id)}
                                     isExpanded={expandedTeams.has(team.id)}
+                                    onContextMenu={handleContextMenu}
                                   />
                                 ))
                               ) : (
@@ -656,6 +695,7 @@ export default function TeamsPage() {
                               onDelete={() => handleDeleteTeam(team)}
                               onExpand={() => toggleTeamExpansion(team.id)}
                               isExpanded={expandedTeams.has(team.id)}
+                              onContextMenu={handleContextMenu}
                             />
                           ))
                         ) : (
@@ -877,6 +917,74 @@ export default function TeamsPage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu.type && (
+        <div
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={closeContextMenu}
+        >
+          {contextMenu.type === 'team' && (
+            <>
+              <button
+                className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm"
+                onClick={() => {
+                  const team = findTeamById(contextMenu.id!)
+                  if (team) {
+                    handleEditTeam(team)
+                  }
+                  closeContextMenu()
+                }}
+              >
+                Редактировать команду
+              </button>
+              <button
+                className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm text-red-600"
+                onClick={() => {
+                  const team = findTeamById(contextMenu.id!)
+                  if (team) {
+                    handleDeleteTeam(team)
+                  }
+                  closeContextMenu()
+                }}
+              >
+                Удалить команду
+              </button>
+            </>
+          )}
+          {contextMenu.type === 'player' && (
+            <>
+              <button
+                className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm"
+                onClick={() => {
+                  // TODO: Implement player editing
+                  closeContextMenu()
+                }}
+              >
+                Редактировать игрока
+              </button>
+              <button
+                className="w-full px-4 py-2 text-left hover:bg-gray-100 text-sm text-red-600"
+                onClick={() => {
+                  const player = findPlayerById(contextMenu.id!)
+                  if (player) {
+                    if (confirm(`Вы уверены, что хотите удалить игрока "${player.player.firstName} ${player.player.lastName}" из команды?`)) {
+                      removePlayerMutation.mutate({ id: player.id })
+                    }
+                  }
+                  closeContextMenu()
+                }}
+              >
+                Удалить из команды
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
