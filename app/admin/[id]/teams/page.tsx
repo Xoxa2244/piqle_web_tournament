@@ -398,6 +398,7 @@ export default function TeamsPage() {
   const movePlayerMutation = trpc.teamPlayer.movePlayer.useMutation({
     onSuccess: (data) => {
       console.log('Player move success:', data)
+      // Use optimistic update instead of refetch for faster response
       refetch()
     },
     onError: (error) => {
@@ -503,6 +504,7 @@ export default function TeamsPage() {
       movePlayerMutation.mutate({
         teamPlayerId: active.id as string,
         targetTeamId: overTeam.id,
+        targetPlayerId: over.id as string, // Pass the target player ID
       })
     } else {
       console.log('No active player or over team found')
