@@ -505,35 +505,35 @@ export default function TeamsPage() {
 
     // Handle player movement
     const activePlayer = findPlayerById(active.id as string)
-    let overTeam = findTeamById(over.id as string)
+    let overTeamForPlayer = findTeamById(over.id as string)
     
-    // If overTeam is null, check if we're dragging over another player
-    if (!overTeam) {
+    // If overTeamForPlayer is null, check if we're dragging over another player
+    if (!overTeamForPlayer) {
       const overPlayer = findPlayerById(over.id as string)
       if (overPlayer) {
         // Find the team of the player we're dragging over
-        overTeam = findTeamByPlayerId(over.id as string)
-        console.log('Dragging over player, found team:', overTeam?.name)
+        overTeamForPlayer = findTeamByPlayerId(over.id as string)
+        console.log('Dragging over player, found team:', overTeamForPlayer?.name)
       }
     }
 
-    console.log('Player drag end:', { activePlayer, overTeam, activeId: active.id, overId: over.id })
+    console.log('Player drag end:', { activePlayer, overTeam: overTeamForPlayer, activeId: active.id, overId: over.id })
 
-    if (activePlayer && overTeam) {
+    if (activePlayer && overTeamForPlayer) {
       // Check if player is being moved to a different team
       const currentTeam = findTeamByPlayerId(active.id as string)
-      console.log('Current team:', currentTeam, 'Target team:', overTeam)
+      console.log('Current team:', currentTeam, 'Target team:', overTeamForPlayer)
       
-      if (currentTeam?.id === overTeam.id) {
+      if (currentTeam?.id === overTeamForPlayer.id) {
         console.log('Player already in target team, skipping')
         return
       }
 
-      console.log('Moving player:', activePlayer.player.firstName, 'to team:', overTeam.name)
+      console.log('Moving player:', activePlayer.player.firstName, 'to team:', overTeamForPlayer.name)
       // Move the player to target team
       movePlayerMutation.mutate({
         teamPlayerId: active.id as string,
-        targetTeamId: overTeam.id,
+        targetTeamId: overTeamForPlayer.id,
         targetPlayerId: over.id as string, // Pass the target player ID
       })
     } else {
