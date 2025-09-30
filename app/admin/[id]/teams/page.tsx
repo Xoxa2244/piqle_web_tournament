@@ -36,13 +36,23 @@ interface Team {
   poolId: string | null
   teamPlayers: Array<{
     id: string
+    role: string
+    createdAt: string
+    updatedAt: string
     player: {
       id: string
+      email: string | null
+      createdAt: string
+      updatedAt: string
       firstName: string
       lastName: string
       gender: string | null
-      dupr: number | null
+      dupr: string | null
+      birthDate: string | null
+      externalId: string | null
     }
+    teamId: string
+    playerId: string
   }>
 }
 
@@ -97,13 +107,23 @@ function DroppableDivision({ division, children, onTeamMove }: {
 function SortablePlayer({ teamPlayer, onEdit, onDelete, onContextMenu }: {
   teamPlayer: {
     id: string
+    role: string
+    createdAt: string
+    updatedAt: string
     player: {
       id: string
+      email: string | null
+      createdAt: string
+      updatedAt: string
       firstName: string
       lastName: string
       gender: string | null
-      dupr: number | null
+      dupr: string | null
+      birthDate: string | null
+      externalId: string | null
     }
+    teamId: string
+    playerId: string
   }
   onEdit: () => void
   onDelete: () => void
@@ -309,13 +329,23 @@ export default function TeamsPage() {
   const [activeTeam, setActiveTeam] = useState<Team | null>(null)
   const [activePlayer, setActivePlayer] = useState<{
     id: string
+    role: string
+    createdAt: string
+    updatedAt: string
     player: {
       id: string
+      email: string | null
+      createdAt: string
+      updatedAt: string
       firstName: string
       lastName: string
       gender: string | null
-      dupr: number | null
+      dupr: string | null
+      birthDate: string | null
+      externalId: string | null
     }
+    teamId: string
+    playerId: string
   } | null>(null)
   const [teamForm, setTeamForm] = useState({
     name: '',
@@ -483,13 +513,23 @@ export default function TeamsPage() {
 
   const findPlayerById = (playerId: string): {
     id: string
+    role: string
+    createdAt: string
+    updatedAt: string
     player: {
       id: string
+      email: string | null
+      createdAt: string
+      updatedAt: string
       firstName: string
       lastName: string
       gender: string | null
-      dupr: number | null
+      dupr: string | null
+      birthDate: string | null
+      externalId: string | null
     }
+    teamId: string
+    playerId: string
   } | null => {
     if (!tournament) return null
     for (const division of tournament.divisions) {
