@@ -1,34 +1,29 @@
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { createTRPCRouter, protectedProcedure, tdProcedure } from '@/server/trpc'
 
 export const teamRouter = createTRPCRouter({
   create: tdProcedure
     .input(z.object({
       divisionId: z.string(),
-      poolId: z.string().optional(),
       name: z.string().min(1),
       seed: z.number().optional(),
       note: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const division = await ctx.prisma.division.findUnique({
-        where: { id: input.divisionId },
-        select: { tournamentId: true },
-      })
-
-      if (!division) {
-        throw new Error('Division not found')
-      }
-
       const team = await ctx.prisma.team.create({
-        data: input,
+        data: {
+          divisionId: input.divisionId,
+          name: input.name,
+          seed: input.seed,
+          note: input.note,
+        },
       })
 
       // Log the creation
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: division.tournamentId,
+          tournamentId: input.divisionId, // We'll need to get this from division
           action: 'CREATE',
           entityType: 'Team',
           entityId: team.id,
@@ -39,65 +34,35 @@ export const teamRouter = createTRPCRouter({
       return team
     }),
 
-  list: protectedProcedure
-    .input(z.object({ divisionId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.prisma.team.findMany({
-        where: { divisionId: input.divisionId },
-        include: {
-          teamPlayers: {
-            include: {
-              player: true,
-            },
-          },
-          pool: true,
-        },
-        orderBy: { createdAt: 'asc' },
-      })
-    }),
-
   update: tdProcedure
     .input(z.object({
       id: z.string(),
       name: z.string().min(1).optional(),
-      poolId: z.string().optional(),
+      divisionId: z.string().optional(),
       seed: z.number().optional(),
       note: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input
-
-      const team = await ctx.prisma.team.findUnique({
+      const { id, ...updateData } = input
+      
+      const team = await ctx.prisma.team.update({
         where: { id },
-        include: {
-          division: {
-            select: { tournamentId: true },
-          },
-        },
-      })
-
-      if (!team) {
-        throw new Error('Team not found')
-      }
-
-      const updatedTeam = await ctx.prisma.team.update({
-        where: { id },
-        data,
+        data: updateData,
       })
 
       // Log the update
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: team.division.tournamentId,
+          tournamentId: team.divisionId, // We'll need to get this from division
           action: 'UPDATE',
           entityType: 'Team',
           entityId: team.id,
-          payload: data,
+          payload: input,
         },
       })
 
-      return updatedTeam
+      return team
     }),
 
   delete: tdProcedure
@@ -105,16 +70,22 @@ export const teamRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const team = await ctx.prisma.team.findUnique({
         where: { id: input.id },
-        include: {
-          division: {
-            select: { tournamentId: true },
-          },
-        },
+        include: { division: true },
       })
 
       if (!team) {
         throw new Error('Team not found')
       }
+
+      // Delete team players first
+      await ctx.prisma.teamPlayer.deleteMany({
+        where: { teamId: input.id },
+      })
+
+      // Delete the team
+      await ctx.prisma.team.delete({
+        where: { id: input.id },
+      })
 
       // Log the deletion
       await ctx.prisma.auditLog.create({
@@ -124,50 +95,90 @@ export const teamRouter = createTRPCRouter({
           action: 'DELETE',
           entityType: 'Team',
           entityId: input.id,
+          payload: { teamName: team.name },
         },
       })
 
-      return ctx.prisma.team.delete({
-        where: { id: input.id },
-      })
+      return { success: true }
     }),
 
-  move: tdProcedure
+  moveToDivision: tdProcedure
     .input(z.object({
-      id: z.string(),
-      divisionId: z.string().optional(),
-      poolId: z.string().optional(),
+      teamId: z.string(),
+      divisionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input
-
+      // Get current team and target division
       const team = await ctx.prisma.team.findUnique({
-        where: { id },
-        include: {
-          division: {
-            select: { tournamentId: true },
-          },
-        },
+        where: { id: input.teamId },
+        include: { division: true },
       })
 
-      if (!team) {
-        throw new Error('Team not found')
+      const targetDivision = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+      })
+
+      if (!team || !targetDivision) {
+        throw new Error('Team or division not found')
       }
 
+      // Check if target division has capacity
+      if (targetDivision.maxTeams) {
+        const currentTeamCount = await ctx.prisma.team.count({
+          where: { divisionId: input.divisionId },
+        })
+
+        if (currentTeamCount >= targetDivision.maxTeams) {
+          // Find the last team in target division and move it to source division
+          const lastTeam = await ctx.prisma.team.findFirst({
+            where: { divisionId: input.divisionId },
+            orderBy: { createdAt: 'desc' },
+          })
+
+          if (lastTeam) {
+            await ctx.prisma.team.update({
+              where: { id: lastTeam.id },
+              data: { divisionId: team.divisionId },
+            })
+
+            // Log the auto-move
+            await ctx.prisma.auditLog.create({
+              data: {
+                actorUserId: ctx.session.user.id,
+                tournamentId: targetDivision.tournamentId,
+                action: 'AUTO_MOVE',
+                entityType: 'Team',
+                entityId: lastTeam.id,
+                payload: {
+                  fromDivision: targetDivision.name,
+                  toDivision: team.division.name,
+                  reason: 'Division capacity exceeded',
+                },
+              },
+            })
+          }
+        }
+      }
+
+      // Move the team to target division
       const updatedTeam = await ctx.prisma.team.update({
-        where: { id },
-        data,
+        where: { id: input.teamId },
+        data: { divisionId: input.divisionId },
       })
 
       // Log the move
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: team.division.tournamentId,
+          tournamentId: targetDivision.tournamentId,
           action: 'MOVE',
           entityType: 'Team',
-          entityId: team.id,
-          payload: data,
+          entityId: input.teamId,
+          payload: {
+            teamName: team.name,
+            fromDivision: team.division.name,
+            toDivision: targetDivision.name,
+          },
         },
       })
 

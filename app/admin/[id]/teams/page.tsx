@@ -6,17 +6,221 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  useDroppable,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { ChevronDown, ChevronRight, GripVertical, Users, Edit, Trash2 } from 'lucide-react'
+
+interface Team {
+  id: string
+  name: string
+  seed: number | null
+  note: string | null
+  teamPlayers: Array<{
+    id: string
+    player: {
+      id: string
+      firstName: string
+      lastName: string
+      gender: string | null
+      dupr: number | null
+    }
+  }>
+}
+
+interface Division {
+  id: string
+  name: string
+  teamKind: string
+  pairingMode: string
+  poolsEnabled: boolean
+  maxTeams: number | null
+  teams: Team[]
+}
+
+interface Tournament {
+  id: string
+  title: string
+  divisions: Division[]
+}
+
+// Droppable Division Component
+function DroppableDivision({ division, children, onTeamMove }: {
+  division: Division
+  children: React.ReactNode
+  onTeamMove: (teamId: string, divisionId: string) => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: division.id,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[100px] p-2 border-2 border-dashed rounded-lg transition-colors ${
+        isOver 
+          ? 'border-blue-400 bg-blue-50' 
+          : 'border-gray-200'
+      }`}
+    >
+      {children}
+    </div>
+  )
+}
+
+// Sortable Team Component
+function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
+  team: Team
+  onEdit: () => void
+  onDelete: () => void
+  onExpand: () => void
+  isExpanded: boolean
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: team.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-white border border-gray-200 rounded-lg p-3 mb-2 shadow-sm hover:shadow-md transition-shadow"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <button
+            {...attributes}
+            {...listeners}
+            className="p-1 hover:bg-gray-100 rounded cursor-grab active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4 text-gray-400" />
+          </button>
+          
+          <button
+            onClick={onExpand}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-gray-400" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-gray-400" />
+            )}
+          </button>
+
+          <div>
+            <span className="font-medium text-gray-900">{team.name}</span>
+            {team.seed && (
+              <span className="ml-2 text-sm text-gray-500">(#{team.seed})</span>
+            )}
+            {team.note && (
+              <span className="ml-2 text-sm text-gray-500">- {team.note}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center text-sm text-gray-500">
+            <Users className="h-4 w-4 mr-1" />
+            {team.teamPlayers.length}
+          </div>
+          
+          <Button size="sm" variant="outline" onClick={onEdit}>
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="outline" onClick={onDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="mt-3 ml-6 space-y-2">
+          {team.teamPlayers.length > 0 ? (
+            team.teamPlayers.map((teamPlayer) => (
+              <div key={teamPlayer.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                <div className="flex items-center space-x-2">
+                  <button className="p-1 hover:bg-gray-200 rounded cursor-grab active:cursor-grabbing">
+                    <GripVertical className="h-3 w-3 text-gray-400" />
+                  </button>
+                  <span className="text-sm">
+                    {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+                  </span>
+                  {teamPlayer.player.gender && (
+                    <span className="text-xs text-gray-500">({teamPlayer.player.gender})</span>
+                  )}
+                  {teamPlayer.player.dupr && (
+                    <span className="text-xs text-gray-500">DUPR: {teamPlayer.player.dupr}</span>
+                  )}
+                </div>
+                <div className="flex space-x-1">
+                  <Button size="sm" variant="ghost">
+                    <Edit className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-gray-500">Игроки не добавлены</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function TeamsPage() {
   const params = useParams()
   const tournamentId = params.id as string
   const [showCreateTeam, setShowCreateTeam] = useState(false)
+  const [showEditTeam, setShowEditTeam] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
+  const [activeTeam, setActiveTeam] = useState<Team | null>(null)
   const [teamForm, setTeamForm] = useState({
     name: '',
     divisionId: '',
     seed: undefined as number | undefined,
     note: '',
   })
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   const { data: tournament, isLoading } = trpc.tournament.get.useQuery({ id: tournamentId })
   const createTeam = trpc.team.create.useMutation({
@@ -30,6 +234,25 @@ export default function TeamsPage() {
       })
       window.location.reload()
     },
+  })
+
+  const updateTeam = trpc.team.update.useMutation({
+    onSuccess: () => {
+      setShowEditTeam(false)
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert(`Ошибка при обновлении команды: ${error.message}`)
+    }
+  })
+
+  const deleteTeam = trpc.team.delete.useMutation({
+    onSuccess: () => {
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert(`Ошибка при удалении команды: ${error.message}`)
+    }
   })
 
   const handleCreateTeam = () => {
@@ -48,6 +271,98 @@ export default function TeamsPage() {
       seed: teamForm.seed,
       note: teamForm.note || undefined,
     })
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event
+    const team = findTeamById(active.id as string)
+    setActiveTeam(team)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveTeam(null)
+
+    if (!over) return
+
+    const activeTeam = findTeamById(active.id as string)
+    const overDivision = findDivisionById(over.id as string)
+
+    if (!activeTeam || !overDivision) return
+
+    // Check if team is being moved to a different division
+    const currentDivision = findDivisionByTeamId(active.id as string)
+    if (currentDivision?.id === overDivision.id) return
+
+    // Move the dragged team to target division
+    moveTeamToDivision(active.id as string, overDivision.id)
+  }
+
+  const findTeamById = (teamId: string): Team | null => {
+    if (!tournament) return null
+    for (const division of tournament.divisions) {
+      const team = division.teams.find(t => t.id === teamId)
+      if (team) return team
+    }
+    return null
+  }
+
+  const findDivisionById = (divisionId: string): Division | null => {
+    if (!tournament) return null
+    return tournament.divisions.find(d => d.id === divisionId) || null
+  }
+
+  const findDivisionByTeamId = (teamId: string): Division | null => {
+    if (!tournament) return null
+    for (const division of tournament.divisions) {
+      if (division.teams.some(t => t.id === teamId)) {
+        return division
+      }
+    }
+    return null
+  }
+
+  const moveTeamToDivisionMutation = trpc.team.moveToDivision.useMutation({
+    onSuccess: () => {
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert(`Ошибка при перемещении команды: ${error.message}`)
+    }
+  })
+
+  const moveTeamToDivision = (teamId: string, divisionId: string) => {
+    moveTeamToDivisionMutation.mutate({
+      teamId,
+      divisionId,
+    })
+  }
+
+  const toggleTeamExpansion = (teamId: string) => {
+    const newExpanded = new Set(expandedTeams)
+    if (newExpanded.has(teamId)) {
+      newExpanded.delete(teamId)
+    } else {
+      newExpanded.add(teamId)
+    }
+    setExpandedTeams(newExpanded)
+  }
+
+  const handleEditTeam = (team: Team) => {
+    setEditingTeam(team)
+    setTeamForm({
+      name: team.name,
+      divisionId: findDivisionByTeamId(team.id)?.id || '',
+      seed: team.seed || undefined,
+      note: team.note || '',
+    })
+    setShowEditTeam(true)
+  }
+
+  const handleDeleteTeam = (team: Team) => {
+    if (confirm(`Вы уверены, что хотите удалить команду "${team.name}"?`)) {
+      deleteTeam.mutate({ id: team.id })
+    }
   }
 
   if (isLoading) {
@@ -106,47 +421,74 @@ export default function TeamsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {tournament.divisions.map((division) => (
-            <Card key={division.id}>
-              <CardHeader>
-                <CardTitle>{division.name}</CardTitle>
-                <CardDescription>
-                  {division.teams.length} команд • {division.teamKind} • {division.pairingMode}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {division.teams.length > 0 ? (
-                  <div className="space-y-2">
-                    {division.teams.map((team) => (
-                      <div key={team.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                        <div>
-                          <span className="font-medium">{team.name}</span>
-                          {team.seed && (
-                            <span className="ml-2 text-sm text-gray-500">(#{team.seed})</span>
-                          )}
-                          {team.note && (
-                            <span className="ml-2 text-sm text-gray-500">- {team.note}</span>
-                          )}
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="space-y-6">
+            {tournament.divisions.map((division) => (
+              <Card key={division.id}>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <span>Дивизион: {division.name}</span>
+                    {division.maxTeams && (
+                      <span className="text-sm font-normal text-gray-500">
+                        (лимит: {division.maxTeams})
+                      </span>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    {division.teams.length} команд • {division.teamKind} • {division.pairingMode}
+                    {division.poolsEnabled && ' • Пулы включены'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SortableContext
+                    items={division.teams.map(t => t.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <DroppableDivision
+                      division={division}
+                      onTeamMove={moveTeamToDivision}
+                    >
+                      {division.teams.length > 0 ? (
+                        division.teams.map((team) => (
+                          <SortableTeam
+                            key={team.id}
+                            team={team}
+                            onEdit={() => handleEditTeam(team)}
+                            onDelete={() => handleDeleteTeam(team)}
+                            onExpand={() => toggleTeamExpansion(team.id)}
+                            isExpanded={expandedTeams.has(team.id)}
+                          />
+                        ))
+                      ) : (
+                        <div className="text-center text-gray-500 py-8">
+                          Перетащите команды сюда или создайте новую
                         </div>
-                        <div className="flex space-x-2">
-                          <Button size="sm" variant="outline">
-                            Редактировать
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            Удалить
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">Команды не добавлены</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                      )}
+                    </DroppableDivision>
+                  </SortableContext>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <DragOverlay>
+            {activeTeam ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-lg">
+                <div className="flex items-center space-x-2">
+                  <GripVertical className="h-4 w-4 text-gray-400" />
+                  <span className="font-medium">{activeTeam.name}</span>
+                  {activeTeam.seed && (
+                    <span className="text-sm text-gray-500">(#{activeTeam.seed})</span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Create Team Modal */}
@@ -227,6 +569,103 @@ export default function TeamsPage() {
                 disabled={createTeam.isPending}
               >
                 {createTeam.isPending ? 'Создание...' : 'Создать'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Team Modal */}
+      {showEditTeam && editingTeam && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-xl font-bold mb-4">Редактировать команду</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Название команды *
+                </label>
+                <input
+                  type="text"
+                  value={teamForm.name}
+                  onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Дивизион *
+                </label>
+                <select
+                  value={teamForm.divisionId}
+                  onChange={(e) => setTeamForm({ ...teamForm, divisionId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Выберите дивизион</option>
+                  {tournament.divisions.map((division) => (
+                    <option key={division.id} value={division.id}>
+                      {division.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Посев (необязательно)
+                </label>
+                <input
+                  type="number"
+                  value={teamForm.seed || ''}
+                  onChange={(e) => setTeamForm({ ...teamForm, seed: e.target.value ? parseInt(e.target.value) : undefined })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Примечание (необязательно)
+                </label>
+                <input
+                  type="text"
+                  value={teamForm.note}
+                  onChange={(e) => setTeamForm({ ...teamForm, note: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowEditTeam(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!teamForm.name.trim()) {
+                    alert('Пожалуйста, введите название команды')
+                    return
+                  }
+                  if (!teamForm.divisionId) {
+                    alert('Пожалуйста, выберите дивизион')
+                    return
+                  }
+
+                  updateTeam.mutate({
+                    id: editingTeam.id,
+                    name: teamForm.name,
+                    divisionId: teamForm.divisionId,
+                    seed: teamForm.seed,
+                    note: teamForm.note || undefined,
+                  })
+                }}
+                disabled={updateTeam.isPending}
+              >
+                {updateTeam.isPending ? 'Сохранение...' : 'Сохранить'}
               </Button>
             </div>
           </div>
