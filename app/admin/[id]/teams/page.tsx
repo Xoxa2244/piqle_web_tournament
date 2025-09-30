@@ -463,11 +463,19 @@ export default function TeamsPage() {
     const activeTeam = findTeamById(active.id as string)
     const overDivision = findDivisionById(over.id as string)
 
+    console.log('Team drag end:', { activeTeam, overDivision, activeId: active.id, overId: over.id })
+
     if (activeTeam && overDivision) {
       // Check if team is being moved to a different division
       const currentDivision = findDivisionByTeamId(active.id as string)
-      if (currentDivision?.id === overDivision.id) return
+      console.log('Current division:', currentDivision, 'Target division:', overDivision)
+      
+      if (currentDivision?.id === overDivision.id) {
+        console.log('Team already in target division, skipping')
+        return
+      }
 
+      console.log('Moving team:', activeTeam.name, 'to division:', overDivision.name)
       // Move the dragged team to target division
       moveTeamToDivision(active.id as string, overDivision.id)
       return
