@@ -6,6 +6,7 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       teamPlayerId: z.string(),
       targetTeamId: z.string(),
+      targetPlayerId: z.string().optional(), // ID игрока, на которого перетаскивают
     }))
     .mutation(async ({ ctx, input }) => {
       // Get current team player and target team
@@ -46,17 +47,27 @@ export const teamPlayerRouter = createTRPCRouter({
 
       // If target team is at capacity, do a player swap
       if (targetTeam.teamPlayers.length >= maxPlayers) {
-        // Get the last player from target team to swap
-        const lastTeamPlayer = targetTeam.teamPlayers[targetTeam.teamPlayers.length - 1]
-        if (lastTeamPlayer) {
+        let playerToSwap: any = null
+        
+        // If we have a specific target player ID, find that player
+        if (input.targetPlayerId) {
+          playerToSwap = targetTeam.teamPlayers.find(tp => tp.id === input.targetPlayerId)
+        }
+        
+        // If no specific target or target not found, use the last player
+        if (!playerToSwap) {
+          playerToSwap = targetTeam.teamPlayers[targetTeam.teamPlayers.length - 1]
+        }
+        
+        if (playerToSwap) {
           // Get player data for logging
-          const lastPlayer = await ctx.prisma.player.findUnique({
-            where: { id: lastTeamPlayer.playerId },
+          const swapPlayer = await ctx.prisma.player.findUnique({
+            where: { id: playerToSwap.playerId },
           })
 
-          // Move the last player from target team to source team
+          // Move the swap player from target team to source team
           await ctx.prisma.teamPlayer.update({
-            where: { id: lastTeamPlayer.id },
+            where: { id: playerToSwap.id },
             data: { teamId: teamPlayer.teamId },
           })
 
@@ -67,9 +78,9 @@ export const teamPlayerRouter = createTRPCRouter({
               tournamentId: teamPlayer.team.division.tournamentId,
               action: 'AUTO_MOVE',
               entityType: 'TeamPlayer',
-              entityId: lastTeamPlayer.id,
+              entityId: playerToSwap.id,
               payload: {
-                playerName: lastPlayer ? `${lastPlayer.firstName} ${lastPlayer.lastName}` : 'Unknown Player',
+                playerName: swapPlayer ? `${swapPlayer.firstName} ${swapPlayer.lastName}` : 'Unknown Player',
                 fromTeam: targetTeam.name,
                 toTeam: teamPlayer.team.name,
                 reason: 'Player swap - team at capacity',
