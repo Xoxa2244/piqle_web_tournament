@@ -44,8 +44,9 @@ export const teamPlayerRouter = createTRPCRouter({
                         teamPlayer.team.division.teamKind === 'DOUBLES_2v2' ? 2 :
                         teamPlayer.team.division.teamKind === 'SQUAD_4v4' ? 4 : 2
 
+      // If target team is at capacity, do a player swap
       if (targetTeam.teamPlayers.length >= maxPlayers) {
-        // Auto-move the last player from target team to source team
+        // Get the last player from target team to swap
         const lastTeamPlayer = targetTeam.teamPlayers[targetTeam.teamPlayers.length - 1]
         if (lastTeamPlayer) {
           // Get player data for logging
@@ -53,12 +54,13 @@ export const teamPlayerRouter = createTRPCRouter({
             where: { id: lastTeamPlayer.playerId },
           })
 
+          // Move the last player from target team to source team
           await ctx.prisma.teamPlayer.update({
             where: { id: lastTeamPlayer.id },
             data: { teamId: teamPlayer.teamId },
           })
 
-          // Log the auto-move
+          // Log the auto-move (swap)
           await ctx.prisma.auditLog.create({
             data: {
               actorUserId: ctx.session.user.id,
@@ -70,7 +72,7 @@ export const teamPlayerRouter = createTRPCRouter({
                 playerName: lastPlayer ? `${lastPlayer.firstName} ${lastPlayer.lastName}` : 'Unknown Player',
                 fromTeam: targetTeam.name,
                 toTeam: teamPlayer.team.name,
-                reason: 'Team capacity exceeded',
+                reason: 'Player swap - team at capacity',
               },
             },
           })
