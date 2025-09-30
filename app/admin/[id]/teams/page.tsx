@@ -471,6 +471,16 @@ export default function TeamsPage() {
     return tournament.divisions.find(d => d.id === divisionId) || null
   }
 
+  const findDivisionByTeamId = (teamId: string): Division | null => {
+    if (!tournament) return null
+    for (const division of tournament.divisions) {
+      if (division.teams.some(t => t.id === teamId)) {
+        return division
+      }
+    }
+    return null
+  }
+
   const findPlayerById = (playerId: string): {
     id: string
     player: {
