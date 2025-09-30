@@ -143,7 +143,7 @@ export const importRouter = createTRPCRouter({
         const maxDupr = duprMatch ? parseFloat(duprMatch[2]) : null
         
         // Check if pools are enabled
-        const poolsEnabled = Array.from(teams.values()).some((team: any[]) => 
+        const poolsEnabled = Array.from(teams.values() as any[]).some((team: any[]) => 
           team.some((p: any) => p['Pool'] && p['Pool'].trim())
         )
         
