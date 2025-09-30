@@ -85,6 +85,72 @@ function DroppableDivision({ division, children, onTeamMove }: {
   )
 }
 
+// Sortable Player Component
+function SortablePlayer({ teamPlayer, onEdit, onDelete }: {
+  teamPlayer: {
+    id: string
+    player: {
+      id: string
+      firstName: string
+      lastName: string
+      gender: string | null
+      dupr: number | null
+    }
+  }
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: teamPlayer.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center justify-between p-2 bg-gray-50 rounded"
+    >
+      <div className="flex items-center space-x-2">
+        <button
+          {...attributes}
+          {...listeners}
+          className="p-1 hover:bg-gray-200 rounded cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical className="h-3 w-3 text-gray-400" />
+        </button>
+        <span className="text-sm">
+          {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+        </span>
+        {teamPlayer.player.gender && (
+          <span className="text-xs text-gray-500">({teamPlayer.player.gender})</span>
+        )}
+        {teamPlayer.player.dupr && (
+          <span className="text-xs text-gray-500">DUPR: {teamPlayer.player.dupr}</span>
+        )}
+      </div>
+      <div className="flex space-x-1">
+        <Button size="sm" variant="ghost" onClick={onEdit}>
+          <Edit className="h-3 w-3" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDelete}>
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // Sortable Team Component
 function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
   team: Team
@@ -102,6 +168,10 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
     isDragging,
   } = useSortable({ id: team.id })
 
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: team.id,
+  })
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -110,9 +180,14 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node)
+        setDroppableRef(node)
+      }}
       style={style}
-      className="bg-white border border-gray-200 rounded-lg p-3 mb-2 shadow-sm hover:shadow-md transition-shadow"
+      className={`bg-white border rounded-lg p-3 mb-2 shadow-sm hover:shadow-md transition-shadow ${
+        isOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200'
+      }`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
@@ -164,32 +239,26 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded }: {
       {isExpanded && (
         <div className="mt-3 ml-6 space-y-2">
           {team.teamPlayers.length > 0 ? (
-            team.teamPlayers.map((teamPlayer) => (
-              <div key={teamPlayer.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                <div className="flex items-center space-x-2">
-                  <button className="p-1 hover:bg-gray-200 rounded cursor-grab active:cursor-grabbing">
-                    <GripVertical className="h-3 w-3 text-gray-400" />
-                  </button>
-                  <span className="text-sm">
-                    {teamPlayer.player.firstName} {teamPlayer.player.lastName}
-                  </span>
-                  {teamPlayer.player.gender && (
-                    <span className="text-xs text-gray-500">({teamPlayer.player.gender})</span>
-                  )}
-                  {teamPlayer.player.dupr && (
-                    <span className="text-xs text-gray-500">DUPR: {teamPlayer.player.dupr}</span>
-                  )}
-                </div>
-                <div className="flex space-x-1">
-                  <Button size="sm" variant="ghost">
-                    <Edit className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="ghost">
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            ))
+            <SortableContext
+              items={team.teamPlayers.map(tp => tp.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {team.teamPlayers.map((teamPlayer) => (
+                <SortablePlayer
+                  key={teamPlayer.id}
+                  teamPlayer={teamPlayer}
+                  onEdit={() => {
+                    // TODO: Implement player editing
+                    console.log('Edit player:', teamPlayer.player.id)
+                  }}
+                  onDelete={() => {
+                    if (confirm(`Вы уверены, что хотите удалить игрока "${teamPlayer.player.firstName} ${teamPlayer.player.lastName}" из команды?`)) {
+                      removePlayerMutation.mutate({ id: teamPlayer.id })
+                    }
+                  }}
+                />
+              ))}
+            </SortableContext>
           ) : (
             <p className="text-sm text-gray-500">Игроки не добавлены</p>
           )}
@@ -207,6 +276,16 @@ export default function TeamsPage() {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null)
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<Team | null>(null)
+  const [activePlayer, setActivePlayer] = useState<{
+    id: string
+    player: {
+      id: string
+      firstName: string
+      lastName: string
+      gender: string | null
+      dupr: number | null
+    }
+  } | null>(null)
   const [teamForm, setTeamForm] = useState({
     name: '',
     divisionId: '',
@@ -255,6 +334,24 @@ export default function TeamsPage() {
     }
   })
 
+  const movePlayerMutation = trpc.teamPlayer.movePlayer.useMutation({
+    onSuccess: () => {
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert(`Ошибка при перемещении игрока: ${error.message}`)
+    }
+  })
+
+  const removePlayerMutation = trpc.teamPlayer.removePlayer.useMutation({
+    onSuccess: () => {
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert(`Ошибка при удалении игрока: ${error.message}`)
+    }
+  })
+
   const handleCreateTeam = () => {
     if (!teamForm.name.trim()) {
       alert('Пожалуйста, введите название команды')
@@ -275,27 +372,58 @@ export default function TeamsPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
+    
+    // Check if it's a team or player being dragged
     const team = findTeamById(active.id as string)
-    setActiveTeam(team)
+    if (team) {
+      setActiveTeam(team)
+      return
+    }
+
+    // Check if it's a player being dragged
+    const player = findPlayerById(active.id as string)
+    if (player) {
+      setActivePlayer(player)
+      return
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     setActiveTeam(null)
+    setActivePlayer(null)
 
     if (!over) return
 
+    // Handle team movement
     const activeTeam = findTeamById(active.id as string)
     const overDivision = findDivisionById(over.id as string)
 
-    if (!activeTeam || !overDivision) return
+    if (activeTeam && overDivision) {
+      // Check if team is being moved to a different division
+      const currentDivision = findDivisionByTeamId(active.id as string)
+      if (currentDivision?.id === overDivision.id) return
 
-    // Check if team is being moved to a different division
-    const currentDivision = findDivisionByTeamId(active.id as string)
-    if (currentDivision?.id === overDivision.id) return
+      // Move the dragged team to target division
+      moveTeamToDivision(active.id as string, overDivision.id)
+      return
+    }
 
-    // Move the dragged team to target division
-    moveTeamToDivision(active.id as string, overDivision.id)
+    // Handle player movement
+    const activePlayer = findPlayerById(active.id as string)
+    const overTeam = findTeamById(over.id as string)
+
+    if (activePlayer && overTeam) {
+      // Check if player is being moved to a different team
+      const currentTeam = findTeamByPlayerId(active.id as string)
+      if (currentTeam?.id === overTeam.id) return
+
+      // Move the player to target team
+      movePlayerMutation.mutate({
+        teamPlayerId: active.id as string,
+        targetTeamId: overTeam.id,
+      })
+    }
   }
 
   const findTeamById = (teamId: string): Team | null => {
@@ -312,11 +440,33 @@ export default function TeamsPage() {
     return tournament.divisions.find(d => d.id === divisionId) || null
   }
 
-  const findDivisionByTeamId = (teamId: string): Division | null => {
+  const findPlayerById = (playerId: string): {
+    id: string
+    player: {
+      id: string
+      firstName: string
+      lastName: string
+      gender: string | null
+      dupr: number | null
+    }
+  } | null => {
     if (!tournament) return null
     for (const division of tournament.divisions) {
-      if (division.teams.some(t => t.id === teamId)) {
-        return division
+      for (const team of division.teams) {
+        const teamPlayer = team.teamPlayers.find(tp => tp.id === playerId)
+        if (teamPlayer) return teamPlayer
+      }
+    }
+    return null
+  }
+
+  const findTeamByPlayerId = (playerId: string): Team | null => {
+    if (!tournament) return null
+    for (const division of tournament.divisions) {
+      for (const team of division.teams) {
+        if (team.teamPlayers.some(tp => tp.id === playerId)) {
+          return team
+        }
       }
     }
     return null
@@ -483,6 +633,18 @@ export default function TeamsPage() {
                   <span className="font-medium">{activeTeam.name}</span>
                   {activeTeam.seed && (
                     <span className="text-sm text-gray-500">(#{activeTeam.seed})</span>
+                  )}
+                </div>
+              </div>
+            ) : activePlayer ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-2 shadow-lg">
+                <div className="flex items-center space-x-2">
+                  <GripVertical className="h-3 w-3 text-gray-400" />
+                  <span className="text-sm">
+                    {activePlayer.player.firstName} {activePlayer.player.lastName}
+                  </span>
+                  {activePlayer.player.gender && (
+                    <span className="text-xs text-gray-500">({activePlayer.player.gender})</span>
                   )}
                 </div>
               </div>

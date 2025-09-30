@@ -2,6 +2,7 @@ import { createTRPCRouter } from '../trpc'
 import { tournamentRouter } from './tournament'
 import { divisionRouter } from './division'
 import { teamRouter } from './team'
+import { teamPlayerRouter } from './teamPlayer'
 import { playerRouter } from './player'
 import { matchRouter } from './match'
 import { importRouter } from './import'
@@ -11,6 +12,7 @@ export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
   division: divisionRouter,
   team: teamRouter,
+  teamPlayer: teamPlayerRouter,
   player: playerRouter,
   match: matchRouter,
   import: importRouter,
