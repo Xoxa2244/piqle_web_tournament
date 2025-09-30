@@ -33,6 +33,7 @@ interface Team {
   name: string
   seed: number | null
   note: string | null
+  poolId: string | null
   teamPlayers: Array<{
     id: string
     player: {
@@ -45,6 +46,12 @@ interface Team {
   }>
 }
 
+interface Pool {
+  id: string
+  name: string
+  divisionId: string
+}
+
 interface Division {
   id: string
   name: string
@@ -53,6 +60,7 @@ interface Division {
   poolsEnabled: boolean
   maxTeams: number | null
   teams: Team[]
+  pools: Pool[]
 }
 
 interface Tournament {
@@ -594,32 +602,70 @@ export default function TeamsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <SortableContext
-                    items={division.teams.map(t => t.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <DroppableDivision
-                      division={division}
-                      onTeamMove={moveTeamToDivision}
-                    >
-                      {division.teams.length > 0 ? (
-                        division.teams.map((team) => (
-                          <SortableTeam
-                            key={team.id}
-                            team={team}
-                            onEdit={() => handleEditTeam(team)}
-                            onDelete={() => handleDeleteTeam(team)}
-                            onExpand={() => toggleTeamExpansion(team.id)}
-                            isExpanded={expandedTeams.has(team.id)}
-                          />
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500 py-8">
-                          Перетащите команды сюда или создайте новую
+                  {division.poolsEnabled && division.pools && division.pools.length > 0 ? (
+                    // Show teams grouped by pools
+                    <div className="space-y-4">
+                      {division.pools.map((pool) => (
+                        <div key={pool.id} className="border border-gray-200 rounded-lg p-4">
+                          <h4 className="font-medium text-gray-900 mb-3">Pool: {pool.name}</h4>
+                          <SortableContext
+                            items={division.teams.filter(t => t.poolId === pool.id).map(t => t.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <DroppableDivision
+                              division={division}
+                              onTeamMove={moveTeamToDivision}
+                            >
+                              {division.teams.filter(t => t.poolId === pool.id).length > 0 ? (
+                                division.teams.filter(t => t.poolId === pool.id).map((team) => (
+                                  <SortableTeam
+                                    key={team.id}
+                                    team={team}
+                                    onEdit={() => handleEditTeam(team)}
+                                    onDelete={() => handleDeleteTeam(team)}
+                                    onExpand={() => toggleTeamExpansion(team.id)}
+                                    isExpanded={expandedTeams.has(team.id)}
+                                  />
+                                ))
+                              ) : (
+                                <div className="text-center text-gray-500 py-4">
+                                  Перетащите команды в этот пул
+                                </div>
+                              )}
+                            </DroppableDivision>
+                          </SortableContext>
                         </div>
-                      )}
-                    </DroppableDivision>
-                  </SortableContext>
+                      ))}
+                    </div>
+                  ) : (
+                    // Show all teams without pools
+                    <SortableContext
+                      items={division.teams.map(t => t.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <DroppableDivision
+                        division={division}
+                        onTeamMove={moveTeamToDivision}
+                      >
+                        {division.teams.length > 0 ? (
+                          division.teams.map((team) => (
+                            <SortableTeam
+                              key={team.id}
+                              team={team}
+                              onEdit={() => handleEditTeam(team)}
+                              onDelete={() => handleDeleteTeam(team)}
+                              onExpand={() => toggleTeamExpansion(team.id)}
+                              isExpanded={expandedTeams.has(team.id)}
+                            />
+                          ))
+                        ) : (
+                          <div className="text-center text-gray-500 py-8">
+                            Перетащите команды сюда или создайте новую
+                          </div>
+                        )}
+                      </DroppableDivision>
+                    </SortableContext>
+                  )}
                 </CardContent>
               </Card>
             ))}
