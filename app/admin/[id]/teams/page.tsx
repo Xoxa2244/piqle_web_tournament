@@ -474,7 +474,17 @@ export default function TeamsPage() {
 
     // Handle player movement
     const activePlayer = findPlayerById(active.id as string)
-    const overTeam = findTeamById(over.id as string)
+    let overTeam = findTeamById(over.id as string)
+    
+    // If overTeam is null, check if we're dragging over another player
+    if (!overTeam) {
+      const overPlayer = findPlayerById(over.id as string)
+      if (overPlayer) {
+        // Find the team of the player we're dragging over
+        overTeam = findTeamByPlayerId(over.id as string)
+        console.log('Dragging over player, found team:', overTeam?.name)
+      }
+    }
 
     console.log('Player drag end:', { activePlayer, overTeam, activeId: active.id, overId: over.id })
 
