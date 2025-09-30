@@ -396,10 +396,12 @@ export default function TeamsPage() {
   })
 
   const movePlayerMutation = trpc.teamPlayer.movePlayer.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Player move success:', data)
       refetch()
     },
     onError: (error) => {
+      console.error('Player move error:', error)
       alert(`Ошибка при перемещении игрока: ${error.message}`)
     }
   })
@@ -474,16 +476,26 @@ export default function TeamsPage() {
     const activePlayer = findPlayerById(active.id as string)
     const overTeam = findTeamById(over.id as string)
 
+    console.log('Player drag end:', { activePlayer, overTeam, activeId: active.id, overId: over.id })
+
     if (activePlayer && overTeam) {
       // Check if player is being moved to a different team
       const currentTeam = findTeamByPlayerId(active.id as string)
-      if (currentTeam?.id === overTeam.id) return
+      console.log('Current team:', currentTeam, 'Target team:', overTeam)
+      
+      if (currentTeam?.id === overTeam.id) {
+        console.log('Player already in target team, skipping')
+        return
+      }
 
+      console.log('Moving player:', activePlayer.player.firstName, 'to team:', overTeam.name)
       // Move the player to target team
       movePlayerMutation.mutate({
         teamPlayerId: active.id as string,
         targetTeamId: overTeam.id,
       })
+    } else {
+      console.log('No active player or over team found')
     }
   }
 
