@@ -462,9 +462,31 @@ export default function TeamsPage() {
     // Handle team movement
     const activeTeam = findTeamById(active.id as string)
     const overDivision = findDivisionById(over.id as string)
+    const overTeam = findTeamById(over.id as string)
 
-    console.log('Team drag end:', { activeTeam, overDivision, activeId: active.id, overId: over.id })
+    console.log('Team drag end:', { 
+      activeTeam, 
+      overDivision, 
+      overTeam,
+      activeId: active.id, 
+      overId: over.id,
+      isTeamToTeam: activeTeam && overTeam,
+      isTeamToDivision: activeTeam && overDivision
+    })
 
+    // Check if it's team to team movement
+    if (activeTeam && overTeam) {
+      console.log('Team to team movement detected')
+      // Find the division of the target team
+      const targetDivision = findDivisionByTeamId(over.id as string)
+      if (targetDivision) {
+        console.log('Moving team:', activeTeam.name, 'to division:', targetDivision.name)
+        moveTeamToDivision(active.id as string, targetDivision.id)
+        return
+      }
+    }
+
+    // Check if it's team to division movement
     if (activeTeam && overDivision) {
       // Check if team is being moved to a different division
       const currentDivision = findDivisionByTeamId(active.id as string)
