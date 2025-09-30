@@ -500,11 +500,22 @@ export default function TeamsPage() {
   }
 
   const findTeamById = (teamId: string): Team | null => {
-    if (!tournament) return null
+    if (!tournament) {
+      console.log('No tournament data for team lookup')
+      return null
+    }
+    
+    console.log('Looking for team with ID:', teamId)
+    console.log('Available teams:', tournament.divisions.flatMap(d => d.teams.map(t => ({ id: t.id, name: t.name }))))
+    
     for (const division of tournament.divisions) {
       const team = division.teams.find(t => t.id === teamId)
-      if (team) return team
+      if (team) {
+        console.log('Found team:', team.name)
+        return team
+      }
     }
+    console.log('Team not found with ID:', teamId)
     return null
   }
 
@@ -543,13 +554,24 @@ export default function TeamsPage() {
     teamId: string
     playerId: string
   } | null => {
-    if (!tournament) return null
+    if (!tournament) {
+      console.log('No tournament data')
+      return null
+    }
+    
+    console.log('Looking for player with ID:', playerId)
+    console.log('Available teamPlayers:', tournament.divisions.flatMap(d => d.teams.flatMap(t => t.teamPlayers.map(tp => ({ id: tp.id, name: `${tp.player.firstName} ${tp.player.lastName}` })))))
+    
     for (const division of tournament.divisions) {
       for (const team of division.teams) {
         const teamPlayer = team.teamPlayers.find(tp => tp.id === playerId)
-        if (teamPlayer) return teamPlayer
+        if (teamPlayer) {
+          console.log('Found player:', teamPlayer.player.firstName, teamPlayer.player.lastName)
+          return teamPlayer
+        }
       }
     }
+    console.log('Player not found with ID:', playerId)
     return null
   }
 
