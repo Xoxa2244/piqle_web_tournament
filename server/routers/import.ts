@@ -124,7 +124,7 @@ export const importRouter = createTRPCRouter({
       const createdDivisions = new Map()
       const createdTeams = new Map()
       
-      for (const [divisionName, teams] of divisionMap) {
+      for (const [divisionName, teams] of Array.from(divisionMap.entries())) {
         // Get first participant to determine division settings
         const firstParticipant = teams.values().next().value[0]
         const teamKind = firstParticipant['Тип'] === '1v1' ? 'SINGLES_1v1' : 
@@ -170,7 +170,7 @@ export const importRouter = createTRPCRouter({
         createdDivisions.set(divisionName, division)
         
         // Create teams and players
-        for (const [teamName, teamParticipants] of teams) {
+        for (const [teamName, teamParticipants] of Array.from(teams.entries())) {
           const team = await ctx.prisma.team.create({
             data: {
               divisionId: division.id,
