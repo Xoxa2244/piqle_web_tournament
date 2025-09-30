@@ -168,13 +168,14 @@ function SortablePlayer({ teamPlayer, onEdit, onDelete, onContextMenu }: {
 }
 
 // Sortable Team Component
-function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextMenu }: {
+function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextMenu, onDeletePlayer }: {
   team: Team
   onEdit: () => void
   onDelete: () => void
   onExpand: () => void
   isExpanded: boolean
   onContextMenu: (e: React.MouseEvent, type: 'team', id: string) => void
+  onDeletePlayer: (teamPlayerId: string, playerName: string) => void
 }) {
   const {
     attributes,
@@ -276,9 +277,7 @@ function SortableTeam({ team, onEdit, onDelete, onExpand, isExpanded, onContextM
                     console.log('Edit player:', teamPlayer.player.id)
                   }}
                   onDelete={() => {
-                    if (confirm(`Вы уверены, что хотите удалить игрока "${teamPlayer.player.firstName} ${teamPlayer.player.lastName}" из команды?`)) {
-                      removePlayerMutation.mutate({ id: teamPlayer.id })
-                    }
+                    onDeletePlayer(teamPlayer.id, `${teamPlayer.player.firstName} ${teamPlayer.player.lastName}`)
                   }}
                   onContextMenu={handleContextMenu}
                 />
@@ -561,6 +560,12 @@ export default function TeamsPage() {
     setContextMenu({ type: null, id: null, x: 0, y: 0 })
   }
 
+  const handleDeletePlayer = (teamPlayerId: string, playerName: string) => {
+    if (confirm(`Вы уверены, что хотите удалить игрока "${playerName}" из команды?`)) {
+      removePlayerMutation.mutate({ id: teamPlayerId })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -664,6 +669,7 @@ export default function TeamsPage() {
                                     onExpand={() => toggleTeamExpansion(team.id)}
                                     isExpanded={expandedTeams.has(team.id)}
                                     onContextMenu={handleContextMenu}
+                                    onDeletePlayer={handleDeletePlayer}
                                   />
                                 ))
                               ) : (
@@ -696,6 +702,7 @@ export default function TeamsPage() {
                               onExpand={() => toggleTeamExpansion(team.id)}
                               isExpanded={expandedTeams.has(team.id)}
                               onContextMenu={handleContextMenu}
+                              onDeletePlayer={handleDeletePlayer}
                             />
                           ))
                         ) : (
