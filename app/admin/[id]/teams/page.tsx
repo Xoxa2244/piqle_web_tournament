@@ -362,7 +362,7 @@ export default function TeamsPage() {
     })
   )
 
-  const { data: tournament, isLoading } = trpc.tournament.get.useQuery({ id: tournamentId })
+  const { data: tournament, isLoading, refetch } = trpc.tournament.get.useQuery({ id: tournamentId })
   const createTeam = trpc.team.create.useMutation({
     onSuccess: () => {
       setShowCreateTeam(false)
@@ -372,14 +372,14 @@ export default function TeamsPage() {
         seed: undefined,
         note: '',
       })
-      window.location.reload()
+      refetch()
     },
   })
 
   const updateTeam = trpc.team.update.useMutation({
     onSuccess: () => {
       setShowEditTeam(false)
-      window.location.reload()
+      refetch()
     },
     onError: (error) => {
       alert(`Ошибка при обновлении команды: ${error.message}`)
@@ -388,7 +388,7 @@ export default function TeamsPage() {
 
   const deleteTeam = trpc.team.delete.useMutation({
     onSuccess: () => {
-      window.location.reload()
+      refetch()
     },
     onError: (error) => {
       alert(`Ошибка при удалении команды: ${error.message}`)
@@ -397,7 +397,7 @@ export default function TeamsPage() {
 
   const movePlayerMutation = trpc.teamPlayer.movePlayer.useMutation({
     onSuccess: () => {
-      window.location.reload()
+      refetch()
     },
     onError: (error) => {
       alert(`Ошибка при перемещении игрока: ${error.message}`)
@@ -406,7 +406,7 @@ export default function TeamsPage() {
 
   const removePlayerMutation = trpc.teamPlayer.removePlayer.useMutation({
     onSuccess: () => {
-      window.location.reload()
+      refetch()
     },
     onError: (error) => {
       alert(`Ошибка при удалении игрока: ${error.message}`)
@@ -555,7 +555,7 @@ export default function TeamsPage() {
 
   const moveTeamToDivisionMutation = trpc.team.moveToDivision.useMutation({
     onSuccess: () => {
-      window.location.reload()
+      refetch()
     },
     onError: (error) => {
       alert(`Ошибка при перемещении команды: ${error.message}`)
