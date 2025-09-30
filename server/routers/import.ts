@@ -187,8 +187,8 @@ export const importRouter = createTRPCRouter({
                 firstName: participant['Имя'],
                 lastName: participant['Фамилия'],
                 gender: participant['Пол'] === 'M' ? 'M' : 'F',
-                birthYear: new Date().getFullYear() - parseInt(participant['Возраст']),
-                duprRating: parseFloat(participant['DUPR rating']) || 0,
+                birthDate: new Date(new Date().getFullYear() - parseInt(participant['Возраст']), 0, 1),
+                dupr: parseFloat(participant['DUPR rating']) || 0,
               }
             })
             
