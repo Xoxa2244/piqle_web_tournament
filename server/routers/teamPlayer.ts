@@ -48,6 +48,11 @@ export const teamPlayerRouter = createTRPCRouter({
         // Auto-move the last player from target team to source team
         const lastTeamPlayer = targetTeam.teamPlayers[targetTeam.teamPlayers.length - 1]
         if (lastTeamPlayer) {
+          // Get player data for logging
+          const lastPlayer = await ctx.prisma.player.findUnique({
+            where: { id: lastTeamPlayer.playerId },
+          })
+
           await ctx.prisma.teamPlayer.update({
             where: { id: lastTeamPlayer.id },
             data: { teamId: teamPlayer.teamId },
@@ -62,7 +67,7 @@ export const teamPlayerRouter = createTRPCRouter({
               entityType: 'TeamPlayer',
               entityId: lastTeamPlayer.id,
               payload: {
-                playerName: `${lastTeamPlayer.player.firstName} ${lastTeamPlayer.player.lastName}`,
+                playerName: lastPlayer ? `${lastPlayer.firstName} ${lastPlayer.lastName}` : 'Unknown Player',
                 fromTeam: targetTeam.name,
                 toTeam: teamPlayer.team.name,
                 reason: 'Team capacity exceeded',
