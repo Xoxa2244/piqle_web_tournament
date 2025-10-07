@@ -75,7 +75,7 @@ export default function PublicScoreboardPage() {
                         <div className="text-sm text-gray-600 space-y-1">
                           <div>Type: {division.teamKind.replace('_', ' ')}</div>
                           <div>Mode: {division.pairingMode}</div>
-                          {division.poolsEnabled && <div>Pools: Enabled</div>}
+                          {division.poolCount > 1 && <div>Pools: {division.poolCount} pools</div>}
                         </div>
                       </div>
                     </div>
