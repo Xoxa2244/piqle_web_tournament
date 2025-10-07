@@ -147,7 +147,15 @@ export default function DivisionStageManagement() {
   )
 
   const teamCount = teams.length
-  const targetBracketSize = 4 as const // Пока фиксированный, потом можно сделать настраиваемым
+  // Определяем целевой размер сетки на основе количества команд
+  const getTargetBracketSize = (teamCount: number) => {
+    if (teamCount <= 4) return 4
+    if (teamCount <= 8) return 8
+    if (teamCount <= 16) return 16
+    if (teamCount <= 32) return 32
+    return 64
+  }
+  const targetBracketSize = getTargetBracketSize(teamCount)
   const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
@@ -303,7 +311,10 @@ export default function DivisionStageManagement() {
     eliminationMatchesLength: eliminationMatches.length,
     canGeneratePlayoff,
     teamCount,
-    targetBracketSize
+    targetBracketSize,
+    playInExcess,
+    completedPlayInMatches: completedPlayInMatches.length,
+    playInMatches: playInMatches.length
   })
 
   if (!tournament || !division) {
@@ -418,7 +429,17 @@ export default function DivisionStageManagement() {
             <div className="flex items-center justify-between">
               <div className="space-y-2">
                 <p className="text-sm text-gray-600">
-                  Всего матчей: {rrMatches.length} • Матчей на команду: {Math.max(0, teamCount - 1)}
+                  Всего матчей: {rrMatches.length} • Матчей на команду: {(() => {
+                    // Считаем матчей на команду внутри пулов
+                    if (currentDivision?.pools && currentDivision.pools.length > 0) {
+                      const maxMatchesPerTeam = Math.max(...currentDivision.pools.map(pool => {
+                        const poolTeams = teams.filter(team => team.poolId === pool.id)
+                        return poolTeams.length - 1
+                      }))
+                      return maxMatchesPerTeam
+                    }
+                    return Math.max(0, teamCount - 1)
+                  })()}
                 </p>
                 {rrMatches.length > 0 && (
                   <div className="flex items-center space-x-4">
@@ -468,6 +489,7 @@ export default function DivisionStageManagement() {
                     variant="outline"
                     onClick={() => {/* Пересчитать посев */}}
                     className="flex items-center space-x-2"
+                    title="Пересчитать посев команд на основе результатов Round Robin для правильного формирования Play-In/Play-Off"
                   >
                     <Calculator className="h-4 w-4" />
                     <span>Пересчитать посев</span>
@@ -867,8 +889,17 @@ export default function DivisionStageManagement() {
             {/* Сводка Play-Off */}
             <div className="space-y-2">
               <p className="text-sm text-gray-600">
-                Команд в плей-офф: {targetBracketSize}. Формат: Single Elimination.
+                Команд в дивизионе: {teamCount}. Целевой размер сетки: {targetBracketSize}.
               </p>
+              {needsPlayIn ? (
+                <p className="text-sm text-gray-600">
+                  Нужен Play-In: {playInExcess * 2} команд (нижние {playInExcess * 2} по посеву) за {playInExcess} слотов в Play-Off.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  Все команды проходят в Play-Off напрямую.
+                </p>
+              )}
               <p className="text-sm text-gray-600">
                 {eliminationMatches.length > 0 ? `${eliminationMatches.length} матчей сгенерировано` : 'Матчи не сгенерированы'}
               </p>
