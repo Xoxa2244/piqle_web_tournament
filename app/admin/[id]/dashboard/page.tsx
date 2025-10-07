@@ -19,6 +19,7 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react'
+import BracketPyramid from '@/components/BracketPyramid'
 
 interface TeamStanding {
   teamId: string
@@ -361,13 +362,30 @@ export default function DivisionDashboard() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex justify-center">
-                    <div className="text-center text-gray-500 py-8">
-                      <Trophy className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>Bracket visualization will be implemented here</p>
-                      <p className="text-sm">This will show the single elimination pyramid</p>
-                    </div>
-                  </div>
+                  <BracketPyramid
+                    matches={playoffMatches.map(match => ({
+                      id: match.id,
+                      teamA: match.teamA ? {
+                        id: match.teamA.id,
+                        name: match.teamA.name,
+                        seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                      } : null,
+                      teamB: match.teamB ? {
+                        id: match.teamB.id,
+                        name: match.teamB.name,
+                        seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                      } : null,
+                      games: match.games || [],
+                      roundIndex: match.roundIndex,
+                      stage: match.stage
+                    }))}
+                    showMetrics={showMetrics}
+                    showConnectingLines={showConnectingLines}
+                    onMatchClick={(matchId) => {
+                      // Handle match click - could open score input modal
+                      console.log('Match clicked:', matchId)
+                    }}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -418,9 +436,29 @@ export default function DivisionDashboard() {
                       <CardTitle>Bracket</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-center text-gray-500 py-8">
-                        <p>Bracket will be shown here</p>
-                      </div>
+                      <BracketPyramid
+                        matches={playoffMatches.map(match => ({
+                          id: match.id,
+                          teamA: match.teamA ? {
+                            id: match.teamA.id,
+                            name: match.teamA.name,
+                            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                          } : null,
+                          teamB: match.teamB ? {
+                            id: match.teamB.id,
+                            name: match.teamB.name,
+                            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                          } : null,
+                          games: match.games || [],
+                          roundIndex: match.roundIndex,
+                          stage: match.stage
+                        }))}
+                        showMetrics={showMetrics}
+                        showConnectingLines={showConnectingLines}
+                        onMatchClick={(matchId) => {
+                          console.log('Match clicked:', matchId)
+                        }}
+                      />
                     </CardContent>
                   </Card>
                 </TabsContent>
