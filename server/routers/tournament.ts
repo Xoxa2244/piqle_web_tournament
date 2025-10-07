@@ -94,6 +94,9 @@ export const tournamentRouter = createTRPCRouter({
                 include: {
                   teamA: true,
                   teamB: true,
+                  games: {
+                    orderBy: { index: 'asc' },
+                  },
                 },
               },
             },
