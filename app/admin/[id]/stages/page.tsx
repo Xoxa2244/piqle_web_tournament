@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ScoreInputModal } from '@/components/ScoreInputModal'
+import ScoreInputModal from '@/components/ScoreInputModal'
 
 export default function DivisionStageManagement() {
   const router = useRouter()
@@ -528,9 +528,14 @@ export default function DivisionStageManagement() {
       {/* Модалка ввода счета */}
       {showScoreModal && selectedMatch && (
         <ScoreInputModal
-          match={selectedMatch}
+          isOpen={showScoreModal}
           onClose={handleScoreModalClose}
-          onSubmit={handleScoreSubmit}
+          onSubmit={(scoreA, scoreB) => {
+            handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
+          }}
+          teamAName={selectedMatch.teamA.name}
+          teamBName={selectedMatch.teamB.name}
+          isLoading={updateMatchResultMutation.isPending}
         />
       )}
 
