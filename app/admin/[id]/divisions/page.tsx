@@ -568,7 +568,7 @@ export default function DivisionsPage() {
     const teamId = active.id as string
     const overId = over.id as string
 
-    console.log('Drag end:', { teamId, overId, activeId: active.id, overId: over.id })
+    console.log('Drag end:', { teamId, overId, activeId: active.id })
 
     // Determine target based on drop zone
     if (overId.startsWith('waitlist-')) {
