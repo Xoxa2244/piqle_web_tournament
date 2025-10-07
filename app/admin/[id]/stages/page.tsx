@@ -78,6 +78,13 @@ export default function DivisionStageManagement() {
     }
   })
 
+  const regeneratePlayInMutation = trpc.standings.generatePlayoffs.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
     onSuccess: () => {
       refetchDivision()
@@ -165,7 +172,20 @@ export default function DivisionStageManagement() {
   }
 
   const confirmRegenerate = () => {
-    // Здесь будет логика перегенерации с полным сбросом
+    if (regenerateType === 'playin') {
+      // Перегенерируем Play-In с учетом обновленных результатов RR
+      regeneratePlayInMutation.mutate({ 
+        divisionId: selectedDivisionId, 
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
+        regenerate: true
+      })
+    } else if (regenerateType === 'playoff') {
+      // Перегенерируем Play-Off
+      generatePlayoffAfterPlayInMutation.mutate({ 
+        divisionId: selectedDivisionId, 
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+      })
+    }
     setShowRegenerateModal(false)
     setRegenerateType(null)
   }
@@ -395,13 +415,21 @@ export default function DivisionStageManagement() {
                                 </div>
                                 
                                 {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                                  <div className="text-center">
+                                  <div className="text-center space-y-2">
                                     <div className="text-lg font-bold">
                                       {match.games[0].scoreA} - {match.games[0].scoreB}
                                     </div>
                                     <div className="text-sm text-green-600 font-medium">
                                       Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                     </div>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleScoreInput(match)}
+                                      className="w-full"
+                                    >
+                                      Изменить счет
+                                    </Button>
                                   </div>
                                 ) : (
                                   <Button
@@ -534,13 +562,21 @@ export default function DivisionStageManagement() {
                       </div>
                       
                       {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                        <div className="text-center">
+                        <div className="text-center space-y-2">
                           <div className="text-lg font-bold">
                             {match.games[0].scoreA} - {match.games[0].scoreB}
                           </div>
                           <div className="text-sm text-green-600 font-medium">
                             Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                           </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleScoreInput(match)}
+                            className="w-full"
+                          >
+                            Изменить счет
+                          </Button>
                         </div>
                       ) : (
                         <Button
@@ -629,13 +665,21 @@ export default function DivisionStageManagement() {
                     </div>
                     
                     {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                      <div className="text-center">
+                      <div className="text-center space-y-2">
                         <div className="text-lg font-bold">
                           {match.games[0].scoreA} - {match.games[0].scoreB}
                         </div>
                         <div className="text-sm text-green-600 font-medium">
                           Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                         </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleScoreInput(match)}
+                          className="w-full"
+                        >
+                          Изменить счет
+                        </Button>
                       </div>
                     ) : (
                       <Button

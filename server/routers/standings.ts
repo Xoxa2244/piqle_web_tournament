@@ -191,6 +191,7 @@ export const standingsRouter = createTRPCRouter({
     .input(z.object({ 
       divisionId: z.string(),
       bracketSize: z.enum(['4', '8', '16']).transform(val => parseInt(val)),
+      regenerate: z.boolean().optional().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
       // Get division with teams and matches
@@ -216,6 +217,16 @@ export const standingsRouter = createTRPCRouter({
 
       if (division.teams.length < 2) {
         throw new Error('Need at least 2 teams to generate playoffs')
+      }
+
+      // If regenerating, delete existing Play-In and Play-Off matches
+      if (input.regenerate) {
+        await ctx.prisma.match.deleteMany({
+          where: {
+            divisionId: input.divisionId,
+            stage: { in: ['PLAY_IN', 'ELIMINATION'] }
+          }
+        })
       }
 
       // Calculate standings inline
