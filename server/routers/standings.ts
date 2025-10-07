@@ -398,6 +398,18 @@ export const standingsRouter = createTRPCRouter({
         )
       )
 
+      // Update division stage based on what was generated
+      let nextStage = 'PO_R1_SCHEDULED'
+      if (B < N && N < 2 * B) {
+        // Play-in was generated
+        nextStage = 'PLAY_IN_SCHEDULED'
+      }
+
+      await ctx.prisma.division.update({
+        where: { id: input.divisionId },
+        data: { stage: nextStage as any },
+      })
+
       // Log the playoff generation
       await ctx.prisma.auditLog.create({
         data: {
@@ -411,6 +423,7 @@ export const standingsRouter = createTRPCRouter({
             bracketSize: B,
             teamsCount: N,
             matchesCount: createdMatches.length,
+            nextStage,
           },
         },
       })
@@ -420,6 +433,7 @@ export const standingsRouter = createTRPCRouter({
         bracketSize: B,
         teamsCount: N,
         playInNeeded: B < N && N < 2 * B,
+        nextStage,
       }
     }),
 })
