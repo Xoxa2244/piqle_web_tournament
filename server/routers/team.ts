@@ -196,7 +196,7 @@ export const teamRouter = createTRPCRouter({
               where: { id: lastTeam.id },
               data: { 
                 divisionId: team.divisionId,
-                poolId: sourceDivisionWithPools?.pools.length > 0 ? sourceDivisionWithPools.pools[0].id : null
+                poolId: sourceDivisionWithPools?.pools && sourceDivisionWithPools.pools.length > 0 ? sourceDivisionWithPools.pools[0].id : null
               },
             })
 
@@ -230,7 +230,7 @@ export const teamRouter = createTRPCRouter({
         where: { id: input.teamId },
         data: { 
           divisionId: input.divisionId,
-          poolId: targetDivisionWithPools?.pools.length > 0 ? targetDivisionWithPools.pools[0].id : null
+          poolId: targetDivisionWithPools?.pools && targetDivisionWithPools.pools.length > 0 ? targetDivisionWithPools.pools[0].id : null
         },
       })
 
