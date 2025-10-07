@@ -6,6 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { Plus, Users, Calendar, BarChart3 } from 'lucide-react'
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -236,6 +237,15 @@ export default function TournamentDetailPage() {
                   <div className="text-center">
                     <div className="font-medium">Расписание</div>
                     <div className="text-sm text-gray-500">RR и плей-офф</div>
+                  </div>
+                </Button>
+              </Link>
+              <Link href={`/admin/${tournamentId}/dashboard`}>
+                <Button variant="outline" className="h-20 w-full">
+                  <div className="text-center">
+                    <BarChart3 className="h-6 w-6 mx-auto mb-1" />
+                    <div className="font-medium">Dashboard</div>
+                    <div className="text-sm text-gray-500">Обзор дивизионов</div>
                   </div>
                 </Button>
               </Link>
