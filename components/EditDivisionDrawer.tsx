@@ -13,8 +13,8 @@ interface Division {
   poolCount: number
   maxTeams: number | null
   constraints: {
-    minDupr: number | null
-    maxDupr: number | null
+    minDupr: string | null  // Changed from number to string
+    maxDupr: string | null  // Changed from number to string
     minAge: number | null
     maxAge: number | null
   } | null
@@ -49,8 +49,8 @@ export default function EditDivisionDrawer({
     pairingMode: division?.pairingMode || 'FIXED',
     poolCount: division?.poolCount || 1,
     maxTeams: division?.maxTeams || undefined,
-    minDupr: division?.constraints?.minDupr || undefined,
-    maxDupr: division?.constraints?.maxDupr || undefined,
+    minDupr: division?.constraints?.minDupr ? parseFloat(division.constraints.minDupr) : undefined,
+    maxDupr: division?.constraints?.maxDupr ? parseFloat(division.constraints.maxDupr) : undefined,
     minAge: division?.constraints?.minAge || undefined,
     maxAge: division?.constraints?.maxAge || undefined,
   })
