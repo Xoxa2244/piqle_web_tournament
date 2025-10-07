@@ -164,7 +164,7 @@ export const divisionStageRouter = createTRPCRouter({
       // Update division stage
       await ctx.prisma.division.update({
         where: { id: input.divisionId },
-        data: { stage: nextStage },
+        data: { stage: nextStage as any },
       })
 
       // Log the transition
@@ -270,7 +270,7 @@ export const divisionStageRouter = createTRPCRouter({
 
         await ctx.prisma.division.update({
           where: { id: match.divisionId },
-          data: { stage: completedStage },
+          data: { stage: completedStage as any },
         })
       }
 
