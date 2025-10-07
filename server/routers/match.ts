@@ -325,6 +325,114 @@ export const matchRouter = createTRPCRouter({
         rounds: Math.max(...rounds.map(r => r.roundIndex)) + 1,
       }
     }),
+
+  fillRandomResults: tdProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Получаем все матчи RR для дивизиона
+      const matches = await ctx.prisma.match.findMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: 'ROUND_ROBIN'
+        },
+        include: {
+          games: true
+        }
+      })
+
+      if (matches.length === 0) {
+        throw new Error('No Round Robin matches found for this division')
+      }
+
+      // Функция для генерации случайного счета
+      const generateRandomScore = () => {
+        let scoreA, scoreB
+        do {
+          scoreA = Math.floor(Math.random() * 30) + 1 // 1-30
+          scoreB = Math.floor(Math.random() * 30) + 1 // 1-30
+        } while (Math.abs(scoreA - scoreB) < 3) // Разница минимум 3 очка
+        
+        return { scoreA, scoreB }
+      }
+
+      // Заполняем случайными результатами все матчи без результатов
+      const results = []
+      
+      for (const match of matches) {
+        // Проверяем, есть ли уже результаты
+        const hasResults = match.games && match.games.length > 0 && match.games[0].scoreA > 0
+        
+        if (!hasResults) {
+          const { scoreA, scoreB } = generateRandomScore()
+          const winner = scoreA > scoreB ? 'A' : 'B'
+          
+          // Создаем или обновляем игру
+          if (match.games && match.games.length > 0) {
+            // Обновляем существующую игру
+            await ctx.prisma.game.update({
+              where: { id: match.games[0].id },
+              data: {
+                scoreA,
+                scoreB,
+                winner: winner as 'A' | 'B'
+              }
+            })
+          } else {
+            // Создаем новую игру
+            await ctx.prisma.game.create({
+              data: {
+                matchId: match.id,
+                index: 0,
+                scoreA,
+                scoreB,
+                winner: winner as 'A' | 'B'
+              }
+            })
+          }
+          
+          // Обновляем победителя матча
+          await ctx.prisma.match.update({
+            where: { id: match.id },
+            data: {
+              winnerTeamId: winner === 'A' ? match.teamAId : match.teamBId
+            }
+          })
+          
+          results.push({
+            matchId: match.id,
+            scoreA,
+            scoreB,
+            winner
+          })
+        }
+      }
+
+      // Логируем заполнение случайными результатами
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: (await ctx.prisma.division.findUnique({
+            where: { id: input.divisionId },
+            select: { tournamentId: true }
+          }))?.tournamentId || '',
+          action: 'FILL_RANDOM_RESULTS',
+          entityType: 'Division',
+          entityId: input.divisionId,
+          payload: {
+            divisionId: input.divisionId,
+            matchesFilled: results.length,
+            totalMatches: matches.length
+          },
+        },
+      })
+
+      return {
+        matchesFilled: results.length,
+        totalMatches: matches.length,
+        results
+      }
+    }),
+
   listByDivision: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
