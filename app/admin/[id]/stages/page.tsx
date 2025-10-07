@@ -139,13 +139,13 @@ export default function DivisionStageManagement() {
   const handleGeneratePlayoffs = () => {
     if (selectedDivisionId) {
       // Если Play-In завершен, используем generatePlayoffAfterPlayIn
-      if (canGeneratePlayoffAfterPlayIn) {
+      if (currentStage === 'PLAY_IN_COMPLETE') {
         generatePlayoffAfterPlayInMutation.mutate({ 
           divisionId: selectedDivisionId, 
           bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
         })
       } else {
-        // Иначе используем обычную генерацию Play-Off
+        // Иначе используем обычную генерацию Play-Off (прямо после RR)
         generatePlayoffsMutation.mutate({ 
           divisionId: selectedDivisionId, 
           bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
@@ -205,8 +205,7 @@ export default function DivisionStageManagement() {
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
-  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length || canGeneratePlayoffAfterPlayIn
-  const canGeneratePlayoffAfterPlayIn = completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
+  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
 
   if (!tournament || !division) {
     return (
@@ -472,7 +471,22 @@ export default function DivisionStageManagement() {
           </CardContent>
         </Card>
 
-        {/* Блок Play-In */}
+        {/* Информационный баннер если команд недостаточно */}
+        {teamCount < targetBracketSize && (
+          <Card>
+            <CardContent className="pt-6">
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Недостаточно команд для выбранного размера сетки. 
+                  Команд: {teamCount}, требуется: {targetBracketSize}.
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Блок Play-In - показываем только если B < N < 2B */}
         {needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
@@ -605,7 +619,7 @@ export default function DivisionStageManagement() {
         )}
 
         {/* Блок Play-Off */}
-        <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
+        <Card className={currentStage === 'RR_IN_PROGRESS' || (needsPlayIn && currentStage !== 'PLAY_IN_COMPLETE') ? 'opacity-50 pointer-events-none' : ''}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center space-x-2">
@@ -646,6 +660,16 @@ export default function DivisionStageManagement() {
                 </Button>
               )}
             </div>
+
+            {/* Блокировка если Play-In в процессе */}
+            {needsPlayIn && currentStage !== 'PLAY_IN_COMPLETE' && (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Завершите Play-In, чтобы сгенерировать Play-Off.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Список матчей Play-Off */}
             {eliminationMatches.length > 0 && showPlayoffMatches && (
