@@ -93,7 +93,7 @@ export default function DivisionStageManagement() {
   )
 
   const teamCount = teams.length
-  const targetBracketSize = 4 // Пока фиксированный, потом можно сделать настраиваемым
+  const targetBracketSize = 4 as const // Пока фиксированный, потом можно сделать настраиваемым
   const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
@@ -111,7 +111,7 @@ export default function DivisionStageManagement() {
     if (selectedDivisionId) {
       generatePlayoffsMutation.mutate({ 
         divisionId: selectedDivisionId, 
-        bracketSize: targetBracketSize 
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
       })
     }
   }
