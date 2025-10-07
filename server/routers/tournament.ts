@@ -30,6 +30,7 @@ export const tournamentRouter = createTRPCRouter({
       const tournament = await ctx.prisma.tournament.create({
         data: {
           ...input,
+          userId: ctx.session.user.id,
           publicSlug,
         },
       })
@@ -52,6 +53,9 @@ export const tournamentRouter = createTRPCRouter({
   list: protectedProcedure
     .query(async ({ ctx }) => {
       return ctx.prisma.tournament.findMany({
+        where: {
+          userId: ctx.session.user.id,
+        },
         orderBy: { createdAt: 'desc' },
         include: {
           divisions: true,
@@ -67,8 +71,11 @@ export const tournamentRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      return ctx.prisma.tournament.findUnique({
-        where: { id: input.id },
+      return ctx.prisma.tournament.findFirst({
+        where: { 
+          id: input.id,
+          userId: ctx.session.user.id,
+        },
         include: {
           divisions: {
             include: {
