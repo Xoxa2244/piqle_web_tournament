@@ -122,9 +122,11 @@ export default function DivisionStageManagement() {
   }
 
   const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>) => {
+    const game = games[0] // Берем первую игру
     updateMatchResultMutation.mutate({
       matchId,
-      games
+      scoreA: game.scoreA,
+      scoreB: game.scoreB
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
