@@ -54,7 +54,6 @@ export default function DivisionDashboard() {
   const params = useParams()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
-  const [showMetrics, setShowMetrics] = useState<'seed' | 'wins' | 'diff'>('seed')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
@@ -426,20 +425,7 @@ export default function DivisionDashboard() {
               {/* Bracket Section */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Playoff Bracket</CardTitle>
-                    <div className="flex items-center space-x-4">
-                      <select
-                        value={showMetrics}
-                        onChange={(e) => setShowMetrics(e.target.value as 'seed' | 'wins' | 'diff')}
-                        className="text-sm border border-gray-300 rounded px-2 py-1"
-                      >
-                        <option value="seed">Show Seed</option>
-                        <option value="wins">Show Wins/Losses</option>
-                        <option value="diff">Show Point Diff</option>
-                      </select>
-                    </div>
-                  </div>
+                  <CardTitle>Playoff Bracket</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <BracketPyramid
@@ -459,7 +445,7 @@ export default function DivisionDashboard() {
                       roundIndex: match.roundIndex,
                       stage: match.stage
                     }))}
-                    showMetrics={showMetrics}
+                    showMetrics="seed"
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
                       // Handle match click - could open score input modal
@@ -533,7 +519,7 @@ export default function DivisionDashboard() {
                           roundIndex: match.roundIndex,
                           stage: match.stage
                         }))}
-                        showMetrics={showMetrics}
+                        showMetrics="seed"
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {
                           console.log('Match clicked:', matchId)
