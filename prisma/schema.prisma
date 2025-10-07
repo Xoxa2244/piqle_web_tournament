@@ -80,6 +80,7 @@ model Division {
   pairingMode  PairingMode
   poolsEnabled Boolean     @default(false)
   maxTeams     Int?
+  stage        DivisionStage @default(RR_IN_PROGRESS)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -426,4 +427,25 @@ enum ImportStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+enum DivisionStage {
+  RR_IN_PROGRESS
+  RR_COMPLETE
+  PLAY_IN_SCHEDULED
+  PLAY_IN_IN_PROGRESS
+  PLAY_IN_COMPLETE
+  PO_R1_SCHEDULED
+  PO_R1_IN_PROGRESS
+  PO_R1_COMPLETE
+  PO_R2_SCHEDULED
+  PO_R2_IN_PROGRESS
+  PO_R2_COMPLETE
+  PO_R3_SCHEDULED
+  PO_R3_IN_PROGRESS
+  PO_R3_COMPLETE
+  FINAL_SCHEDULED
+  FINAL_IN_PROGRESS
+  FINAL_COMPLETE
+  DIVISION_COMPLETE
 }

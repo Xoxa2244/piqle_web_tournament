@@ -56,9 +56,15 @@ export default function DivisionDashboard() {
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showMetrics, setShowMetrics] = useState<'seed' | 'wins' | 'diff'>('seed')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
+  const [scoreModal, setScoreModal] = useState<{
+    isOpen: boolean
+    matchId: string | null
+    teamAName: string
+    teamBName: string
+  }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
 
   // Get tournament data
-  const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
+  const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
@@ -77,11 +83,70 @@ export default function DivisionDashboard() {
     { enabled: !!currentDivision?.id }
   )
 
+  // Get division stage
+  const { data: divisionStage, isLoading: stageLoading, refetch: refetchStage } = trpc.divisionStage.getDivisionStage.useQuery(
+    { divisionId: currentDivision?.id || '' },
+    { enabled: !!currentDivision?.id }
+  )
+
   // Get play-in status
   const { data: playInStatus, isLoading: playInLoading } = trpc.standings.checkPlayInStatus.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
+
+  // Mutations
+  const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
+    onSuccess: () => {
+      refetchStage()
+      refetchTournament()
+      setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+    },
+    onError: (error) => {
+      alert(`Ошибка: ${error.message}`)
+    },
+  })
+
+  const transitionToNextStageMutation = trpc.divisionStage.transitionToNextStage.useMutation({
+    onSuccess: () => {
+      refetchStage()
+      refetchTournament()
+    },
+    onError: (error) => {
+      alert(`Ошибка: ${error.message}`)
+    },
+  })
+
+  const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
+    setScoreModal({
+      isOpen: true,
+      matchId,
+      teamAName,
+      teamBName,
+    })
+  }
+
+  const handleScoreSubmit = (scoreA: number, scoreB: number) => {
+    if (!scoreModal.matchId) return
+    
+    updateMatchResultMutation.mutate({
+      matchId: scoreModal.matchId,
+      scoreA,
+      scoreB,
+    })
+  }
+
+  const handleScoreModalClose = () => {
+    setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+  }
+
+  const handleTransitionToNextStage = () => {
+    if (!currentDivision?.id) return
+    
+    transitionToNextStageMutation.mutate({
+      divisionId: currentDivision.id,
+    })
+  }
 
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Загрузка...</div>
@@ -96,13 +161,15 @@ export default function DivisionDashboard() {
   }
 
   const standings = standingsData?.standings || []
-  const rrMatches = currentDivision?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
-  const playInMatches = currentDivision?.matches?.filter(m => m.stage === 'PLAY_IN') || []
-  const playoffMatches = currentDivision?.matches?.filter(m => m.stage === 'ELIMINATION') || []
+  const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
+  const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
+  const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
 
-  const isRRComplete = standingsData?.completedMatches === standingsData?.totalMatches
-  const hasPlayIn = playInStatus?.hasPlayIn || false
-  const isPlayInComplete = playInStatus?.isComplete || false
+  const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
+                      (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
+  const hasPlayIn = playInMatches.length > 0
+  const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
+  const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -113,6 +180,26 @@ export default function DivisionDashboard() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
               <p className="text-gray-600">{tournament.title}</p>
+              {currentDivision && (
+                <div className="mt-2">
+                  <Badge variant="outline" className="mr-2">
+                    {currentStage.replace(/_/g, ' ')}
+                  </Badge>
+                  <span className="text-sm text-gray-500">
+                    {currentDivision.teams.length} команд
+                  </span>
+                  {(currentStage.endsWith('_COMPLETE') && !currentStage.includes('DIVISION_COMPLETE')) && (
+                    <Button 
+                      size="sm" 
+                      className="ml-2"
+                      onClick={handleTransitionToNextStage}
+                      disabled={transitionToNextStageMutation.isPending}
+                    >
+                      {transitionToNextStageMutation.isPending ? 'Переход...' : 'Следующая стадия'}
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
             
             {/* Division Switcher */}
