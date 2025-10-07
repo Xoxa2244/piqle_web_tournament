@@ -390,33 +390,87 @@ export default function DivisionDashboard() {
                     </p>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex flex-wrap gap-4">
-                      {playInMatches.map((match) => (
-                        <div key={match.id} className="flex-1 min-w-[200px]">
-                          <div className={`p-4 border rounded-lg ${
-                            match.games.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-                          }`}>
-                            <div className="flex items-center justify-between">
-                              <div className="text-center">
-                                <div className="font-medium">#{match.teamA?.name || 'TBD'}</div>
-                                <div className="text-sm text-gray-600">{match.teamA?.name || 'TBD'}</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-lg font-bold">vs</div>
-                                {match.games.length > 0 && (
-                                  <div className="text-sm">
-                                    {match.games[0]?.scoreA || 0} - {match.games[0]?.scoreB || 0}
-                                  </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {playInMatches.map((match) => {
+                        const hasResults = match.games && match.games.length > 0
+                        const scoreA = hasResults ? match.games[0]?.scoreA || 0 : 0
+                        const scoreB = hasResults ? match.games[0]?.scoreB || 0 : 0
+                        const winner = scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : null
+                        
+                        // Get seeds from standings
+                        const teamASeed = standings.find(s => s.teamId === match.teamA?.id)?.rank
+                        const teamBSeed = standings.find(s => s.teamId === match.teamB?.id)?.rank
+                        
+                        return (
+                          <div key={match.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                            {/* Team A */}
+                            <div className={`flex items-center justify-between mb-2 ${
+                              winner === 'A' ? 'bg-green-50 -m-3 p-3 rounded-t-lg border-b' : ''
+                            }`}>
+                              <div className="flex items-center space-x-2">
+                                {winner === 'A' && (
+                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                 )}
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    #{teamASeed || '?'} {match.teamA?.name || 'TBD'}
+                                  </div>
+                                  {hasResults && (
+                                    <div className="text-lg font-bold text-blue-600">{scoreA}</div>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-center">
-                                <div className="font-medium">#{match.teamB?.name || 'TBD'}</div>
-                                <div className="text-sm text-gray-600">{match.teamB?.name || 'TBD'}</div>
+                              {winner === 'A' && (
+                                <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-1 rounded">
+                                  Winner
+                                </div>
+                              )}
+                            </div>
+
+                            {/* VS */}
+                            <div className="text-center py-1">
+                              <div className="text-xs text-gray-500">vs</div>
+                            </div>
+
+                            {/* Team B */}
+                            <div className={`flex items-center justify-between ${
+                              winner === 'B' ? 'bg-green-50 -m-3 p-3 rounded-b-lg border-t' : ''
+                            }`}>
+                              <div className="flex items-center space-x-2">
+                                {winner === 'B' && (
+                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                )}
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    #{teamBSeed || '?'} {match.teamB?.name || 'TBD'}
+                                  </div>
+                                  {hasResults && (
+                                    <div className="text-lg font-bold text-blue-600">{scoreB}</div>
+                                  )}
+                                </div>
                               </div>
+                              {winner === 'B' && (
+                                <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-1 rounded">
+                                  Winner
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Match Status */}
+                            <div className="mt-2 text-center">
+                              {!hasResults ? (
+                                <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                  Scheduled
+                                </div>
+                              ) : (
+                                <div className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded">
+                                  Complete
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </CardContent>
                 </Card>
