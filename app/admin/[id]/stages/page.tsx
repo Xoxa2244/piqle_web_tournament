@@ -129,6 +129,15 @@ export default function DivisionStageManagement() {
     }
   }
 
+  const handleGeneratePlayoffs = () => {
+    if (selectedDivisionId) {
+      generatePlayoffsMutation.mutate({ 
+        divisionId: selectedDivisionId, 
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+      })
+    }
+  }
+
   const handleScoreInput = (match: any) => {
     setSelectedMatch(match)
     setShowScoreModal(true)
