@@ -102,6 +102,56 @@ export const teamRouter = createTRPCRouter({
       return { success: true }
     }),
 
+  moveToPool: tdProcedure
+    .input(z.object({
+      teamId: z.string(),
+      poolId: z.string().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const team = await ctx.prisma.team.findUnique({
+        where: { id: input.teamId },
+        include: { division: true },
+      })
+
+      if (!team) {
+        throw new Error('Team not found')
+      }
+
+      // If poolId is provided, verify it belongs to the same division
+      if (input.poolId) {
+        const pool = await ctx.prisma.pool.findUnique({
+          where: { id: input.poolId },
+        })
+
+        if (!pool || pool.divisionId !== team.divisionId) {
+          throw new Error('Pool not found or does not belong to team division')
+        }
+      }
+
+      const updatedTeam = await ctx.prisma.team.update({
+        where: { id: input.teamId },
+        data: { poolId: input.poolId },
+      })
+
+      // Log the move
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: team.division.tournamentId,
+          action: 'MOVE_TO_POOL',
+          entityType: 'Team',
+          entityId: input.teamId,
+          payload: {
+            teamName: team.name,
+            divisionName: team.division.name,
+            poolId: input.poolId,
+          },
+        },
+      })
+
+      return updatedTeam
+    }),
+
   moveToDivision: tdProcedure
     .input(z.object({
       teamId: z.string(),
@@ -136,9 +186,18 @@ export const teamRouter = createTRPCRouter({
           })
 
           if (lastTeam) {
+            // Get source division pools for auto-move
+            const sourceDivisionWithPools = await ctx.prisma.division.findUnique({
+              where: { id: team.divisionId },
+              include: { pools: { orderBy: { order: 'asc' } } }
+            })
+
             await ctx.prisma.team.update({
               where: { id: lastTeam.id },
-              data: { divisionId: team.divisionId },
+              data: { 
+                divisionId: team.divisionId,
+                poolId: sourceDivisionWithPools?.pools.length > 0 ? sourceDivisionWithPools.pools[0].id : null
+              },
             })
 
             // Log the auto-move
@@ -161,9 +220,18 @@ export const teamRouter = createTRPCRouter({
       }
 
       // Move the team to target division
+      // If target division has pools, assign team to first pool, otherwise set poolId to null
+      const targetDivisionWithPools = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: { pools: { orderBy: { order: 'asc' } } }
+      })
+
       const updatedTeam = await ctx.prisma.team.update({
         where: { id: input.teamId },
-        data: { divisionId: input.divisionId },
+        data: { 
+          divisionId: input.divisionId,
+          poolId: targetDivisionWithPools?.pools.length > 0 ? targetDivisionWithPools.pools[0].id : null
+        },
       })
 
       // Log the move
