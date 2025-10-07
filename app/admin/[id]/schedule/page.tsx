@@ -12,6 +12,8 @@ export default function SchedulePage() {
   const params = useParams()
   const tournamentId = params.id as string
   const [generatingRR, setGeneratingRR] = useState<string | null>(null)
+  const [generatingPlayoffs, setGeneratingPlayoffs] = useState<string | null>(null)
+  const [bracketSize, setBracketSize] = useState<'4' | '8' | '16'>('8')
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
@@ -46,9 +48,28 @@ export default function SchedulePage() {
     },
   })
 
+  const generatePlayoffsMutation = trpc.standings.generatePlayoffs.useMutation({
+    onSuccess: () => {
+      refetch()
+      setGeneratingPlayoffs(null)
+    },
+    onError: (error) => {
+      alert(`Ошибка: ${error.message}`)
+      setGeneratingPlayoffs(null)
+    },
+  })
+
   const handleGenerateRR = (divisionId: string) => {
     setGeneratingRR(divisionId)
     generateRRMutation.mutate({ divisionId })
+  }
+
+  const handleGeneratePlayoffs = (divisionId: string) => {
+    setGeneratingPlayoffs(divisionId)
+    generatePlayoffsMutation.mutate({ 
+      divisionId, 
+      bracketSize: bracketSize 
+    })
   }
 
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
@@ -176,16 +197,39 @@ export default function SchedulePage() {
                     {/* Playoff Section */}
                     <div>
                       <h3 className="text-lg font-medium text-gray-900 mb-3">Плей-офф</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <p className="text-gray-600 mb-2">
-                          Формат: {division.teams.length <= 4 ? 'Single Elimination' : 
-                                   division.teams.length <= 8 ? 'Double Elimination' : 'Custom Bracket'}
-                        </p>
-                        <p className="text-gray-600 mb-4">
-                          Матчей в плей-офф: {division.teams.length - 1}
-                        </p>
-                        <Button variant="outline" size="sm">
-                          Сгенерировать плей-офф
+                      <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Размер сетки плей-офф
+                          </label>
+                          <select
+                            value={bracketSize}
+                            onChange={(e) => setBracketSize(e.target.value as '4' | '8' | '16')}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="4">4 команды</option>
+                            <option value="8">8 команд</option>
+                            <option value="16">16 команд</option>
+                          </select>
+                        </div>
+                        
+                        <div className="text-sm text-gray-600">
+                          <p>Команд в дивизионе: {division.teams.length}</p>
+                          <p>Целевой размер: {bracketSize}</p>
+                          {division.teams.length > parseInt(bracketSize) && division.teams.length < 2 * parseInt(bracketSize) && (
+                            <p className="text-orange-600 font-medium">
+                              Будет проведен плей-ин для {division.teams.length - parseInt(bracketSize)} команд
+                            </p>
+                          )}
+                        </div>
+                        
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleGeneratePlayoffs(division.id)}
+                          disabled={generatingPlayoffs === division.id || division.teams.length < 2}
+                        >
+                          {generatingPlayoffs === division.id ? 'Генерация...' : 'Сгенерировать плей-офф'}
                         </Button>
                       </div>
                     </div>
@@ -195,56 +239,77 @@ export default function SchedulePage() {
                       <h3 className="text-lg font-medium text-gray-900 mb-3">Матчи</h3>
                       <div className="space-y-4">
                         {division.matches && division.matches.length > 0 ? (
-                          // Group matches by round
-                          Array.from({ length: Math.max(...division.matches.map(m => m.roundIndex)) + 1 }, (_, roundIndex) => {
-                            const roundMatches = division.matches.filter(m => m.roundIndex === roundIndex)
-                            return roundMatches.length > 0 ? (
-                              <div key={roundIndex} className="space-y-2">
-                                <h4 className="font-medium text-gray-700">Раунд {roundIndex + 1}</h4>
-                                <div className="space-y-2">
-                                  {roundMatches.map((match) => (
-                                    <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                      <div className="flex items-center space-x-4">
-                                        <div className="flex items-center space-x-2">
-                                          <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
-                                          {match.games && match.games.length > 0 && (
-                                            <span className="text-lg font-bold text-blue-600">
-                                              {match.games[0]?.scoreA || 0}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <span className="text-gray-500">vs</span>
-                                        <div className="flex items-center space-x-2">
-                                          {match.games && match.games.length > 0 && (
-                                            <span className="text-lg font-bold text-blue-600">
-                                              {match.games[0]?.scoreB || 0}
-                                            </span>
-                                          )}
-                                          <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                          // Group matches by stage and round
+                          (() => {
+                            const stages = ['ROUND_ROBIN', 'PLAY_IN', 'PLAYOFF']
+                            return stages.map(stage => {
+                              const stageMatches = division.matches.filter(m => m.stage === stage)
+                              if (stageMatches.length === 0) return null
+                              
+                              const maxRound = Math.max(...stageMatches.map(m => m.roundIndex))
+                              return (
+                                <div key={stage} className="space-y-2">
+                                  <h4 className="font-medium text-gray-700">
+                                    {stage === 'ROUND_ROBIN' ? 'Round Robin' : 
+                                     stage === 'PLAY_IN' ? 'Плей-ин' : 'Плей-офф'}
+                                  </h4>
+                                  {Array.from({ length: maxRound + 1 }, (_, roundIndex) => {
+                                    const roundMatches = stageMatches.filter(m => m.roundIndex === roundIndex)
+                                    return roundMatches.length > 0 ? (
+                                      <div key={roundIndex} className="space-y-2">
+                                        <h5 className="text-sm font-medium text-gray-600">
+                                          {stage === 'ROUND_ROBIN' ? `Раунд ${roundIndex + 1}` : 
+                                           stage === 'PLAY_IN' ? `Плей-ин раунд ${roundIndex + 1}` : 
+                                           `Плей-офф раунд ${roundIndex + 1}`}
+                                        </h5>
+                                        <div className="space-y-2">
+                                          {roundMatches.map((match) => (
+                                            <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                                              <div className="flex items-center space-x-4">
+                                                <div className="flex items-center space-x-2">
+                                                  <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
+                                                  {match.games && match.games.length > 0 && (
+                                                    <span className="text-lg font-bold text-blue-600">
+                                                      {match.games[0]?.scoreA || 0}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <span className="text-gray-500">vs</span>
+                                                <div className="flex items-center space-x-2">
+                                                  {match.games && match.games.length > 0 && (
+                                                    <span className="text-lg font-bold text-blue-600">
+                                                      {match.games[0]?.scoreB || 0}
+                                                    </span>
+                                                  )}
+                                                  <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center space-x-2">
+                                                <span className="text-sm text-gray-500">
+                                                  {match.stage} • Round {match.roundIndex + 1}
+                                                </span>
+                                                <Button 
+                                                  size="sm" 
+                                                  variant="outline"
+                                                  onClick={() => handleScoreInput(
+                                                    match.id, 
+                                                    match.teamA?.name || 'TBD', 
+                                                    match.teamB?.name || 'TBD'
+                                                  )}
+                                                >
+                                                  Ввести счет
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
-                                      <div className="flex items-center space-x-2">
-                                        <span className="text-sm text-gray-500">
-                                          {match.stage} • Round {match.roundIndex + 1}
-                                        </span>
-                                        <Button 
-                                          size="sm" 
-                                          variant="outline"
-                                          onClick={() => handleScoreInput(
-                                            match.id, 
-                                            match.teamA?.name || 'TBD', 
-                                            match.teamB?.name || 'TBD'
-                                          )}
-                                        >
-                                          Ввести счет
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ))}
+                                    ) : null
+                                  })}
                                 </div>
-                              </div>
-                            ) : null
-                          })
+                              )
+                            }).filter(Boolean)
+                          })()
                         ) : (
                           <p className="text-gray-500 text-center py-4">
                             Расписание не сгенерировано
