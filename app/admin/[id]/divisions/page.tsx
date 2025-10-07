@@ -344,6 +344,11 @@ function DivisionCard({
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const totalTeams = division.teams.length
 
+  // Add drop zone for division
+  const { setNodeRef: setDivisionNodeRef } = useDroppable({
+    id: `division-${division.id}`,
+  })
+
   const getStageBadge = (stage: string) => {
     const stageMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       'RR_IN_PROGRESS': { label: 'RR', variant: 'default' },
@@ -363,7 +368,7 @@ function DivisionCard({
   const stageInfo = getStageBadge(division.stage)
 
   return (
-    <Card className="mb-4">
+    <Card ref={setDivisionNodeRef} className="mb-4">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -531,9 +536,11 @@ export default function DivisionsPage() {
 
   const moveTeamToPoolMutation = trpc.team.moveToPool.useMutation({
     onSuccess: () => {
+      console.log('moveToPool success')
       refetch()
     },
     onError: (error) => {
+      console.error('moveToPool error:', error)
       alert(`Ошибка при перемещении команды: ${error.message}`)
     }
   })
@@ -569,6 +576,7 @@ export default function DivisionsPage() {
     const overId = over.id as string
 
     console.log('Drag end:', { teamId, overId, activeId: active.id })
+    console.log('Available drop zones:', ['waitlist-', 'pool-', 'division-'])
 
     // Determine target based on drop zone
     if (overId.startsWith('waitlist-')) {
@@ -594,6 +602,7 @@ export default function DivisionsPage() {
       })
     } else {
       console.log('Unknown drop zone:', overId)
+      console.log('Available drop zones should start with:', ['waitlist-', 'pool-', 'division-'])
     }
   }
 
