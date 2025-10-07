@@ -135,7 +135,7 @@ function WaitList({
       
       <div
         ref={setNodeRef}
-        className="min-h-[60px] border-2 border-dashed border-gray-300 rounded-lg p-3 bg-gray-50"
+        className="min-h-[80px] border-2 border-dashed border-gray-400 rounded-lg p-4 bg-gray-100 hover:bg-gray-200 transition-colors"
       >
         {waitListTeams.length === 0 ? (
           <div className="text-center text-gray-400 text-sm py-4">
@@ -195,7 +195,7 @@ function PoolCard({
       
       <div
         ref={setNodeRef}
-        className="min-h-[60px] border border-blue-200 rounded-lg p-3 bg-blue-50"
+        className="min-h-[80px] border-2 border-dashed border-blue-400 rounded-lg p-4 bg-blue-100 hover:bg-blue-200 transition-colors"
       >
         {poolTeams.length === 0 ? (
           <div className="text-center text-blue-400 text-sm py-4">
@@ -368,7 +368,7 @@ function DivisionCard({
   const stageInfo = getStageBadge(division.stage)
 
   return (
-    <Card ref={setDivisionNodeRef} className="mb-4">
+    <Card ref={setDivisionNodeRef} className="mb-4 border-2 border-dashed border-green-300 hover:border-green-400 hover:bg-green-50 transition-colors">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -578,7 +578,7 @@ export default function DivisionsPage() {
     console.log('Drag end:', { teamId, overId, activeId: active.id })
     console.log('Available drop zones:', ['waitlist-', 'pool-', 'division-'])
 
-    // Determine target based on drop zone
+    // Check if overId is a valid drop zone (not another team)
     if (overId.startsWith('waitlist-')) {
       const divisionId = overId.replace('waitlist-', '')
       console.log('Moving to WaitList:', { teamId, divisionId })
@@ -601,8 +601,13 @@ export default function DivisionsPage() {
         divisionId,
       })
     } else {
-      console.log('Unknown drop zone:', overId)
-      console.log('Available drop zones should start with:', ['waitlist-', 'pool-', 'division-'])
+      // overId is not a drop zone - it's probably another team or invalid target
+      console.log('Invalid drop target:', overId)
+      console.log('This is likely another team ID, not a drop zone')
+      console.log('Make sure to drop on the colored drop zones (WaitList, Pool, or Division areas)')
+      
+      // Don't perform any mutation - just ignore the drop
+      return
     }
   }
 
