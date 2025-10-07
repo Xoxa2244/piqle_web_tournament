@@ -93,6 +93,20 @@ export default function DivisionStageManagement() {
     }
   })
 
+  const generateNextPlayoffRoundMutation = trpc.standings.generateNextPlayoffRound.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
+  const regeneratePlayoffsMutation = trpc.standings.regeneratePlayoffs.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
     onSuccess: () => {
       refetchDivision()
@@ -173,6 +187,34 @@ export default function DivisionStageManagement() {
     }
   }
 
+  // Проверяем, можно ли сгенерировать следующий раунд плей-офф
+  const canGenerateNextRound = () => {
+    if (!eliminationMatches.length) return false
+    
+    // Находим текущий раунд (самый высокий roundIndex)
+    const currentRound = Math.max(...eliminationMatches.map(m => m.roundIndex))
+    const currentRoundMatches = eliminationMatches.filter(m => m.roundIndex === currentRound)
+    
+    // Проверяем, все ли матчи текущего раунда завершены
+    const allCompleted = currentRoundMatches.every(match => 
+      match.games && match.games.length > 0 && match.games[0].scoreA > 0
+    )
+    
+    return allCompleted && currentRoundMatches.length > 1 // Не финал
+  }
+
+  const handleGenerateNextRound = () => {
+    if (selectedDivisionId) {
+      generateNextPlayoffRoundMutation.mutate({ divisionId: selectedDivisionId })
+    }
+  }
+
+  const handleRegeneratePlayoffs = () => {
+    if (selectedDivisionId) {
+      regeneratePlayoffsMutation.mutate({ divisionId: selectedDivisionId })
+    }
+  }
+
   const handleScoreInput = (match: any) => {
     setSelectedMatch(match)
     setShowScoreModal(true)
@@ -209,10 +251,7 @@ export default function DivisionStageManagement() {
       })
     } else if (regenerateType === 'playoff') {
       // Перегенерируем Play-Off
-      generatePlayoffAfterPlayInMutation.mutate({ 
-        divisionId: selectedDivisionId, 
-        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
-      })
+      handleRegeneratePlayoffs()
     }
     setShowRegenerateModal(false)
     setRegenerateType(null)
@@ -688,6 +727,28 @@ export default function DivisionStageManagement() {
                   <span>Сгенерировать Play-Off</span>
                 </Button>
               )}
+              
+              {canGenerateNextRound() && (
+                <Button
+                  onClick={handleGenerateNextRound}
+                  disabled={generateNextPlayoffRoundMutation.isPending}
+                  className="flex items-center space-x-2 bg-green-600 hover:bg-green-700"
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Следующий раунд</span>
+                </Button>
+              )}
+              
+              {eliminationMatches.length > 0 && (
+                <Button
+                  onClick={() => setShowRegenerateModal(true)}
+                  variant="outline"
+                  className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Перегенерировать Play-Off</span>
+                </Button>
+              )}
             </div>
 
             {/* Блокировка если Play-In в процессе */}
@@ -702,47 +763,64 @@ export default function DivisionStageManagement() {
 
             {/* Список матчей Play-Off */}
             {eliminationMatches.length > 0 && showPlayoffMatches && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {eliminationMatches.map((match) => (
-                  <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-medium">
-                        {match.teamA.name}
-                      </div>
-                      <div className="text-sm text-gray-500">vs</div>
-                      <div className="text-sm font-medium">
-                        {match.teamB.name}
+              <div className="space-y-6">
+                {/* Группируем матчи по раундам */}
+                {Array.from({ length: Math.max(...eliminationMatches.map(m => m.roundIndex)) + 1 }, (_, roundIndex) => {
+                  const roundMatches = eliminationMatches.filter(m => m.roundIndex === roundIndex)
+                  if (roundMatches.length === 0) return null
+                  
+                  const roundName = roundMatches.length === 1 ? 'Финал' : 
+                                  roundMatches.length === 2 ? 'Полуфинал' : 
+                                  `Раунд ${roundIndex + 1}`
+                  
+                  return (
+                    <div key={roundIndex} className="space-y-4">
+                      <h4 className="font-medium text-lg">{roundName}</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {roundMatches.map((match) => (
+                          <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">
+                                {match.teamA.name}
+                              </div>
+                              <div className="text-sm text-gray-500">vs</div>
+                              <div className="text-sm font-medium">
+                                {match.teamB.name}
+                              </div>
+                            </div>
+                            
+                            {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                              <div className="text-center space-y-2">
+                                <div className="text-lg font-bold">
+                                  {match.games[0].scoreA} - {match.games[0].scoreB}
+                                </div>
+                                <div className="text-sm text-green-600 font-medium">
+                                  Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleScoreInput(match)}
+                                  className="w-full"
+                                >
+                                  Изменить счет
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => handleScoreInput(match)}
+                                className="w-full"
+                              >
+                                Ввести счет
+                              </Button>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    
-                    {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                      <div className="text-center space-y-2">
-                        <div className="text-lg font-bold">
-                          {match.games[0].scoreA} - {match.games[0].scoreB}
-                        </div>
-                        <div className="text-sm text-green-600 font-medium">
-                          Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleScoreInput(match)}
-                          className="w-full"
-                        >
-                          Изменить счет
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => handleScoreInput(match)}
-                        className="w-full"
-                      >
-                        Ввести счет
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>

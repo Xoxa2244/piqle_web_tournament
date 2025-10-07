@@ -447,6 +447,137 @@ export const standingsRouter = createTRPCRouter({
       }
     }),
 
+  generateNextPlayoffRound: tdProcedure
+    .input(z.object({ 
+      divisionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get division with current playoff matches
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: true,
+          matches: {
+            where: { stage: 'ELIMINATION' },
+            include: {
+              teamA: true,
+              teamB: true,
+              games: true,
+            },
+            orderBy: { roundIndex: 'asc' },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      // Find the current round (highest round with matches)
+      const currentRound = Math.max(...division.matches.map(m => m.roundIndex), -1)
+      
+      // Get matches from current round
+      const currentRoundMatches = division.matches.filter(m => m.roundIndex === currentRound)
+      
+      // Check if all matches in current round are completed
+      const allCompleted = currentRoundMatches.every(match => 
+        match.games && match.games.length > 0 && match.games[0].scoreA > 0
+      )
+      
+      if (!allCompleted) {
+        throw new Error('Current round is not completed yet')
+      }
+
+      // Get winners from current round
+      const winners = currentRoundMatches.map(match => {
+        const game = match.games?.[0]
+        if (!game) throw new Error('No game found for completed match')
+        
+        return game.winner === 'A' ? match.teamA : match.teamB
+      })
+
+      // If only one winner left, tournament is complete
+      if (winners.length === 1) {
+        // Update division stage to DIVISION_COMPLETE
+        await ctx.prisma.division.update({
+          where: { id: input.divisionId },
+          data: { stage: 'DIVISION_COMPLETE' as any },
+        })
+        
+        return {
+          matches: [],
+          message: 'Tournament completed!',
+          isComplete: true,
+        }
+      }
+
+      // Generate next round matches
+      const nextRoundMatches = []
+      for (let i = 0; i < winners.length / 2; i++) {
+        nextRoundMatches.push({
+          teamAId: winners[i].id,
+          teamBId: winners[winners.length - 1 - i].id,
+          roundIndex: currentRound + 1,
+          stage: 'ELIMINATION' as const,
+        })
+      }
+
+      // Create next round matches in database
+      const createdMatches = await Promise.all(
+        nextRoundMatches.map(match =>
+          ctx.prisma.match.create({
+            data: {
+              divisionId: input.divisionId,
+              teamAId: match.teamAId,
+              teamBId: match.teamBId,
+              roundIndex: match.roundIndex,
+              stage: match.stage,
+              bestOfMode: 'FIXED_GAMES',
+              gamesCount: 1,
+              targetPoints: 11,
+              winBy: 2,
+              locked: false,
+            },
+          })
+        )
+      )
+
+      // Update division stage to next round
+      const nextStage = `PO_R${currentRound + 2}_SCHEDULED` as any
+      await ctx.prisma.division.update({
+        where: { id: input.divisionId },
+        data: { stage: nextStage },
+      })
+
+      return {
+        matches: createdMatches,
+        round: currentRound + 1,
+        isComplete: false,
+      }
+    }),
+
+  regeneratePlayoffs: tdProcedure
+    .input(z.object({ 
+      divisionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Delete all existing Play-Off matches
+      await ctx.prisma.match.deleteMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: 'ELIMINATION'
+        }
+      })
+
+      // Reset division stage to PO_R1_SCHEDULED
+      await ctx.prisma.division.update({
+        where: { id: input.divisionId },
+        data: { stage: 'PO_R1_SCHEDULED' as any },
+      })
+
+      return { success: true }
+    }),
+
   generatePlayoffAfterPlayIn: tdProcedure
     .input(z.object({ 
       divisionId: z.string(),
@@ -635,9 +766,8 @@ function generatePlayInMatches(teams: any[], startRound: number) {
 function generateSingleEliminationMatches(teams: any[], startRound: number) {
   const matches = []
   const B = teams.length
-  const rounds = Math.log2(B)
 
-  // First round matches
+  // Only generate the first round - subsequent rounds will be generated as previous rounds complete
   for (let i = 0; i < B / 2; i++) {
     matches.push({
       teamAId: teams[i].teamId,
