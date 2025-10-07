@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 
 // Helper function to generate Round Robin for a specific set of teams
-function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolId?: string) {
+function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolId?: string | null) {
   const n = teams.length
   const isOdd = n % 2 === 1
   
