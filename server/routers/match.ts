@@ -79,6 +79,10 @@ export const matchRouter = createTRPCRouter({
               teamBId: round.teamB.id,
               roundIndex: round.roundIndex,
               stage: 'ROUND_ROBIN',
+              bestOfMode: 'SINGLE', // Default to single game
+              gamesCount: 1, // Default to 1 game per match
+              targetPoints: 11, // Default to 11 points
+              winBy: 2, // Default to win by 2
               locked: false,
             },
           })
