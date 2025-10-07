@@ -115,6 +115,13 @@ export default function DivisionStageManagement() {
     }
   })
 
+  const fillRandomResultsMutation = trpc.match.fillRandomResults.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
     onSuccess: () => {
       refetchDivision()
@@ -252,6 +259,12 @@ export default function DivisionStageManagement() {
   const handleRegenerateRR = () => {
     if (selectedDivisionId) {
       regenerateRRMutation.mutate({ divisionId: selectedDivisionId })
+    }
+  }
+
+  const handleFillRandomResults = () => {
+    if (selectedDivisionId) {
+      fillRandomResultsMutation.mutate({ divisionId: selectedDivisionId })
     }
   }
 
@@ -472,6 +485,18 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
+                {rrMatches.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleFillRandomResults}
+                    disabled={fillRandomResultsMutation.isPending}
+                    className="flex items-center space-x-2 text-purple-600 border-purple-600 hover:bg-purple-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Заполнить случайными результатами</span>
+                  </Button>
+                )}
+                
                 <Button
                   variant="ghost"
                   onClick={() => router.push(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`)}
@@ -499,58 +524,156 @@ export default function DivisionStageManagement() {
                 </div>
                 
                 {showRRMatches && (
-                  <div className="space-y-4">
-                    {/* Группируем матчи по раундам */}
-                    {Array.from(new Set(rrMatches.map(m => m.roundIndex))).sort().map(roundIndex => {
-                      const roundMatches = rrMatches.filter(m => m.roundIndex === roundIndex)
+                  <div className="space-y-6">
+                    {/* Группируем матчи по пулам */}
+                    {(() => {
+                      // Получаем все пулы из матчей
+                      const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
+                      const waitListMatches = rrMatches.filter(m => m.poolId === null)
+                      
                       return (
-                        <div key={roundIndex} className="space-y-2">
-                          <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {roundMatches.map((match) => (
-                              <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="text-sm font-medium">
-                                    {match.teamA.name}
-                                  </div>
-                                  <div className="text-sm text-gray-500">vs</div>
-                                  <div className="text-sm font-medium">
-                                    {match.teamB.name}
-                                  </div>
+                        <>
+                          {/* Матчи по пулам */}
+                          {pools.map(poolId => {
+                            const poolMatches = rrMatches.filter(m => m.poolId === poolId)
+                            const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                            const poolName = pool?.name || `Pool ${poolId}`
+                            
+                            // Группируем матчи пула по раундам
+                            const rounds = Array.from(new Set(poolMatches.map(m => m.roundIndex))).sort()
+                            
+                            return (
+                              <div key={poolId} className="space-y-4">
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                  <h4 className="text-lg font-semibold text-blue-900 mb-2">{poolName}</h4>
+                                  <p className="text-sm text-blue-700">
+                                    {poolMatches.length} матчей • {rounds.length} раундов
+                                  </p>
                                 </div>
                                 
-                                {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                                  <div className="text-center space-y-2">
-                                    <div className="text-lg font-bold">
-                                      {match.games[0].scoreA} - {match.games[0].scoreB}
-                                    </div>
-                                    <div className="text-sm text-green-600 font-medium">
-                                      Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleScoreInput(match)}
-                                      className="w-full"
-                                    >
-                                      Изменить счет
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleScoreInput(match)}
-                                    className="w-full"
-                                  >
-                                    Ввести счет
-                                  </Button>
-                                )}
+                                <div className="space-y-4">
+                                  {rounds.map(roundIndex => {
+                                    const roundMatches = poolMatches.filter(m => m.roundIndex === roundIndex)
+                                    return (
+                                      <div key={roundIndex} className="space-y-2">
+                                        <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                          {roundMatches.map((match) => (
+                                            <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                                              <div className="flex items-center justify-between mb-2">
+                                                <div className="text-sm font-medium">
+                                                  {match.teamA.name}
+                                                </div>
+                                                <div className="text-sm text-gray-500">vs</div>
+                                                <div className="text-sm font-medium">
+                                                  {match.teamB.name}
+                                                </div>
+                                              </div>
+                                              
+                                              {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                                                <div className="text-center space-y-2">
+                                                  <div className="text-lg font-bold">
+                                                    {match.games[0].scoreA} - {match.games[0].scoreB}
+                                                  </div>
+                                                  <div className="text-sm text-green-600 font-medium">
+                                                    Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                  </div>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleScoreInput(match)}
+                                                    className="w-full"
+                                                  >
+                                                    Изменить счет
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <Button
+                                                  size="sm"
+                                                  onClick={() => handleScoreInput(match)}
+                                                  className="w-full"
+                                                >
+                                                  Ввести счет
+                                                </Button>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            )
+                          })}
+                          
+                          {/* Матчи WaitList */}
+                          {waitListMatches.length > 0 && (
+                            <div className="space-y-4">
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-2">WaitList</h4>
+                                <p className="text-sm text-gray-700">
+                                  {waitListMatches.length} матчей • {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).length} раундов
+                                </p>
+                              </div>
+                              
+                              <div className="space-y-4">
+                                {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).sort().map(roundIndex => {
+                                  const roundMatches = waitListMatches.filter(m => m.roundIndex === roundIndex)
+                                  return (
+                                    <div key={roundIndex} className="space-y-2">
+                                      <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {roundMatches.map((match) => (
+                                          <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="text-sm font-medium">
+                                                {match.teamA.name}
+                                              </div>
+                                              <div className="text-sm text-gray-500">vs</div>
+                                              <div className="text-sm font-medium">
+                                                {match.teamB.name}
+                                              </div>
+                                            </div>
+                                            
+                                            {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                                              <div className="text-center space-y-2">
+                                                <div className="text-lg font-bold">
+                                                  {match.games[0].scoreA} - {match.games[0].scoreB}
+                                                </div>
+                                                <div className="text-sm text-green-600 font-medium">
+                                                  Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                </div>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => handleScoreInput(match)}
+                                                  className="w-full"
+                                                >
+                                                  Изменить счет
+                                                </Button>
+                                              </div>
+                                            ) : (
+                                              <Button
+                                                size="sm"
+                                                onClick={() => handleScoreInput(match)}
+                                                className="w-full"
+                                              >
+                                                Ввести счет
+                                              </Button>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )
-                    })}
+                    })()}
                   </div>
                 )}
               </div>
