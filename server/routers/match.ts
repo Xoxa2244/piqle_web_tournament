@@ -79,7 +79,7 @@ export const matchRouter = createTRPCRouter({
       }
 
       // Generate Round Robin schedule - separate by pools if they exist
-      const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string }> = []
+      const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string | null }> = []
       let currentRoundIndex = 0
 
       if (division.pools.length > 0) {
