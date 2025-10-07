@@ -241,7 +241,7 @@ export default function SchedulePage() {
                         {division.matches && division.matches.length > 0 ? (
                           // Group matches by stage and round
                           (() => {
-                            const stages = ['ROUND_ROBIN', 'PLAY_IN', 'PLAYOFF']
+                            const stages = ['ROUND_ROBIN', 'PLAY_IN', 'ELIMINATION']
                             return stages.map(stage => {
                               const stageMatches = division.matches.filter(m => m.stage === stage)
                               if (stageMatches.length === 0) return null
