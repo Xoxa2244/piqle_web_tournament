@@ -31,8 +31,9 @@ export default function DivisionStageManagement() {
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [selectedMatch, setSelectedMatch] = useState<any>(null)
-  const [showRegenerateModal, setShowRegenerateModal] = useState(false)
-  const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | null>(null)
+  const [showRRMatches, setShowRRMatches] = useState(true)
+  const [showPlayInMatches, setShowPlayInMatches] = useState(true)
+  const [showPlayoffMatches, setShowPlayoffMatches] = useState(true)
 
   // Загружаем данные турнира
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -62,6 +63,13 @@ export default function DivisionStageManagement() {
   })
 
   const generatePlayoffsMutation = trpc.standings.generatePlayoffs.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
+  const generatePlayoffAfterPlayInMutation = trpc.standings.generatePlayoffAfterPlayIn.useMutation({
     onSuccess: () => {
       refetchDivision()
       refetchTournament()
@@ -110,9 +118,9 @@ export default function DivisionStageManagement() {
     }
   }
 
-  const handleGeneratePlayoffs = () => {
+  const handleGeneratePlayoffAfterPlayIn = () => {
     if (selectedDivisionId) {
-      generatePlayoffsMutation.mutate({ 
+      generatePlayoffAfterPlayInMutation.mutate({ 
         divisionId: selectedDivisionId, 
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
       })
@@ -158,6 +166,7 @@ export default function DivisionStageManagement() {
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
+  const canGeneratePlayoffAfterPlayIn = completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
 
   if (!tournament || !division) {
     return (
@@ -341,41 +350,65 @@ export default function DivisionStageManagement() {
             {/* Список матчей RR */}
             {rrMatches.length > 0 && (
               <div className="space-y-4">
-                <h4 className="font-medium">Матчи Round Robin</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {rrMatches.map((match) => (
-                    <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-medium">
-                          {match.teamA.name}
-                        </div>
-                        <div className="text-sm text-gray-500">vs</div>
-                        <div className="text-sm font-medium">
-                          {match.teamB.name}
-                        </div>
-                      </div>
-                      
-                      {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                        <div className="text-center">
-                          <div className="text-lg font-bold">
-                            {match.games[0].scoreA} - {match.games[0].scoreB}
-                          </div>
-                          <div className="text-sm text-green-600 font-medium">
-                            Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
-                          </div>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => handleScoreInput(match)}
-                          className="w-full"
-                        >
-                          Ввести счет
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Матчи Round Robin</h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowRRMatches(!showRRMatches)}
+                    className="flex items-center space-x-2"
+                  >
+                    <span>{showRRMatches ? 'Свернуть' : 'Развернуть'}</span>
+                  </Button>
                 </div>
+                
+                {showRRMatches && (
+                  <div className="space-y-4">
+                    {/* Группируем матчи по раундам */}
+                    {Array.from(new Set(rrMatches.map(m => m.roundIndex))).sort().map(roundIndex => {
+                      const roundMatches = rrMatches.filter(m => m.roundIndex === roundIndex)
+                      return (
+                        <div key={roundIndex} className="space-y-2">
+                          <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {roundMatches.map((match) => (
+                              <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-sm font-medium">
+                                    {match.teamA.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500">vs</div>
+                                  <div className="text-sm font-medium">
+                                    {match.teamB.name}
+                                  </div>
+                                </div>
+                                
+                                {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold">
+                                      {match.games[0].scoreA} - {match.games[0].scoreB}
+                                    </div>
+                                    <div className="text-sm text-green-600 font-medium">
+                                      Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleScoreInput(match)}
+                                    className="w-full"
+                                  >
+                                    Ввести счет
+                                  </Button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -395,10 +428,20 @@ export default function DivisionStageManagement() {
         {needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Target className="h-5 w-5" />
-                <span>Play-In</span>
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center space-x-2">
+                  <Target className="h-5 w-5" />
+                  <span>Play-In</span>
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPlayInMatches(!showPlayInMatches)}
+                  className="flex items-center space-x-2"
+                >
+                  <span>{showPlayInMatches ? 'Свернуть' : 'Развернуть'}</span>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Сводка Play-In */}
@@ -465,7 +508,7 @@ export default function DivisionStageManagement() {
               )}
 
               {/* Список пар Play-In */}
-              {playInMatches.length > 0 && (
+              {playInMatches.length > 0 && showPlayInMatches && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {playInMatches.map((match) => (
                     <div key={match.id} className="border border-gray-200 rounded-lg p-4">
@@ -508,75 +551,92 @@ export default function DivisionStageManagement() {
         {/* Блок Play-Off */}
         <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Trophy className="h-5 w-5" />
-              <span>Play-Off</span>
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center space-x-2">
+                <Trophy className="h-5 w-5" />
+                <span>Play-Off</span>
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPlayoffMatches(!showPlayoffMatches)}
+                className="flex items-center space-x-2"
+              >
+                <span>{showPlayoffMatches ? 'Свернуть' : 'Развернуть'}</span>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Сводка Play-Off */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">
-                  Текущий раунд: {eliminationMatches.length > 0 ? 'R1' : 'Не начат'}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Команд в раунде: {eliminationMatches.length > 0 ? eliminationMatches.length * 2 : 0}
-                </p>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                {canGeneratePlayoff && (
-                  <Button
-                    onClick={handleGeneratePlayoffs}
-                    disabled={generatePlayoffsMutation.isPending}
-                    className="flex items-center space-x-2"
-                  >
-                    <Play className="h-4 w-4" />
-                    <span>Сгенерировать Play-Off</span>
-                  </Button>
-                )}
-              </div>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600">
+                Команд в плей-офф: {targetBracketSize}. Формат: Single Elimination.
+              </p>
+              <p className="text-sm text-gray-600">
+                {eliminationMatches.length > 0 ? `${eliminationMatches.length} матчей сгенерировано` : 'Матчи не сгенерированы'}
+              </p>
             </div>
 
-            {/* Сетка Play-Off */}
-            {eliminationMatches.length > 0 && (
-              <div className="space-y-4">
-                <h4 className="font-medium">Сетка плей-офф</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {eliminationMatches.map((match) => (
-                    <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-medium">
-                          [{match.teamA.seed || '?'}] {match.teamA.name}
+            {/* Кнопки Play-Off */}
+            <div className="flex items-center space-x-2">
+              {canGeneratePlayoff && (
+                <Button
+                  onClick={handleGeneratePlayoffs}
+                  disabled={generatePlayoffsMutation.isPending}
+                  className="flex items-center space-x-2"
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Сгенерировать Play-Off</span>
+                </Button>
+              )}
+              
+              {canGeneratePlayoffAfterPlayIn && (
+                <Button
+                  onClick={handleGeneratePlayoffAfterPlayIn}
+                  disabled={generatePlayoffAfterPlayInMutation.isPending}
+                  className="flex items-center space-x-2"
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Сгенерировать Play-Off после Play-In</span>
+                </Button>
+              )}
+            </div>
+
+            {/* Список матчей Play-Off */}
+            {eliminationMatches.length > 0 && showPlayoffMatches && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {eliminationMatches.map((match) => (
+                  <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium">
+                        {match.teamA.name}
+                      </div>
+                      <div className="text-sm text-gray-500">vs</div>
+                      <div className="text-sm font-medium">
+                        {match.teamB.name}
+                      </div>
+                    </div>
+                    
+                    {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                      <div className="text-center">
+                        <div className="text-lg font-bold">
+                          {match.games[0].scoreA} - {match.games[0].scoreB}
                         </div>
-                        <div className="text-sm text-gray-500">vs</div>
-                        <div className="text-sm font-medium">
-                          [{match.teamB.seed || '?'}] {match.teamB.name}
+                        <div className="text-sm text-green-600 font-medium">
+                          Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                         </div>
                       </div>
-                      
-                      {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
-                        <div className="text-center">
-                          <div className="text-lg font-bold">
-                            {match.games[0].scoreA} - {match.games[0].scoreB}
-                          </div>
-                          <div className="text-sm text-green-600 font-medium">
-                            Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
-                          </div>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => handleScoreInput(match)}
-                          className="w-full"
-                        >
-                          Ввести счет
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleScoreInput(match)}
+                        className="w-full"
+                      >
+                        Ввести счет
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

@@ -371,9 +371,8 @@ export const standingsRouter = createTRPCRouter({
         const playInMatches = generatePlayInMatches(playInTeams, 0)
         matches.push(...playInMatches)
 
-        // Generate playoff matches (will be updated after play-in results)
-        const playoffMatches = generateSingleEliminationMatches([...autoQualified, ...playInTeams], 0)
-        matches.push(...playoffMatches)
+        // DO NOT generate playoff matches yet - they will be generated after play-in completion
+        // This prevents premature playoff generation before play-in results are known
       } else {
         throw new Error(`Invalid team count ${N} for bracket size ${B}`)
       }
@@ -434,6 +433,168 @@ export const standingsRouter = createTRPCRouter({
         teamsCount: N,
         playInNeeded: B < N && N < 2 * B,
         nextStage,
+      }
+    }),
+
+  generatePlayoffAfterPlayIn: tdProcedure
+    .input(z.object({ 
+      divisionId: z.string(),
+      bracketSize: z.enum(['4', '8', '16']).transform(val => parseInt(val)),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get division with teams and matches
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: true,
+          matches: {
+            where: { stage: 'PLAY_IN' },
+            include: {
+              teamA: true,
+              teamB: true,
+              games: true,
+            },
+          },
+          tournament: { select: { id: true } },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      // Check if all play-in matches are completed
+      const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
+      const completedPlayInMatches = playInMatches.filter(match => 
+        match.games && match.games.length > 0 && match.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+      )
+
+      if (completedPlayInMatches.length !== playInMatches.length) {
+        throw new Error('All play-in matches must be completed before generating playoffs')
+      }
+
+      // Calculate standings and determine playoff participants
+      const teamStats: Map<string, TeamStats> = new Map()
+      
+      division.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: 0,
+          losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+          pointDiff: 0,
+          headToHead: new Map(),
+        })
+      })
+
+      // Get all RR matches to calculate standings
+      const rrMatches = await ctx.prisma.match.findMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: 'ROUND_ROBIN'
+        },
+        include: {
+          teamA: true,
+          teamB: true,
+          games: true,
+        },
+      })
+
+      // Process RR matches for standings
+      rrMatches.forEach(match => {
+        const teamAStats = teamStats.get(match.teamAId)
+        const teamBStats = teamStats.get(match.teamBId)
+        
+        if (!teamAStats || !teamBStats) return
+
+        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+
+        teamAStats.pointsFor += totalScoreA
+        teamAStats.pointsAgainst += totalScoreB
+        teamBStats.pointsFor += totalScoreB
+        teamBStats.pointsAgainst += totalScoreA
+
+        if (totalScoreA > totalScoreB) {
+          teamAStats.wins++
+          teamBStats.losses++
+        } else {
+          teamBStats.wins++
+          teamAStats.losses++
+        }
+      })
+
+      // Calculate standings
+      const standings = Array.from(teamStats.values())
+        .sort((a, b) => {
+          if (a.wins !== b.wins) return b.wins - a.wins
+          return b.pointDiff - a.pointDiff
+        })
+
+      const N = division.teams.length
+      const B = input.bracketSize
+      const E = N - B
+
+      // Get play-in winners
+      const playInWinners = []
+      for (const match of playInMatches) {
+        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        
+        if (totalScoreA > totalScoreB) {
+          playInWinners.push(match.teamA)
+        } else {
+          playInWinners.push(match.teamB)
+        }
+      }
+
+      // Sort play-in winners by their original seeding
+      playInWinners.sort((a, b) => {
+        const aIndex = standings.findIndex(s => s.teamId === a.id)
+        const bIndex = standings.findIndex(s => s.teamId === b.id)
+        return aIndex - bIndex
+      })
+
+      // Get auto-qualified teams (top teams that didn't need play-in)
+      const autoQualified = standings.slice(0, N - 2 * E)
+
+      // Generate playoff matches with correct participants
+      const playoffMatches = generateSingleEliminationMatches([...autoQualified, ...playInWinners], 0)
+
+      // Create playoff matches in database
+      const createdMatches = await Promise.all(
+        playoffMatches.map(match =>
+          ctx.prisma.match.create({
+            data: {
+              divisionId: input.divisionId,
+              teamAId: match.teamAId,
+              teamBId: match.teamBId,
+              roundIndex: match.roundIndex,
+              stage: match.stage,
+              bestOfMode: 'FIXED_GAMES',
+              gamesCount: 1,
+              targetPoints: 11,
+              winBy: 2,
+              locked: false,
+            },
+          })
+        )
+      )
+
+      // Update division stage to PO_R1_SCHEDULED
+      await ctx.prisma.division.update({
+        where: { id: input.divisionId },
+        data: { stage: 'PO_R1_SCHEDULED' as any },
+      })
+
+      return {
+        matches: createdMatches,
+        bracketSize: B,
+        teamsCount: N,
+        autoQualified: autoQualified.length,
+        playInWinners: playInWinners.length,
       }
     }),
 })
