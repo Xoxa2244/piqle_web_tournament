@@ -142,10 +142,24 @@ export const importRouter = createTRPCRouter({
         const minDupr = duprMatch ? parseFloat(duprMatch[1]) : null
         const maxDupr = duprMatch ? parseFloat(duprMatch[2]) : null
         
-        // Check if pools are enabled
+        // Check if pools are enabled and count them
         const poolsEnabled = Array.from(teams.values() as any[]).some((team: any[]) => 
           team.some((p: any) => p['Pool'] && p['Pool'].trim())
         )
+        
+        // Count unique pools if enabled
+        let poolCount = 1
+        if (poolsEnabled) {
+          const uniquePools = new Set()
+          Array.from(teams.values() as any[]).forEach((team: any[]) => {
+            team.forEach((p: any) => {
+              if (p['Pool'] && p['Pool'].trim()) {
+                uniquePools.add(p['Pool'].trim())
+              }
+            })
+          })
+          poolCount = Math.max(uniquePools.size, 1)
+        }
         
         // Create division
         const division = await ctx.prisma.division.create({
@@ -154,7 +168,7 @@ export const importRouter = createTRPCRouter({
             name: divisionName,
             teamKind,
             pairingMode: 'FIXED',
-            poolsEnabled,
+            poolCount,
             constraints: {
               create: {
                 minAge,
@@ -163,7 +177,17 @@ export const importRouter = createTRPCRouter({
                 maxDupr,
                 genders: 'ANY' as any
               }
-            }
+            },
+            // Create pools if poolCount > 1
+            pools: poolCount > 1 ? {
+              create: Array.from({ length: poolCount }, (_, i) => ({
+                name: `Pool ${i + 1}`,
+                order: i + 1,
+              }))
+            } : undefined
+          },
+          include: {
+            pools: true
           }
         })
         
@@ -171,9 +195,23 @@ export const importRouter = createTRPCRouter({
         
         // Create teams and players
         for (const [teamName, teamParticipants] of Array.from(teams.entries() as any[])) {
+          // Determine which pool this team belongs to
+          let poolId = null
+          if (poolCount > 1) {
+            const teamPool = teamParticipants[0]?.['Pool']?.trim()
+            if (teamPool) {
+              // Find the pool by name
+              const pool = division.pools.find(p => p.name === teamPool)
+              if (pool) {
+                poolId = pool.id
+              }
+            }
+          }
+          
           const team = await ctx.prisma.team.create({
             data: {
               divisionId: division.id,
+              poolId,
               name: teamName,
             }
           })
