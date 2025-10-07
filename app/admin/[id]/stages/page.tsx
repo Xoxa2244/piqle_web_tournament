@@ -148,12 +148,15 @@ export default function DivisionStageManagement() {
     console.log('handleGeneratePlayoffs called:', {
       selectedDivisionId,
       currentStage,
-      targetBracketSize
+      targetBracketSize,
+      needsPlayIn,
+      completedPlayInMatches: completedPlayInMatches.length,
+      playInMatches: playInMatches.length
     })
     
     if (selectedDivisionId) {
-      // Если Play-In завершен, используем generatePlayoffAfterPlayIn
-      if (currentStage === 'PLAY_IN_COMPLETE') {
+      // Если Play-In завершен (по факту завершения матчей), используем generatePlayoffAfterPlayIn
+      if (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0) {
         console.log('Using generatePlayoffAfterPlayIn')
         generatePlayoffAfterPlayInMutation.mutate({ 
           divisionId: selectedDivisionId, 
@@ -221,7 +224,7 @@ export default function DivisionStageManagement() {
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
-  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
+  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
 
   // Отладочная информация
   console.log('Debug Play-Off generation:', {
@@ -645,7 +648,7 @@ export default function DivisionStageManagement() {
         )}
 
         {/* Блок Play-Off */}
-        <Card className={currentStage === 'RR_IN_PROGRESS' || (needsPlayIn && currentStage !== 'PLAY_IN_COMPLETE') ? 'opacity-50 pointer-events-none' : ''}>
+        <Card className={currentStage === 'RR_IN_PROGRESS' || (needsPlayIn && completedPlayInMatches.length !== playInMatches.length) ? 'opacity-50 pointer-events-none' : ''}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center space-x-2">
@@ -688,7 +691,7 @@ export default function DivisionStageManagement() {
             </div>
 
             {/* Блокировка если Play-In в процессе */}
-            {needsPlayIn && currentStage !== 'PLAY_IN_COMPLETE' && (
+            {needsPlayIn && completedPlayInMatches.length !== playInMatches.length && (
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
