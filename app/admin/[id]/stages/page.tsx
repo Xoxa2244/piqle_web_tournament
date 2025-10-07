@@ -66,15 +66,23 @@ export default function DivisionStageManagement() {
 
   const generatePlayoffsMutation = trpc.standings.generatePlayoffs.useMutation({
     onSuccess: () => {
+      console.log('generatePlayoffs success')
       refetchDivision()
       refetchTournament()
+    },
+    onError: (error) => {
+      console.error('generatePlayoffs error:', error)
     }
   })
 
   const generatePlayoffAfterPlayInMutation = trpc.standings.generatePlayoffAfterPlayIn.useMutation({
     onSuccess: () => {
+      console.log('generatePlayoffAfterPlayIn success')
       refetchDivision()
       refetchTournament()
+    },
+    onError: (error) => {
+      console.error('generatePlayoffAfterPlayIn error:', error)
     }
   })
 
@@ -137,14 +145,22 @@ export default function DivisionStageManagement() {
   }
 
   const handleGeneratePlayoffs = () => {
+    console.log('handleGeneratePlayoffs called:', {
+      selectedDivisionId,
+      currentStage,
+      targetBracketSize
+    })
+    
     if (selectedDivisionId) {
       // Если Play-In завершен, используем generatePlayoffAfterPlayIn
       if (currentStage === 'PLAY_IN_COMPLETE') {
+        console.log('Using generatePlayoffAfterPlayIn')
         generatePlayoffAfterPlayInMutation.mutate({ 
           divisionId: selectedDivisionId, 
           bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
         })
       } else {
+        console.log('Using generatePlayoffs')
         // Иначе используем обычную генерацию Play-Off (прямо после RR)
         generatePlayoffsMutation.mutate({ 
           divisionId: selectedDivisionId, 
@@ -206,6 +222,16 @@ export default function DivisionStageManagement() {
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
+
+  // Отладочная информация
+  console.log('Debug Play-Off generation:', {
+    currentStage,
+    needsPlayIn,
+    eliminationMatchesLength: eliminationMatches.length,
+    canGeneratePlayoff,
+    teamCount,
+    targetBracketSize
+  })
 
   if (!tournament || !division) {
     return (
