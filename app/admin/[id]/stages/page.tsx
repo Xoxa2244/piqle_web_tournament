@@ -303,7 +303,12 @@ export default function DivisionStageManagement() {
                 {canInputRRResults && (
                   <Button
                     variant="outline"
-                    onClick={() => {/* Показать список матчей RR */}}
+                    onClick={() => {
+                      // Показываем первый матч для ввода результатов
+                      if (rrMatches.length > 0) {
+                        handleScoreInput(rrMatches[0])
+                      }
+                    }}
                     className="flex items-center space-x-2"
                   >
                     <Clock className="h-4 w-4" />
@@ -332,6 +337,47 @@ export default function DivisionStageManagement() {
                 </Button>
               </div>
             </div>
+
+            {/* Список матчей RR */}
+            {rrMatches.length > 0 && (
+              <div className="space-y-4">
+                <h4 className="font-medium">Матчи Round Robin</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {rrMatches.map((match) => (
+                    <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-medium">
+                          {match.teamA.name}
+                        </div>
+                        <div className="text-sm text-gray-500">vs</div>
+                        <div className="text-sm font-medium">
+                          {match.teamB.name}
+                        </div>
+                      </div>
+                      
+                      {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
+                        <div className="text-center">
+                          <div className="text-lg font-bold">
+                            {match.games[0].scoreA} - {match.games[0].scoreB}
+                          </div>
+                          <div className="text-sm text-green-600 font-medium">
+                            Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => handleScoreInput(match)}
+                          className="w-full"
+                        >
+                          Ввести счет
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Блокировка если RR не завершен */}
             {currentStage === 'RR_IN_PROGRESS' && (
