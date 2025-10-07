@@ -768,11 +768,11 @@ export default function TeamsPage() {
                   </CardTitle>
                   <CardDescription>
                     {division.teams.length} команд • {division.teamKind} • {division.pairingMode}
-                    {division.poolsEnabled && ' • Пулы включены'}
+                    {division.poolCount > 1 && ` • ${division.poolCount} пулов`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {division.poolsEnabled && division.pools && division.pools.length > 0 ? (
+                  {division.poolCount > 1 && division.pools && division.pools.length > 0 ? (
                     // Show teams grouped by pools
                     <div className="space-y-4">
                       {division.pools.map((pool) => (
