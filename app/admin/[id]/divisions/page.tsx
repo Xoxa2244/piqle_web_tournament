@@ -521,82 +521,20 @@ export default function DivisionsPage() {
   )
 
   const moveTeamToDivisionMutation = trpc.team.moveToDivision.useMutation({
-    onMutate: async ({ teamId, divisionId }) => {
-      // Cancel any outgoing refetches
-      await refetch.cancel()
-      
-      // Snapshot the previous value
-      const previousTournament = tournament
-      
-      // Optimistically update the UI
-      if (previousTournament) {
-        const updatedDivisions = previousTournament.divisions.map(division => ({
-          ...division,
-          teams: division.id === divisionId 
-            ? [...division.teams, { ...division.teams.find(t => t.id === teamId)!, poolId: null }]
-            : division.teams.filter(team => team.id !== teamId)
-        }))
-        
-        // Update the cache optimistically
-        refetch.setData({ id: tournamentId }, {
-          ...previousTournament,
-          divisions: updatedDivisions
-        })
-      }
-      
-      return { previousTournament }
-    },
-    onError: (err, variables, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
-      if (context?.previousTournament) {
-        refetch.setData({ id: tournamentId }, context.previousTournament)
-      }
-      alert(`Ошибка при перемещении команды: ${err.message}`)
-    },
     onSuccess: () => {
-      // Refetch to ensure we have the latest data
       refetch()
+    },
+    onError: (error) => {
+      alert(`Ошибка при перемещении команды: ${error.message}`)
     }
   })
 
   const moveTeamToPoolMutation = trpc.team.moveToPool.useMutation({
-    onMutate: async ({ teamId, poolId }) => {
-      // Cancel any outgoing refetches
-      await refetch.cancel()
-      
-      // Snapshot the previous value
-      const previousTournament = tournament
-      
-      // Optimistically update the UI
-      if (previousTournament) {
-        const updatedDivisions = previousTournament.divisions.map(division => ({
-          ...division,
-          teams: division.teams.map(team => 
-            team.id === teamId 
-              ? { ...team, poolId }
-              : team
-          )
-        }))
-        
-        // Update the cache optimistically
-        refetch.setData({ id: tournamentId }, {
-          ...previousTournament,
-          divisions: updatedDivisions
-        })
-      }
-      
-      return { previousTournament }
-    },
-    onError: (err, variables, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
-      if (context?.previousTournament) {
-        refetch.setData({ id: tournamentId }, context.previousTournament)
-      }
-      alert(`Ошибка при перемещении команды: ${err.message}`)
-    },
     onSuccess: () => {
-      // Refetch to ensure we have the latest data
       refetch()
+    },
+    onError: (error) => {
+      alert(`Ошибка при перемещении команды: ${error.message}`)
     }
   })
 
