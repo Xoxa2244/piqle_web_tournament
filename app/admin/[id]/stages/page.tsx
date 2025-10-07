@@ -138,10 +138,19 @@ export default function DivisionStageManagement() {
 
   const handleGeneratePlayoffs = () => {
     if (selectedDivisionId) {
-      generatePlayoffsMutation.mutate({ 
-        divisionId: selectedDivisionId, 
-        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
-      })
+      // Если Play-In завершен, используем generatePlayoffAfterPlayIn
+      if (canGeneratePlayoffAfterPlayIn) {
+        generatePlayoffAfterPlayInMutation.mutate({ 
+          divisionId: selectedDivisionId, 
+          bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+        })
+      } else {
+        // Иначе используем обычную генерацию Play-Off
+        generatePlayoffsMutation.mutate({ 
+          divisionId: selectedDivisionId, 
+          bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+        })
+      }
     }
   }
 
@@ -196,7 +205,7 @@ export default function DivisionStageManagement() {
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
-  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
+  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length || canGeneratePlayoffAfterPlayIn
   const canGeneratePlayoffAfterPlayIn = completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
 
   if (!tournament || !division) {
@@ -629,22 +638,11 @@ export default function DivisionStageManagement() {
               {canGeneratePlayoff && (
                 <Button
                   onClick={handleGeneratePlayoffs}
-                  disabled={generatePlayoffsMutation.isPending}
+                  disabled={generatePlayoffsMutation.isPending || generatePlayoffAfterPlayInMutation.isPending}
                   className="flex items-center space-x-2"
                 >
                   <Trophy className="h-4 w-4" />
                   <span>Сгенерировать Play-Off</span>
-                </Button>
-              )}
-              
-              {canGeneratePlayoffAfterPlayIn && (
-                <Button
-                  onClick={handleGeneratePlayoffAfterPlayIn}
-                  disabled={generatePlayoffAfterPlayInMutation.isPending}
-                  className="flex items-center space-x-2"
-                >
-                  <Trophy className="h-4 w-4" />
-                  <span>Сгенерировать Play-Off после Play-In</span>
                 </Button>
               )}
             </div>
