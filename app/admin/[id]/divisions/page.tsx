@@ -79,7 +79,7 @@ interface Pool {
   id: string
   name: string
   order: number
-  teams: Team[]
+  teams?: Team[] // Optional, will be computed dynamically
 }
 
 interface Division {
@@ -177,6 +177,9 @@ function PoolCard({
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
 }) {
+  // Compute teams for this pool dynamically
+  const poolTeams = division.teams.filter(team => team.poolId === pool.id)
+  
   const { setNodeRef } = useDroppable({
     id: `pool-${pool.id}`,
   })
@@ -186,7 +189,7 @@ function PoolCard({
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-medium text-sm text-blue-600 flex items-center">
           <Target className="h-4 w-4 mr-1" />
-          {pool.name} ({pool.teams.length})
+          {pool.name} ({poolTeams.length})
         </h4>
       </div>
       
@@ -194,13 +197,13 @@ function PoolCard({
         ref={setNodeRef}
         className="min-h-[60px] border border-blue-200 rounded-lg p-3 bg-blue-50"
       >
-        {pool.teams.length === 0 ? (
+        {poolTeams.length === 0 ? (
           <div className="text-center text-blue-400 text-sm py-4">
             Перетащите команды сюда
           </div>
         ) : (
           <div className="space-y-2">
-            {pool.teams.map((team) => (
+            {poolTeams.map((team) => (
               <SortableTeam
                 key={team.id}
                 team={team}
