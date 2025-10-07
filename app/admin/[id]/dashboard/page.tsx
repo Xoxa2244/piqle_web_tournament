@@ -166,7 +166,21 @@ export default function DivisionDashboard() {
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
-  const hasPlayIn = playInMatches.length > 0
+  // Calculate Play-In logic based on team count and target bracket size
+  const teamCount = standings.length
+  const getTargetBracketSize = (teamCount: number) => {
+    if (teamCount <= 8) return 4      // До 8 команд → сетка 4
+    if (teamCount <= 16) return 8     // 9-16 команд → сетка 8
+    if (teamCount <= 24) return 16    // 17-24 команд → сетка 16
+    if (teamCount <= 32) return 32    // 25-32 команд → сетка 32
+    return 64                         // 33+ команд → сетка 64
+  }
+  
+  const targetBracketSize = getTargetBracketSize(teamCount)
+  const needsPlayIn = targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
+  
+  const hasPlayIn = needsPlayIn
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
@@ -279,8 +293,7 @@ export default function DivisionDashboard() {
                         
                         <div className="text-sm text-gray-600">
                           <p>Teams: {standings.length}</p>
-                          <p>Target bracket: {currentDivision.teams.length <= 4 ? '4' : 
-                                             currentDivision.teams.length <= 8 ? '8' : '16'}</p>
+                          <p>Target bracket: {targetBracketSize}</p>
                         </div>
                         
                         {!isRRComplete && (
@@ -355,7 +368,7 @@ export default function DivisionDashboard() {
                                 </td>
                                 <td className="py-2 text-center">—</td>
                                 <td className="py-2 text-center">
-                                  {team.rank <= 2 && hasPlayIn ? (
+                                  {team.rank <= autoQualifiedCount && hasPlayIn ? (
                                     <Badge variant="default" className="bg-green-100 text-green-800">
                                       Auto-qualified
                                     </Badge>
