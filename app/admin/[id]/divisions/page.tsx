@@ -446,14 +446,6 @@ function DivisionCard({
       {isExpanded && (
         <CardContent>
           <div className="space-y-4">
-            {/* WaitList */}
-            <WaitList
-              division={division}
-              onTeamMove={onTeamMove}
-              onEditTeam={onEditTeam}
-              onDeleteTeam={onDeleteTeam}
-            />
-            
             {/* Pools */}
             {division.poolCount > 1 && division.pools.length > 0 ? (
               <div className="space-y-4">
@@ -494,6 +486,14 @@ function DivisionCard({
                 </div>
               </div>
             )}
+            
+            {/* WaitList */}
+            <WaitList
+              division={division}
+              onTeamMove={onTeamMove}
+              onEditTeam={onEditTeam}
+              onDeleteTeam={onDeleteTeam}
+            />
           </div>
         </CardContent>
       )}

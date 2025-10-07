@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, AlertTriangle } from 'lucide-react'
@@ -56,6 +56,23 @@ export default function EditDivisionDrawer({
   })
 
   const [showPoolWarning, setShowPoolWarning] = useState(false)
+
+  // Update formData when division changes
+  useEffect(() => {
+    if (division) {
+      setFormData({
+        name: division.name || '',
+        teamKind: division.teamKind || 'DOUBLES_2v2',
+        pairingMode: division.pairingMode || 'FIXED',
+        poolCount: division.poolCount || 1,
+        maxTeams: division.maxTeams || undefined,
+        minDupr: division.constraints?.minDupr ? parseFloat(division.constraints.minDupr) : undefined,
+        maxDupr: division.constraints?.maxDupr ? parseFloat(division.constraints.maxDupr) : undefined,
+        minAge: division.constraints?.minAge || undefined,
+        maxAge: division.constraints?.maxAge || undefined,
+      })
+    }
+  }, [division])
 
   const handlePoolCountChange = (value: number) => {
     const oldPoolCount = formData.poolCount
