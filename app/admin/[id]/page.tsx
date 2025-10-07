@@ -16,7 +16,7 @@ export default function TournamentDetailPage() {
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
     pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
-    poolsEnabled: false,
+    poolCount: 1,  // Количество пулов (1 = без пулов)
     maxTeams: undefined as number | undefined,
     // Constraints
     minDupr: undefined as number | undefined,
@@ -33,7 +33,7 @@ export default function TournamentDetailPage() {
         name: '',
         teamKind: 'DOUBLES_2v2',
         pairingMode: 'FIXED',
-        poolsEnabled: false,
+        poolCount: 1,
         maxTeams: undefined,
         minDupr: undefined,
         maxDupr: undefined,
@@ -56,7 +56,7 @@ export default function TournamentDetailPage() {
       name: divisionForm.name,
       teamKind: divisionForm.teamKind,
       pairingMode: divisionForm.pairingMode,
-      poolsEnabled: divisionForm.poolsEnabled,
+      poolCount: divisionForm.poolCount,
       maxTeams: divisionForm.maxTeams,
       minDupr: divisionForm.minDupr,
       maxDupr: divisionForm.maxDupr,
@@ -316,15 +316,20 @@ export default function TournamentDetailPage() {
               </div>
 
               <div>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={divisionForm.poolsEnabled}
-                    onChange={(e) => setDivisionForm({ ...divisionForm, poolsEnabled: e.target.checked })}
-                    className="mr-2"
-                  />
-                  <span className="text-sm text-gray-700">Включить пулы</span>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Количество пулов
                 </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={divisionForm.poolCount}
+                  onChange={(e) => setDivisionForm({ ...divisionForm, poolCount: parseInt(e.target.value) || 1 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="1 (без пулов)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {divisionForm.poolCount === 1 ? 'Пулы отключены' : `Будет создано ${divisionForm.poolCount} пулов`}
+                </p>
               </div>
 
               <div>
