@@ -601,13 +601,35 @@ export default function DivisionsPage() {
         divisionId,
       })
     } else {
-      // overId is not a drop zone - it's probably another team or invalid target
-      console.log('Invalid drop target:', overId)
-      console.log('This is likely another team ID, not a drop zone')
-      console.log('Make sure to drop on the colored drop zones (WaitList, Pool, or Division areas)')
+      // overId is not a drop zone - it's probably another team
+      // Find the target team and determine its pool/WaitList
+      const targetTeam = tournament?.divisions
+        .flatMap(division => division.teams)
+        .find(team => team.id === overId)
       
-      // Don't perform any mutation - just ignore the drop
-      return
+      if (targetTeam) {
+        console.log('Dropping on team:', { targetTeamId: overId, targetTeamName: targetTeam.name })
+        
+        if (targetTeam.poolId === null) {
+          // Target team is in WaitList
+          console.log('Moving to WaitList (via team):', { teamId, targetTeamId: overId })
+          moveTeamToPoolMutation.mutate({
+            teamId,
+            poolId: null, // Move to WaitList
+          })
+        } else {
+          // Target team is in a pool
+          console.log('Moving to Pool (via team):', { teamId, poolId: targetTeam.poolId, targetTeamId: overId })
+          moveTeamToPoolMutation.mutate({
+            teamId,
+            poolId: targetTeam.poolId,
+          })
+        }
+      } else {
+        console.log('Invalid drop target:', overId)
+        console.log('This is likely another team ID, not a drop zone')
+        console.log('Make sure to drop on the colored drop zones (WaitList, Pool, or Division areas)')
+      }
     }
   }
 
