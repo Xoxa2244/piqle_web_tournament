@@ -155,15 +155,130 @@ export const standingsRouter = createTRPCRouter({
       bracketSize: z.enum(['4', '8', '16']).transform(val => parseInt(val)),
     }))
     .mutation(async ({ ctx, input }) => {
-      // First calculate standings
-      const standingsResult = await ctx.standings.calculateStandings.query({ divisionId: input.divisionId })
-      const standings = standingsResult.standings
-      const N = standings.length
-      const B = input.bracketSize
+      // Get division with teams and matches
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: true,
+          matches: {
+            where: { stage: 'ROUND_ROBIN' },
+            include: {
+              teamA: true,
+              teamB: true,
+              games: true,
+            },
+          },
+          tournament: { select: { id: true } },
+        },
+      })
 
-      if (N < 2) {
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (division.teams.length < 2) {
         throw new Error('Need at least 2 teams to generate playoffs')
       }
+
+      // Calculate standings inline
+      const teamStats: Map<string, TeamStats> = new Map()
+      
+      division.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: 0,
+          losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+          pointDiff: 0,
+          headToHead: new Map(),
+        })
+      })
+
+      // Process matches
+      division.matches.forEach(match => {
+        const teamAStats = teamStats.get(match.teamAId)
+        const teamBStats = teamStats.get(match.teamBId)
+        
+        if (!teamAStats || !teamBStats) return
+
+        // Calculate total points for this match
+        let teamAPoints = 0
+        let teamBPoints = 0
+        
+        match.games.forEach(game => {
+          teamAPoints += game.scoreA
+          teamBPoints += game.scoreB
+        })
+
+        // Update overall stats
+        teamAStats.pointsFor += teamAPoints
+        teamAStats.pointsAgainst += teamBPoints
+        teamBStats.pointsFor += teamBPoints
+        teamBStats.pointsAgainst += teamAPoints
+
+        // Determine winner
+        if (teamAPoints > teamBPoints) {
+          teamAStats.wins += 1
+          teamBStats.losses += 1
+        } else if (teamBPoints > teamAPoints) {
+          teamBStats.wins += 1
+          teamAStats.losses += 1
+        }
+
+        // Update head-to-head stats
+        const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+        const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+
+        if (teamAPoints > teamBPoints) {
+          teamAHeadToHead.wins += 1
+          teamBHeadToHead.losses += 1
+        } else if (teamBPoints > teamAPoints) {
+          teamBHeadToHead.wins += 1
+          teamAHeadToHead.losses += 1
+        }
+
+        teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
+        teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
+
+        teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+        teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
+      })
+
+      // Calculate point differentials
+      teamStats.forEach(stats => {
+        stats.pointDiff = stats.pointsFor - stats.pointsAgainst
+      })
+
+      // Sort teams using tie-breaker rules
+      const standings = Array.from(teamStats.values()).sort((a, b) => {
+        // Tie-breaker 1: Match Wins
+        if (a.wins !== b.wins) {
+          return b.wins - a.wins
+        }
+
+        // Tie-breaker 2: Head-to-Head Point Differential
+        const headToHeadA = a.headToHead.get(b.teamId)
+        const headToHeadB = b.headToHead.get(a.teamId)
+        
+        if (headToHeadA && headToHeadB) {
+          if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
+            return headToHeadB.pointDiff - headToHeadA.pointDiff
+          }
+        }
+
+        // Tie-breaker 3: Overall Point Differential
+        if (a.pointDiff !== b.pointDiff) {
+          return b.pointDiff - a.pointDiff
+        }
+
+        // Tie-breaker 4: Points For (as final tie-breaker)
+        return b.pointsFor - a.pointsFor
+      })
+
+      const N = standings.length
+      const B = input.bracketSize
 
       if (N < B) {
         throw new Error(`Not enough teams for ${B}-team bracket. Have ${N}, need ${B}`)
@@ -179,15 +294,6 @@ export const standingsRouter = createTRPCRouter({
 
       if (existingPlayoffs.length > 0) {
         throw new Error('Playoffs already generated for this division')
-      }
-
-      const division = await ctx.prisma.division.findUnique({
-        where: { id: input.divisionId },
-        include: { tournament: { select: { id: true } } },
-      })
-
-      if (!division) {
-        throw new Error('Division not found')
       }
 
       const matches = []
