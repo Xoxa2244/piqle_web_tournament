@@ -288,7 +288,7 @@ export const standingsRouter = createTRPCRouter({
       const existingPlayoffs = await ctx.prisma.match.findMany({
         where: { 
           divisionId: input.divisionId,
-          stage: { in: ['PLAY_IN', 'PLAYOFF'] },
+          stage: { in: ['PLAY_IN', 'ELIMINATION'] },
         },
       })
 
@@ -393,7 +393,7 @@ function generateSingleEliminationMatches(teams: any[], startRound: number) {
       teamAId: teams[i].teamId,
       teamBId: teams[B - 1 - i].teamId,
       roundIndex: startRound,
-      stage: 'PLAYOFF' as const,
+      stage: 'ELIMINATION' as const,
     })
   }
 
