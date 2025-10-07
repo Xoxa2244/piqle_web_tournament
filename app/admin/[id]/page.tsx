@@ -232,7 +232,7 @@ export default function TournamentDetailPage() {
                   </div>
                 </Button>
               </Link>
-              <Link href={`/admin/${tournamentId}/schedule`}>
+              <Link href={`/admin/${tournamentId}/stages`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
                     <div className="font-medium">Расписание</div>
