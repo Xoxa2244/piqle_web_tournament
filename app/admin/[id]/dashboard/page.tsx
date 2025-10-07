@@ -438,13 +438,6 @@ export default function DivisionDashboard() {
                         <option value="wins">Show Wins/Losses</option>
                         <option value="diff">Show Point Diff</option>
                       </select>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowConnectingLines(!showConnectingLines)}
-                      >
-                        {showConnectingLines ? 'Hide' : 'Show'} Lines
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>

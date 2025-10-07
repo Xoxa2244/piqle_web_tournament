@@ -55,13 +55,16 @@ export default function BracketPyramid({
       let roundName = ''
       const totalTeams = matches.length * 2 // Approximate
       
+      // Правильные названия раундов
       if (roundIndex === 0) {
         roundName = totalTeams <= 4 ? 'Semi-Final' : 
                    totalTeams <= 8 ? 'Quarter-Final' : 'Round of 16'
       } else if (roundIndex === 1) {
         roundName = totalTeams <= 4 ? 'Final' : 'Semi-Final'
       } else if (roundIndex === 2) {
-        roundName = 'Final'
+        roundName = totalTeams <= 4 ? 'Champion' : 'Final'
+      } else if (roundIndex === 3) {
+        roundName = 'Champion'
       } else {
         roundName = `Round ${roundIndex + 1}`
       }
@@ -139,9 +142,9 @@ export default function BracketPyramid({
   return (
     <div className="w-full overflow-x-auto">
       <div className="flex justify-center min-w-max">
-        <div className="flex items-start space-x-4 py-4">
+        <div className="flex items-start space-x-8 py-4">
           {rounds.map((round, roundIdx) => (
-            <div key={round.roundIndex} className="flex flex-col items-center">
+            <div key={round.roundIndex} className="flex flex-col items-center relative">
               {/* Round Header */}
               <div className="mb-4 text-center">
                 <h3 className="font-semibold text-gray-900">{round.roundName}</h3>
@@ -149,7 +152,7 @@ export default function BracketPyramid({
               </div>
 
               {/* Matches */}
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {round.matches.map((match, matchIdx) => {
                   const matchStatus = getMatchStatus(match)
                   const winner = getWinner(match)
@@ -167,19 +170,19 @@ export default function BracketPyramid({
                     >
                       {/* Match Card */}
                       <Card 
-                        className={`w-48 cursor-pointer ${matchStatus.color} ${
+                        className={`w-36 cursor-pointer ${matchStatus.color} ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
                       >
-                        <CardContent className="p-3">
+                        <CardContent className="p-2">
                           {/* Team A */}
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center space-x-1">
                               {winner === match.teamA && (
-                                <Crown className="h-4 w-4 text-yellow-500" />
+                                <Crown className="h-3 w-3 text-yellow-500" />
                               )}
-                              <span className={`text-sm font-medium ${
+                              <span className={`text-xs font-medium truncate ${
                                 winner === match.teamA ? 'text-green-700' : 
                                 winner === match.teamB ? 'text-gray-400' : 'text-gray-900'
                               }`}>
@@ -187,7 +190,7 @@ export default function BracketPyramid({
                               </span>
                             </div>
                             {match.teamA && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs px-1 py-0">
                                 {match.teamA.seed || '?'}
                               </Badge>
                             )}
@@ -203,11 +206,11 @@ export default function BracketPyramid({
 
                           {/* Team B */}
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-1">
                               {winner === match.teamB && (
-                                <Crown className="h-4 w-4 text-yellow-500" />
+                                <Crown className="h-3 w-3 text-yellow-500" />
                               )}
-                              <span className={`text-sm font-medium ${
+                              <span className={`text-xs font-medium truncate ${
                                 winner === match.teamB ? 'text-green-700' : 
                                 winner === match.teamA ? 'text-gray-400' : 'text-gray-900'
                               }`}>
@@ -215,29 +218,29 @@ export default function BracketPyramid({
                               </span>
                             </div>
                             {match.teamB && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs px-1 py-0">
                                 {match.teamB.seed || '?'}
                               </Badge>
                             )}
                           </div>
 
                           {/* Match Status */}
-                          <div className="mt-2 text-center">
+                          <div className="mt-1 text-center">
                             {matchStatus.status === 'scheduled' && (
-                              <Badge variant="secondary" className="text-xs">
-                                <Clock className="h-3 w-3 mr-1" />
+                              <Badge variant="secondary" className="text-xs px-1 py-0">
+                                <Clock className="h-2 w-2 mr-1" />
                                 Scheduled
                               </Badge>
                             )}
                             {matchStatus.status === 'teamA-wins' && (
-                              <Badge variant="default" className="text-xs bg-green-100 text-green-800">
-                                <CheckCircle className="h-3 w-3 mr-1" />
+                              <Badge variant="default" className="text-xs bg-green-100 text-green-800 px-1 py-0">
+                                <CheckCircle className="h-2 w-2 mr-1" />
                                 Complete
                               </Badge>
                             )}
                             {matchStatus.status === 'teamB-wins' && (
-                              <Badge variant="default" className="text-xs bg-green-100 text-green-800">
-                                <CheckCircle className="h-3 w-3 mr-1" />
+                              <Badge variant="default" className="text-xs bg-green-100 text-green-800 px-1 py-0">
+                                <CheckCircle className="h-2 w-2 mr-1" />
                                 Complete
                               </Badge>
                             )}
@@ -245,9 +248,9 @@ export default function BracketPyramid({
                         </CardContent>
                       </Card>
 
-                      {/* Connecting Lines */}
+                      {/* Connecting Lines to Next Round */}
                       {showConnectingLines && roundIdx < rounds.length - 1 && (
-                        <div className="absolute top-1/2 -right-2 w-4 h-px bg-gray-300 transform -translate-y-1/2 z-0" />
+                        <div className="absolute top-1/2 -right-4 w-8 h-px bg-gray-400 transform -translate-y-1/2 z-0" />
                       )}
                     </div>
                   )
