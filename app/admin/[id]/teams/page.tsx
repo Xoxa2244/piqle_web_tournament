@@ -67,7 +67,7 @@ interface Division {
   name: string
   teamKind: string
   pairingMode: string
-  poolsEnabled: boolean
+  poolCount: number  // Заменили poolsEnabled на poolCount
   maxTeams: number | null
   teams: Team[]
   pools: Pool[]
