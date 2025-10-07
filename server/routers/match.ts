@@ -1,6 +1,44 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 
+// Helper function to generate Round Robin for a specific set of teams
+function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolId?: string) {
+  const n = teams.length
+  const isOdd = n % 2 === 1
+  
+  // If odd number of teams, add a BYE team
+  const teamsWithBye = isOdd ? [...teams, { id: 'BYE', name: 'BYE' }] : teams
+
+  const rounds: Array<{ teamAId: string; teamBId: string; roundIndex: number; poolId?: string }> = []
+  const numRounds = isOdd ? n : n - 1
+
+  // Circle method for Round Robin
+  for (let round = 0; round < numRounds; round++) {
+    for (let i = 0; i < teamsWithBye.length / 2; i++) {
+      const teamA = teamsWithBye[i]
+      const teamB = teamsWithBye[teamsWithBye.length - 1 - i]
+      
+      // Skip BYE matches
+      if (teamA.id !== 'BYE' && teamB.id !== 'BYE') {
+        rounds.push({
+          teamAId: teamA.id,
+          teamBId: teamB.id,
+          roundIndex: startRoundIndex + round,
+          poolId,
+        })
+      }
+    }
+    
+    // Rotate teams (except first team)
+    if (teamsWithBye.length > 2) {
+      const lastTeam = teamsWithBye.pop()
+      teamsWithBye.splice(1, 0, lastTeam!)
+    }
+  }
+
+  return rounds
+}
+
 export const matchRouter = createTRPCRouter({
   generateRR: tdProcedure
     .input(z.object({ divisionId: z.string() }))
@@ -9,7 +47,14 @@ export const matchRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              pool: true
+            }
+          },
+          pools: {
+            orderBy: { order: 'asc' }
+          },
           tournament: {
             select: { id: true },
           },
