@@ -505,7 +505,6 @@ export default function DivisionDashboard() {
                       roundIndex: match.roundIndex,
                       stage: match.stage
                     }))}
-                    showMetrics="seed"
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
                       // Handle match click - could open score input modal
@@ -579,7 +578,6 @@ export default function DivisionDashboard() {
                           roundIndex: match.roundIndex,
                           stage: match.stage
                         }))}
-                        showMetrics="seed"
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {
                           console.log('Match clicked:', matchId)

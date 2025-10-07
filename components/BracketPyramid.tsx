@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Trophy, Crown, Zap, Clock, CheckCircle } from 'lucide-react'
+import { Trophy, Crown, Clock, CheckCircle } from 'lucide-react'
 
 interface Team {
   id: string
@@ -26,7 +25,6 @@ interface Match {
 
 interface BracketPyramidProps {
   matches: Match[]
-  showMetrics: 'seed' | 'wins' | 'diff'
   showConnectingLines: boolean
   onMatchClick?: (matchId: string) => void
 }
@@ -39,7 +37,6 @@ interface BracketRound {
 
 export default function BracketPyramid({ 
   matches, 
-  showMetrics, 
   showConnectingLines, 
   onMatchClick 
 }: BracketPyramidProps) {
@@ -55,10 +52,19 @@ export default function BracketPyramid({
       let roundName = ''
       const totalTeams = matches.length * 2 // Approximate
       
-      // Правильные названия раундов
+      // Правильные названия раундов согласно ТЗ
       if (roundIndex === 0) {
-        roundName = totalTeams <= 4 ? 'Semi-Final' : 
-                   totalTeams <= 8 ? 'Quarter-Final' : 'Round of 16'
+        if (totalTeams <= 4) {
+          roundName = 'Semi-Final'
+        } else if (totalTeams <= 8) {
+          roundName = 'Quarter-Final'
+        } else if (totalTeams <= 16) {
+          roundName = 'Round of 16'
+        } else if (totalTeams <= 32) {
+          roundName = 'Round of 32'
+        } else {
+          roundName = 'Round of 64'
+        }
       } else if (roundIndex === 1) {
         roundName = totalTeams <= 4 ? 'Final' : 'Semi-Final'
       } else if (roundIndex === 2) {
@@ -77,35 +83,18 @@ export default function BracketPyramid({
     }
   }
 
-  const getTeamDisplayName = (team: Team | null) => {
-    if (!team) return 'TBD'
-    
-    let display = team.name
-    if (showMetrics === 'seed' && team.seed) {
-      display = `#${team.seed} ${team.name}`
-    } else if (showMetrics === 'wins' && team.wins !== undefined) {
-      display = `${team.name} (${team.wins}-${team.losses || 0})`
-    } else if (showMetrics === 'diff' && team.pointDiff !== undefined) {
-      display = `${team.name} (${team.pointDiff > 0 ? '+' : ''}${team.pointDiff})`
-    }
-    
-    return display
-  }
-
   const getMatchStatus = (match: Match) => {
     if (!match.games || match.games.length === 0) {
-      return { status: 'scheduled', color: 'bg-gray-100 border-gray-200' }
+      return { status: 'scheduled', text: 'Ожидает счёта' }
     }
     
     const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
     const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
     
-    if (totalScoreA > totalScoreB) {
-      return { status: 'teamA-wins', color: 'bg-green-50 border-green-200' }
-    } else if (totalScoreB > totalScoreA) {
-      return { status: 'teamB-wins', color: 'bg-green-50 border-green-200' }
+    if (totalScoreA > totalScoreB || totalScoreB > totalScoreA) {
+      return { status: 'completed', text: 'Завершён' }
     } else {
-      return { status: 'tie', color: 'bg-yellow-50 border-yellow-200' }
+      return { status: 'tie', text: 'Ничья' }
     }
   }
 
@@ -120,13 +109,13 @@ export default function BracketPyramid({
     return null
   }
 
-  const getScore = (match: Match) => {
-    if (!match.games || match.games.length === 0) return null
+  const getScores = (match: Match) => {
+    if (!match.games || match.games.length === 0) return { scoreA: null, scoreB: null }
     
     const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
     const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
     
-    return `${totalScoreA} - ${totalScoreB}`
+    return { scoreA: totalScoreA, scoreB: totalScoreB }
   }
 
   if (matches.length === 0) {
@@ -148,7 +137,12 @@ export default function BracketPyramid({
               {/* Round Header */}
               <div className="mb-4 text-center">
                 <h3 className="font-semibold text-gray-900">{round.roundName}</h3>
-                <p className="text-xs text-gray-500">Round {round.roundIndex + 1}</p>
+                {round.roundName === 'Champion' && (
+                  <div className="flex items-center justify-center mt-1">
+                    <Trophy className="h-4 w-4 text-yellow-500 mr-1" />
+                    <span className="text-xs text-yellow-600 font-medium">Champion</span>
+                  </div>
+                )}
               </div>
 
               {/* Matches */}
@@ -156,7 +150,7 @@ export default function BracketPyramid({
                 {round.matches.map((match, matchIdx) => {
                   const matchStatus = getMatchStatus(match)
                   const winner = getWinner(match)
-                  const score = getScore(match)
+                  const scores = getScores(match)
                   const isHovered = hoveredMatch === match.id
                   
                   return (
@@ -170,80 +164,84 @@ export default function BracketPyramid({
                     >
                       {/* Match Card */}
                       <Card 
-                        className={`w-36 cursor-pointer ${matchStatus.color} ${
+                        className={`w-40 h-32 cursor-pointer bg-white border border-gray-200 ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
                       >
-                        <CardContent className="p-2">
-                          {/* Team A */}
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center space-x-1">
-                              {winner === match.teamA && (
-                                <Crown className="h-3 w-3 text-yellow-500" />
-                              )}
-                              <span className={`text-xs font-medium truncate ${
-                                winner === match.teamA ? 'text-green-700' : 
-                                winner === match.teamB ? 'text-gray-400' : 'text-gray-900'
-                              }`}>
-                                {getTeamDisplayName(match.teamA)}
-                              </span>
+                        <CardContent className="p-3 h-full flex flex-col">
+                          {/* Header - Match Status */}
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-xs text-gray-500 font-medium">Плей-офф</div>
+                            <div className={`text-xs px-2 py-1 rounded-full ${
+                              matchStatus.status === 'scheduled' 
+                                ? 'text-gray-500 bg-gray-100' 
+                                : 'text-green-700 bg-green-50 border border-green-200'
+                            }`}>
+                              {matchStatus.text}
                             </div>
-                            {match.teamA && (
-                              <Badge variant="outline" className="text-xs px-1 py-0">
-                                {match.teamA.seed || '?'}
-                              </Badge>
-                            )}
                           </div>
 
-                          {/* VS */}
-                          <div className="text-center py-1">
-                            <div className="text-xs text-gray-500">vs</div>
-                            {score && (
-                              <div className="text-sm font-bold text-blue-600">{score}</div>
-                            )}
-                          </div>
-
-                          {/* Team B */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-1">
-                              {winner === match.teamB && (
-                                <Crown className="h-3 w-3 text-yellow-500" />
-                              )}
-                              <span className={`text-xs font-medium truncate ${
-                                winner === match.teamB ? 'text-green-700' : 
-                                winner === match.teamA ? 'text-gray-400' : 'text-gray-900'
+                          {/* Body - Teams and Scores */}
+                          <div className="flex-1 space-y-2">
+                            {/* Team A */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                <div className="text-xs text-gray-500 font-medium w-6">
+                                  #{match.teamA?.seed || '?'}
+                                </div>
+                                <div className={`text-sm font-medium truncate ${
+                                  winner === match.teamA ? 'text-gray-900' : 
+                                  winner === match.teamB ? 'text-gray-500' : 
+                                  'text-gray-900'
+                                }`} title={match.teamA?.name || 'TBD'}>
+                                  {match.teamA?.name || 'TBD'}
+                                </div>
+                                {winner === match.teamA && (
+                                  <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                    Победитель
+                                  </div>
+                                )}
+                              </div>
+                              <div className={`text-xl font-semibold font-mono tabular-nums ${
+                                winner === match.teamA ? 'text-blue-600' : 
+                                winner === match.teamB ? 'text-gray-400' : 
+                                'text-blue-600'
                               }`}>
-                                {getTeamDisplayName(match.teamB)}
-                              </span>
+                                {scores.scoreA !== null ? scores.scoreA : '—'}
+                              </div>
                             </div>
-                            {match.teamB && (
-                              <Badge variant="outline" className="text-xs px-1 py-0">
-                                {match.teamB.seed || '?'}
-                              </Badge>
-                            )}
-                          </div>
 
-                          {/* Match Status */}
-                          <div className="mt-1 text-center">
-                            {matchStatus.status === 'scheduled' && (
-                              <Badge variant="secondary" className="text-xs px-1 py-0">
-                                <Clock className="h-2 w-2 mr-1" />
-                                Scheduled
-                              </Badge>
-                            )}
-                            {matchStatus.status === 'teamA-wins' && (
-                              <Badge variant="default" className="text-xs bg-green-100 text-green-800 px-1 py-0">
-                                <CheckCircle className="h-2 w-2 mr-1" />
-                                Complete
-                              </Badge>
-                            )}
-                            {matchStatus.status === 'teamB-wins' && (
-                              <Badge variant="default" className="text-xs bg-green-100 text-green-800 px-1 py-0">
-                                <CheckCircle className="h-2 w-2 mr-1" />
-                                Complete
-                              </Badge>
-                            )}
+                            {/* Divider */}
+                            <div className="border-t border-gray-100"></div>
+
+                            {/* Team B */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                <div className="text-xs text-gray-500 font-medium w-6">
+                                  #{match.teamB?.seed || '?'}
+                                </div>
+                                <div className={`text-sm font-medium truncate ${
+                                  winner === match.teamB ? 'text-gray-900' : 
+                                  winner === match.teamA ? 'text-gray-500' : 
+                                  'text-gray-900'
+                                }`} title={match.teamB?.name || 'TBD'}>
+                                  {match.teamB?.name || 'TBD'}
+                                </div>
+                                {winner === match.teamB && (
+                                  <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                    Победитель
+                                  </div>
+                                )}
+                              </div>
+                              <div className={`text-xl font-semibold font-mono tabular-nums ${
+                                winner === match.teamB ? 'text-blue-600' : 
+                                winner === match.teamA ? 'text-gray-400' : 
+                                'text-blue-600'
+                              }`}>
+                                {scores.scoreB !== null ? scores.scoreB : '—'}
+                              </div>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -258,24 +256,6 @@ export default function BracketPyramid({
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="mt-6 text-center">
-        <div className="inline-flex items-center space-x-4 text-xs text-gray-500">
-          <div className="flex items-center space-x-1">
-            <Crown className="h-3 w-3 text-yellow-500" />
-            <span>Winner</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <Badge variant="outline" className="text-xs">#</Badge>
-            <span>Seed</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <CheckCircle className="h-3 w-3 text-green-500" />
-            <span>Complete</span>
-          </div>
         </div>
       </div>
     </div>
