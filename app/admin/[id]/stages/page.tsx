@@ -34,6 +34,8 @@ export default function DivisionStageManagement() {
   const [showRRMatches, setShowRRMatches] = useState(true)
   const [showPlayInMatches, setShowPlayInMatches] = useState(true)
   const [showPlayoffMatches, setShowPlayoffMatches] = useState(true)
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false)
+  const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | null>(null)
 
   // Загружаем данные турнира
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
