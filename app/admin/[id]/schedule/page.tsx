@@ -6,11 +6,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { useState } from 'react'
+import ScoreInputModal from '@/components/ScoreInputModal'
 
 export default function SchedulePage() {
   const params = useParams()
   const tournamentId = params.id as string
   const [generatingRR, setGeneratingRR] = useState<string | null>(null)
+  const [scoreModal, setScoreModal] = useState<{
+    isOpen: boolean
+    matchId: string | null
+    teamAName: string
+    teamBName: string
+  }>({
+    isOpen: false,
+    matchId: null,
+    teamAName: '',
+    teamBName: '',
+  })
 
   const { data: tournament, isLoading, refetch } = trpc.tournament.get.useQuery({ id: tournamentId })
   const generateRRMutation = trpc.match.generateRR.useMutation({
@@ -24,9 +36,43 @@ export default function SchedulePage() {
     },
   })
 
+  const updateScoreMutation = trpc.match.updateGameScore.useMutation({
+    onSuccess: () => {
+      refetch()
+      setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+    },
+    onError: (error) => {
+      alert(`Ошибка: ${error.message}`)
+    },
+  })
+
   const handleGenerateRR = (divisionId: string) => {
     setGeneratingRR(divisionId)
     generateRRMutation.mutate({ divisionId })
+  }
+
+  const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
+    setScoreModal({
+      isOpen: true,
+      matchId,
+      teamAName,
+      teamBName,
+    })
+  }
+
+  const handleScoreSubmit = (scoreA: number, scoreB: number) => {
+    if (scoreModal.matchId) {
+      updateScoreMutation.mutate({
+        matchId: scoreModal.matchId,
+        gameIndex: 0, // First game
+        scoreA,
+        scoreB,
+      })
+    }
+  }
+
+  const handleScoreModalClose = () => {
+    setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
   }
 
   if (isLoading) {
@@ -159,15 +205,37 @@ export default function SchedulePage() {
                                   {roundMatches.map((match) => (
                                     <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
                                       <div className="flex items-center space-x-4">
-                                        <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
+                                        <div className="flex items-center space-x-2">
+                                          <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
+                                          {match.games && match.games.length > 0 && (
+                                            <span className="text-lg font-bold text-blue-600">
+                                              {match.games[0]?.scoreA || 0}
+                                            </span>
+                                          )}
+                                        </div>
                                         <span className="text-gray-500">vs</span>
-                                        <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                                        <div className="flex items-center space-x-2">
+                                          {match.games && match.games.length > 0 && (
+                                            <span className="text-lg font-bold text-blue-600">
+                                              {match.games[0]?.scoreB || 0}
+                                            </span>
+                                          )}
+                                          <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                                        </div>
                                       </div>
                                       <div className="flex items-center space-x-2">
                                         <span className="text-sm text-gray-500">
                                           {match.stage} • Round {match.roundIndex + 1}
                                         </span>
-                                        <Button size="sm" variant="outline">
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline"
+                                          onClick={() => handleScoreInput(
+                                            match.id, 
+                                            match.teamA?.name || 'TBD', 
+                                            match.teamB?.name || 'TBD'
+                                          )}
+                                        >
                                           Ввести счет
                                         </Button>
                                       </div>
@@ -191,6 +259,16 @@ export default function SchedulePage() {
           ))}
         </div>
       )}
+
+      {/* Score Input Modal */}
+      <ScoreInputModal
+        isOpen={scoreModal.isOpen}
+        onClose={handleScoreModalClose}
+        onSubmit={handleScoreSubmit}
+        teamAName={scoreModal.teamAName}
+        teamBName={scoreModal.teamBName}
+        isLoading={updateScoreMutation.isPending}
+      />
     </div>
   )
 }
