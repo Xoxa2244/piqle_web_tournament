@@ -97,6 +97,9 @@ export default function DivisionStageManagement() {
   const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
+  // Находим текущий дивизион в турнире для получения дополнительной информации
+  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId)
+  
   // Определяем текущую стадию
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
   
@@ -188,7 +191,7 @@ export default function DivisionStageManagement() {
               <h1 className="text-2xl font-bold text-gray-900">{division.name}</h1>
               <div className="flex items-center space-x-4 mt-1">
                 <span className="text-sm text-gray-600">
-                  {teamCount} команд • {division.teamKind === 'SINGLES_1v1' ? 'Singles' : 'Doubles'} • {division.pairingMode}
+                  {teamCount} команд • {currentDivision?.teamKind === 'SINGLES_1v1' ? 'Singles' : 'Doubles'} • {currentDivision?.pairingMode}
                 </span>
                 <Badge variant="outline" className="text-xs">
                   {currentStage.replace(/_/g, ' ')}
