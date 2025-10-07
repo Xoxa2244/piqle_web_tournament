@@ -68,11 +68,9 @@ export default function BracketPyramid({
       } else if (roundIndex === 1) {
         roundName = totalTeams <= 4 ? 'Final' : 'Semi-Final'
       } else if (roundIndex === 2) {
-        roundName = totalTeams <= 4 ? 'Champion' : 'Final'
-      } else if (roundIndex === 3) {
-        roundName = 'Champion'
+        roundName = 'Final'
       } else {
-        roundName = `Round ${roundIndex + 1}`
+        roundName = 'Final'
       }
       
       rounds.push({
@@ -137,12 +135,6 @@ export default function BracketPyramid({
               {/* Round Header */}
               <div className="mb-4 text-center">
                 <h3 className="font-semibold text-gray-900">{round.roundName}</h3>
-                {round.roundName === 'Champion' && (
-                  <div className="flex items-center justify-center mt-1">
-                    <Trophy className="h-4 w-4 text-yellow-500 mr-1" />
-                    <span className="text-xs text-yellow-600 font-medium">Champion</span>
-                  </div>
-                )}
               </div>
 
               {/* Matches */}
@@ -164,87 +156,65 @@ export default function BracketPyramid({
                     >
                       {/* Match Card */}
                       <Card 
-                        className={`w-40 h-32 cursor-pointer bg-white border border-gray-200 ${
+                        className={`w-36 h-28 cursor-pointer bg-white border border-gray-200 rounded-lg ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
                       >
-                        <CardContent className="p-3 h-full flex flex-col">
-                          {/* Header - Match Status */}
-                          <div className="flex justify-between items-center mb-2">
-                            <div className="text-xs text-gray-500 font-medium">Плей-офф</div>
-                            <div className={`text-xs px-2 py-1 rounded-full ${
-                              matchStatus.status === 'scheduled' 
-                                ? 'text-gray-500 bg-gray-100' 
-                                : 'text-green-700 bg-green-50 border border-green-200'
+                        <CardContent className="p-3 h-full flex flex-col justify-center">
+                          {/* Team A */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              <div className="text-xs text-gray-500 font-medium">
+                                #{match.teamA?.seed || '?'}
+                              </div>
+                              <div className={`text-sm font-medium truncate ${
+                                winner === match.teamB ? 'text-gray-400' : 'text-gray-900'
+                              }`} title={match.teamA?.name || 'TBD'}>
+                                {match.teamA?.name || 'TBD'}
+                              </div>
+                            </div>
+                            <div className={`text-lg font-semibold font-mono tabular-nums text-right ${
+                              winner === match.teamA ? 'text-gray-900' : 
+                              winner === match.teamB ? 'text-gray-400' : 
+                              'text-gray-900'
                             }`}>
-                              {matchStatus.text}
+                              {scores.scoreA !== null ? scores.scoreA : '—'}
                             </div>
                           </div>
 
-                          {/* Body - Teams and Scores */}
-                          <div className="flex-1 space-y-2">
-                            {/* Team A */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                <div className="text-xs text-gray-500 font-medium w-6">
-                                  #{match.teamA?.seed || '?'}
-                                </div>
-                                <div className={`text-sm font-medium truncate ${
-                                  winner === match.teamA ? 'text-gray-900' : 
-                                  winner === match.teamB ? 'text-gray-500' : 
-                                  'text-gray-900'
-                                }`} title={match.teamA?.name || 'TBD'}>
-                                  {match.teamA?.name || 'TBD'}
-                                </div>
-                                {winner === match.teamA && (
-                                  <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                    Победитель
-                                  </div>
-                                )}
+                          {/* Team B */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              <div className="text-xs text-gray-500 font-medium">
+                                #{match.teamB?.seed || '?'}
                               </div>
-                              <div className={`text-xl font-semibold font-mono tabular-nums ${
-                                winner === match.teamA ? 'text-blue-600' : 
-                                winner === match.teamB ? 'text-gray-400' : 
-                                'text-blue-600'
-                              }`}>
-                                {scores.scoreA !== null ? scores.scoreA : '—'}
+                              <div className={`text-sm font-medium truncate ${
+                                winner === match.teamA ? 'text-gray-400' : 'text-gray-900'
+                              }`} title={match.teamB?.name || 'TBD'}>
+                                {match.teamB?.name || 'TBD'}
                               </div>
                             </div>
-
-                            {/* Divider */}
-                            <div className="border-t border-gray-100"></div>
-
-                            {/* Team B */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                <div className="text-xs text-gray-500 font-medium w-6">
-                                  #{match.teamB?.seed || '?'}
-                                </div>
-                                <div className={`text-sm font-medium truncate ${
-                                  winner === match.teamB ? 'text-gray-900' : 
-                                  winner === match.teamA ? 'text-gray-500' : 
-                                  'text-gray-900'
-                                }`} title={match.teamB?.name || 'TBD'}>
-                                  {match.teamB?.name || 'TBD'}
-                                </div>
-                                {winner === match.teamB && (
-                                  <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                    Победитель
-                                  </div>
-                                )}
-                              </div>
-                              <div className={`text-xl font-semibold font-mono tabular-nums ${
-                                winner === match.teamB ? 'text-blue-600' : 
-                                winner === match.teamA ? 'text-gray-400' : 
-                                'text-blue-600'
-                              }`}>
-                                {scores.scoreB !== null ? scores.scoreB : '—'}
-                              </div>
+                            <div className={`text-lg font-semibold font-mono tabular-nums text-right ${
+                              winner === match.teamB ? 'text-gray-900' : 
+                              winner === match.teamA ? 'text-gray-400' : 
+                              'text-gray-900'
+                            }`}>
+                              {scores.scoreB !== null ? scores.scoreB : '—'}
                             </div>
                           </div>
                         </CardContent>
                       </Card>
+
+                      {/* Champion Badge for Final Winner */}
+                      {round.roundName === 'Final' && round.matches.length === 1 && winner && (
+                        <div className="flex items-center justify-center mt-2">
+                          <div className="flex items-center space-x-1 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded-full">
+                            <Trophy className="h-3 w-3 text-yellow-600" />
+                            <span className="text-xs text-yellow-700 font-medium">Champion</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Connecting Lines to Next Round */}
                       {showConnectingLines && roundIdx < rounds.length - 1 && (
