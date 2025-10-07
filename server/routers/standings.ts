@@ -149,6 +149,44 @@ export const standingsRouter = createTRPCRouter({
       }
     }),
 
+  checkPlayInStatus: tdProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Get all play-in matches for this division
+      const playInMatches = await ctx.prisma.match.findMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: 'PLAY_IN',
+        },
+        include: {
+          games: true,
+        },
+      })
+
+      if (playInMatches.length === 0) {
+        return {
+          hasPlayIn: false,
+          isComplete: true,
+          completedMatches: 0,
+          totalMatches: 0,
+        }
+      }
+
+      const completedMatches = playInMatches.filter(match => 
+        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      )
+
+      return {
+        hasPlayIn: true,
+        isComplete: completedMatches.length === playInMatches.length,
+        completedMatches: completedMatches.length,
+        totalMatches: playInMatches.length,
+        incompleteMatches: playInMatches.filter(match => 
+          match.games.length === 0 || !match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+        ),
+      }
+    }),
+
   generatePlayoffs: tdProcedure
     .input(z.object({ 
       divisionId: z.string(),
@@ -294,6 +332,27 @@ export const standingsRouter = createTRPCRouter({
 
       if (existingPlayoffs.length > 0) {
         throw new Error('Playoffs already generated for this division')
+      }
+
+      // Check if play-in is complete (if it exists)
+      const playInMatches = await ctx.prisma.match.findMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: 'PLAY_IN',
+        },
+        include: {
+          games: true,
+        },
+      })
+
+      if (playInMatches.length > 0) {
+        const completedPlayInMatches = playInMatches.filter(match => 
+          match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+        )
+
+        if (completedPlayInMatches.length !== playInMatches.length) {
+          throw new Error('Плей-офф не может быть сгенерирован. Вы должны ввести результаты всех матчей плей-ина.')
+        }
       }
 
       const matches = []
