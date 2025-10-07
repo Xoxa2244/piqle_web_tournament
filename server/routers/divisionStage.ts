@@ -267,9 +267,9 @@ export const divisionStageRouter = createTRPCRouter({
         // Update stage to indicate completion
         let completedStage = division.stage
         if (completedStage.endsWith('_SCHEDULED')) {
-          completedStage = completedStage.replace('_SCHEDULED', '_COMPLETE')
+          completedStage = completedStage.replace('_SCHEDULED', '_COMPLETE') as any
         } else if (completedStage.endsWith('_IN_PROGRESS')) {
-          completedStage = completedStage.replace('_IN_PROGRESS', '_COMPLETE')
+          completedStage = completedStage.replace('_IN_PROGRESS', '_COMPLETE') as any
         }
 
         await ctx.prisma.division.update({
