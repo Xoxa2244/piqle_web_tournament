@@ -31,8 +31,8 @@ export const divisionRouter = createTRPCRouter({
               maxAge: maxAge ? maxAge : null,
             }
           },
-          // Создаем пулы если poolCount > 1
-          pools: poolCount > 1 ? {
+          // Создаем пулы если poolCount >= 1
+          pools: poolCount >= 1 ? {
             create: Array.from({ length: poolCount }, (_, i) => ({
               name: `Pool ${i + 1}`,
               order: i + 1,

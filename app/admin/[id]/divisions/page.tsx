@@ -393,7 +393,7 @@ function DivisionCard({
                 <span>{division.teamKind}</span>
                 <span>•</span>
                 <span>{division.pairingMode}</span>
-                {division.poolCount > 1 && (
+                {division.poolCount >= 1 && (
                   <>
                     <span>•</span>
                     <span>{division.poolCount} пулов</span>
@@ -447,7 +447,7 @@ function DivisionCard({
         <CardContent>
           <div className="space-y-4">
             {/* Pools */}
-            {division.poolCount > 1 && division.pools.length > 0 ? (
+            {division.poolCount >= 1 && division.pools.length > 0 ? (
               <div className="space-y-4">
                 {division.pools.map((pool) => (
                   <PoolCard

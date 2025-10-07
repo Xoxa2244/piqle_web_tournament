@@ -333,10 +333,10 @@ export default function TournamentDetailPage() {
                   value={divisionForm.poolCount}
                   onChange={(e) => setDivisionForm({ ...divisionForm, poolCount: parseInt(e.target.value) || 1 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="1 (без пулов)"
+                  placeholder="1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {divisionForm.poolCount === 1 ? 'Пулы отключены' : `Будет создано ${divisionForm.poolCount} пулов`}
+                  {divisionForm.poolCount === 1 ? 'Будет создан 1 пул' : `Будет создано ${divisionForm.poolCount} пулов`}
                 </p>
               </div>
 
