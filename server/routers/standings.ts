@@ -569,10 +569,15 @@ export const standingsRouter = createTRPCRouter({
       })
 
       // Get auto-qualified teams (top teams that didn't need play-in)
-      const autoQualified = standings.slice(0, N - 2 * E)
+      const autoQualifiedTeamIds = standings.slice(0, N - 2 * E).map(s => s.teamId)
+      const autoQualified = division.teams.filter(team => autoQualifiedTeamIds.includes(team.id))
 
       // Generate playoff matches with correct participants
-      const playoffMatches = generateSingleEliminationMatches([...autoQualified, ...playInWinners], 0)
+      // Convert teams to the format expected by generateSingleEliminationMatches
+      const playoffTeams = [...autoQualified, ...playInWinners].map(team => ({
+        teamId: team.id || team.teamId
+      }))
+      const playoffMatches = generateSingleEliminationMatches(playoffTeams, 0)
 
       // Create playoff matches in database
       const createdMatches = await Promise.all(
