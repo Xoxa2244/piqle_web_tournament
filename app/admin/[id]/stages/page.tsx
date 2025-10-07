@@ -527,8 +527,15 @@ export default function DivisionStageManagement() {
                   <div className="space-y-6">
                     {/* Группируем матчи по пулам */}
                     {(() => {
-                      // Получаем все пулы из матчей
+                      // Получаем все пулы из матчей, сортируем по порядку
                       const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
+                        .map(poolId => {
+                          const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                          return { id: poolId, order: pool?.order || 0 }
+                        })
+                        .sort((a, b) => a.order - b.order)
+                        .map(p => p.id)
+                      
                       const waitListMatches = rrMatches.filter(m => m.poolId === null)
                       
                       return (
@@ -539,7 +546,7 @@ export default function DivisionStageManagement() {
                             const pool = currentDivision?.pools?.find(p => p.id === poolId)
                             const poolName = pool?.name || `Pool ${poolId}`
                             
-                            // Группируем матчи пула по раундам
+                            // Группируем матчи пула по раундам и сортируем
                             const rounds = Array.from(new Set(poolMatches.map(m => m.roundIndex))).sort()
                             
                             return (
@@ -552,11 +559,11 @@ export default function DivisionStageManagement() {
                                 </div>
                                 
                                 <div className="space-y-4">
-                                  {rounds.map(roundIndex => {
+                                  {rounds.map((roundIndex, index) => {
                                     const roundMatches = poolMatches.filter(m => m.roundIndex === roundIndex)
                                     return (
                                       <div key={roundIndex} className="space-y-2">
-                                        <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
+                                        <h5 className="text-sm font-medium text-gray-700">Раунд {index + 1}</h5>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                           {roundMatches.map((match) => (
                                             <div key={match.id} className="border border-gray-200 rounded-lg p-4">
@@ -618,11 +625,11 @@ export default function DivisionStageManagement() {
                               </div>
                               
                               <div className="space-y-4">
-                                {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).sort().map(roundIndex => {
+                                {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).sort().map((roundIndex, index) => {
                                   const roundMatches = waitListMatches.filter(m => m.roundIndex === roundIndex)
                                   return (
                                     <div key={roundIndex} className="space-y-2">
-                                      <h5 className="text-sm font-medium text-gray-700">Раунд {roundIndex + 1}</h5>
+                                      <h5 className="text-sm font-medium text-gray-700">Раунд {index + 1}</h5>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {roundMatches.map((match) => (
                                           <div key={match.id} className="border border-gray-200 rounded-lg p-4">
