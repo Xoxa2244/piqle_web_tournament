@@ -9,7 +9,7 @@ function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolI
   // If odd number of teams, add a BYE team
   const teamsWithBye = isOdd ? [...teams, { id: 'BYE', name: 'BYE' }] : teams
 
-  const rounds: Array<{ teamAId: string; teamBId: string; roundIndex: number; poolId?: string }> = []
+  const rounds: Array<{ teamAId: string; teamBId: string; roundIndex: number; poolId?: string | null }> = []
   const numRounds = isOdd ? n : n - 1
 
   // Circle method for Round Robin
