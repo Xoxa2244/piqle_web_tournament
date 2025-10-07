@@ -149,11 +149,11 @@ export default function DivisionStageManagement() {
   const teamCount = teams.length
   // Определяем целевой размер сетки на основе количества команд
   const getTargetBracketSize = (teamCount: number) => {
-    if (teamCount <= 4) return 4
-    if (teamCount <= 8) return 8
-    if (teamCount <= 16) return 16
-    if (teamCount <= 32) return 32
-    return 64
+    if (teamCount <= 8) return 4      // До 8 команд → сетка 4
+    if (teamCount <= 16) return 8     // 9-16 команд → сетка 8
+    if (teamCount <= 24) return 16    // 17-24 команд → сетка 16
+    if (teamCount <= 32) return 32    // 25-32 команд → сетка 32
+    return 64                         // 33+ команд → сетка 64
   }
   const targetBracketSize = getTargetBracketSize(teamCount)
   const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
