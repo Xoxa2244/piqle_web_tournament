@@ -115,6 +115,8 @@ export const divisionRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, minDupr, maxDupr, minAge, maxAge, poolCount, ...divisionData } = input
       
+      console.log('Division update input:', { id, poolCount, divisionData })
+      
       // Get current division to check if poolCount is changing
       const currentDivision = await ctx.prisma.division.findUnique({
         where: { id },
@@ -125,6 +127,13 @@ export const divisionRouter = createTRPCRouter({
         throw new Error('Division not found')
       }
 
+      console.log('Current division:', { 
+        id: currentDivision.id, 
+        name: currentDivision.name, 
+        poolCount: currentDivision.poolCount,
+        poolsCount: currentDivision.pools.length 
+      })
+
       // Update division basic data
       const division = await ctx.prisma.division.update({
         where: { id },
@@ -134,8 +143,12 @@ export const divisionRouter = createTRPCRouter({
         },
       })
 
+      console.log('Updated division poolCount:', division.poolCount)
+
       // Handle pool count changes
       if (poolCount !== undefined && poolCount !== currentDivision.poolCount) {
+        console.log('Pool count is changing:', { from: currentDivision.poolCount, to: poolCount })
+        
         if (poolCount > currentDivision.poolCount) {
           // Add new pools
           const newPools = Array.from({ length: poolCount - currentDivision.poolCount }, (_, i) => ({
@@ -143,6 +156,8 @@ export const divisionRouter = createTRPCRouter({
             name: `Pool ${currentDivision.poolCount + i + 1}`,
             order: currentDivision.poolCount + i + 1,
           }))
+          
+          console.log('Creating new pools:', newPools)
           
           await ctx.prisma.pool.createMany({
             data: newPools
@@ -152,6 +167,8 @@ export const divisionRouter = createTRPCRouter({
           const poolsToRemove = currentDivision.pools
             .filter(pool => pool.order > poolCount)
             .sort((a, b) => b.order - a.order) // Remove from highest order first
+
+          console.log('Removing pools:', poolsToRemove.map(p => ({ id: p.id, name: p.name, order: p.order })))
 
           for (const pool of poolsToRemove) {
             // Move teams from removed pool to first pool
@@ -169,6 +186,8 @@ export const divisionRouter = createTRPCRouter({
             })
           }
         }
+      } else {
+        console.log('Pool count is not changing or undefined')
       }
 
       // Update constraints if provided
