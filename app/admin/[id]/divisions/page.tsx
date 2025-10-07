@@ -93,8 +93,8 @@ interface Division {
   teams: Team[]
   pools: Pool[]
   constraints: {
-    minDupr: number | null
-    maxDupr: number | null
+    minDupr: string | null  // Changed from number to string
+    maxDupr: string | null  // Changed from number to string
     minAge: number | null
     maxAge: number | null
   } | null
