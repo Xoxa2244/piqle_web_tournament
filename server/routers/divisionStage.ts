@@ -232,6 +232,10 @@ export const divisionStageRouter = createTRPCRouter({
       }
 
       // Check if this completes the current stage
+      if (!match.divisionId) {
+        return { success: true }
+      }
+
       const division = await ctx.prisma.division.findUnique({
         where: { id: match.divisionId },
         include: {
