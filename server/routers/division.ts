@@ -104,15 +104,90 @@ export const divisionRouter = createTRPCRouter({
       name: z.string().min(1).optional(),
       teamKind: z.enum(['SINGLES_1v1', 'DOUBLES_2v2', 'SQUAD_4v4']).optional(),
       pairingMode: z.enum(['FIXED', 'MIX_AND_MATCH']).optional(),
-      poolsEnabled: z.boolean().optional(),
+      poolCount: z.number().int().min(1).optional(),
       maxTeams: z.number().optional(),
+      // Constraints
+      minDupr: z.number().optional(),
+      maxDupr: z.number().optional(),
+      minAge: z.number().optional(),
+      maxAge: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input
+      const { id, minDupr, maxDupr, minAge, maxAge, poolCount, ...divisionData } = input
+      
+      // Get current division to check if poolCount is changing
+      const currentDivision = await ctx.prisma.division.findUnique({
+        where: { id },
+        include: { pools: true }
+      })
+
+      if (!currentDivision) {
+        throw new Error('Division not found')
+      }
+
+      // Update division basic data
       const division = await ctx.prisma.division.update({
         where: { id },
-        data,
+        data: {
+          ...divisionData,
+          poolCount: poolCount ?? currentDivision.poolCount,
+        },
       })
+
+      // Handle pool count changes
+      if (poolCount !== undefined && poolCount !== currentDivision.poolCount) {
+        if (poolCount > currentDivision.poolCount) {
+          // Add new pools
+          const newPools = Array.from({ length: poolCount - currentDivision.poolCount }, (_, i) => ({
+            divisionId: id,
+            name: `Pool ${currentDivision.poolCount + i + 1}`,
+            order: currentDivision.poolCount + i + 1,
+          }))
+          
+          await ctx.prisma.pool.createMany({
+            data: newPools
+          })
+        } else if (poolCount < currentDivision.poolCount) {
+          // Remove excess pools (move teams to first pool)
+          const poolsToRemove = currentDivision.pools
+            .filter(pool => pool.order > poolCount)
+            .sort((a, b) => b.order - a.order) // Remove from highest order first
+
+          for (const pool of poolsToRemove) {
+            // Move teams from removed pool to first pool
+            const firstPool = currentDivision.pools.find(p => p.order === 1)
+            if (firstPool) {
+              await ctx.prisma.team.updateMany({
+                where: { poolId: pool.id },
+                data: { poolId: firstPool.id }
+              })
+            }
+            
+            // Delete the pool
+            await ctx.prisma.pool.delete({
+              where: { id: pool.id }
+            })
+          }
+        }
+      }
+
+      // Update constraints if provided
+      if (minDupr !== undefined || maxDupr !== undefined || minAge !== undefined || maxAge !== undefined) {
+        const constraintsData: any = {}
+        if (minDupr !== undefined) constraintsData.minDupr = minDupr
+        if (maxDupr !== undefined) constraintsData.maxDupr = maxDupr
+        if (minAge !== undefined) constraintsData.minAge = minAge
+        if (maxAge !== undefined) constraintsData.maxAge = maxAge
+
+        await ctx.prisma.divisionConstraints.upsert({
+          where: { divisionId: id },
+          create: {
+            divisionId: id,
+            ...constraintsData,
+          },
+          update: constraintsData,
+        })
+      }
 
       // Log the update
       await ctx.prisma.auditLog.create({
@@ -121,8 +196,8 @@ export const divisionRouter = createTRPCRouter({
           tournamentId: division.tournamentId,
           action: 'UPDATE',
           entityType: 'Division',
-          entityId: division.id,
-          payload: data,
+          entityId: id,
+          payload: input,
         },
       })
 
