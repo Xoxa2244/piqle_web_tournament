@@ -575,7 +575,7 @@ export const standingsRouter = createTRPCRouter({
       // Generate playoff matches with correct participants
       // Convert teams to the format expected by generateSingleEliminationMatches
       const playoffTeams = [...autoQualified, ...playInWinners].map(team => ({
-        teamId: team.id || team.teamId
+        teamId: team.id
       }))
       const playoffMatches = generateSingleEliminationMatches(playoffTeams, 0)
 
