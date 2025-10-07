@@ -78,40 +78,65 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Round Robin already generated for this division')
       }
 
-      // Generate Round Robin schedule using circle method
-      const teams = division.teams
-      const n = teams.length
-      const isOdd = n % 2 === 1
-      
-      // If odd number of teams, add a BYE team
-      if (isOdd) {
-        teams.push({ id: 'BYE', name: 'BYE', divisionId: input.divisionId } as any)
-      }
+      // Generate Round Robin schedule - separate by pools if they exist
+      const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string }> = []
+      let currentRoundIndex = 0
 
-      const rounds: Array<{ teamA: any; teamB: any; roundIndex: number }> = []
-      const numRounds = isOdd ? n : n - 1
-
-      // Circle method for Round Robin
-      for (let round = 0; round < numRounds; round++) {
-        for (let i = 0; i < teams.length / 2; i++) {
-          const teamA = teams[i]
-          const teamB = teams[teams.length - 1 - i]
+      if (division.pools.length > 0) {
+        // Generate RR for each pool separately
+        for (const pool of division.pools) {
+          const poolTeams = division.teams.filter(team => team.poolId === pool.id)
           
-          // Skip if one of the teams is BYE
-          if (teamA.id !== 'BYE' && teamB.id !== 'BYE') {
-            rounds.push({
-              teamA,
-              teamB,
-              roundIndex: round,
-            })
+          if (poolTeams.length < 2) {
+            console.log(`Pool ${pool.name} has less than 2 teams, skipping RR generation`)
+            continue
           }
+
+          console.log(`Generating RR for pool ${pool.name} with ${poolTeams.length} teams`)
+          
+          // Generate RR for this pool
+          const poolRounds = generateRoundRobinForTeams(poolTeams, currentRoundIndex, pool.id)
+          
+          // Add pool rounds to main rounds array
+          rounds.push(...poolRounds.map(round => ({
+            teamA: poolTeams.find(t => t.id === round.teamAId),
+            teamB: poolTeams.find(t => t.id === round.teamBId),
+            roundIndex: round.roundIndex,
+            poolId: pool.id,
+          })))
+
+          // Update current round index for next pool
+          const poolRoundsCount = Math.max(...poolRounds.map(r => r.roundIndex)) + 1
+          currentRoundIndex = poolRoundsCount
         }
 
-        // Rotate teams (except the first one)
-        if (teams.length > 2) {
-          const lastTeam = teams.pop()
-          teams.splice(1, 0, lastTeam!)
+        // Also generate RR for teams in WaitList (poolId === null)
+        const waitListTeams = division.teams.filter(team => team.poolId === null)
+        if (waitListTeams.length >= 2) {
+          console.log(`Generating RR for WaitList with ${waitListTeams.length} teams`)
+          
+          const waitListRounds = generateRoundRobinForTeams(waitListTeams, currentRoundIndex, null)
+          
+          rounds.push(...waitListRounds.map(round => ({
+            teamA: waitListTeams.find(t => t.id === round.teamAId),
+            teamB: waitListTeams.find(t => t.id === round.teamBId),
+            roundIndex: round.roundIndex,
+            poolId: null,
+          })))
         }
+      } else {
+        // No pools - generate RR for all teams in division
+        const teams = division.teams
+        console.log(`Generating RR for division with ${teams.length} teams (no pools)`)
+        
+        const divisionRounds = generateRoundRobinForTeams(teams, 0, undefined)
+        
+        rounds.push(...divisionRounds.map(round => ({
+          teamA: teams.find(t => t.id === round.teamAId),
+          teamB: teams.find(t => t.id === round.teamBId),
+          roundIndex: round.roundIndex,
+          poolId: undefined,
+        })))
       }
 
       // Create matches in database
@@ -120,6 +145,7 @@ export const matchRouter = createTRPCRouter({
           ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
+              poolId: round.poolId, // Add poolId to match
               teamAId: round.teamA.id,
               teamBId: round.teamB.id,
               roundIndex: round.roundIndex,
@@ -153,7 +179,7 @@ export const matchRouter = createTRPCRouter({
       return {
         matches,
         totalMatches: matches.length,
-        rounds: numRounds,
+        rounds: Math.max(...rounds.map(r => r.roundIndex)) + 1,
       }
     }),
   listByDivision: protectedProcedure
