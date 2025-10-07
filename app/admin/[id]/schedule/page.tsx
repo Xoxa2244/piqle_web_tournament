@@ -59,6 +59,7 @@ export default function SchedulePage() {
     },
   })
 
+
   const handleGenerateRR = (divisionId: string) => {
     setGeneratingRR(divisionId)
     generateRRMutation.mutate({ divisionId })
@@ -150,7 +151,13 @@ export default function SchedulePage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {tournament.divisions.map((division) => (
+          {tournament.divisions.map((division) => {
+            const playInStatusQuery = trpc.standings.checkPlayInStatus.useQuery(
+              { divisionId: division.id },
+              { enabled: !!division }
+            )
+            
+            return (
             <Card key={division.id}>
               <CardHeader>
                 <CardTitle>{division.name}</CardTitle>
@@ -221,16 +228,42 @@ export default function SchedulePage() {
                               Будет проведен плей-ин для {division.teams.length - parseInt(bracketSize)} команд
                             </p>
                           )}
+                          
+                          {/* Play-in Status */}
+                          {playInStatusQuery.data?.hasPlayIn && (
+                            <div className="mt-2 p-2 bg-blue-50 rounded">
+                              <p className="font-medium text-blue-800">Статус плей-ина:</p>
+                              <p className="text-blue-700">
+                                {playInStatusQuery.data.completedMatches} / {playInStatusQuery.data.totalMatches} матчей завершено
+                              </p>
+                              {!playInStatusQuery.data.isComplete && (
+                                <p className="text-red-600 font-medium mt-1">
+                                  ⚠️ Завершите все матчи плей-ина для генерации плей-офф
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                         
                         <Button 
                           variant="outline" 
                           size="sm"
                           onClick={() => handleGeneratePlayoffs(division.id)}
-                          disabled={generatingPlayoffs === division.id || division.teams.length < 2}
+                          disabled={
+                            generatingPlayoffs === division.id || 
+                            division.teams.length < 2 ||
+                            (playInStatusQuery.data?.hasPlayIn && !playInStatusQuery.data?.isComplete)
+                          }
                         >
                           {generatingPlayoffs === division.id ? 'Генерация...' : 'Сгенерировать плей-офф'}
                         </Button>
+                        
+                        {/* Disabled reason */}
+                        {playInStatusQuery.data?.hasPlayIn && !playInStatusQuery.data?.isComplete && (
+                          <p className="text-xs text-red-600 mt-1">
+                            Завершите все матчи плей-ина для продолжения
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -321,7 +354,8 @@ export default function SchedulePage() {
                 )}
               </CardContent>
             </Card>
-          ))}
+            )
+          })}
         </div>
       )}
 
