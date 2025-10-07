@@ -36,7 +36,7 @@ export default function DivisionStageManagement() {
   const [showPlayInMatches, setShowPlayInMatches] = useState(true)
   const [showPlayoffMatches, setShowPlayoffMatches] = useState(true)
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
-  const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | null>(null)
+  const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
 
   // Загружаем данные турнира
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -102,6 +102,13 @@ export default function DivisionStageManagement() {
   })
 
   const regeneratePlayoffsMutation = trpc.standings.regeneratePlayoffs.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+    }
+  })
+
+  const regenerateRRMutation = trpc.match.regenerateRR.useMutation({
     onSuccess: () => {
       refetchDivision()
       refetchTournament()
@@ -237,13 +244,22 @@ export default function DivisionStageManagement() {
     setSelectedMatch(null)
   }
 
-  const handleRegenerate = (type: 'playin' | 'playoff') => {
+  const handleRegenerate = (type: 'playin' | 'playoff' | 'rr') => {
     setRegenerateType(type)
     setShowRegenerateModal(true)
   }
 
+  const handleRegenerateRR = () => {
+    if (selectedDivisionId) {
+      regenerateRRMutation.mutate({ divisionId: selectedDivisionId })
+    }
+  }
+
   const confirmRegenerate = () => {
-    if (regenerateType === 'playin') {
+    if (regenerateType === 'rr') {
+      // Перегенерируем Round Robin
+      handleRegenerateRR()
+    } else if (regenerateType === 'playin') {
       // Перегенерируем Play-In с учетом обновленных результатов RR
       regeneratePlayInMutation.mutate({ 
         divisionId: selectedDivisionId, 
@@ -262,6 +278,7 @@ export default function DivisionStageManagement() {
   const canGenerateRR = !rrMatches.length
   const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS'
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
+  const canRegenerateRR = rrMatches.length > 0 // Можно перегенерировать если есть матчи RR
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
@@ -441,6 +458,17 @@ export default function DivisionStageManagement() {
                   >
                     <Calculator className="h-4 w-4" />
                     <span>Пересчитать посев</span>
+                  </Button>
+                )}
+                
+                {canRegenerateRR && (
+                  <Button
+                    variant="outline"
+                    onClick={() => handleRegenerate('rr')}
+                    className="flex items-center space-x-2 text-orange-600 border-orange-600 hover:bg-orange-50"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span>Перегенерировать RR</span>
                   </Button>
                 )}
                 
@@ -847,11 +875,15 @@ export default function DivisionStageManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">
-              Перегенерация {regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
+              Перегенерация {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
             </h3>
             <p className="text-gray-600 mb-6">
-              Будут сброшены все результаты {regenerateType === 'playin' ? 'Play-In и всех последующих стадий Play-Off' : 'Play-Off'}. 
-              Продолжить?
+              {regenerateType === 'rr' 
+                ? 'Будут сброшены все матчи Round Robin. Это позволит перераспределить команды по пулам и создать новые матчи. Продолжить?'
+                : regenerateType === 'playin' 
+                  ? 'Будут сброшены все результаты Play-In и всех последующих стадий Play-Off. Продолжить?'
+                  : 'Будут сброшены все результаты Play-Off. Продолжить?'
+              }
             </p>
             <div className="flex justify-end space-x-3">
               <Button

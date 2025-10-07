@@ -182,6 +182,149 @@ export const matchRouter = createTRPCRouter({
         rounds: Math.max(...rounds.map(r => r.roundIndex)) + 1,
       }
     }),
+
+  regenerateRR: tdProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Получаем дивизион с командами и пулами
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: {
+            include: {
+              pool: true
+            }
+          },
+          pools: {
+            orderBy: { order: 'asc' }
+          },
+          tournament: {
+            select: { id: true },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (division.teams.length < 2) {
+        throw new Error('Need at least 2 teams to generate Round Robin')
+      }
+
+      // Удаляем все существующие матчи RR
+      await ctx.prisma.match.deleteMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: 'ROUND_ROBIN'
+        },
+      })
+
+      // Генерируем новый Round Robin (используем ту же логику что и в generateRR)
+      const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string | null }> = []
+      let currentRoundIndex = 0
+
+      if (division.pools.length > 0) {
+        // Генерируем RR для каждого пула отдельно
+        for (const pool of division.pools) {
+          const poolTeams = division.teams.filter(team => team.poolId === pool.id)
+          
+          if (poolTeams.length < 2) {
+            console.log(`Pool ${pool.name} has less than 2 teams, skipping RR generation`)
+            continue
+          }
+
+          console.log(`Regenerating RR for pool ${pool.name} with ${poolTeams.length} teams`)
+          
+          // Генерируем RR для этого пула
+          const poolRounds = generateRoundRobinForTeams(poolTeams, currentRoundIndex, pool.id)
+          
+          // Добавляем матчи пула в основной массив
+          rounds.push(...poolRounds.map(round => ({
+            teamA: poolTeams.find(t => t.id === round.teamAId),
+            teamB: poolTeams.find(t => t.id === round.teamBId),
+            roundIndex: round.roundIndex,
+            poolId: pool.id,
+          })))
+
+          // Обновляем индекс раунда для следующего пула
+          const poolRoundsCount = Math.max(...poolRounds.map(r => r.roundIndex)) + 1
+          currentRoundIndex = poolRoundsCount
+        }
+
+        // Также генерируем RR для команд в WaitList (poolId === null)
+        const waitListTeams = division.teams.filter(team => team.poolId === null)
+        if (waitListTeams.length >= 2) {
+          console.log(`Regenerating RR for WaitList with ${waitListTeams.length} teams`)
+          
+          const waitListRounds = generateRoundRobinForTeams(waitListTeams, currentRoundIndex, null)
+          
+          rounds.push(...waitListRounds.map(round => ({
+            teamA: waitListTeams.find(t => t.id === round.teamAId),
+            teamB: waitListTeams.find(t => t.id === round.teamBId),
+            roundIndex: round.roundIndex,
+            poolId: null,
+          })))
+        }
+      } else {
+        // Нет пулов - генерируем RR для всех команд дивизиона
+        const teams = division.teams
+        console.log(`Regenerating RR for division with ${teams.length} teams (no pools)`)
+        
+        const divisionRounds = generateRoundRobinForTeams(teams, 0, undefined)
+        
+        rounds.push(...divisionRounds.map(round => ({
+          teamA: teams.find(t => t.id === round.teamAId),
+          teamB: teams.find(t => t.id === round.teamBId),
+          roundIndex: round.roundIndex,
+          poolId: undefined,
+        })))
+      }
+
+      // Создаем новые матчи в базе данных
+      const matches = await Promise.all(
+        rounds.map((round) =>
+          ctx.prisma.match.create({
+            data: {
+              divisionId: input.divisionId,
+              poolId: round.poolId, // Добавляем poolId к матчу
+              teamAId: round.teamA.id,
+              teamBId: round.teamB.id,
+              roundIndex: round.roundIndex,
+              stage: 'ROUND_ROBIN',
+              bestOfMode: 'FIXED_GAMES', // По умолчанию фиксированные игры
+              gamesCount: 1, // По умолчанию 1 игра на матч
+              targetPoints: 11, // По умолчанию до 11 очков
+              winBy: 2, // По умолчанию выигрыш с разницей в 2
+              locked: false,
+            },
+          })
+        )
+      )
+
+      // Логируем перегенерацию RR
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: division.tournament.id,
+          action: 'REGENERATE_RR',
+          entityType: 'Division',
+          entityId: input.divisionId,
+          payload: {
+            divisionId: input.divisionId,
+            teamsCount: division.teams.length,
+            matchesCount: matches.length,
+            poolsCount: division.pools.length,
+          },
+        },
+      })
+
+      return {
+        matches,
+        totalMatches: matches.length,
+        rounds: Math.max(...rounds.map(r => r.roundIndex)) + 1,
+      }
+    }),
   listByDivision: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
