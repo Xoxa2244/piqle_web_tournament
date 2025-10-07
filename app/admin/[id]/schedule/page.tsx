@@ -5,12 +5,29 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { useState } from 'react'
 
 export default function SchedulePage() {
   const params = useParams()
   const tournamentId = params.id as string
+  const [generatingRR, setGeneratingRR] = useState<string | null>(null)
 
-  const { data: tournament, isLoading } = trpc.tournament.get.useQuery({ id: tournamentId })
+  const { data: tournament, isLoading, refetch } = trpc.tournament.get.useQuery({ id: tournamentId })
+  const generateRRMutation = trpc.match.generateRR.useMutation({
+    onSuccess: () => {
+      refetch()
+      setGeneratingRR(null)
+    },
+    onError: (error) => {
+      alert(`Ошибка: ${error.message}`)
+      setGeneratingRR(null)
+    },
+  })
+
+  const handleGenerateRR = (divisionId: string) => {
+    setGeneratingRR(divisionId)
+    generateRRMutation.mutate({ divisionId })
+  }
 
   if (isLoading) {
     return (
@@ -99,8 +116,13 @@ export default function SchedulePage() {
                         <p className="text-gray-600 mb-4">
                           Матчей на команду: {division.teams.length - 1}
                         </p>
-                        <Button variant="outline" size="sm">
-                          Сгенерировать RR
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleGenerateRR(division.id)}
+                          disabled={generatingRR === division.id}
+                        >
+                          {generatingRR === division.id ? 'Генерация...' : 'Сгенерировать RR'}
                         </Button>
                       </div>
                     </div>
@@ -125,25 +147,36 @@ export default function SchedulePage() {
                     {/* Matches List */}
                     <div>
                       <h3 className="text-lg font-medium text-gray-900 mb-3">Матчи</h3>
-                      <div className="space-y-2">
+                      <div className="space-y-4">
                         {division.matches && division.matches.length > 0 ? (
-                          division.matches.map((match) => (
-                            <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                              <div className="flex items-center space-x-4">
-                                <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
-                                <span className="text-gray-500">vs</span>
-                                <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                          // Group matches by round
+                          Array.from({ length: Math.max(...division.matches.map(m => m.roundIndex)) + 1 }, (_, roundIndex) => {
+                            const roundMatches = division.matches.filter(m => m.roundIndex === roundIndex)
+                            return roundMatches.length > 0 ? (
+                              <div key={roundIndex} className="space-y-2">
+                                <h4 className="font-medium text-gray-700">Раунд {roundIndex + 1}</h4>
+                                <div className="space-y-2">
+                                  {roundMatches.map((match) => (
+                                    <div key={match.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                                      <div className="flex items-center space-x-4">
+                                        <span className="font-medium">{match.teamA?.name || 'TBD'}</span>
+                                        <span className="text-gray-500">vs</span>
+                                        <span className="font-medium">{match.teamB?.name || 'TBD'}</span>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <span className="text-sm text-gray-500">
+                                          {match.stage} • Round {match.roundIndex + 1}
+                                        </span>
+                                        <Button size="sm" variant="outline">
+                                          Ввести счет
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm text-gray-500">
-                                  {match.stage} • Round {match.roundIndex}
-                                </span>
-                                <Button size="sm" variant="outline">
-                                  Ввести счет
-                                </Button>
-                              </div>
-                            </div>
-                          ))
+                            ) : null
+                          })
                         ) : (
                           <p className="text-gray-500 text-center py-4">
                             Расписание не сгенерировано
