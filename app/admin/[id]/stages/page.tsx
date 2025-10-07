@@ -155,7 +155,7 @@ export default function DivisionStageManagement() {
   const canGenerateRR = !rrMatches.length
   const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS'
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
-  const canGeneratePlayIn = currentStage === 'RR_COMPLETE' && needsPlayIn && !playInMatches.length
+  const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn)) && !eliminationMatches.length
 
@@ -415,7 +415,14 @@ export default function DivisionStageManagement() {
               <div className="flex items-center space-x-2">
                 {canGeneratePlayIn && (
                   <Button
-                    onClick={() => {/* Генерировать Play-In */}}
+                    onClick={() => {
+                      // Генерируем Play-In через standings.generatePlayoffs
+                      generatePlayoffsMutation.mutate({ 
+                        divisionId: selectedDivisionId, 
+                        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+                      })
+                    }}
+                    disabled={generatePlayoffsMutation.isPending}
                     className="flex items-center space-x-2"
                   >
                     <Play className="h-4 w-4" />
