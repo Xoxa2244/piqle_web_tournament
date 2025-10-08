@@ -654,7 +654,7 @@ export default function DivisionsPage() {
     console.log('Add team to division:', division.name)
   }
 
-  const handleTeamMove = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
+  const handleTeamMove = (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
     moveTeamToDivisionMutation.mutate({
       teamId,
       divisionId: targetDivisionId,
