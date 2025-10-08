@@ -541,22 +541,22 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
   onEditDivision?: (division: Division) => void
 }) {
+  const { setNodeRef: setWaitListRef } = useDroppable({
+    id: `waitlist-${division?.id || 'unknown'}`,
+  })
+
+  const { setNodeRef: setDivisionRef } = useDroppable({
+    id: `division-${division?.id || 'unknown'}`,
+  })
+
+  const { setNodeRef: setHeaderRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: `division-header-${division?.id || 'unknown'}`,
+  })
+
   if (!division) {
     console.warn('DivisionColumn: division is undefined')
     return null
   }
-
-  const { setNodeRef: setWaitListRef } = useDroppable({
-    id: `waitlist-${division.id}`,
-  })
-
-  const { setNodeRef: setDivisionRef } = useDroppable({
-    id: `division-${division.id}`,
-  })
-
-  const { setNodeRef: setHeaderRef, attributes, listeners, transform, transition, isDragging } = useSortable({
-    id: `division-header-${division.id}`,
-  })
 
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const poolTeams = division.pools
@@ -718,11 +718,6 @@ function PoolDropZone({
 
 // Sortable Team Card Component
 function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: boolean }) {
-  if (!team) {
-    console.warn('SortableTeamCard: team is undefined')
-    return null
-  }
-
   const {
     attributes,
     listeners,
@@ -730,7 +725,12 @@ function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: bool
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: team.id })
+  } = useSortable({ id: team?.id || 'unknown' })
+
+  if (!team) {
+    console.warn('SortableTeamCard: team is undefined')
+    return null
+  }
 
   const style = {
     transform: CSS.Transform.toString(transform),
