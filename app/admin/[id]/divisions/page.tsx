@@ -512,16 +512,6 @@ export default function DivisionsPage() {
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
-  
-  // Local state for optimistic updates
-  const [localDivisions, setLocalDivisions] = useState<Division[]>(tournament?.divisions || [])
-  
-  // Sync local divisions with fetched data
-  useEffect(() => {
-    if (tournament?.divisions) {
-      setLocalDivisions(tournament.divisions)
-    }
-  }, [tournament?.divisions])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -535,6 +525,16 @@ export default function DivisionsPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Local state for optimistic updates
+  const [localDivisions, setLocalDivisions] = useState<Division[]>([])
+  
+  // Sync local divisions with fetched data
+  useEffect(() => {
+    if (tournament?.divisions) {
+      setLocalDivisions(tournament.divisions)
+    }
+  }, [tournament?.divisions])
 
   const moveTeamToDivisionMutation = trpc.team.moveToDivision.useMutation({
     onSuccess: () => {
