@@ -654,11 +654,23 @@ export default function DivisionsPage() {
     console.log('Add team to division:', division.name)
   }
 
-  const handleTeamMove = (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
-    moveTeamToDivisionMutation.mutate({
-      teamId,
-      divisionId: targetDivisionId,
-    })
+  const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
+    try {
+      await moveTeamToDivisionMutation.mutateAsync({
+        teamId,
+        divisionId: targetDivisionId,
+      })
+      
+      // If targetPoolId is specified, also move to that pool
+      if (targetPoolId !== undefined) {
+        await moveTeamToPoolMutation.mutateAsync({
+          teamId,
+          poolId: targetPoolId,
+        })
+      }
+    } catch (error) {
+      console.error('Error moving team:', error)
+    }
   }
 
   const handleTeamMoveToPool = (teamId: string, targetPoolId: string | null) => {

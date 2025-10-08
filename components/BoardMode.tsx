@@ -19,8 +19,6 @@ import {
 import {
   SortableContext,
   verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -92,7 +90,7 @@ interface Division {
 interface BoardModeProps {
   tournamentId: string
   divisions: Division[]
-  onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
+  onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => Promise<void>
   onTeamMoveToPool: (teamId: string, targetPoolId: string | null) => void
   divisionStages?: Record<string, string> // divisionId -> stage
   onEditDivision?: (division: Division) => void
@@ -192,10 +190,34 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 
     if (!over) return
 
-    const teamId = active.id as string
+    const activeId = active.id as string
     const overId = over.id as string
 
-    // Find the team being moved
+    // Check if we're dragging a division (starts with 'division-header-')
+    if (activeId.startsWith('division-header-')) {
+      const divisionId = activeId.replace('division-header-', '')
+      const overDivisionId = overId.startsWith('division-header-') 
+        ? overId.replace('division-header-', '')
+        : null
+
+      if (overDivisionId && divisionId !== overDivisionId) {
+        // Reorder divisions
+        const newOrder = [...divisionOrder]
+        const fromIndex = newOrder.indexOf(divisionId)
+        const toIndex = newOrder.indexOf(overDivisionId)
+        
+        if (fromIndex !== -1 && toIndex !== -1) {
+          newOrder.splice(fromIndex, 1)
+          newOrder.splice(toIndex, 0, divisionId)
+          setDivisionOrder(newOrder)
+          setHasUnsavedChanges(true)
+        }
+      }
+      return
+    }
+
+    // Handle team dragging
+    const teamId = activeId
     const team = divisions
       .flatMap(d => d.teams)
       .find(t => t.id === teamId)
@@ -223,7 +245,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           isOpen: true,
           message: warningMessage,
           onConfirm: () => {
-            performMove(teamId, overId, team)
+            performMove(teamId, overId, team).catch(console.error)
             setShowWarning({ isOpen: false, message: '', onConfirm: () => {}, onCancel: () => {} })
           },
           onCancel: () => {
@@ -235,10 +257,10 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     }
 
     // No warning needed, perform move directly
-    performMove(teamId, overId, team)
+    performMove(teamId, overId, team).catch(console.error)
   }
 
-  const performMove = (teamId: string, overId: string, team: Team) => {
+  const performMove = async (teamId: string, overId: string, team: Team) => {
     const teamDivisionId = getTeamDivisionId(teamId)
     if (!teamDivisionId) return
 
@@ -256,7 +278,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           toDivisionId: divisionId,
           toPoolId: null,
         })
-        onTeamMove(teamId, divisionId, null)
+        await onTeamMove(teamId, divisionId, null)
         setHasUnsavedChanges(true)
       } else if (team.poolId !== null) {
         // Move to same division's waitlist
@@ -285,7 +307,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           toDivisionId: divisionId,
           toPoolId: poolId,
         })
-        onTeamMove(teamId, divisionId, poolId)
+        await onTeamMove(teamId, divisionId, poolId)
         setHasUnsavedChanges(true)
       } else if (poolId !== team.poolId) {
         // Move to different pool in same division
@@ -426,8 +448,9 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="h-full overflow-x-auto overflow-y-hidden">
-            <div className="flex space-x-4 p-4 min-w-max h-full">
+          <div className="flex-1 overflow-hidden">
+            <div className="h-full overflow-x-auto overflow-y-hidden">
+              <div className="flex space-x-4 p-4 min-w-max h-full">
               {divisionOrder.map((divisionId) => {
                 const division = divisions.find(d => d.id === divisionId)
                 if (!division) return null
@@ -442,6 +465,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
                   />
                 )
               })}
+              </div>
             </div>
           </div>
 
@@ -518,6 +542,10 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
     id: `division-${division.id}`,
   })
 
+  const { setNodeRef: setHeaderRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: `division-header-${division.id}`,
+  })
+
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const poolTeams = division.pools.map(pool => ({
     pool,
@@ -528,11 +556,22 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
     return filteredTeams.some(ft => ft.team.id === teamId)
   }
 
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
   return (
-    <div className="w-80 flex-shrink-0">
+    <div className="w-80 flex-shrink-0" style={style}>
       <Card className="h-full">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div 
+            ref={setHeaderRef}
+            {...attributes}
+            {...listeners}
+            className="flex items-center justify-between cursor-move hover:bg-gray-50 p-2 -m-2 rounded"
+          >
             <CardTitle className="text-lg">{division.name}</CardTitle>
             <div className="flex items-center space-x-1">
               <Button 
