@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -512,6 +512,16 @@ export default function DivisionsPage() {
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
+  
+  // Local state for optimistic updates
+  const [localDivisions, setLocalDivisions] = useState<Division[]>(tournament?.divisions || [])
+  
+  // Sync local divisions with fetched data
+  useEffect(() => {
+    if (tournament?.divisions) {
+      setLocalDivisions(tournament.divisions)
+    }
+  }, [tournament?.divisions])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -555,13 +565,49 @@ export default function DivisionsPage() {
     }
   })
 
+  // Optimistic update functions
+  const optimisticMoveTeam = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
+    setLocalDivisions(prevDivisions => {
+      return prevDivisions.map(division => {
+        // Remove team from current division
+        const updatedTeams = division.teams.filter(team => team.id !== teamId)
+        
+        // Add team to target division
+        if (division.id === targetDivisionId) {
+          const teamToMove = prevDivisions
+            .flatMap(d => d.teams)
+            .find(t => t.id === teamId)
+          
+          if (teamToMove) {
+            return {
+              ...division,
+              teams: [...updatedTeams, { ...teamToMove, poolId: targetPoolId }]
+            }
+          }
+        }
+        
+        return {
+          ...division,
+          teams: updatedTeams
+        }
+      })
+    })
+  }
+
+  const rollbackTeamMove = () => {
+    // Revert to server data
+    if (tournament?.divisions) {
+      setLocalDivisions(tournament.divisions)
+    }
+  }
+
   const filteredDivisions = useMemo(() => {
-    if (!tournament?.divisions) return []
+    if (!localDivisions) return []
     
-    return tournament.divisions.filter(division =>
+    return localDivisions.filter(division =>
       division.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
-  }, [tournament?.divisions, searchQuery])
+  }, [localDivisions, searchQuery])
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTeam(event.active.id as string)
@@ -569,69 +615,99 @@ export default function DivisionsPage() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    setActiveTeam(null)
 
-    if (!over) return
+    if (!over) {
+      setActiveTeam(null)
+      return
+    }
 
     const teamId = active.id as string
     const overId = over.id as string
 
-    console.log('Drag end:', { teamId, overId, activeId: active.id })
-    console.log('Available drop zones:', ['waitlist-', 'pool-', 'division-'])
+    // Parse drop zone ID and determine target
+    let targetDivisionId: string | null = null
+    let targetPoolId: string | null = null
 
-    // Check if overId is a valid drop zone (not another team)
     if (overId.startsWith('waitlist-')) {
-      const divisionId = overId.replace('waitlist-', '')
-      console.log('Moving to WaitList:', { teamId, divisionId })
-      moveTeamToPoolMutation.mutate({
-        teamId,
-        poolId: null, // Move to WaitList
-      })
+      targetDivisionId = overId.replace('waitlist-', '')
+      targetPoolId = null
     } else if (overId.startsWith('pool-')) {
       const poolId = overId.replace('pool-', '')
-      console.log('Moving to Pool:', { teamId, poolId })
-      moveTeamToPoolMutation.mutate({
-        teamId,
-        poolId,
-      })
+      targetPoolId = poolId
+      // Find division for this pool
+      const division = localDivisions.find(d => 
+        d.pools.some(p => p.id === poolId)
+      )
+      targetDivisionId = division?.id || null
     } else if (overId.startsWith('division-')) {
-      const divisionId = overId.replace('division-', '')
-      console.log('Moving to Division:', { teamId, divisionId })
-      moveTeamToDivisionMutation.mutate({
-        teamId,
-        divisionId,
-      })
+      targetDivisionId = overId.replace('division-', '')
+      // For division drops, use first pool or waitlist
+      const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
+      targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
     } else {
       // overId is not a drop zone - it's probably another team
-      // Find the target team and determine its pool/WaitList
-      const targetTeam = tournament?.divisions
+      const targetTeam = localDivisions
         .flatMap(division => division.teams)
         .find(team => team.id === overId)
       
       if (targetTeam) {
-        console.log('Dropping on team:', { targetTeamId: overId, targetTeamName: targetTeam.name })
-        
-        if (targetTeam.poolId === null) {
-          // Target team is in WaitList
-          console.log('Moving to WaitList (via team):', { teamId, targetTeamId: overId })
-          moveTeamToPoolMutation.mutate({
-            teamId,
-            poolId: null, // Move to WaitList
-          })
-        } else {
-          // Target team is in a pool
-          console.log('Moving to Pool (via team):', { teamId, poolId: targetTeam.poolId, targetTeamId: overId })
-          moveTeamToPoolMutation.mutate({
-            teamId,
-            poolId: targetTeam.poolId,
-          })
-        }
-      } else {
-        console.log('Invalid drop target:', overId)
-        console.log('This is likely another team ID, not a drop zone')
-        console.log('Make sure to drop on the colored drop zones (WaitList, Pool, or Division areas)')
+        targetPoolId = targetTeam.poolId
+        // Find division for this team
+        const division = localDivisions.find(d => 
+          d.teams.some(t => t.id === overId)
+        )
+        targetDivisionId = division?.id || null
       }
     }
+
+    if (!targetDivisionId) {
+      setActiveTeam(null)
+      return
+    }
+
+    // Get current division
+    const currentDivision = localDivisions.find(d => 
+      d.teams.some(t => t.id === teamId)
+    )
+    
+    if (!currentDivision) {
+      setActiveTeam(null)
+      return
+    }
+
+    // Apply optimistic update immediately
+    optimisticMoveTeam(teamId, targetDivisionId, targetPoolId)
+
+    // Make server request
+    const performMove = async () => {
+      try {
+        if (targetDivisionId !== currentDivision.id) {
+          await moveTeamToDivisionMutation.mutateAsync({
+            teamId,
+            divisionId: targetDivisionId,
+          })
+          
+          // If targetPoolId is specified, also move to that pool
+          if (targetPoolId) {
+            await moveTeamToPoolMutation.mutateAsync({
+              teamId,
+              poolId: targetPoolId,
+            })
+          }
+        } else {
+          await moveTeamToPoolMutation.mutateAsync({
+            teamId,
+            poolId: targetPoolId,
+          })
+        }
+      } catch (error) {
+        console.error('Failed to move team:', error)
+        rollbackTeamMove()
+      }
+    }
+
+    performMove()
+    setActiveTeam(null)
   }
 
   const toggleDivisionExpansion = (divisionId: string) => {
@@ -847,7 +923,7 @@ export default function DivisionsPage() {
         ) : (
           <BoardMode
             tournamentId={tournamentId}
-            divisions={tournament.divisions}
+            divisions={localDivisions}
             onTeamMove={handleTeamMove}
             onTeamMoveToPool={handleTeamMoveToPool}
             onEditDivision={handleEditDivision}
