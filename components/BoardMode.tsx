@@ -123,6 +123,16 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     onCancel: () => void
   }>({ isOpen: false, message: '', onConfirm: () => {}, onCancel: () => {} })
 
+  // Helper function to find division ID for a team
+  const getTeamDivisionId = (teamId: string): string | null => {
+    for (const division of divisions) {
+      if (division.teams.some(team => team.id === teamId)) {
+        return division.id
+      }
+    }
+    return null
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -229,16 +239,19 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
   }
 
   const performMove = (teamId: string, overId: string, team: Team) => {
+    const teamDivisionId = getTeamDivisionId(teamId)
+    if (!teamDivisionId) return
+
     // Parse drop zone ID
     if (overId.startsWith('waitlist-')) {
       const divisionId = overId.replace('waitlist-', '')
-      if (divisionId !== team.divisionId) {
+      if (divisionId !== teamDivisionId) {
         // Move to different division's waitlist
         addToHistory({
           type: 'move',
           teamId,
           teamName: team.name,
-          fromDivisionId: team.divisionId,
+          fromDivisionId: teamDivisionId,
           fromPoolId: team.poolId,
           toDivisionId: divisionId,
           toPoolId: null,
@@ -251,9 +264,9 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           type: 'moveToPool',
           teamId,
           teamName: team.name,
-          fromDivisionId: team.divisionId,
+          fromDivisionId: teamDivisionId,
           fromPoolId: team.poolId,
-          toDivisionId: team.divisionId,
+          toDivisionId: teamDivisionId,
           toPoolId: null,
         })
         onTeamMoveToPool(teamId, null)
@@ -261,13 +274,13 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
       }
     } else if (overId.startsWith('pool-')) {
       const [_, divisionId, poolId] = overId.split('-')
-      if (divisionId !== team.divisionId) {
+      if (divisionId !== teamDivisionId) {
         // Move to different division's pool
         addToHistory({
           type: 'move',
           teamId,
           teamName: team.name,
-          fromDivisionId: team.divisionId,
+          fromDivisionId: teamDivisionId,
           fromPoolId: team.poolId,
           toDivisionId: divisionId,
           toPoolId: poolId,
@@ -280,9 +293,9 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           type: 'moveToPool',
           teamId,
           teamName: team.name,
-          fromDivisionId: team.divisionId,
+          fromDivisionId: teamDivisionId,
           fromPoolId: team.poolId,
-          toDivisionId: team.divisionId,
+          toDivisionId: teamDivisionId,
           toPoolId: poolId,
         })
         onTeamMoveToPool(teamId, poolId)
@@ -290,7 +303,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
       }
     } else if (overId.startsWith('division-')) {
       const divisionId = overId.replace('division-', '')
-      if (divisionId !== team.divisionId) {
+      if (divisionId !== teamDivisionId) {
         // Move to different division (to first pool or waitlist)
         const targetDivision = divisions.find(d => d.id === divisionId)
         const targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
@@ -299,7 +312,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           type: 'move',
           teamId,
           teamName: team.name,
-          fromDivisionId: team.divisionId,
+          fromDivisionId: teamDivisionId,
           fromPoolId: team.poolId,
           toDivisionId: divisionId,
           toPoolId: targetPoolId,
