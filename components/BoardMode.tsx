@@ -170,7 +170,11 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     const results: Array<{ team: Team; division: Division; pool: Pool | null }> = []
     
     divisions.forEach(division => {
+      if (!division || !division.teams) return
+      
       division.teams.forEach(team => {
+        if (!team || !team.name) return
+        
         if (team.name.toLowerCase().includes(query)) {
           const pool = division.pools.find(p => p.id === team.poolId) || null
           results.push({ team, division, pool })
@@ -537,6 +541,11 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
   onEditDivision?: (division: Division) => void
 }) {
+  if (!division) {
+    console.warn('DivisionColumn: division is undefined')
+    return null
+  }
+
   const { setNodeRef: setWaitListRef } = useDroppable({
     id: `waitlist-${division.id}`,
   })
@@ -709,6 +718,11 @@ function PoolDropZone({
 
 // Sortable Team Card Component
 function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: boolean }) {
+  if (!team) {
+    console.warn('SortableTeamCard: team is undefined')
+    return null
+  }
+
   const {
     attributes,
     listeners,
@@ -748,6 +762,11 @@ function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: bool
 
 // Team Card for Drag Overlay
 function TeamCard({ team }: { team: Team }) {
+  if (!team) {
+    console.warn('TeamCard: team is undefined')
+    return null
+  }
+
   return (
     <div className="p-2 bg-white border rounded-lg shadow-lg">
       <div className="font-medium text-sm">{team.name}</div>
