@@ -229,9 +229,14 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    setActiveTeam(null)
+    
+    // Don't set activeTeam to null immediately to prevent return animation
+    // setActiveTeam(null)
 
-    if (!over) return
+    if (!over) {
+      setActiveTeam(null)
+      return
+    }
 
     const activeId = active.id as string
     const overId = over.id as string
@@ -261,37 +266,50 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 
     // Handle team dragging
     const teamId = activeId
-    const team = divisions
+    const team = localDivisions
       .flatMap(d => d.teams)
       .find(t => t.id === teamId)
 
     if (!team) return
 
-    // Check if moving to a division with existing matches
-    const getTargetDivisionId = (overId: string) => {
-      if (overId.startsWith('waitlist-')) {
-        return overId.replace('waitlist-', '')
-      } else if (overId.startsWith('pool-')) {
-        const [_, divisionId] = overId.split('-')
-        return divisionId
-      } else if (overId.startsWith('division-')) {
-        return overId.replace('division-', '')
-      }
-      return null
+    // Parse drop zone ID and determine target
+    let targetDivisionId: string
+    let targetPoolId: string | null
+
+    if (overId.startsWith('waitlist-')) {
+      targetDivisionId = overId.replace('waitlist-', '')
+      targetPoolId = null
+    } else if (overId.startsWith('pool-')) {
+      const [_, divisionId, poolId] = overId.split('-')
+      targetDivisionId = divisionId
+      targetPoolId = poolId
+    } else if (overId.startsWith('division-')) {
+      targetDivisionId = overId.replace('division-', '')
+      // For division drops, use first pool or waitlist
+      const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
+      targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
+    } else {
+      return
     }
 
-    const targetDivisionId = getTargetDivisionId(overId)
-    if (targetDivisionId && hasMatchesCreated(targetDivisionId)) {
+    const teamDivisionId = getTeamDivisionId(teamId)
+    if (!teamDivisionId) return
+
+    // Check if moving to a division with existing matches
+    if (hasMatchesCreated(targetDivisionId)) {
       const warningMessage = getStageWarningMessage(targetDivisionId)
       if (warningMessage) {
         setShowWarning({
           isOpen: true,
           message: warningMessage,
           onConfirm: () => {
-            performMove(teamId, overId, team).catch(console.error)
+            // Apply optimistic update and make server request
+            performMoveWithOptimisticUpdate(teamId, targetDivisionId, targetPoolId, team)
+            setActiveTeam(null)
             setShowWarning({ isOpen: false, message: '', onConfirm: () => {}, onCancel: () => {} })
           },
           onCancel: () => {
+            setActiveTeam(null)
             setShowWarning({ isOpen: false, message: '', onConfirm: () => {}, onCancel: () => {} })
           }
         })
@@ -299,8 +317,44 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
       }
     }
 
-    // No warning needed, perform move directly
-    performMove(teamId, overId, team).catch(console.error)
+    // No warning needed, perform move directly with optimistic update
+    performMoveWithOptimisticUpdate(teamId, targetDivisionId, targetPoolId, team)
+    setActiveTeam(null)
+  }
+
+  const performMoveWithOptimisticUpdate = async (teamId: string, targetDivisionId: string, targetPoolId: string | null, team: Team) => {
+    const teamDivisionId = getTeamDivisionId(teamId)
+    if (!teamDivisionId) return
+
+    // Apply optimistic update immediately
+    optimisticMoveTeam(teamId, targetDivisionId, targetPoolId)
+    setHasUnsavedChanges(true)
+
+    // Add to history
+    addToHistory({
+      type: 'move',
+      teamId,
+      teamName: team.name,
+      fromDivisionId: teamDivisionId,
+      fromPoolId: team.poolId,
+      toDivisionId: targetDivisionId,
+      toPoolId: targetPoolId,
+    })
+
+    try {
+      // Make server request
+      if (targetDivisionId !== teamDivisionId) {
+        await onTeamMove(teamId, targetDivisionId, targetPoolId)
+      } else {
+        await onTeamMoveToPool(teamId, targetPoolId)
+      }
+    } catch (error) {
+      console.error('Failed to move team:', error)
+      // Rollback on error
+      rollbackTeamMove()
+      // Remove from history
+      setActionHistory(prev => prev.slice(0, -1))
+    }
   }
 
   const performMove = async (teamId: string, overId: string, team: Team) => {
