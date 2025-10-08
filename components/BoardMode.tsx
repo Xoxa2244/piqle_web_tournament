@@ -62,8 +62,15 @@ interface Division {
   pairingMode: string
   poolCount: number
   maxTeams: number | null
+  stage: string
   teams: Team[]
   pools: Pool[]
+  constraints: {
+    minDupr: string | null
+    maxDupr: string | null
+    minAge: number | null
+    maxAge: number | null
+  } | null
 }
 
 interface BoardModeProps {
