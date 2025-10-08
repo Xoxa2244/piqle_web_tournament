@@ -49,6 +49,7 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
+import BoardMode from '@/components/BoardMode'
 
 interface Team {
   id: string
@@ -653,20 +654,18 @@ export default function DivisionsPage() {
     console.log('Add team to division:', division.name)
   }
 
-  const handleTeamMove = (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
-    if (targetPoolId === undefined) {
-      // Moving between divisions
-      moveTeamToDivisionMutation.mutate({
-        teamId,
-        divisionId: targetDivisionId,
-      })
-    } else {
-      // Moving between pools or to/from WaitList
-      moveTeamToPoolMutation.mutate({
-        teamId,
-        poolId: targetPoolId,
-      })
-    }
+  const handleTeamMove = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
+    moveTeamToDivisionMutation.mutate({
+      teamId,
+      divisionId: targetDivisionId,
+    })
+  }
+
+  const handleTeamMoveToPool = (teamId: string, targetPoolId: string | null) => {
+    moveTeamToPoolMutation.mutate({
+      teamId,
+      poolId: targetPoolId,
+    })
   }
 
   const handleEditTeam = (team: Team) => {
@@ -834,12 +833,12 @@ export default function DivisionsPage() {
             </div>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <Grid3X3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Board Mode</h3>
-            <p className="text-gray-500">Канбан-доска для массового распределения команд</p>
-            <p className="text-sm text-gray-400 mt-2">В разработке...</p>
-          </div>
+          <BoardMode
+            tournamentId={tournamentId}
+            divisions={tournament.divisions}
+            onTeamMove={handleTeamMove}
+            onTeamMoveToPool={handleTeamMoveToPool}
+          />
         )}
       </div>
       
