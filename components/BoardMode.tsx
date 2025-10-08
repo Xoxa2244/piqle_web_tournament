@@ -550,10 +550,12 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
   })
 
   const waitListTeams = division.teams.filter(team => team.poolId === null)
-  const poolTeams = division.pools.map(pool => ({
-    pool,
-    teams: division.teams.filter(team => team.poolId === pool.id)
-  }))
+  const poolTeams = division.pools
+    .filter(pool => pool != null) // Filter out null/undefined pools
+    .map(pool => ({
+      pool,
+      teams: division.teams.filter(team => team.poolId === pool.id)
+    }))
 
   const isTeamHighlighted = (teamId: string) => {
     return filteredTeams.some(ft => ft.team.id === teamId)
@@ -630,15 +632,21 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
           </div>
 
           {/* Pools */}
-          {poolTeams.map(({ pool, teams }) => (
-            <PoolDropZone
-              key={pool.id}
-              pool={pool}
-              teams={teams}
-              divisionId={division.id}
-              isTeamHighlighted={isTeamHighlighted}
-            />
-          ))}
+          {poolTeams.map(({ pool, teams }) => {
+            if (!pool) {
+              console.warn('Skipping pool due to undefined pool object')
+              return null
+            }
+            return (
+              <PoolDropZone
+                key={pool.id}
+                pool={pool}
+                teams={teams}
+                divisionId={division.id}
+                isTeamHighlighted={isTeamHighlighted}
+              />
+            )
+          })}
 
           {/* Division Drop Zone */}
           <div
@@ -665,6 +673,11 @@ function PoolDropZone({
   divisionId: string
   isTeamHighlighted: (teamId: string) => boolean
 }) {
+  if (!pool) {
+    console.warn('PoolDropZone: pool is undefined')
+    return null
+  }
+
   const { setNodeRef } = useDroppable({
     id: `pool-${divisionId}-${pool.id}`,
   })
