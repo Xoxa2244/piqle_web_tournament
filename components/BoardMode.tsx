@@ -540,32 +540,13 @@ function DivisionColumn({ division, searchQuery, filteredTeams }: {
 
           {/* Pools */}
           {poolTeams.map(({ pool, teams }) => (
-            <div key={pool.id}>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium text-gray-900">{pool.name}</h4>
-                <Badge variant="outline">{teams.length}</Badge>
-              </div>
-              
-              <div
-                ref={(node) => {
-                  const { setNodeRef } = useDroppable({
-                    id: `pool-${division.id}-${pool.id}`,
-                  })
-                  setNodeRef(node)
-                }}
-                className="min-h-[100px] p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50"
-              >
-                <SortableContext items={teams.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                  {teams.map((team) => (
-                    <SortableTeamCard
-                      key={team.id}
-                      team={team}
-                      highlighted={isTeamHighlighted(team.id)}
-                    />
-                  ))}
-                </SortableContext>
-              </div>
-            </div>
+            <PoolDropZone
+              key={pool.id}
+              pool={pool}
+              teams={teams}
+              divisionId={division.id}
+              isTeamHighlighted={isTeamHighlighted}
+            />
           ))}
 
           {/* Division Drop Zone */}
@@ -577,6 +558,47 @@ function DivisionColumn({ division, searchQuery, filteredTeams }: {
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+// Pool Drop Zone Component
+function PoolDropZone({ 
+  pool, 
+  teams, 
+  divisionId, 
+  isTeamHighlighted 
+}: { 
+  pool: Pool
+  teams: Team[]
+  divisionId: string
+  isTeamHighlighted: (teamId: string) => boolean
+}) {
+  const { setNodeRef } = useDroppable({
+    id: `pool-${divisionId}-${pool.id}`,
+  })
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="font-medium text-gray-900">{pool.name}</h4>
+        <Badge variant="outline">{teams.length}</Badge>
+      </div>
+      
+      <div
+        ref={setNodeRef}
+        className="min-h-[100px] p-2 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50"
+      >
+        <SortableContext items={teams.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          {teams.map((team) => (
+            <SortableTeamCard
+              key={team.id}
+              team={team}
+              highlighted={isTeamHighlighted(team.id)}
+            />
+          ))}
+        </SortableContext>
+      </div>
     </div>
   )
 }
