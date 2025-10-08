@@ -42,10 +42,26 @@ import {
 interface Team {
   id: string
   name: string
-  divisionId: string
-  poolId: string | null
   seed: number | null
   note: string | null
+  poolId: string | null
+  teamPlayers: Array<{
+    id: string
+    role: string
+    createdAt: string
+    updatedAt: string
+    player: {
+      id: string
+      email: string | null
+      createdAt: string
+      updatedAt: string
+      firstName: string
+      lastName: string
+      gender: string | null
+      dupr: string | null
+      birthDate: string | null
+    }
+  }>
 }
 
 interface Pool {
