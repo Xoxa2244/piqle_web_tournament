@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -115,6 +115,10 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
   const [actionHistory, setActionHistory] = useState<ActionHistory[]>([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [divisionOrder, setDivisionOrder] = useState<string[]>(divisions.map(d => d.id))
+  
+  // Local state for optimistic updates
+  const [localDivisions, setLocalDivisions] = useState(divisions)
+  
   const [showWarning, setShowWarning] = useState<{
     isOpen: boolean
     message: string
@@ -122,9 +126,14 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     onCancel: () => void
   }>({ isOpen: false, message: '', onConfirm: () => {}, onCancel: () => {} })
 
+  // Update local state when divisions prop changes
+  useEffect(() => {
+    setLocalDivisions(divisions)
+  }, [divisions])
+
   // Helper function to find division ID for a team
   const getTeamDivisionId = (teamId: string): string | null => {
-    for (const division of divisions) {
+    for (const division of localDivisions) {
       if (division.teams.some(team => team.id === teamId)) {
         return division.id
       }
@@ -141,9 +150,33 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
   )
 
   // Check if division has matches created
-  const hasMatchesCreated = (divisionId: string) => {
-    const stage = divisionStages[divisionId]
-    return stage && !stage.includes('RR_IN_PROGRESS') && stage !== 'RR_NOT_STARTED'
+  // Optimistic update function for team moves
+  const optimisticMoveTeam = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
+    setLocalDivisions(prevDivisions => {
+      return prevDivisions.map(division => {
+        // Remove team from current division
+        const updatedTeams = division.teams.filter(team => team.id !== teamId)
+        
+        // If this is the target division, add the team
+        if (division.id === targetDivisionId) {
+          const team = divisions.flatMap(d => d.teams).find(t => t.id === teamId)
+          if (team) {
+            const updatedTeam = { ...team, poolId: targetPoolId }
+            updatedTeams.push(updatedTeam)
+          }
+        }
+        
+        return {
+          ...division,
+          teams: updatedTeams
+        }
+      })
+    })
+  }
+
+  // Rollback function for failed moves
+  const rollbackTeamMove = () => {
+    setLocalDivisions(divisions) // Reset to original state
   }
 
   // Get warning message for division stage
@@ -169,7 +202,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     const query = searchQuery.toLowerCase()
     const results: Array<{ team: Team; division: Division; pool: Pool | null }> = []
     
-    divisions.forEach(division => {
+    localDivisions.forEach(division => {
       if (!division || !division.teams) return
       
       division.teams.forEach(team => {
@@ -183,7 +216,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     })
     
     return results
-  }, [searchQuery, divisions])
+  }, [searchQuery, localDivisions])
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTeam(event.active.id as string)
@@ -269,84 +302,54 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     const teamDivisionId = getTeamDivisionId(teamId)
     if (!teamDivisionId) return
 
-    // Parse drop zone ID
+    // Parse drop zone ID and determine target
+    let targetDivisionId: string
+    let targetPoolId: string | null
+
     if (overId.startsWith('waitlist-')) {
-      const divisionId = overId.replace('waitlist-', '')
-      if (divisionId !== teamDivisionId) {
-        // Move to different division's waitlist
-        addToHistory({
-          type: 'move',
-          teamId,
-          teamName: team.name,
-          fromDivisionId: teamDivisionId,
-          fromPoolId: team.poolId,
-          toDivisionId: divisionId,
-          toPoolId: null,
-        })
-        await onTeamMove(teamId, divisionId, null)
-        setHasUnsavedChanges(true)
-      } else if (team.poolId !== null) {
-        // Move to same division's waitlist
-        addToHistory({
-          type: 'moveToPool',
-          teamId,
-          teamName: team.name,
-          fromDivisionId: teamDivisionId,
-          fromPoolId: team.poolId,
-          toDivisionId: teamDivisionId,
-          toPoolId: null,
-        })
-        onTeamMoveToPool(teamId, null)
-        setHasUnsavedChanges(true)
-      }
+      targetDivisionId = overId.replace('waitlist-', '')
+      targetPoolId = null
     } else if (overId.startsWith('pool-')) {
       const [_, divisionId, poolId] = overId.split('-')
-      if (divisionId !== teamDivisionId) {
-        // Move to different division's pool
-        addToHistory({
-          type: 'move',
-          teamId,
-          teamName: team.name,
-          fromDivisionId: teamDivisionId,
-          fromPoolId: team.poolId,
-          toDivisionId: divisionId,
-          toPoolId: poolId,
-        })
-        await onTeamMove(teamId, divisionId, poolId)
-        setHasUnsavedChanges(true)
-      } else if (poolId !== team.poolId) {
-        // Move to different pool in same division
-        addToHistory({
-          type: 'moveToPool',
-          teamId,
-          teamName: team.name,
-          fromDivisionId: teamDivisionId,
-          fromPoolId: team.poolId,
-          toDivisionId: teamDivisionId,
-          toPoolId: poolId,
-        })
-        onTeamMoveToPool(teamId, poolId)
-        setHasUnsavedChanges(true)
-      }
+      targetDivisionId = divisionId
+      targetPoolId = poolId
     } else if (overId.startsWith('division-')) {
-      const divisionId = overId.replace('division-', '')
-      if (divisionId !== teamDivisionId) {
-        // Move to different division (to first pool or waitlist)
-        const targetDivision = divisions.find(d => d.id === divisionId)
-        const targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
-        
-        addToHistory({
-          type: 'move',
-          teamId,
-          teamName: team.name,
-          fromDivisionId: teamDivisionId,
-          fromPoolId: team.poolId,
-          toDivisionId: divisionId,
-          toPoolId: targetPoolId,
-        })
-        onTeamMove(teamId, divisionId, targetPoolId)
-        setHasUnsavedChanges(true)
+      targetDivisionId = overId.replace('division-', '')
+      // For division drops, use first pool or waitlist
+      const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
+      targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
+    } else {
+      return
+    }
+
+    // Apply optimistic update immediately
+    optimisticMoveTeam(teamId, targetDivisionId, targetPoolId)
+    setHasUnsavedChanges(true)
+
+    // Add to history
+    addToHistory({
+      type: 'move',
+      teamId,
+      teamName: team.name,
+      fromDivisionId: teamDivisionId,
+      fromPoolId: team.poolId,
+      toDivisionId: targetDivisionId,
+      toPoolId: targetPoolId,
+    })
+
+    try {
+      // Make server request
+      if (targetDivisionId !== teamDivisionId) {
+        await onTeamMove(teamId, targetDivisionId, targetPoolId)
+      } else {
+        await onTeamMoveToPool(teamId, targetPoolId)
       }
+    } catch (error) {
+      console.error('Failed to move team:', error)
+      // Rollback on error
+      rollbackTeamMove()
+      // Remove from history
+      setActionHistory(prev => prev.slice(0, -1))
     }
   }
 
@@ -458,7 +461,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
               <div className="flex space-x-4 p-4 min-w-max h-full">
                 <SortableContext items={divisionOrder.map(id => `division-header-${id}`)} strategy={rectSortingStrategy}>
                   {divisionOrder.map((divisionId) => {
-                    const division = divisions.find(d => d.id === divisionId)
+                    const division = localDivisions.find(d => d.id === divisionId)
                     if (!division) return null
                     
                     return (
@@ -478,7 +481,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 
           <DragOverlay>
             {activeTeam ? (
-              <TeamCard team={divisions.flatMap(d => d.teams).find(t => t.id === activeTeam)!} />
+              <TeamCard team={localDivisions.flatMap(d => d.teams).find(t => t.id === activeTeam)!} />
             ) : null}
           </DragOverlay>
         </DndContext>
