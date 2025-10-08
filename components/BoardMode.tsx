@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -451,20 +451,22 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           <div className="flex-1 overflow-hidden">
             <div className="h-full overflow-x-auto overflow-y-hidden">
               <div className="flex space-x-4 p-4 min-w-max h-full">
-              {divisionOrder.map((divisionId) => {
-                const division = divisions.find(d => d.id === divisionId)
-                if (!division) return null
-                
-                return (
-                  <DivisionColumn
-                    key={division.id}
-                    division={division}
-                    searchQuery={searchQuery}
-                    filteredTeams={filteredTeams}
-                    onEditDivision={onEditDivision}
-                  />
-                )
-              })}
+                <SortableContext items={divisionOrder.map(id => `division-header-${id}`)} strategy={rectSortingStrategy}>
+                  {divisionOrder.map((divisionId) => {
+                    const division = divisions.find(d => d.id === divisionId)
+                    if (!division) return null
+                    
+                    return (
+                      <DivisionColumn
+                        key={division.id}
+                        division={division}
+                        searchQuery={searchQuery}
+                        filteredTeams={filteredTeams}
+                        onEditDivision={onEditDivision}
+                      />
+                    )
+                  })}
+                </SortableContext>
               </div>
             </div>
           </div>
