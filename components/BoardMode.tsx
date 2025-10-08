@@ -150,6 +150,11 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
   )
 
   // Check if division has matches created
+  const hasMatchesCreated = (divisionId: string) => {
+    const stage = divisionStages[divisionId]
+    return stage && !stage.includes('RR_IN_PROGRESS') && stage !== 'RR_NOT_STARTED'
+  }
+
   // Optimistic update function for team moves
   const optimisticMoveTeam = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
     setLocalDivisions(prevDivisions => {
