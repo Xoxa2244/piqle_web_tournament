@@ -838,6 +838,7 @@ export default function DivisionsPage() {
             divisions={tournament.divisions}
             onTeamMove={handleTeamMove}
             onTeamMoveToPool={handleTeamMoveToPool}
+            onEditDivision={handleEditDivision}
           />
         )}
       </div>
