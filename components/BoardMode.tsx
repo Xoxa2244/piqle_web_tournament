@@ -673,14 +673,14 @@ function PoolDropZone({
   divisionId: string
   isTeamHighlighted: (teamId: string) => boolean
 }) {
+  const { setNodeRef } = useDroppable({
+    id: `pool-${divisionId}-${pool?.id || 'unknown'}`,
+  })
+
   if (!pool) {
     console.warn('PoolDropZone: pool is undefined')
     return null
   }
-
-  const { setNodeRef } = useDroppable({
-    id: `pool-${divisionId}-${pool.id}`,
-  })
 
   return (
     <div>
