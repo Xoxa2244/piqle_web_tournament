@@ -69,9 +69,10 @@ interface Division {
 interface BoardModeProps {
   tournamentId: string
   divisions: Division[]
-  onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId: string | null) => void
+  onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onTeamMoveToPool: (teamId: string, targetPoolId: string | null) => void
   divisionStages?: Record<string, string> // divisionId -> stage
+  onEditDivision?: (division: Division) => void
 }
 
 interface ActionHistory {
@@ -86,11 +87,12 @@ interface ActionHistory {
   timestamp: Date
 }
 
-export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamMoveToPool, divisionStages = {} }: BoardModeProps) {
+export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamMoveToPool, divisionStages = {}, onEditDivision }: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [actionHistory, setActionHistory] = useState<ActionHistory[]>([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [divisionOrder, setDivisionOrder] = useState<string[]>(divisions.map(d => d.id))
   const [showWarning, setShowWarning] = useState<{
     isOpen: boolean
     message: string
@@ -388,16 +390,22 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="h-full overflow-x-auto">
-            <div className="flex space-x-4 p-4 min-w-max">
-              {divisions.map((division) => (
-                <DivisionColumn
-                  key={division.id}
-                  division={division}
-                  searchQuery={searchQuery}
-                  filteredTeams={filteredTeams}
-                />
-              ))}
+          <div className="h-full overflow-x-auto overflow-y-hidden">
+            <div className="flex space-x-4 p-4 min-w-max h-full">
+              {divisionOrder.map((divisionId) => {
+                const division = divisions.find(d => d.id === divisionId)
+                if (!division) return null
+                
+                return (
+                  <DivisionColumn
+                    key={division.id}
+                    division={division}
+                    searchQuery={searchQuery}
+                    filteredTeams={filteredTeams}
+                    onEditDivision={onEditDivision}
+                  />
+                )
+              })}
             </div>
           </div>
 
@@ -460,10 +468,11 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 }
 
 // Division Column Component
-function DivisionColumn({ division, searchQuery, filteredTeams }: {
+function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }: {
   division: Division
   searchQuery: string
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
+  onEditDivision?: (division: Division) => void
 }) {
   const { setNodeRef: setWaitListRef } = useDroppable({
     id: `waitlist-${division.id}`,
@@ -490,7 +499,11 @@ function DivisionColumn({ division, searchQuery, filteredTeams }: {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{division.name}</CardTitle>
             <div className="flex items-center space-x-1">
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => onEditDivision?.(division)}
+              >
                 <Edit className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm">
