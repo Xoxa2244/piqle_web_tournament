@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import BoardMode from '@/components/BoardMode'
+import AddTeamModal from '@/components/AddTeamModal'
 
 interface Team {
   id: string
@@ -428,6 +429,7 @@ function DivisionCard({
                 size="sm"
                 onClick={onAddTeam}
                 className="h-8 w-8 p-0"
+                title="Добавить команду в дивизион"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -512,6 +514,8 @@ export default function DivisionsPage() {
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
+  const [showAddTeamModal, setShowAddTeamModal] = useState(false)
+  const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -726,8 +730,8 @@ export default function DivisionsPage() {
   }
 
   const handleAddTeam = (division: Division) => {
-    // TODO: Implement add team modal
-    console.log('Add team to division:', division.name)
+    setSelectedDivisionForTeam(division)
+    setShowAddTeamModal(true)
   }
 
   const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
@@ -927,6 +931,7 @@ export default function DivisionsPage() {
             onTeamMove={handleTeamMove}
             onTeamMoveToPool={handleTeamMoveToPool}
             onEditDivision={handleEditDivision}
+            onAddTeam={handleAddTeam}
           />
         )}
       </div>
@@ -940,6 +945,19 @@ export default function DivisionsPage() {
           setSelectedDivision(null)
         }}
         onSave={handleSaveDivision}
+      />
+
+      {/* Add Team Modal */}
+      <AddTeamModal
+        division={selectedDivisionForTeam}
+        isOpen={showAddTeamModal}
+        onClose={() => {
+          setShowAddTeamModal(false)
+          setSelectedDivisionForTeam(null)
+        }}
+        onSuccess={() => {
+          refetch()
+        }}
       />
     </div>
   )

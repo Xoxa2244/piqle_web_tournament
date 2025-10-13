@@ -95,6 +95,7 @@ interface BoardModeProps {
   onTeamMoveToPool: (teamId: string, targetPoolId: string | null) => void
   divisionStages?: Record<string, string> // divisionId -> stage
   onEditDivision?: (division: Division) => void
+  onAddTeam?: (division: Division) => void
 }
 
 interface ActionHistory {
@@ -109,7 +110,7 @@ interface ActionHistory {
   timestamp: Date
 }
 
-export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamMoveToPool, divisionStages = {}, onEditDivision }: BoardModeProps) {
+export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamMoveToPool, divisionStages = {}, onEditDivision, onAddTeam }: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [actionHistory, setActionHistory] = useState<ActionHistory[]>([])
@@ -657,7 +658,12 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }
               >
                 <Edit className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => onAddTeam?.(division)}
+                title="Добавить команду в дивизион"
+              >
                 <Plus className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm">
