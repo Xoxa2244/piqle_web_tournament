@@ -10,6 +10,16 @@ export const teamRouter = createTRPCRouter({
       note: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Get the division to access tournamentId
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        select: { tournamentId: true },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
       const team = await ctx.prisma.team.create({
         data: {
           divisionId: input.divisionId,
@@ -23,7 +33,7 @@ export const teamRouter = createTRPCRouter({
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: input.divisionId, // We'll need to get this from division
+          tournamentId: division.tournamentId,
           action: 'CREATE',
           entityType: 'Team',
           entityId: team.id,
@@ -45,6 +55,21 @@ export const teamRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { id, ...updateData } = input
       
+      // Get the team with division to access tournamentId
+      const existingTeam = await ctx.prisma.team.findUnique({
+        where: { id },
+        select: { 
+          divisionId: true,
+          division: {
+            select: { tournamentId: true }
+          }
+        },
+      })
+
+      if (!existingTeam) {
+        throw new Error('Team not found')
+      }
+      
       const team = await ctx.prisma.team.update({
         where: { id },
         data: updateData,
@@ -54,7 +79,7 @@ export const teamRouter = createTRPCRouter({
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: team.divisionId, // We'll need to get this from division
+          tournamentId: existingTeam.division.tournamentId,
           action: 'UPDATE',
           entityType: 'Team',
           entityId: team.id,
