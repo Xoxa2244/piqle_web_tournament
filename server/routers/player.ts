@@ -4,24 +4,27 @@ import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 export const playerRouter = createTRPCRouter({
   create: tdProcedure
     .input(z.object({
+      tournamentId: z.string(),
       firstName: z.string().min(1),
       lastName: z.string().min(1),
       email: z.string().email().optional(),
       gender: z.enum(['M', 'F', 'X']).optional(),
-      dupr: z.number().optional(),
+      dupr: z.string().optional(), // Changed to string for DUPR ID
       birthDate: z.date().optional(),
       externalId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const { tournamentId, ...playerData } = input
+      
       const player = await ctx.prisma.player.create({
-        data: input,
+        data: playerData,
       })
 
       // Log the creation
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: '', // Will be set when player is added to a team
+          tournamentId,
           action: 'CREATE',
           entityType: 'Player',
           entityId: player.id,
@@ -33,8 +36,32 @@ export const playerRouter = createTRPCRouter({
     }),
 
   list: protectedProcedure
-    .query(async ({ ctx }) => {
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Get all players who are in teams from this tournament
+      const playersInTournament = await ctx.prisma.teamPlayer.findMany({
+        where: {
+          team: {
+            division: {
+              tournamentId: input.tournamentId,
+            },
+          },
+        },
+        include: {
+          player: true,
+        },
+      })
+
+      const playerIds = playersInTournament.map(tp => tp.playerId)
+
       return ctx.prisma.player.findMany({
+        where: {
+          OR: [
+            { id: { in: playerIds } },
+            // Also include players not in any team (they might be unassigned)
+            { teamPlayers: { none: {} } },
+          ],
+        },
         include: {
           teamPlayers: {
             include: {
@@ -217,50 +244,40 @@ export const playerRouter = createTRPCRouter({
 
   removeFromTeam: tdProcedure
     .input(z.object({
-      playerId: z.string(),
-      teamId: z.string(),
+      teamPlayerId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const team = await ctx.prisma.team.findUnique({
-        where: { id: input.teamId },
-        include: {
-          division: {
-            select: { tournamentId: true },
-          },
-        },
-      })
-
-      if (!team) {
-        throw new Error('Team not found')
-      }
-
       const teamPlayer = await ctx.prisma.teamPlayer.findUnique({
-        where: {
-          teamId_playerId: {
-            teamId: input.teamId,
-            playerId: input.playerId,
+        where: { id: input.teamPlayerId },
+        include: {
+          team: {
+            include: {
+              division: {
+                select: { tournamentId: true },
+              },
+            },
           },
         },
       })
 
       if (!teamPlayer) {
-        throw new Error('Player not found in team')
+        throw new Error('TeamPlayer not found')
       }
 
       // Log the removal
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
-          tournamentId: team.division.tournamentId,
+          tournamentId: teamPlayer.team.division.tournamentId,
           action: 'REMOVE_FROM_TEAM',
           entityType: 'TeamPlayer',
           entityId: teamPlayer.id,
-          payload: input,
+          payload: { playerId: teamPlayer.playerId, teamId: teamPlayer.teamId },
         },
       })
 
       return ctx.prisma.teamPlayer.delete({
-        where: { id: teamPlayer.id },
+        where: { id: input.teamPlayerId },
       })
     }),
 })

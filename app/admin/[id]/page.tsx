@@ -235,8 +235,8 @@ export default function TournamentDetailPage() {
               <Link href={`/admin/${tournamentId}/teams`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
-                    <div className="font-medium">Команды</div>
-                    <div className="text-sm text-gray-500">Управление участниками</div>
+                    <div className="font-medium">Команды и участники</div>
+                    <div className="text-sm text-gray-500">Управление составом и распределением</div>
                   </div>
                 </Button>
               </Link>
