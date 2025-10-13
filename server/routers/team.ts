@@ -8,6 +8,7 @@ export const teamRouter = createTRPCRouter({
       name: z.string().min(1),
       seed: z.number().optional(),
       note: z.string().optional(),
+      poolId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Get the division to access tournamentId
@@ -26,6 +27,7 @@ export const teamRouter = createTRPCRouter({
           name: input.name,
           seed: input.seed,
           note: input.note,
+          poolId: input.poolId,
         },
       })
 
@@ -51,6 +53,7 @@ export const teamRouter = createTRPCRouter({
       divisionId: z.string().optional(),
       seed: z.number().optional(),
       note: z.string().optional(),
+      poolId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...updateData } = input
