@@ -86,7 +86,7 @@ export default function AddTeamModal({ division, isOpen, onClose, onSuccess }: A
           <div>
             <CardTitle className="text-lg font-semibold">Добавить команду</CardTitle>
             <CardDescription>
-              Создать новую команду в дивизионе "{division.name}"
+              Создать новую команду в дивизионе &quot;{division.name}&quot;
             </CardDescription>
           </div>
           <Button
