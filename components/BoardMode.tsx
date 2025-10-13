@@ -531,6 +531,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
                         searchQuery={searchQuery}
                         filteredTeams={filteredTeams}
                         onEditDivision={onEditDivision}
+                        onAddTeam={onAddTeam}
                       />
                     )
                   })}
@@ -598,11 +599,12 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
 }
 
 // Division Column Component
-function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision }: {
+function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, onAddTeam }: {
   division: Division
   searchQuery: string
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
   onEditDivision?: (division: Division) => void
+  onAddTeam?: (division: Division) => void
 }) {
   const { setNodeRef: setWaitListRef } = useDroppable({
     id: `waitlist-${division?.id || 'unknown'}`,
