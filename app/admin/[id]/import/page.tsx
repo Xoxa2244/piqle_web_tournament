@@ -178,7 +178,7 @@ export default function ImportPage() {
               <p className="font-medium mb-2">Required columns in CSV:</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>First Name, Last Name, Gender (M/F), Age</li>
-                <li>DUPR rating, Division, Type (1v1/2v2/4v4)</li>
+                <li>DUPR ID, DUPR rating, Division, Type (1v1/2v2/4v4)</li>
                 <li>Age Constraint, DUPR Constraint</li>
                 <li>Pool (optional), Team</li>
               </ul>

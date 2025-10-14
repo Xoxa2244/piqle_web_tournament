@@ -1,41 +1,41 @@
-First Name,Last Name,Gender,Age,DUPR rating,Division,Type,Age Constraint,DUPR Constraint,Pool,Team
-James,Johnson,M,25,3.2,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A1
-Michael,Williams,M,28,3.5,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A1
-Robert,Brown,M,30,3.8,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A2
-David,Jones,M,32,3.1,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A2
-William,Garcia,M,29,3.6,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A3
-Richard,Miller,M,27,3.9,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A3
-Charles,Davis,M,31,3.4,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A4
-Joseph,Rodriguez,M,26,3.7,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A4
-Thomas,Martinez,M,33,4.0,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A5
-Christopher,Hernandez,M,24,3.3,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A5
-Mary,Smith,F,24,2.8,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B1
-Patricia,Garcia,F,26,3.0,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B1
-Jennifer,Johnson,F,28,3.2,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B2
-Linda,Williams,F,25,2.9,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B2
-Elizabeth,Brown,F,27,3.1,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B3
-Barbara,Jones,F,29,3.3,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B3
-Susan,Garcia,F,23,2.7,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B4
-Jessica,Miller,F,30,3.4,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B4
-Sarah,Davis,F,26,3.0,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B5
-Karen,Rodriguez,F,24,2.8,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B5
-Matthew,Martinez,M,28,4.1,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C1
-Nancy,Hernandez,F,25,3.8,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C1
-Lisa,Lopez,M,32,4.3,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C2
-Betty,Gonzalez,F,27,3.9,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C2
-Helen,Wilson,M,30,4.5,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C3
-Sandra,Anderson,F,28,4.0,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C3
-Donna,Thomas,M,35,4.2,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C4
-Carol,Taylor,F,29,3.7,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C4
-Ruth,Moore,M,26,4.4,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C5
-Sharon,Jackson,F,24,3.6,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C5
-Anthony,Martin,M,35,4.8,Men's 1v1,1v1,30-50,4.0-6.0,,Anthony Martin
-Mark,Lee,M,38,5.0,Men's 1v1,1v1,30-50,4.0-6.0,,Mark Lee
-Donald,Perez,M,42,4.9,Men's 1v1,1v1,30-50,4.0-6.0,,Donald Perez
-Steven,Thompson,M,40,5.2,Men's 1v1,1v1,30-50,4.0-6.0,,Steven Thompson
-Paul,White,M,36,4.7,Men's 1v1,1v1,30-50,4.0-6.0,,Paul White
-Michelle,Harris,F,22,3.5,Women's 1v1,1v1,18-30,2.5-4.0,,Michelle Harris
-Laura,Sanz,F,24,3.7,Women's 1v1,1v1,18-30,2.5-4.0,,Laura Sanz
-Sarah,Clark,F,23,3.6,Women's 1v1,1v1,18-30,2.5-4.0,,Sarah Clark
-Kimberly,Ramirez,F,21,3.4,Women's 1v1,1v1,18-30,2.5-4.0,,Kimberly Ramirez
-Deborah,Lewis,F,25,3.8,Women's 1v1,1v1,18-30,2.5-4.0,,Deborah Lewis
+First Name,Last Name,Gender,Age,DUPR ID,DUPR rating,Division,Type,Age Constraint,DUPR Constraint,Pool,Team
+James,Johnson,M,25,JOHNSON001,3.2,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A1
+Michael,Williams,M,28,WILLIAMS002,3.5,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A1
+Robert,Brown,M,30,BROWN003,3.8,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A2
+David,Jones,M,32,JONES004,3.1,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A2
+William,Garcia,M,29,GARCIA005,3.6,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A3
+Richard,Miller,M,27,MILLER006,3.9,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A3
+Charles,Davis,M,31,DAVIS007,3.4,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A4
+Joseph,Rodriguez,M,26,RODRIGUEZ008,3.7,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool B,Team A4
+Thomas,Martinez,M,33,MARTINEZ009,4.0,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A5
+Christopher,Hernandez,M,24,HERNANDEZ010,3.3,Men's 2v2 Open,2v2,18-50,2.5-4.5,Pool A,Team A5
+Mary,Smith,F,24,SMITH011,2.8,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B1
+Patricia,Garcia,F,26,GARCIA012,3.0,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B1
+Jennifer,Johnson,F,28,JOHNSON013,3.2,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B2
+Linda,Williams,F,25,WILLIAMS014,2.9,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B2
+Elizabeth,Brown,F,27,BROWN015,3.1,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B3
+Barbara,Jones,F,29,JONES016,3.3,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B3
+Susan,Garcia,F,23,GARCIA017,2.7,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B4
+Jessica,Miller,F,30,MILLER018,3.4,Women's 2v2,2v2,18-35,2.0-3.5,Pool B,Team B4
+Sarah,Davis,F,26,DAVIS019,3.0,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B5
+Karen,Rodriguez,F,24,RODRIGUEZ020,2.8,Women's 2v2,2v2,18-35,2.0-3.5,Pool A,Team B5
+Matthew,Martinez,M,28,MARTINEZ021,4.1,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C1
+Nancy,Hernandez,F,25,HERNANDEZ022,3.8,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C1
+Lisa,Lopez,M,32,LOPEZ023,4.3,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C2
+Betty,Gonzalez,F,27,GONZALEZ024,3.9,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C2
+Helen,Wilson,M,30,WILSON025,4.5,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C3
+Sandra,Anderson,F,28,ANDERSON026,4.0,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C3
+Donna,Thomas,M,35,THOMAS027,4.2,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C4
+Carol,Taylor,F,29,TAYLOR028,3.7,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C4
+Ruth,Moore,M,26,MOORE029,4.4,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C5
+Sharon,Jackson,F,24,JACKSON030,3.6,Mixed 2v2,2v2,18-50,3.0-5.0,,Team C5
+Anthony,Martin,M,35,MARTIN031,4.8,Men's 1v1,1v1,30-50,4.0-6.0,,Anthony Martin
+Mark,Lee,M,38,LEE032,5.0,Men's 1v1,1v1,30-50,4.0-6.0,,Mark Lee
+Donald,Perez,M,42,PEREZ033,4.9,Men's 1v1,1v1,30-50,4.0-6.0,,Donald Perez
+Steven,Thompson,M,40,THOMPSON034,5.2,Men's 1v1,1v1,30-50,4.0-6.0,,Steven Thompson
+Paul,White,M,36,WHITE035,4.7,Men's 1v1,1v1,30-50,4.0-6.0,,Paul White
+Michelle,Harris,F,22,HARRIS036,3.5,Women's 1v1,1v1,18-30,2.5-4.0,,Michelle Harris
+Laura,Sanz,F,24,SANZ037,3.7,Women's 1v1,1v1,18-30,2.5-4.0,,Laura Sanz
+Sarah,Clark,F,23,CLARK038,3.6,Women's 1v1,1v1,18-30,2.5-4.0,,Sarah Clark
+Kimberly,Ramirez,F,21,RAMIREZ039,3.4,Women's 1v1,1v1,18-30,2.5-4.0,,Kimberly Ramirez
+Deborah,Lewis,F,25,LEWIS040,3.8,Women's 1v1,1v1,18-30,2.5-4.0,,Deborah Lewis
