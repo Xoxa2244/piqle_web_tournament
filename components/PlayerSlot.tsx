@@ -33,7 +33,7 @@ interface PlayerSlotProps {
   teamKind: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
   teamId: string
   onAddPlayer: (slotIndex: number) => void
-  onRemovePlayer: (teamPlayerId: string, slotIndex: number) => void
+  onRemovePlayer: (slotIndex: number) => void
   onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
 }
@@ -74,9 +74,9 @@ export default function PlayerSlot({
   }
 
   const handleRemoveClick = () => {
-    if (player?.teamPlayerId && window.confirm(`Are you sure you want to remove ${player?.firstName} ${player?.lastName} from this team?`)) {
-      console.log('[PlayerSlot] Removing player from slot:', slotIndex, 'teamPlayerId:', player.teamPlayerId)
-      onRemovePlayer(player.teamPlayerId, slotIndex)
+    if (window.confirm(`Are you sure you want to remove ${player?.firstName} ${player?.lastName} from this team?`)) {
+      console.log('[PlayerSlot] Removing player from slot:', slotIndex)
+      onRemovePlayer(slotIndex)
     }
   }
 

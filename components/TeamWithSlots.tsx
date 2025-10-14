@@ -130,6 +130,13 @@ export default function TeamWithSlots({
     setShowPlayerSelection(true)
   }
 
+  const handleRemovePlayer = (slotIndex: number) => {
+    const player = slots[slotIndex]
+    if (player?.teamPlayerId) {
+      onRemovePlayer(player.teamPlayerId, slotIndex)
+    }
+  }
+
   const handlePlayerSelect = (playerId: string) => {
     if (selectedSlotIndex !== null) {
       onAddPlayer(selectedSlotIndex, playerId)
@@ -225,7 +232,7 @@ export default function TeamWithSlots({
                 teamKind={teamKind}
                 teamId={team.id}
                 onAddPlayer={handleAddPlayerClick}
-                onRemovePlayer={onRemovePlayer}
+                onRemovePlayer={handleRemovePlayer}
                 onMovePlayer={onMovePlayer}
                 isDragDisabled={isDragDisabled}
               />
