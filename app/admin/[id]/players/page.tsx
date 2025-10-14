@@ -29,7 +29,7 @@ interface Player {
   lastName: string
   email: string | null
   dupr: string | null
-  duprRating: number | null
+  duprRating: string | null  // Decimal from Prisma serializes as string
   isPaid: boolean
   isWaitlist: boolean
   teamPlayers: Array<{
@@ -165,7 +165,7 @@ export default function PlayersPage() {
 
   const getDuprRating = (player: Player) => {
     if (player.duprRating === null) return '—'
-    return player.duprRating.toString()
+    return player.duprRating
   }
 
   if (!tournament) {
