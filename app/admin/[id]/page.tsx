@@ -47,7 +47,7 @@ export default function TournamentDetailPage() {
 
   const handleCreateDivision = () => {
     if (!divisionForm.name.trim()) {
-      alert('Пожалуйста, введите название дивизиона')
+      alert('Please enter division name')
       return
     }
 
@@ -69,7 +69,7 @@ export default function TournamentDetailPage() {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Загрузка турнира...</div>
+        <div className="text-lg">Loading tournament...</div>
       </div>
     )
   }
@@ -77,10 +77,10 @@ export default function TournamentDetailPage() {
   if (error || !tournament) {
     return (
       <div className="text-center py-12">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Турнир не найден</h1>
-        <p className="text-gray-600 mb-4">Возможно, турнир был удален или у вас нет доступа</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
+        <p className="text-gray-600 mb-4">The tournament may have been deleted or you don't have access</p>
         <Link href="/admin" className="text-blue-600 hover:text-blue-800">
-          ← Вернуться к списку турниров
+          ← Back to tournaments
         </Link>
       </div>
     )
@@ -101,21 +101,21 @@ export default function TournamentDetailPage() {
             href={`/admin/${tournamentId}/import`}
             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
           >
-            Импорт CSV
+            CSV Import
           </Link>
           {tournament.isPublicBoardEnabled && (
             <Link
               href={`/t/${tournament.publicSlug}`}
               className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
             >
-              Публичная доска
+              Public Board
             </Link>
           )}
           <Link
             href="/admin"
             className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
           >
-            ← Назад
+            ← Back
           </Link>
         </div>
       </div>
@@ -123,26 +123,26 @@ export default function TournamentDetailPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Информация о турнире</CardTitle>
+            <CardTitle>Tournament Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div>
-              <span className="font-medium">Дата начала:</span>
+              <span className="font-medium">Start Date:</span>
               <span className="ml-2">{new Date(tournament.startDate).toLocaleDateString()}</span>
             </div>
             <div>
-              <span className="font-medium">Дата окончания:</span>
+              <span className="font-medium">End Date:</span>
               <span className="ml-2">{new Date(tournament.endDate).toLocaleDateString()}</span>
             </div>
             {tournament.venueName && (
               <div>
-                <span className="font-medium">Место:</span>
+                <span className="font-medium">Venue:</span>
                 <span className="ml-2">{tournament.venueName}</span>
               </div>
             )}
             {tournament.entryFee && (
               <div>
-                <span className="font-medium">Взнос:</span>
+                <span className="font-medium">Entry Fee:</span>
                 <span className="ml-2">${tournament.entryFee}</span>
               </div>
             )}
@@ -151,9 +151,9 @@ export default function TournamentDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Дивизионы</CardTitle>
+            <CardTitle>Divisions</CardTitle>
             <CardDescription>
-              {tournament.divisions.length} дивизионов
+              {tournament.divisions.length} divisions
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -163,13 +163,13 @@ export default function TournamentDetailPage() {
                   <div key={division.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
                     <span className="font-medium">{division.name}</span>
                     <span className="text-sm text-gray-500">
-                      {division.teams.length} команд
+                      {division.teams.length} teams
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500">Дивизионы не созданы</p>
+              <p className="text-gray-500">No divisions created</p>
             )}
             <Button 
               className="w-full mt-4 relative z-10" 
@@ -180,16 +180,16 @@ export default function TournamentDetailPage() {
               }}
               style={{ pointerEvents: 'auto' }}
             >
-              Создать дивизион
+              Create Division
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Призы</CardTitle>
+            <CardTitle>Prizes</CardTitle>
             <CardDescription>
-              {tournament.prizes.length} призов
+              {tournament.prizes.length} prizes
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -205,10 +205,10 @@ export default function TournamentDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500">Призы не установлены</p>
+              <p className="text-gray-500">No prizes set</p>
             )}
             <Button className="w-full mt-4" variant="outline">
-              Добавить приз
+              Add Prize
             </Button>
           </CardContent>
         </Card>
@@ -217,9 +217,9 @@ export default function TournamentDetailPage() {
       <div className="mt-8">
         <Card>
           <CardHeader>
-            <CardTitle>Быстрые действия</CardTitle>
+            <CardTitle>Quick Actions</CardTitle>
             <CardDescription>
-              Управление турниром
+              Tournament management
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -227,24 +227,24 @@ export default function TournamentDetailPage() {
               <Link href={`/admin/${tournamentId}/divisions`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
-                    <div className="font-medium">Дивизионы</div>
-                    <div className="text-sm text-gray-500">Управление дивизионами</div>
+                    <div className="font-medium">Divisions</div>
+                    <div className="text-sm text-gray-500">Manage divisions</div>
                   </div>
                 </Button>
               </Link>
               <Link href={`/admin/${tournamentId}/players`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
-                    <div className="font-medium">Управление игроками</div>
-                    <div className="text-sm text-gray-500">Общий список участников турнира</div>
+                    <div className="font-medium">Player Management</div>
+                    <div className="text-sm text-gray-500">General tournament participants list</div>
                   </div>
                 </Button>
               </Link>
               <Link href={`/admin/${tournamentId}/stages`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
-                    <div className="font-medium">Расписание</div>
-                    <div className="text-sm text-gray-500">RR и плей-офф</div>
+                    <div className="font-medium">Schedule</div>
+                    <div className="text-sm text-gray-500">RR and playoffs</div>
                   </div>
                 </Button>
               </Link>
@@ -253,20 +253,20 @@ export default function TournamentDetailPage() {
                   <div className="text-center">
                     <BarChart3 className="h-6 w-6 mx-auto mb-1" />
                     <div className="font-medium">Dashboard</div>
-                    <div className="text-sm text-gray-500">Обзор дивизионов</div>
+                    <div className="text-sm text-gray-500">Division overview</div>
                   </div>
                 </Button>
               </Link>
               <Button variant="outline" className="h-20">
                 <div className="text-center">
-                  <div className="font-medium">Результаты</div>
-                  <div className="text-sm text-gray-500">Ввод счета</div>
+                  <div className="font-medium">Results</div>
+                  <div className="text-sm text-gray-500">Score input</div>
                 </div>
               </Button>
               <Button variant="outline" className="h-20">
                 <div className="text-center">
-                  <div className="font-medium">Настройки</div>
-                  <div className="text-sm text-gray-500">Редактировать</div>
+                  <div className="font-medium">Settings</div>
+                  <div className="text-sm text-gray-500">Edit</div>
                 </div>
               </Button>
             </div>
@@ -278,54 +278,54 @@ export default function TournamentDetailPage() {
       {showCreateDivision && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold mb-4">Создать дивизион</h2>
+            <h2 className="text-xl font-bold mb-4">Create Division</h2>
             
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Название дивизиона *
+                  Division Name *
                 </label>
                 <input
                   type="text"
                   value={divisionForm.name}
                   onChange={(e) => setDivisionForm({ ...divisionForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Например: Мужской 2v2"
+                  placeholder="e.g., Men's 2v2"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Тип команд
+                  Team Type
                 </label>
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="SINGLES_1v1">1v1 (Одиночки)</option>
-                  <option value="DOUBLES_2v2">2v2 (Пары)</option>
-                  <option value="SQUAD_4v4">4v4 (Команды)</option>
+                  <option value="SINGLES_1v1">1v1 (Singles)</option>
+                  <option value="DOUBLES_2v2">2v2 (Doubles)</option>
+                  <option value="SQUAD_4v4">4v4 (Squads)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Режим пар
+                  Pairing Mode
                 </label>
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="FIXED">Фиксированные пары</option>
-                  <option value="MIX_AND_MATCH">Смешанные пары</option>
+                  <option value="FIXED">Fixed pairs</option>
+                  <option value="MIX_AND_MATCH">Mixed pairs</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Количество пулов
+                  Number of Pools
                 </label>
                 <input
                   type="number"
@@ -336,31 +336,31 @@ export default function TournamentDetailPage() {
                   placeholder="1"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {divisionForm.poolCount === 1 ? 'Будет создан 1 пул' : `Будет создано ${divisionForm.poolCount} пулов`}
+                  {divisionForm.poolCount === 1 ? '1 pool will be created' : `${divisionForm.poolCount} pools will be created`}
                 </p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Максимум команд (необязательно)
+                  Max Teams (optional)
                 </label>
                 <input
                   type="number"
                   value={divisionForm.maxTeams || ''}
                   onChange={(e) => setDivisionForm({ ...divisionForm, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Например: 16"
+                  placeholder="e.g., 16"
                 />
               </div>
 
               {/* Constraints Section */}
               <div className="border-t pt-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Ограничения участия</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Participation Constraints</h3>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      DUPR рейтинг от
+                      DUPR Rating From
                     </label>
                     <input
                       type="number"
@@ -370,13 +370,13 @@ export default function TournamentDetailPage() {
                       value={divisionForm.minDupr || ''}
                       onChange={(e) => setDivisionForm({ ...divisionForm, minDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Например: 3.0"
+                      placeholder="e.g., 3.0"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      DUPR рейтинг до
+                      DUPR Rating To
                     </label>
                     <input
                       type="number"
@@ -386,13 +386,13 @@ export default function TournamentDetailPage() {
                       value={divisionForm.maxDupr || ''}
                       onChange={(e) => setDivisionForm({ ...divisionForm, maxDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Например: 4.5"
+                      placeholder="e.g., 4.5"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Возраст от
+                      Age From
                     </label>
                     <input
                       type="number"
@@ -401,13 +401,13 @@ export default function TournamentDetailPage() {
                       value={divisionForm.minAge || ''}
                       onChange={(e) => setDivisionForm({ ...divisionForm, minAge: e.target.value ? parseInt(e.target.value) : undefined })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Например: 18"
+                      placeholder="e.g., 18"
                     />
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Возраст до
+                      Age To
                     </label>
                     <input
                       type="number"
@@ -416,7 +416,7 @@ export default function TournamentDetailPage() {
                       value={divisionForm.maxAge || ''}
                       onChange={(e) => setDivisionForm({ ...divisionForm, maxAge: e.target.value ? parseInt(e.target.value) : undefined })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Например: 65"
+                      placeholder="e.g., 65"
                     />
                   </div>
                 </div>
@@ -429,13 +429,13 @@ export default function TournamentDetailPage() {
                 onClick={() => setShowCreateDivision(false)}
                 disabled={createDivision.isPending}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
               >
-                {createDivision.isPending ? 'Создание...' : 'Создать'}
+                {createDivision.isPending ? 'Creating...' : 'Create'}
               </Button>
             </div>
           </div>
