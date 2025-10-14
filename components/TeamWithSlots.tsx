@@ -296,6 +296,7 @@ export default function TeamWithSlots({
                     slotIndex={index}
                     player={player}
                     teamKind={teamKind}
+                    teamId={team.id}
                     onAddPlayer={handleAddPlayerClick}
                     onRemovePlayer={onRemovePlayer}
                     onMovePlayer={onMovePlayer}

@@ -31,9 +31,10 @@ interface PlayerSlotProps {
   slotIndex: number
   player: Player | null
   teamKind: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
+  teamId: string
   onAddPlayer: (slotIndex: number) => void
   onRemovePlayer: (slotIndex: number) => void
-  onMovePlayer: (fromSlot: number, toSlot: number) => void
+  onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
 }
 
@@ -41,6 +42,7 @@ export default function PlayerSlot({
   slotIndex,
   player,
   teamKind,
+  teamId,
   onAddPlayer,
   onRemovePlayer,
   onMovePlayer,
