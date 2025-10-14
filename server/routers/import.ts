@@ -222,6 +222,7 @@ export const importRouter = createTRPCRouter({
           for (const participant of teamParticipants) {
             const player = await ctx.prisma.player.create({
               data: {
+                tournamentId: input.tournamentId,
                 firstName: participant['First Name'],
                 lastName: participant['Last Name'],
                 gender: participant['Gender'] === 'M' ? 'M' : 'F',
