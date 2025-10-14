@@ -159,6 +159,7 @@ export const importRouter = createTRPCRouter({
             })
           })
           poolCount = Math.max(uniquePools.size, 1)
+          console.log(`Division ${divisionName}: Found ${uniquePools.size} unique pools:`, Array.from(uniquePools), `Setting poolCount to ${poolCount}`)
         }
         
         // Create division
@@ -181,7 +182,7 @@ export const importRouter = createTRPCRouter({
             // Create pools if poolCount > 1
             pools: poolCount > 1 ? {
               create: Array.from({ length: poolCount }, (_, i) => ({
-                name: `Pool ${i + 1}`,
+                name: String(i + 1), // Use "1", "2", etc. to match CSV values
                 order: i + 1,
               }))
             } : undefined
@@ -204,7 +205,12 @@ export const importRouter = createTRPCRouter({
               const pool = division.pools.find(p => p.name === teamPool)
               if (pool) {
                 poolId = pool.id
+                console.log(`Team ${teamName} assigned to pool ${teamPool} (ID: ${poolId})`)
+              } else {
+                console.log(`Pool not found for team ${teamName}, pool value: "${teamPool}", available pools:`, division.pools.map(p => p.name))
               }
+            } else {
+              console.log(`No pool specified for team ${teamName}`)
             }
           }
           
