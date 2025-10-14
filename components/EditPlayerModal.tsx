@@ -13,7 +13,7 @@ interface Player {
   lastName: string
   email: string | null
   dupr: string | null
-  duprRating: number | null
+  duprRating: string | null  // Decimal from Prisma serializes as string
   isPaid: boolean
   isWaitlist: boolean
 }
@@ -43,7 +43,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
       setLastName(player.lastName)
       setEmail(player.email || '')
       setDupr(player.dupr || '')
-      setDuprRating(player.duprRating?.toString() || '')
+      setDuprRating(player.duprRating || '')
       setIsPaid(player.isPaid)
       setIsWaitlist(player.isWaitlist)
     }
