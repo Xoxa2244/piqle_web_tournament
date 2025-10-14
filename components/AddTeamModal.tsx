@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,16 +21,24 @@ interface Division {
 
 interface AddTeamModalProps {
   divisions: Division[]
+  selectedDivisionId?: string
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function AddTeamModal({ divisions, isOpen, onClose, onSuccess }: AddTeamModalProps) {
+export default function AddTeamModal({ divisions, selectedDivisionId: initialDivisionId, isOpen, onClose, onSuccess }: AddTeamModalProps) {
   const [teamName, setTeamName] = useState('')
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [selectedPoolId, setSelectedPoolId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Initialize selectedDivisionId from props
+  useEffect(() => {
+    if (initialDivisionId) {
+      setSelectedDivisionId(initialDivisionId)
+    }
+  }, [initialDivisionId])
 
   const createTeamMutation = trpc.team.create.useMutation({
     onSuccess: () => {
