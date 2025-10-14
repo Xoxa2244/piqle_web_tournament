@@ -175,9 +175,9 @@ model Player {
   email       String?
   gender      Gender?
   dupr        String?   // Changed to String for DUPR ID
-  duprRating  Decimal?  @db.Decimal(3, 2) // New field for DUPR rating
-  isPaid      Boolean   @default(false)   // New field for payment status
-  isWaitlist  Boolean   @default(false)   // New field for waitlist status
+  duprRating  Decimal?  @db.Decimal(3, 2) @map("dupr_rating") // New field for DUPR rating
+  isPaid      Boolean   @default(false)   @map("is_paid")   // New field for payment status
+  isWaitlist  Boolean   @default(false)   @map("is_waitlist")   // New field for waitlist status
   birthDate   DateTime?
   externalId  String?
   createdAt   DateTime  @default(now())
