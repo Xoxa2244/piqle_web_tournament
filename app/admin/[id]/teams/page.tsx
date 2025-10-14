@@ -104,14 +104,14 @@ export default function TeamsPage() {
     { enabled: !!tournamentId }
   )
 
-  // Get all teams
-  const { data: teams, refetch: refetchTeams } = trpc.team.list.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId }
-  )
-
-  // Get divisions for team creation
+  // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
+  
+  // Get all teams from all divisions
+  const teams = divisions.flatMap(division => division.teams || [])
+  
+  // Refetch function for teams (via tournament refetch)
+  const refetchTeams = refetch
 
   // Filter players without teams
   const unassignedPlayers = useMemo(() => {
