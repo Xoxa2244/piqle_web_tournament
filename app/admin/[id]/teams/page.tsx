@@ -104,6 +104,18 @@ export default function TeamsPage() {
     { enabled: !!tournamentId }
   )
 
+  // Delete team mutation
+  const deleteTeamMutation = trpc.team.delete.useMutation({
+    onSuccess: () => {
+      refetch() // Refetch tournament to update teams
+      refetchPlayers() // Refetch players to update their team assignments
+    },
+    onError: (error) => {
+      console.error('Failed to delete team:', error)
+      alert('Ошибка при удалении команды')
+    }
+  })
+
   // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
   
@@ -144,19 +156,12 @@ export default function TeamsPage() {
     setShowEditTeamModal(true)
   }
 
-  const handleDeleteTeam = async (teamId: string) => {
+  const handleDeleteTeam = (teamId: string) => {
     if (!confirm('Вы уверены, что хотите удалить эту команду? Все участники будут перемещены в общий список.')) {
       return
     }
     
-    try {
-      await trpc.team.delete.mutate({ id: teamId })
-      refetchTeams()
-      refetchPlayers()
-    } catch (error) {
-      console.error('Failed to delete team:', error)
-      alert('Ошибка при удалении команды')
-    }
+    deleteTeamMutation.mutate({ id: teamId })
   }
 
   const getTeamDisplayName = (team: Team) => {
