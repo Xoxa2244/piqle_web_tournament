@@ -99,7 +99,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
     },
     onError: (error) => {
       console.error('Failed to update team:', error)
-      alert(`Ошибка при обновлении команды: ${error.message}`)
+      alert(`Error updating team: ${error.message}`)
       setIsSubmitting(false)
     }
   })
@@ -110,7 +110,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
     },
     onError: (error) => {
       console.error('Failed to remove player:', error)
-      alert(`Ошибка при удалении игрока: ${error.message}`)
+      alert(`Error removing player: ${error.message}`)
     }
   })
 
@@ -139,12 +139,12 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
     e.preventDefault()
     
     if (!teamName.trim()) {
-      alert('Введите название команды')
+      alert('Enter team name')
       return
     }
 
     if (!selectedDivisionId) {
-      alert('Выберите дивизион')
+      alert('Select division')
       return
     }
 
@@ -164,7 +164,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
   }
 
   const handleRemovePlayer = async (teamPlayerId: string) => {
-    if (!confirm('Удалить игрока из команды?')) {
+    if (!confirm('Remove player from team?')) {
       return
     }
 
@@ -194,9 +194,9 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
       <Card className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
-            <CardTitle className="text-lg font-semibold">Редактировать команду</CardTitle>
+            <CardTitle className="text-lg font-semibold">Edit Team</CardTitle>
             <CardDescription>
-              Изменить информацию о команде и управлять составом
+              Change team information and manage roster
             </CardDescription>
           </div>
           <Button
@@ -216,14 +216,14 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Название команды *
+                  Team Name *
                 </label>
                 <Input
                   id="teamName"
                   type="text"
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="Введите название команды"
+                  placeholder="Enter team name"
                   disabled={isSubmitting}
                   className="w-full"
                 />
@@ -231,7 +231,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
 
               <div>
                 <label htmlFor="division" className="block text-sm font-medium text-gray-700 mb-1">
-                  Дивизион *
+                  Division *
                 </label>
                 <select
                   id="division"
@@ -240,7 +240,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
                   disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">Выберите дивизион</option>
+                  <option value="">Select division</option>
                   {divisions.map((division) => (
                     <option key={division.id} value={division.id}>
                       {division.name} ({division.teamKind})
@@ -252,14 +252,14 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
 
             <div>
               <label htmlFor="teamNote" className="block text-sm font-medium text-gray-700 mb-1">
-                Заметка (необязательно)
+                Note (optional)
               </label>
               <Input
                 id="teamNote"
                 type="text"
                 value={teamNote}
                 onChange={(e) => setTeamNote(e.target.value)}
-                placeholder="Дополнительная информация о команде"
+                placeholder="Additional team information"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -268,7 +268,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
             {selectedDivision && selectedDivision.pools.length > 0 && (
               <div>
                 <label htmlFor="pool" className="block text-sm font-medium text-gray-700 mb-1">
-                  Пул (необязательно)
+                  Pool (optional)
                 </label>
                 <select
                   id="pool"
@@ -277,7 +277,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
                   disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">WaitList (без пула)</option>
+                  <option value="">WaitList (no pool)</option>
                   {selectedDivision.pools.map((pool) => (
                     <option key={pool.id} value={pool.id}>
                       {pool.name}
@@ -291,7 +291,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-gray-700">
-                  Состав команды ({currentPlayers.length}/{maxPlayers})
+                  Team Roster ({currentPlayers.length}/{maxPlayers})
                 </h3>
                 {canAddMorePlayers && (
                   <Button
@@ -302,21 +302,21 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
                     className="flex items-center space-x-1"
                   >
                     <UserPlus className="h-4 w-4" />
-                    <span>Добавить игрока</span>
+                    <span>Add Player</span>
                   </Button>
                 )}
               </div>
 
               {!canAddMorePlayers && (
                 <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
-                  ⚠️ Достигнут максимальный размер команды для данного типа дивизиона
+                  ⚠️ Maximum team size reached for this division type
                 </div>
               )}
 
               <div className="space-y-2">
                 {currentPlayers.length === 0 ? (
                   <div className="text-sm text-gray-500 italic py-4">
-                    Нет игроков в команде
+                    No players in team
                   </div>
                 ) : (
                   currentPlayers.map((teamPlayer) => (
@@ -361,7 +361,7 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
                 onClick={handleClose}
                 disabled={isSubmitting}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -371,12 +371,12 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
                 {isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Сохранение...</span>
+                    <span>Saving...</span>
                   </>
                 ) : (
                   <>
                     <Edit className="h-4 w-4" />
-                    <span>Сохранить изменения</span>
+                    <span>Save Changes</span>
                   </>
                 )}
               </Button>

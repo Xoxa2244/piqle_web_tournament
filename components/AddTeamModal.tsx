@@ -51,7 +51,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
     },
     onError: (error) => {
       console.error('Failed to create team:', error)
-      alert(`Ошибка при создании команды: ${error.message}`)
+      alert(`Error creating team: ${error.message}`)
       setIsSubmitting(false)
     }
   })
@@ -62,12 +62,12 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
     e.preventDefault()
     
     if (!teamName.trim()) {
-      alert('Введите название команды')
+      alert('Enter team name')
       return
     }
 
     if (!selectedDivisionId) {
-      alert('Выберите дивизион')
+      alert('Select division')
       return
     }
 
@@ -106,9 +106,9 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
       <Card className="w-full max-w-md mx-4">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
-            <CardTitle className="text-lg font-semibold">Создать команду</CardTitle>
+            <CardTitle className="text-lg font-semibold">Create Team</CardTitle>
             <CardDescription>
-              Создать новую команду в турнире
+              Create new team in tournament
             </CardDescription>
           </div>
           <Button
@@ -126,14 +126,14 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">
-                Название команды *
+                Team Name *
               </label>
               <Input
                 id="teamName"
                 type="text"
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
-                placeholder="Введите название команды"
+                placeholder="Enter team name"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -141,7 +141,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
 
             <div>
               <label htmlFor="division" className="block text-sm font-medium text-gray-700 mb-1">
-                Дивизион *
+                Division *
               </label>
               <select
                 id="division"
@@ -150,7 +150,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                 disabled={isSubmitting}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Выберите дивизион</option>
+                <option value="">Select division</option>
                 {divisions.map((division) => (
                   <option key={division.id} value={division.id}>
                     {division.name} ({division.teamKind})
@@ -162,7 +162,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
             {selectedDivision && selectedDivision.pools.length > 0 && (
               <div>
                 <label htmlFor="pool" className="block text-sm font-medium text-gray-700 mb-1">
-                  Пул (необязательно)
+                  Pool (optional)
                 </label>
                 <select
                   id="pool"
@@ -171,7 +171,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                   disabled={isSubmitting}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">WaitList (без пула)</option>
+                  <option value="">WaitList (no pool)</option>
                   {selectedDivision.pools.map((pool) => (
                     <option key={pool.id} value={pool.id}>
                       {pool.name}
@@ -188,7 +188,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                 onClick={handleClose}
                 disabled={isSubmitting}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -198,12 +198,12 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                 {isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Создание...</span>
+                    <span>Creating...</span>
                   </>
                 ) : (
                   <>
                     <Plus className="h-4 w-4" />
-                    <span>Создать команду</span>
+                    <span>Create Team</span>
                   </>
                 )}
               </Button>
@@ -212,7 +212,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-700">
-              <strong>Информация:</strong> Если пул не указан, команда автоматически попадет в WaitList выбранного дивизиона.
+              <strong>Info:</strong> If no pool is specified, the team will automatically be placed in the WaitList of the selected division.
             </p>
           </div>
         </CardContent>

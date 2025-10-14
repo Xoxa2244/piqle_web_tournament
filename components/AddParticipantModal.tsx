@@ -49,7 +49,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     },
     onError: (error) => {
       console.error('Failed to create participant:', error)
-      alert(`Ошибка при создании участника: ${error.message}`)
+      alert(`Error creating participant: ${error.message}`)
       setIsSubmitting(false)
     }
   })
@@ -62,7 +62,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     },
     onError: (error) => {
       console.error('Failed to add to team:', error)
-      alert(`Ошибка при добавлении в команду: ${error.message}`)
+      alert(`Error adding to team: ${error.message}`)
       setIsSubmitting(false)
     }
   })
@@ -71,7 +71,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     e.preventDefault()
     
     if (!firstName.trim() || !lastName.trim()) {
-      alert('Введите имя и фамилию участника')
+      alert('Enter participant name and surname')
       return
     }
 
@@ -118,9 +118,9 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
       <Card className="w-full max-w-md mx-4">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
-            <CardTitle className="text-lg font-semibold">Добавить участника</CardTitle>
+            <CardTitle className="text-lg font-semibold">Add Participant</CardTitle>
             <CardDescription>
-              Создать нового участника турнира
+              Create new tournament participant
             </CardDescription>
           </div>
           <Button
@@ -138,14 +138,14 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-                Имя *
+                First Name *
               </label>
               <Input
                 id="firstName"
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Введите имя"
+                placeholder="Enter first name"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -153,14 +153,14 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
 
             <div>
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-                Фамилия *
+                Last Name *
               </label>
               <Input
                 id="lastName"
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                placeholder="Введите фамилию"
+                placeholder="Enter last name"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -168,14 +168,14 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email (необязательно)
+                Email (optional)
               </label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Введите email"
+                placeholder="Enter email"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -183,14 +183,14 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
 
             <div>
               <label htmlFor="dupr" className="block text-sm font-medium text-gray-700 mb-1">
-                DUPR ID (необязательно)
+                DUPR ID (optional)
               </label>
               <Input
                 id="dupr"
                 type="text"
                 value={dupr}
                 onChange={(e) => setDupr(e.target.value)}
-                placeholder="Введите DUPR ID"
+                placeholder="Enter DUPR ID"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -198,7 +198,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
 
             <div>
               <label htmlFor="team" className="block text-sm font-medium text-gray-700 mb-1">
-                Команда (необязательно)
+                Team (optional)
               </label>
               <select
                 id="team"
@@ -207,7 +207,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
                 disabled={isSubmitting}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Общий список</option>
+                <option value="">General list</option>
                 {teams?.map((team) => (
                   <option key={team.id} value={team.id}>
                     {team.name} ({team.division.name})
@@ -223,7 +223,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
                 onClick={handleClose}
                 disabled={isSubmitting}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -233,12 +233,12 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
                 {isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Создание...</span>
+                    <span>Creating...</span>
                   </>
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4" />
-                    <span>Создать участника</span>
+                    <span>Create Participant</span>
                   </>
                 )}
               </Button>
@@ -247,7 +247,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-700">
-              <strong>Информация:</strong> Если команда не выбрана, участник будет добавлен в общий список и сможет быть добавлен в команду позже.
+              <strong>Info:</strong> If no team is selected, the participant will be added to the general list and can be added to a team later.
             </p>
           </div>
         </CardContent>

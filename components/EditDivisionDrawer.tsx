@@ -86,7 +86,7 @@ export default function EditDivisionDrawer({
 
   const handleSave = () => {
     if (!formData.name.trim()) {
-      alert('Пожалуйста, введите название дивизиона')
+      alert('Please enter division name')
       return
     }
 
@@ -125,10 +125,10 @@ export default function EditDivisionDrawer({
                 <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 mr-3" />
                 <div>
                   <h3 className="text-sm font-medium text-yellow-800">
-                    Изменение количества пулов
+                    Changing pool count
                   </h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    Изменение количества пулов потребует регенерации Round Robin и всех последующих стадий (Play-In/Play-Off).
+                    Changing pool count потребует регенерации Round Robin и всех последующих стадий (Play-In/Play-Off).
                   </p>
                 </div>
               </div>
@@ -245,7 +245,7 @@ export default function EditDivisionDrawer({
                     value={formData.minDupr || ''}
                     onChange={(e) => setFormData({ ...formData, minDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Без ограничений"
+                    placeholder="No restrictions"
                   />
                 </div>
 
@@ -261,7 +261,7 @@ export default function EditDivisionDrawer({
                     value={formData.maxDupr || ''}
                     onChange={(e) => setFormData({ ...formData, maxDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Без ограничений"
+                    placeholder="No restrictions"
                   />
                 </div>
               </div>
@@ -278,7 +278,7 @@ export default function EditDivisionDrawer({
                     value={formData.minAge || ''}
                     onChange={(e) => setFormData({ ...formData, minAge: e.target.value ? parseInt(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Без ограничений"
+                    placeholder="No restrictions"
                   />
                 </div>
 
@@ -293,7 +293,7 @@ export default function EditDivisionDrawer({
                     value={formData.maxAge || ''}
                     onChange={(e) => setFormData({ ...formData, maxAge: e.target.value ? parseInt(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Без ограничений"
+                    placeholder="No restrictions"
                   />
                 </div>
               </div>
