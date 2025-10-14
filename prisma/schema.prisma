@@ -50,6 +50,7 @@ model Tournament {
   rrGroups    RoundRobinGroup[]
   importJobs  ImportJob[]
   auditLogs   AuditLog[]
+  players     Player[]
 
   @@map("tournaments")
 }
@@ -170,6 +171,7 @@ model Team {
 
 model Player {
   id          String    @id @default(uuid())
+  tournamentId String   // Link player to specific tournament
   firstName   String
   lastName    String
   email       String?
@@ -184,6 +186,7 @@ model Player {
   updatedAt   DateTime  @updatedAt
 
   // Relations
+  tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   teamPlayers TeamPlayer[]
 
   @@map("players")

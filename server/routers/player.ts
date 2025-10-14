@@ -41,29 +41,9 @@ export const playerRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Get all players who are in teams from this tournament
-      const playersInTournament = await ctx.prisma.teamPlayer.findMany({
-        where: {
-          team: {
-            division: {
-              tournamentId: input.tournamentId,
-            },
-          },
-        },
-        include: {
-          player: true,
-        },
-      })
-
-      const playerIds = playersInTournament.map(tp => tp.playerId)
-
       return ctx.prisma.player.findMany({
         where: {
-          OR: [
-            { id: { in: playerIds } },
-            // Also include players not in any team (they might be unassigned)
-            { teamPlayers: { none: {} } },
-          ],
+          tournamentId: input.tournamentId,
         },
         include: {
           teamPlayers: {

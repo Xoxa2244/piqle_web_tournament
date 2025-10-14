@@ -24,7 +24,7 @@ export default function NewTournamentPage() {
     },
     onError: (error) => {
       console.error('Error creating tournament:', error)
-      alert('Ошибка при создании турнира: ' + error.message)
+      alert('Error creating tournament: ' + error.message)
     },
   })
 
@@ -32,7 +32,7 @@ export default function NewTournamentPage() {
     e.preventDefault()
     
     if (!formData.title || !formData.startDate || !formData.endDate) {
-      alert('Пожалуйста, заполните обязательные поля')
+      alert('Please fill in required fields')
       return
     }
 
@@ -58,22 +58,22 @@ export default function NewTournamentPage() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Создать турнир</h1>
-        <p className="text-gray-600 mt-2">Заполните информацию о турнире</p>
+        <h1 className="text-3xl font-bold text-gray-900">Create Tournament</h1>
+        <p className="text-gray-600 mt-2">Fill in tournament information</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Информация о турнире</CardTitle>
+          <CardTitle>Tournament Information</CardTitle>
           <CardDescription>
-            Основная информация о турнире по пиклболу
+            Basic information about the pickleball tournament
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                Название турнира *
+                Tournament Name *
               </label>
               <input
                 type="text"
@@ -83,13 +83,13 @@ export default function NewTournamentPage() {
                 onChange={handleChange}
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Например: Чемпионат по пиклболу 2024"
+                placeholder="e.g., Pickleball Championship 2024"
               />
             </div>
 
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Описание
+                Description
               </label>
               <textarea
                 id="description"
@@ -98,13 +98,13 @@ export default function NewTournamentPage() {
                 onChange={handleChange}
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Описание турнира, правила, особенности..."
+                placeholder="Tournament description, rules, features..."
               />
             </div>
 
             <div>
               <label htmlFor="venueName" className="block text-sm font-medium text-gray-700 mb-2">
-                Место проведения
+                Venue
               </label>
               <input
                 type="text"
@@ -113,14 +113,14 @@ export default function NewTournamentPage() {
                 value={formData.venueName}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Название спортивного комплекса"
+                placeholder="Sports complex name"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
-                  Дата начала *
+                  Start Date *
                 </label>
                 <input
                   type="date"
@@ -135,7 +135,7 @@ export default function NewTournamentPage() {
 
               <div>
                 <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
-                  Дата окончания *
+                  End Date *
                 </label>
                 <input
                   type="date"
@@ -151,7 +151,7 @@ export default function NewTournamentPage() {
 
             <div>
               <label htmlFor="entryFee" className="block text-sm font-medium text-gray-700 mb-2">
-                Взнос за участие ($)
+                Entry Fee ($)
               </label>
               <input
                 type="number"
@@ -176,7 +176,7 @@ export default function NewTournamentPage() {
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
-                Включить публичную доску результатов
+                Enable public results board
               </label>
             </div>
 
@@ -186,13 +186,13 @@ export default function NewTournamentPage() {
                 variant="outline"
                 onClick={() => router.back()}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={createTournament.isPending}
               >
-                {createTournament.isPending ? 'Создание...' : 'Создать турнир'}
+                {createTournament.isPending ? 'Creating...' : 'Create Tournament'}
               </Button>
             </div>
           </form>

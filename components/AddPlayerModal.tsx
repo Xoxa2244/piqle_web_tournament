@@ -39,7 +39,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
     },
     onError: (error) => {
       console.error('Failed to create player:', error)
-      alert(`Ошибка при создании игрока: ${error.message}`)
+      alert(`Error creating player: ${error.message}`)
       setIsSubmitting(false)
     }
   })
@@ -48,7 +48,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
     e.preventDefault()
     
     if (!firstName.trim() || !lastName.trim()) {
-      alert('Введите имя и фамилию игрока')
+      alert('Please enter player name and surname')
       return
     }
 
@@ -90,9 +90,9 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
       <Card className="w-full max-w-md mx-4">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
-            <CardTitle className="text-lg font-semibold">Добавить игрока</CardTitle>
+            <CardTitle className="text-lg font-semibold">Add Player</CardTitle>
             <CardDescription>
-              Создать нового участника турнира
+              Create new tournament participant
             </CardDescription>
           </div>
           <Button
@@ -111,14 +111,14 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Имя *
+                  First Name *
                 </label>
                 <Input
                   id="firstName"
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Введите имя"
+                  placeholder="Enter first name"
                   disabled={isSubmitting}
                   className="w-full"
                 />
@@ -126,14 +126,14 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
 
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Фамилия *
+                  Last Name *
                 </label>
                 <Input
                   id="lastName"
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Введите фамилию"
+                  placeholder="Enter last name"
                   disabled={isSubmitting}
                   className="w-full"
                 />
@@ -142,14 +142,14 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email (необязательно)
+                Email (optional)
               </label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Введите email"
+                placeholder="Enter email"
                 disabled={isSubmitting}
                 className="w-full"
               />
@@ -158,14 +158,14 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="dupr" className="block text-sm font-medium text-gray-700 mb-1">
-                  DUPR ID (необязательно)
+                  DUPR ID (optional)
                 </label>
                 <Input
                   id="dupr"
                   type="text"
                   value={dupr}
                   onChange={(e) => setDupr(e.target.value)}
-                  placeholder="Введите DUPR ID"
+                  placeholder="Enter DUPR ID"
                   disabled={isSubmitting}
                   className="w-full"
                 />
@@ -173,7 +173,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
 
               <div>
                 <label htmlFor="duprRating" className="block text-sm font-medium text-gray-700 mb-1">
-                  DUPR рейтинг (необязательно)
+                  DUPR Rating (optional)
                 </label>
                 <Input
                   id="duprRating"
@@ -193,7 +193,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Статус оплаты
+                  Payment Status
                 </label>
                 <div className="space-y-2">
                   <label className="flex items-center">
@@ -205,7 +205,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
                       disabled={isSubmitting}
                       className="mr-2"
                     />
-                    <span className="text-sm">Оплачено</span>
+                    <span className="text-sm">Paid</span>
                   </label>
                   <label className="flex items-center">
                     <input
@@ -216,14 +216,14 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
                       disabled={isSubmitting}
                       className="mr-2"
                     />
-                    <span className="text-sm">Ожидает оплату</span>
+                    <span className="text-sm">Pending payment</span>
                   </label>
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Статус списка
+                  List Status
                 </label>
                 <div className="space-y-2">
                   <label className="flex items-center">
@@ -259,7 +259,7 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
                 onClick={handleClose}
                 disabled={isSubmitting}
               >
-                Отмена
+                Cancel
               </Button>
               <Button
                 type="submit"
@@ -269,12 +269,12 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
                 {isSubmitting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Создание...</span>
+                    <span>Creating...</span>
                   </>
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4" />
-                    <span>Добавить игрока</span>
+                    <span>Add Player</span>
                   </>
                 )}
               </Button>

@@ -78,7 +78,7 @@ export default function PlayersPage() {
     },
     onError: (error) => {
       console.error('Failed to delete player:', error)
-      alert('Ошибка при удалении игрока')
+      alert('Error deleting player')
     }
   })
 
@@ -146,7 +146,7 @@ export default function PlayersPage() {
   }
 
   const handleDeletePlayer = (playerId: string) => {
-    if (!confirm('Вы уверены, что хотите удалить этого игрока?')) {
+    if (!confirm('Are you sure you want to delete this player?')) {
       return
     }
     
@@ -171,7 +171,7 @@ export default function PlayersPage() {
   if (!tournament) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Загрузка турнира...</div>
+        <div className="text-lg">Loading tournament...</div>
       </div>
     )
   }
@@ -184,12 +184,12 @@ export default function PlayersPage() {
           <Link href={`/admin/${tournamentId}`}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Назад к турниру
+              Back to Tournament
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Управление игроками</h1>
-            <p className="text-gray-600 mt-1">Общий список участников турнира</p>
+            <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
+            <p className="text-gray-600 mt-1">General tournament participants list</p>
           </div>
         </div>
       </div>
@@ -202,7 +202,7 @@ export default function PlayersPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Поиск по всем полям..."
+                placeholder="Search all fields..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -215,7 +215,7 @@ export default function PlayersPage() {
               onChange={(e) => setDivisionFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Все дивизионы</option>
+              <option value="">All divisions</option>
               {divisions.map((division) => (
                 <option key={division.id} value={division.id}>
                   {division.name}
@@ -229,7 +229,7 @@ export default function PlayersPage() {
               onChange={(e) => setTeamFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Все команды</option>
+              <option value="">All teams</option>
               {teams?.map((team) => (
                 <option key={team.id} value={team.id}>
                   {team.name}
@@ -243,9 +243,9 @@ export default function PlayersPage() {
               onChange={(e) => setPaymentFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Все статусы оплаты</option>
-              <option value="paid">Оплачено</option>
-              <option value="unpaid">Ожидает оплату</option>
+              <option value="">All payment statuses</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Pending payment</option>
             </select>
           </div>
 
@@ -258,13 +258,13 @@ export default function PlayersPage() {
                 className="flex items-center space-x-2"
               >
                 {showOnlyWaitlist ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                <span>{showOnlyWaitlist ? 'Показать всех' : 'Только Waitlist'}</span>
+                <span>{showOnlyWaitlist ? 'Show all' : 'Waitlist only'}</span>
               </Button>
             </div>
 
             <Button onClick={handleAddPlayer} size="sm">
               <UserPlus className="h-4 w-4 mr-2" />
-              Добавить игрока
+              Add Player
             </Button>
           </div>
         </CardContent>
@@ -275,7 +275,7 @@ export default function PlayersPage() {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Users className="h-5 w-5" />
-            <span>Список игроков ({filteredPlayers.length})</span>
+            <span>Players List ({filteredPlayers.length})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -283,15 +283,15 @@ export default function PlayersPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left p-3 font-medium">Имя игрока</th>
+                  <th className="text-left p-3 font-medium">Player Name</th>
                   <th className="text-left p-3 font-medium">Email</th>
                   <th className="text-left p-3 font-medium">DUPR ID</th>
-                  <th className="text-left p-3 font-medium">DUPR рейтинг</th>
-                  <th className="text-left p-3 font-medium">Дивизион</th>
-                  <th className="text-left p-3 font-medium">Команда</th>
-                  <th className="text-left p-3 font-medium">Статус оплаты</th>
-                  <th className="text-left p-3 font-medium">Статус списка</th>
-                  <th className="text-left p-3 font-medium">Действия</th>
+                  <th className="text-left p-3 font-medium">DUPR Rating</th>
+                  <th className="text-left p-3 font-medium">Division</th>
+                  <th className="text-left p-3 font-medium">Team</th>
+                  <th className="text-left p-3 font-medium">Payment Status</th>
+                  <th className="text-left p-3 font-medium">List Status</th>
+                  <th className="text-left p-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -299,8 +299,8 @@ export default function PlayersPage() {
                   <tr>
                     <td colSpan={9} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
-                        ? 'Игроки не найдены' 
-                        : 'Нет игроков в турнире'
+                        ? 'Players not found' 
+                        : 'No players in tournament'
                       }
                     </td>
                   </tr>
@@ -329,7 +329,7 @@ export default function PlayersPage() {
                       </td>
                       <td className="p-3">
                         <Badge variant={player.isPaid ? "default" : "secondary"}>
-                          {player.isPaid ? 'Оплачено' : 'Ожидает'}
+                          {player.isPaid ? 'Paid' : 'Pending'}
                         </Badge>
                       </td>
                       <td className="p-3">
