@@ -178,7 +178,7 @@ function WaitList({
                 onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
-                onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -256,7 +256,7 @@ function PoolCard({
                 onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
-                onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -549,7 +549,7 @@ function DivisionCard({
                       onContextMenu={() => {}}
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
-                      onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                      onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
                     />
                   ))}
                 </div>
@@ -924,16 +924,27 @@ export default function DivisionsPage() {
       .flatMap(d => d.teams)
       .find(t => t.id === toTeamId)
     
-    if (fromTeam && toTeam && fromTeam.teamPlayers[fromSlotIndex] && toTeam.teamPlayers[toSlotIndex]) {
+    if (fromTeam && toTeam) {
       const fromTeamPlayer = fromTeam.teamPlayers[fromSlotIndex]
       const toTeamPlayer = toTeam.teamPlayers[toSlotIndex]
       
-      movePlayerBetweenSlotsMutation.mutate({
-        fromTeamPlayerId: fromTeamPlayer.id,
-        toTeamPlayerId: toTeamPlayer.id,
-        fromSlotIndex,
-        toSlotIndex
-      })
+      if (fromTeamPlayer && toTeamPlayer) {
+        // Both slots have players - swap them
+        movePlayerBetweenSlotsMutation.mutate({
+          fromTeamPlayerId: fromTeamPlayer.id,
+          toTeamPlayerId: toTeamPlayer.id,
+          fromSlotIndex,
+          toSlotIndex
+        })
+      } else if (fromTeamPlayer && !toTeamPlayer) {
+        // Move player to empty slot
+        movePlayerBetweenSlotsMutation.mutate({
+          fromTeamPlayerId: fromTeamPlayer.id,
+          toTeamPlayerId: fromTeamPlayer.id, // Same player
+          fromSlotIndex,
+          toSlotIndex
+        })
+      }
     }
   }
 
