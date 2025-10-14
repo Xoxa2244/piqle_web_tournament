@@ -81,7 +81,10 @@ export default function PlayerSlot({
   if (!player) {
   // Empty slot
   return (
-    <div className="flex items-center space-x-2 p-2 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+    <div 
+      ref={setNodeRef}
+      className="flex items-center space-x-2 p-2 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg"
+    >
       <div className="flex items-center justify-center w-6 h-6 bg-gray-200 rounded-full">
         <span className="text-xs font-medium text-gray-500">{slotIndex + 1}</span>
       </div>
@@ -111,8 +114,6 @@ export default function PlayerSlot({
       className={`flex items-center space-x-2 p-2 bg-white border rounded-lg shadow-sm ${
         isDragging ? 'opacity-50' : ''
       }`}
-      {...attributes}
-      {...listeners}
     >
       <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
         <span className="text-xs font-medium text-blue-600">{slotIndex + 1}</span>
@@ -142,7 +143,11 @@ export default function PlayerSlot({
       
       <div className="flex items-center space-x-1">
         {!isDragDisabled && (
-          <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
+          <div 
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+          >
             <GripVertical className="h-3 w-3" />
           </div>
         )}

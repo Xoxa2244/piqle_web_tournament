@@ -374,91 +374,160 @@ export const teamPlayerRouter = createTRPCRouter({
 
   movePlayerBetweenSlots: tdProcedure
     .input(z.object({
-      fromTeamPlayerId: z.string(),
-      toTeamPlayerId: z.string(),
+      fromTeamId: z.string(),
+      toTeamId: z.string(),
       fromSlotIndex: z.number().min(0).max(3),
       toSlotIndex: z.number().min(0).max(3),
     }))
     .mutation(async ({ ctx, input }) => {
-      // Get both team players
-      const fromTeamPlayer = await ctx.prisma.teamPlayer.findUnique({
-        where: { id: input.fromTeamPlayerId },
+      console.log('[movePlayerBetweenSlots] Input:', input)
+      
+      // Get both teams
+      const fromTeam = await ctx.prisma.team.findUnique({
+        where: { id: input.fromTeamId },
         include: { 
-          team: { 
-            include: { 
-              division: true,
-              teamPlayers: {
-                include: { player: true },
-                orderBy: { createdAt: 'asc' }
-              }
-            } 
-          },
-          player: true 
+          division: true,
+          teamPlayers: {
+            include: { player: true },
+            orderBy: { createdAt: 'asc' }
+          }
         },
       })
 
-      const toTeamPlayer = await ctx.prisma.teamPlayer.findUnique({
-        where: { id: input.toTeamPlayerId },
+      const toTeam = await ctx.prisma.team.findUnique({
+        where: { id: input.toTeamId },
         include: { 
-          team: { 
-            include: { 
-              division: true,
-              teamPlayers: {
-                include: { player: true },
-                orderBy: { createdAt: 'asc' }
-              }
-            } 
-          },
-          player: true 
+          division: true,
+          teamPlayers: {
+            include: { player: true },
+            orderBy: { createdAt: 'asc' }
+          }
         },
       })
 
-      if (!fromTeamPlayer || !toTeamPlayer) {
-        throw new Error('Team players not found')
+      if (!fromTeam || !toTeam) {
+        throw new Error('Teams not found')
       }
 
+      console.log('[movePlayerBetweenSlots] From team players:', fromTeam.teamPlayers.length)
+      console.log('[movePlayerBetweenSlots] To team players:', toTeam.teamPlayers.length)
+
       // Check if they're in the same division
-      if (fromTeamPlayer.team.divisionId !== toTeamPlayer.team.divisionId) {
+      if (fromTeam.divisionId !== toTeam.divisionId) {
         throw new Error('Cannot move players between different divisions')
       }
 
-      // Verify slot indices
-      const fromPlayerIndex = fromTeamPlayer.team.teamPlayers.findIndex(tp => tp.id === input.fromTeamPlayerId)
-      const toPlayerIndex = toTeamPlayer.team.teamPlayers.findIndex(tp => tp.id === input.toTeamPlayerId)
-      
-      if (fromPlayerIndex !== input.fromSlotIndex || toPlayerIndex !== input.toSlotIndex) {
-        throw new Error('Players are not in the specified slots')
+      // Get players at specified slots
+      const fromTeamPlayer = fromTeam.teamPlayers[input.fromSlotIndex]
+      const toTeamPlayer = toTeam.teamPlayers[input.toSlotIndex]
+
+      console.log('[movePlayerBetweenSlots] From player:', fromTeamPlayer?.player.firstName, fromTeamPlayer?.player.lastName)
+      console.log('[movePlayerBetweenSlots] To player:', toTeamPlayer?.player.firstName, toTeamPlayer?.player.lastName)
+
+      if (!fromTeamPlayer) {
+        throw new Error('No player in source slot')
       }
 
-      // Swap players between teams
-      await ctx.prisma.teamPlayer.update({
-        where: { id: input.fromTeamPlayerId },
-        data: { teamId: toTeamPlayer.teamId },
-      })
+      // Same team - reorder within team
+      if (input.fromTeamId === input.toTeamId) {
+        if (toTeamPlayer) {
+          // Swap within same team by swapping timestamps
+          const fromCreatedAt = fromTeamPlayer.createdAt
+          const toCreatedAt = toTeamPlayer.createdAt
+          
+          await ctx.prisma.teamPlayer.update({
+            where: { id: fromTeamPlayer.id },
+            data: { createdAt: toCreatedAt },
+          })
 
-      await ctx.prisma.teamPlayer.update({
-        where: { id: input.toTeamPlayerId },
-        data: { teamId: fromTeamPlayer.teamId },
-      })
+          await ctx.prisma.teamPlayer.update({
+            where: { id: toTeamPlayer.id },
+            data: { createdAt: fromCreatedAt },
+          })
 
-      // Log the swap
-      await ctx.prisma.auditLog.create({
-        data: {
-          actorUserId: ctx.session.user.id,
-          tournamentId: fromTeamPlayer.team.division.tournamentId,
-          action: 'SWAP_PLAYERS',
-          entityType: 'TeamPlayer',
-          entityId: input.fromTeamPlayerId,
-          payload: {
-            fromPlayerName: `${fromTeamPlayer.player.firstName} ${fromTeamPlayer.player.lastName}`,
-            toPlayerName: `${toTeamPlayer.player.firstName} ${toTeamPlayer.player.lastName}`,
-            fromTeam: fromTeamPlayer.team.name,
-            toTeam: toTeamPlayer.team.name,
-            fromSlotIndex: input.fromSlotIndex,
-            toSlotIndex: input.toSlotIndex,
+          console.log('[movePlayerBetweenSlots] Swapped players within same team')
+
+          // Log the swap
+          await ctx.prisma.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: fromTeam.division.tournamentId,
+              action: 'SWAP_PLAYERS',
+              entityType: 'TeamPlayer',
+              entityId: fromTeamPlayer.id,
+              payload: {
+                fromPlayerName: `${fromTeamPlayer.player.firstName} ${fromTeamPlayer.player.lastName}`,
+                toPlayerName: `${toTeamPlayer.player.firstName} ${toTeamPlayer.player.lastName}`,
+                team: fromTeam.name,
+                fromSlotIndex: input.fromSlotIndex,
+                toSlotIndex: input.toSlotIndex,
+              },
+            },
+          })
+        } else {
+          // Move to empty slot within same team - just update timestamp to place at toSlotIndex
+          console.log('[movePlayerBetweenSlots] Moving to empty slot within same team - no action needed (visual only)')
+        }
+
+        return { success: true }
+      }
+
+      // Different teams - swap or move
+      if (toTeamPlayer) {
+        // Swap between different teams
+        await ctx.prisma.teamPlayer.update({
+          where: { id: fromTeamPlayer.id },
+          data: { teamId: toTeam.id },
+        })
+
+        await ctx.prisma.teamPlayer.update({
+          where: { id: toTeamPlayer.id },
+          data: { teamId: fromTeam.id },
+        })
+
+        console.log('[movePlayerBetweenSlots] Swapped players between different teams')
+
+        // Log the swap
+        await ctx.prisma.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: fromTeam.division.tournamentId,
+            action: 'SWAP_PLAYERS',
+            entityType: 'TeamPlayer',
+            entityId: fromTeamPlayer.id,
+            payload: {
+              fromPlayerName: `${fromTeamPlayer.player.firstName} ${fromTeamPlayer.player.lastName}`,
+              toPlayerName: `${toTeamPlayer.player.firstName} ${toTeamPlayer.player.lastName}`,
+              fromTeam: fromTeam.name,
+              toTeam: toTeam.name,
+            },
           },
-        },
-      })
+        })
+      } else {
+        // Move to empty slot in different team
+        await ctx.prisma.teamPlayer.update({
+          where: { id: fromTeamPlayer.id },
+          data: { teamId: toTeam.id },
+        })
+
+        console.log('[movePlayerBetweenSlots] Moved player to empty slot in different team')
+
+        // Log the move
+        await ctx.prisma.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: fromTeam.division.tournamentId,
+            action: 'MOVE_PLAYER',
+            entityType: 'TeamPlayer',
+            entityId: fromTeamPlayer.id,
+            payload: {
+              playerName: `${fromTeamPlayer.player.firstName} ${fromTeamPlayer.player.lastName}`,
+              fromTeam: fromTeam.name,
+              toTeam: toTeam.name,
+            },
+          },
+        })
+      }
 
       return { success: true }
     }),

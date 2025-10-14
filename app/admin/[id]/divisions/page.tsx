@@ -915,7 +915,9 @@ export default function DivisionsPage() {
   }
 
   const handleMovePlayerBetweenSlots = (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => {
-    // Find the team players to swap
+    console.log('[handleMovePlayerBetweenSlots] Called:', { fromTeamId, toTeamId, fromSlotIndex, toSlotIndex })
+    
+    // Find the teams
     const fromTeam = localDivisions
       .flatMap(d => d.teams)
       .find(t => t.id === fromTeamId)
@@ -926,25 +928,22 @@ export default function DivisionsPage() {
     
     if (fromTeam && toTeam) {
       const fromTeamPlayer = fromTeam.teamPlayers[fromSlotIndex]
-      const toTeamPlayer = toTeam.teamPlayers[toSlotIndex]
       
-      if (fromTeamPlayer && toTeamPlayer) {
-        // Both slots have players - swap them
+      if (fromTeamPlayer) {
+        console.log('[handleMovePlayerBetweenSlots] Moving player:', fromTeamPlayer.player.firstName, fromTeamPlayer.player.lastName)
+        
+        // Call mutation with team IDs
         movePlayerBetweenSlotsMutation.mutate({
-          fromTeamPlayerId: fromTeamPlayer.id,
-          toTeamPlayerId: toTeamPlayer.id,
+          fromTeamId,
+          toTeamId,
           fromSlotIndex,
           toSlotIndex
         })
-      } else if (fromTeamPlayer && !toTeamPlayer) {
-        // Move player to empty slot
-        movePlayerBetweenSlotsMutation.mutate({
-          fromTeamPlayerId: fromTeamPlayer.id,
-          toTeamPlayerId: fromTeamPlayer.id, // Same player
-          fromSlotIndex,
-          toSlotIndex
-        })
+      } else {
+        console.log('[handleMovePlayerBetweenSlots] No player in source slot')
       }
+    } else {
+      console.log('[handleMovePlayerBetweenSlots] Teams not found')
     }
   }
 
