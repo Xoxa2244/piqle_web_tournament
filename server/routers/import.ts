@@ -87,7 +87,7 @@ export const importRouter = createTRPCRouter({
       const headers = lines[0].split(',').map(h => h.trim())
       
       // Validate headers
-      const requiredHeaders = ['First Name', 'Last Name', 'Gender', 'Age', 'DUPR rating', 'Division', 'Type', 'Team']
+      const requiredHeaders = ['First Name', 'Last Name', 'Gender', 'Age', 'DUPR ID', 'DUPR rating', 'Division', 'Type', 'Team']
       const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
       if (missingHeaders.length > 0) {
         throw new Error(`Missing required headers: ${missingHeaders.join(', ')}`)
@@ -227,7 +227,8 @@ export const importRouter = createTRPCRouter({
                 lastName: participant['Last Name'],
                 gender: participant['Gender'] === 'M' ? 'M' : 'F',
                 birthDate: new Date(new Date().getFullYear() - parseInt(participant['Age']), 0, 1),
-                dupr: participant['DUPR rating'] ? String(participant['DUPR rating']) : null,
+                dupr: participant['DUPR ID'] || null,
+                duprRating: participant['DUPR rating'] ? parseFloat(participant['DUPR rating']) : null,
               }
             })
             
