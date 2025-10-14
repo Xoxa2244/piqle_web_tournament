@@ -77,8 +77,8 @@ export default function AddPlayerModal({ tournamentId, isOpen, onClose, onSucces
       setEmail('')
       setDupr('')
       setDuprRating('')
-      setIsPaid(false)
-      setIsWaitlist(false)
+      // setIsPaid(false) // Temporarily disabled until migration
+      // setIsWaitlist(false) // Temporarily disabled until migration
       onClose()
     }
   }
