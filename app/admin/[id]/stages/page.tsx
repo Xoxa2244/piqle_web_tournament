@@ -38,26 +38,26 @@ export default function DivisionStageManagement() {
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
 
-  // Загружаем данные турнира
+  // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
 
-  // Автоматически выбираем первый дивизион, если не выбран
+  // Automatically select first division if not selected
   useEffect(() => {
     if (tournament && tournament.divisions.length > 0 && !selectedDivisionId) {
       setSelectedDivisionId(tournament.divisions[0].id)
     }
   }, [tournament, selectedDivisionId])
 
-  // Загружаем данные дивизиона
+  // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
     { divisionId: selectedDivisionId },
     { enabled: !!selectedDivisionId }
   )
 
-  // Мутации для генерации
+  // Mutations for generation
   const generateRRMutation = trpc.match.generateRR.useMutation({
     onSuccess: () => {
       refetchDivision()
@@ -129,7 +129,7 @@ export default function DivisionStageManagement() {
     }
   })
 
-  // Вычисляем статистику
+  // Calculate statistics
   const division = divisionData
   const teams = division?.teams || []
   const matches = division?.matches || []
@@ -147,25 +147,25 @@ export default function DivisionStageManagement() {
   )
 
   const teamCount = teams.length
-  // Определяем целевой размер сетки на основе количества команд
+  // Determine target bracket size based on team count
   const getTargetBracketSize = (teamCount: number) => {
-    if (teamCount <= 8) return 4      // До 8 команд → сетка 4
-    if (teamCount <= 16) return 8     // 9-16 команд → сетка 8
-    if (teamCount <= 24) return 16    // 17-24 команд → сетка 16
-    if (teamCount <= 32) return 32    // 25-32 команд → сетка 32
-    return 64                         // 33+ команд → сетка 64
+    if (teamCount <= 8) return 4      // Up to 8 teams → bracket 4
+    if (teamCount <= 16) return 8     // 9-16 teams → bracket 8
+    if (teamCount <= 24) return 16    // 17-24 teams → bracket 16
+    if (teamCount <= 32) return 32    // 25-32 teams → bracket 32
+    return 64                         // 33+ teams → bracket 64
   }
   const targetBracketSize = getTargetBracketSize(teamCount)
   const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
-  // Находим текущий дивизион в турнире для получения дополнительной информации
+  // Find current division in tournament for additional information
   const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId)
   
-  // Определяем текущую стадию
+  // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
   
-  // Функции для обработки действий
+  // Functions for handling actions
   const handleGenerateRR = () => {
     if (selectedDivisionId) {
       generateRRMutation.mutate({ divisionId: selectedDivisionId })
@@ -192,7 +192,7 @@ export default function DivisionStageManagement() {
     })
     
     if (selectedDivisionId) {
-      // Если Play-In завершен (по факту завершения матчей), используем generatePlayoffAfterPlayIn
+      // If Play-In is completed (based on completed matches), use generatePlayoffAfterPlayIn
       if (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0) {
         console.log('Using generatePlayoffAfterPlayIn')
         generatePlayoffAfterPlayInMutation.mutate({ 
@@ -201,7 +201,7 @@ export default function DivisionStageManagement() {
         })
       } else {
         console.log('Using generatePlayoffs')
-        // Иначе используем обычную генерацию Play-Off (прямо после RR)
+        // Otherwise use regular Play-Off generation (directly after RR)
         generatePlayoffsMutation.mutate({ 
           divisionId: selectedDivisionId, 
           bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
@@ -210,20 +210,20 @@ export default function DivisionStageManagement() {
     }
   }
 
-  // Проверяем, можно ли сгенерировать следующий раунд плей-офф
+  // Check if next playoff round can be generated
   const canGenerateNextRound = () => {
     if (!eliminationMatches.length) return false
     
-    // Находим текущий раунд (самый высокий roundIndex)
+    // Find current round (highest roundIndex)
     const currentRound = Math.max(...eliminationMatches.map(m => m.roundIndex))
     const currentRoundMatches = eliminationMatches.filter(m => m.roundIndex === currentRound)
     
-    // Проверяем, все ли матчи текущего раунда завершены
+    // Check if all matches of current round are completed
     const allCompleted = currentRoundMatches.every(match => 
       match.games && match.games.length > 0 && match.games[0].scoreA > 0
     )
     
-    return allCompleted && currentRoundMatches.length > 1 // Не финал
+    return allCompleted && currentRoundMatches.length > 1 // Not final
   }
 
   const handleGenerateNextRound = () => {
@@ -244,7 +244,7 @@ export default function DivisionStageManagement() {
   }
 
   const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>) => {
-    const game = games[0] // Берем первую игру
+    const game = games[0] // Take first game
     updateMatchResultMutation.mutate({
       matchId,
       scoreA: game.scoreA,
@@ -278,33 +278,33 @@ export default function DivisionStageManagement() {
 
   const confirmRegenerate = () => {
     if (regenerateType === 'rr') {
-      // Перегенерируем Round Robin
+      // Regenerate Round Robin
       handleRegenerateRR()
     } else if (regenerateType === 'playin') {
-      // Перегенерируем Play-In с учетом обновленных результатов RR
+      // Regenerate Play-In with updated RR results
       regeneratePlayInMutation.mutate({ 
         divisionId: selectedDivisionId, 
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
         regenerate: true
       })
     } else if (regenerateType === 'playoff') {
-      // Перегенерируем Play-Off
+      // Regenerate Play-Off
       handleRegeneratePlayoffs()
     }
     setShowRegenerateModal(false)
     setRegenerateType(null)
   }
 
-  // Определяем доступность кнопок
+  // Determine button availability
   const canGenerateRR = !rrMatches.length
   const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS'
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
-  const canRegenerateRR = rrMatches.length > 0 // Можно перегенерировать если есть матчи RR
+  const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
 
-  // Отладочная информация
+  // Debug information
   console.log('Debug Play-Off generation:', {
     currentStage,
     needsPlayIn,
@@ -322,7 +322,7 @@ export default function DivisionStageManagement() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Загрузка данных дивизиона...</p>
+          <p className="mt-4 text-gray-600">Loading division data...</p>
         </div>
       </div>
     )
@@ -330,10 +330,10 @@ export default function DivisionStageManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Верхняя панель */}
+      {/* Top panel */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Левая часть - информация о дивизионе */}
+          {/* Left part - division information */}
           <div className="flex items-center space-x-4">
             <Button
               variant="ghost"
@@ -342,26 +342,26 @@ export default function DivisionStageManagement() {
               className="flex items-center space-x-2"
             >
               <ChevronLeft className="h-4 w-4" />
-              <span>Назад</span>
+              <span>Back</span>
             </Button>
             
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{division.name}</h1>
               <div className="flex items-center space-x-4 mt-1">
                 <span className="text-sm text-gray-600">
-                  {teamCount} команд • {currentDivision?.teamKind === 'SINGLES_1v1' ? 'Singles' : 'Doubles'} • {currentDivision?.pairingMode}
+                  {teamCount} teams • {currentDivision?.teamKind === 'SINGLES_1v1' ? 'Singles' : 'Doubles'} • {currentDivision?.pairingMode}
                 </span>
                 <Badge variant="outline" className="text-xs">
                   {currentStage.replace(/_/g, ' ')}
                 </Badge>
                 <span className="text-sm text-gray-500">
-                  Целевой размер: {targetBracketSize}
+                  Target size: {targetBracketSize}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Правая часть - быстрые действия */}
+          {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
             <Button
               variant="outline"
@@ -373,7 +373,7 @@ export default function DivisionStageManagement() {
               <span>Dashboard</span>
             </Button>
             
-            {/* Переключатель дивизионов */}
+            {/* Division switcher */}
             <div className="flex items-center space-x-2">
               <Button
                 variant="ghost"
@@ -394,7 +394,7 @@ export default function DivisionStageManagement() {
               >
                 {tournament.divisions.map((div) => (
                   <option key={div.id} value={div.id}>
-                    {div.name} ({div.teams?.length || 0} команд)
+                    {div.name} ({div.teams?.length || 0} teams)
                   </option>
                 ))}
               </select>
@@ -416,7 +416,7 @@ export default function DivisionStageManagement() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Блок Round Robin */}
+        {/* Round Robin Block */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -425,12 +425,12 @@ export default function DivisionStageManagement() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Сводка RR */}
+            {/* RR Summary */}
             <div className="flex items-center justify-between">
               <div className="space-y-2">
                 <p className="text-sm text-gray-600">
-                  Всего матчей: {rrMatches.length} • Матчей на команду: {(() => {
-                    // Считаем матчей на команду внутри пулов
+                  Total matches: {rrMatches.length} • Matches per team: {(() => {
+                    // Calculate matches per team within pools
                     if (currentDivision?.pools && currentDivision.pools.length > 0) {
                       const maxMatchesPerTeam = Math.max(...currentDivision.pools.map(pool => {
                         const poolTeams = teams.filter(team => team.poolId === pool.id)
@@ -449,7 +449,7 @@ export default function DivisionStageManagement() {
                         className="w-32"
                       />
                       <span className="text-sm text-gray-600">
-                        {completedRRMatches.length}/{rrMatches.length} завершено
+                        {completedRRMatches.length}/{rrMatches.length} completed
                       </span>
                     </div>
                   </div>
@@ -464,7 +464,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <Play className="h-4 w-4" />
-                    <span>Сгенерировать RR</span>
+                    <span>Generate RR</span>
                   </Button>
                 )}
                 
@@ -472,7 +472,7 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      // Показываем первый матч для ввода результатов
+                      // Show first match for result entry
                       if (rrMatches.length > 0) {
                         handleScoreInput(rrMatches[0])
                       }
@@ -480,19 +480,19 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <Clock className="h-4 w-4" />
-                    <span>Ввести результаты</span>
+                    <span>Enter Results</span>
                   </Button>
                 )}
                 
                 {canRecalculateSeeding && (
                   <Button
                     variant="outline"
-                    onClick={() => {/* Пересчитать посев */}}
+                    onClick={() => {/* Recalculate seeding */}}
                     className="flex items-center space-x-2"
-                    title="Пересчитать посев команд на основе результатов Round Robin для правильного формирования Play-In/Play-Off"
+                    title="Recalculate team seeding based on Round Robin results for proper Play-In/Play-Off formation"
                   >
                     <Calculator className="h-4 w-4" />
-                    <span>Пересчитать посев</span>
+                    <span>Recalculate Seeding</span>
                   </Button>
                 )}
                 
@@ -503,7 +503,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2 text-orange-600 border-orange-600 hover:bg-orange-50"
                   >
                     <RotateCcw className="h-4 w-4" />
-                    <span>Перегенерировать RR</span>
+                    <span>Regenerate RR</span>
                   </Button>
                 )}
                 
@@ -515,7 +515,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2 text-purple-600 border-purple-600 hover:bg-purple-50"
                   >
                     <RefreshCw className="h-4 w-4" />
-                    <span>Заполнить случайными результатами</span>
+                    <span>Fill Random Results</span>
                   </Button>
                 )}
                 
@@ -530,26 +530,26 @@ export default function DivisionStageManagement() {
               </div>
             </div>
 
-            {/* Список матчей RR */}
+            {/* RR Matches List */}
             {rrMatches.length > 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Матчи Round Robin</h4>
+                  <h4 className="font-medium">Round Robin Matches</h4>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowRRMatches(!showRRMatches)}
                     className="flex items-center space-x-2"
                   >
-                    <span>{showRRMatches ? 'Свернуть' : 'Развернуть'}</span>
+                    <span>{showRRMatches ? 'Collapse' : 'Expand'}</span>
                   </Button>
                 </div>
                 
                 {showRRMatches && (
                   <div className="space-y-6">
-                    {/* Группируем матчи по пулам */}
+                    {/* Group matches by pools */}
                     {(() => {
-                      // Получаем все пулы из матчей, сортируем по порядку
+                      // Get all pools from matches, sort by order
                       const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
                         .map(poolId => {
                           const pool = currentDivision?.pools?.find(p => p.id === poolId)
@@ -562,13 +562,13 @@ export default function DivisionStageManagement() {
                       
                       return (
                         <>
-                          {/* Матчи по пулам */}
+                          {/* Pool matches */}
                           {pools.map(poolId => {
                             const poolMatches = rrMatches.filter(m => m.poolId === poolId)
                             const pool = currentDivision?.pools?.find(p => p.id === poolId)
                             const poolName = pool?.name || `Pool ${poolId}`
                             
-                            // Группируем матчи пула по раундам и сортируем
+                            // Group pool matches by rounds and sort
                             const rounds = Array.from(new Set(poolMatches.map(m => m.roundIndex))).sort()
                             
                             return (
@@ -576,7 +576,7 @@ export default function DivisionStageManagement() {
                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                   <h4 className="text-lg font-semibold text-blue-900 mb-2">{poolName}</h4>
                                   <p className="text-sm text-blue-700">
-                                    {poolMatches.length} матчей • {rounds.length} раундов
+                                    {poolMatches.length} matches • {rounds.length} rounds
                                   </p>
                                 </div>
                                 
@@ -585,7 +585,7 @@ export default function DivisionStageManagement() {
                                     const roundMatches = poolMatches.filter(m => m.roundIndex === roundIndex)
                                     return (
                                       <div key={roundIndex} className="space-y-2">
-                                        <h5 className="text-sm font-medium text-gray-700">Раунд {index + 1}</h5>
+                                        <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                           {roundMatches.map((match) => (
                                             <div key={match.id} className="border border-gray-200 rounded-lg p-4">
@@ -636,13 +636,13 @@ export default function DivisionStageManagement() {
                             )
                           })}
                           
-                          {/* Матчи WaitList */}
+                          {/* WaitList Matches */}
                           {waitListMatches.length > 0 && (
                             <div className="space-y-4">
                               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                 <h4 className="text-lg font-semibold text-gray-900 mb-2">WaitList</h4>
                                 <p className="text-sm text-gray-700">
-                                  {waitListMatches.length} матчей • {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).length} раундов
+                                  {waitListMatches.length} matches • {Array.from(new Set(waitListMatches.map(m => m.roundIndex))).length} rounds
                                 </p>
                               </div>
                               
@@ -651,7 +651,7 @@ export default function DivisionStageManagement() {
                                   const roundMatches = waitListMatches.filter(m => m.roundIndex === roundIndex)
                                   return (
                                     <div key={roundIndex} className="space-y-2">
-                                      <h5 className="text-sm font-medium text-gray-700">Раунд {index + 1}</h5>
+                                      <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {roundMatches.map((match) => (
                                           <div key={match.id} className="border border-gray-200 rounded-lg p-4">
@@ -708,34 +708,34 @@ export default function DivisionStageManagement() {
               </div>
             )}
 
-            {/* Блокировка если RR не завершен */}
+            {/* Block if RR not completed */}
             {currentStage === 'RR_IN_PROGRESS' && (
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Завершите все матчи Round Robin, чтобы продолжить к Play-In/Play-Off.
+                  Complete all Round Robin matches to proceed to Play-In/Play-Off.
                 </AlertDescription>
               </Alert>
             )}
           </CardContent>
         </Card>
 
-        {/* Информационный баннер если команд недостаточно */}
+        {/* Information banner if not enough teams */}
         {teamCount < targetBracketSize && (
           <Card>
             <CardContent className="pt-6">
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Недостаточно команд для выбранного размера сетки. 
-                  Команд: {teamCount}, требуется: {targetBracketSize}.
+                  Not enough teams for selected bracket size. 
+                  Teams: {teamCount}, required: {targetBracketSize}.
                 </AlertDescription>
               </Alert>
             </CardContent>
           </Card>
         )}
 
-        {/* Блок Play-In - показываем только если B < N < 2B */}
+        {/* Play-In Block - show only if B < N < 2B */}
         {needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
@@ -750,27 +750,27 @@ export default function DivisionStageManagement() {
                   onClick={() => setShowPlayInMatches(!showPlayInMatches)}
                   className="flex items-center space-x-2"
                 >
-                  <span>{showPlayInMatches ? 'Свернуть' : 'Развернуть'}</span>
+                  <span>{showPlayInMatches ? 'Collapse' : 'Expand'}</span>
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Сводка Play-In */}
+              {/* Play-In Summary */}
               <div className="space-y-2">
                 <p className="text-sm text-gray-600">
-                  Команд в дивизионе: {teamCount}. Целевой размер: {targetBracketSize}. Превышение: {playInExcess}.
+                  Teams in division: {teamCount}. Target size: {targetBracketSize}. Excess: {playInExcess}.
                 </p>
                 <p className="text-sm text-gray-600">
-                  В Play-In попали нижние {playInExcess * 2} по посеву. Победители займут {playInExcess} последних слотов R1.
+                  Play-In includes bottom {playInExcess * 2} seeds. Winners will take {playInExcess} last R1 slots.
                 </p>
               </div>
 
-              {/* Кнопки Play-In */}
+              {/* Play-In Buttons */}
               <div className="flex items-center space-x-2">
                 {canGeneratePlayIn && (
                   <Button
                     onClick={() => {
-                      // Генерируем Play-In через standings.generatePlayoffs
+                      // Generate Play-In through standings.generatePlayoffs
                       generatePlayoffsMutation.mutate({ 
                         divisionId: selectedDivisionId, 
                         bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
@@ -780,7 +780,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <Play className="h-4 w-4" />
-                    <span>Сгенерировать Play-In</span>
+                    <span>Generate Play-In</span>
                   </Button>
                 )}
                 
@@ -791,12 +791,12 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <RotateCcw className="h-4 w-4" />
-                    <span>Перегенерировать Play-In</span>
+                    <span>Regenerate Play-In</span>
                   </Button>
                 )}
               </div>
 
-              {/* Прогресс Play-In */}
+              {/* Play-In Progress */}
               {playInMatches.length > 0 && (
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
@@ -805,20 +805,20 @@ export default function DivisionStageManagement() {
                       className="w-32"
                     />
                     <span className="text-sm text-gray-600">
-                      {completedPlayInMatches.length}/{playInMatches.length} матчей завершено
+                      {completedPlayInMatches.length}/{playInMatches.length} matches completed
                     </span>
                   </div>
                   
                   {completedPlayInMatches.length === playInMatches.length && (
                     <div className="flex items-center space-x-2 text-green-600">
                       <CheckCircle className="h-4 w-4" />
-                      <span className="text-sm font-medium">Play-In завершен</span>
+                      <span className="text-sm font-medium">Play-In completed</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Список пар Play-In */}
+              {/* Play-In Pairings List */}
               {playInMatches.length > 0 && showPlayInMatches && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {playInMatches.map((match) => (
@@ -867,7 +867,7 @@ export default function DivisionStageManagement() {
           </Card>
         )}
 
-        {/* Блок Play-Off */}
+        {/* Play-Off Block */}
         <Card className={currentStage === 'RR_IN_PROGRESS' || (needsPlayIn && completedPlayInMatches.length !== playInMatches.length) ? 'opacity-50 pointer-events-none' : ''}>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -881,31 +881,31 @@ export default function DivisionStageManagement() {
                 onClick={() => setShowPlayoffMatches(!showPlayoffMatches)}
                 className="flex items-center space-x-2"
               >
-                <span>{showPlayoffMatches ? 'Свернуть' : 'Развернуть'}</span>
+                <span>{showPlayoffMatches ? 'Collapse' : 'Expand'}</span>
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Сводка Play-Off */}
+            {/* Play-Off Summary */}
             <div className="space-y-2">
               <p className="text-sm text-gray-600">
-                Команд в дивизионе: {teamCount}. Целевой размер сетки: {targetBracketSize}.
+                Teams in division: {teamCount}. Target bracket size: {targetBracketSize}.
               </p>
               {needsPlayIn ? (
                 <p className="text-sm text-gray-600">
-                  Нужен Play-In: {playInExcess * 2} команд (нижние {playInExcess * 2} по посеву) за {playInExcess} слотов в Play-Off.
+                  Play-In needed: {playInExcess * 2} teams (bottom {playInExcess * 2} seeds) for {playInExcess} Play-Off slots.
                 </p>
               ) : (
                 <p className="text-sm text-gray-600">
-                  Все команды проходят в Play-Off напрямую.
+                  All teams advance to Play-Off directly.
                 </p>
               )}
               <p className="text-sm text-gray-600">
-                {eliminationMatches.length > 0 ? `${eliminationMatches.length} матчей сгенерировано` : 'Матчи не сгенерированы'}
+                {eliminationMatches.length > 0 ? `${eliminationMatches.length} matches generated` : 'No matches generated'}
               </p>
             </div>
 
-            {/* Кнопки Play-Off */}
+            {/* Play-Off Buttons */}
             <div className="flex items-center space-x-2">
               {canGeneratePlayoff && (
                 <Button
@@ -914,7 +914,7 @@ export default function DivisionStageManagement() {
                   className="flex items-center space-x-2"
                 >
                   <Trophy className="h-4 w-4" />
-                  <span>Сгенерировать Play-Off</span>
+                  <span>Generate Play-Off</span>
                 </Button>
               )}
               
@@ -925,7 +925,7 @@ export default function DivisionStageManagement() {
                   className="flex items-center space-x-2 bg-green-600 hover:bg-green-700"
                 >
                   <Trophy className="h-4 w-4" />
-                  <span>Следующий раунд</span>
+                  <span>Next Round</span>
                 </Button>
               )}
               
@@ -936,32 +936,32 @@ export default function DivisionStageManagement() {
                   className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  <span>Перегенерировать Play-Off</span>
+                  <span>Regenerate Play-Off</span>
                 </Button>
               )}
             </div>
 
-            {/* Блокировка если Play-In в процессе */}
+            {/* Block if Play-In in progress */}
             {needsPlayIn && completedPlayInMatches.length !== playInMatches.length && (
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Завершите Play-In, чтобы сгенерировать Play-Off.
+                  Complete Play-In to generate Play-Off.
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* Список матчей Play-Off */}
+            {/* Play-Off Matches List */}
             {eliminationMatches.length > 0 && showPlayoffMatches && (
               <div className="space-y-6">
-                {/* Группируем матчи по раундам */}
+                {/* Group matches by rounds */}
                 {Array.from({ length: Math.max(...eliminationMatches.map(m => m.roundIndex)) + 1 }, (_, roundIndex) => {
                   const roundMatches = eliminationMatches.filter(m => m.roundIndex === roundIndex)
                   if (roundMatches.length === 0) return null
                   
-                  const roundName = roundMatches.length === 1 ? 'Финал' : 
-                                  roundMatches.length === 2 ? 'Полуфинал' : 
-                                  `Раунд ${roundIndex + 1}`
+                  const roundName = roundMatches.length === 1 ? 'Final' : 
+                                  roundMatches.length === 2 ? 'Semi-Final' : 
+                                  `Round ${roundIndex + 1}`
                   
                   return (
                     <div key={roundIndex} className="space-y-4">
@@ -1017,7 +1017,7 @@ export default function DivisionStageManagement() {
         </Card>
       </div>
 
-      {/* Модалка ввода счета */}
+      {/* Score input modal */}
       {showScoreModal && selectedMatch && (
         <ScoreInputModal
           isOpen={showScoreModal}
@@ -1031,19 +1031,19 @@ export default function DivisionStageManagement() {
         />
       )}
 
-      {/* Модалка подтверждения перегенерации */}
+      {/* Regeneration confirmation modal */}
       {showRegenerateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">
-              Перегенерация {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
+              Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
             </h3>
             <p className="text-gray-600 mb-6">
               {regenerateType === 'rr' 
-                ? 'Будут сброшены все матчи Round Robin. Это позволит перераспределить команды по пулам и создать новые матчи. Продолжить?'
+                ? 'All Round Robin matches will be reset. This will allow teams to be redistributed across pools and create new matches. Continue?'
                 : regenerateType === 'playin' 
-                  ? 'Будут сброшены все результаты Play-In и всех последующих стадий Play-Off. Продолжить?'
-                  : 'Будут сброшены все результаты Play-Off. Продолжить?'
+                  ? 'All Play-In results and subsequent Play-Off stages will be reset. Continue?'
+                  : 'All Play-Off results will be reset. Continue?'
               }
             </p>
             <div className="flex justify-end space-x-3">
@@ -1051,13 +1051,13 @@ export default function DivisionStageManagement() {
                 variant="outline"
                 onClick={() => setShowRegenerateModal(false)}
               >
-                Отменить
+                Cancel
               </Button>
               <Button
                 variant="destructive"
                 onClick={confirmRegenerate}
               >
-                Перегенерировать
+                Regenerate
               </Button>
             </div>
           </div>

@@ -16,7 +16,7 @@ export default function TournamentDetailPage() {
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
     pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
-    poolCount: 1,  // Количество пулов (1 = без пулов)
+    poolCount: 1,  // Number of pools (1 = no pools)
     maxTeams: undefined as number | undefined,
     // Constraints
     minDupr: undefined as number | undefined,
@@ -175,7 +175,7 @@ export default function TournamentDetailPage() {
               className="w-full mt-4 relative z-10" 
               variant="outline"
               onClick={() => {
-                console.log('Кнопка "Создать дивизион" нажата!')
+                console.log('Create Division button clicked!')
                 setShowCreateDivision(true)
               }}
               style={{ pointerEvents: 'auto' }}

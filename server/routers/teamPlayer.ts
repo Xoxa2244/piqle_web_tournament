@@ -6,7 +6,7 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       teamPlayerId: z.string(),
       targetTeamId: z.string(),
-      targetPlayerId: z.string().optional(), // ID игрока, на которого перетаскивают
+      targetPlayerId: z.string().optional(), // Player ID being dragged onto
     }))
     .mutation(async ({ ctx, input }) => {
       // Get current team player and target team

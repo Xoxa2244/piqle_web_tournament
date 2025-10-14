@@ -16,20 +16,20 @@ export default function ImportPage() {
   const { data: tournament, isLoading } = trpc.tournament.get.useQuery({ id: tournamentId })
   const resetTournament = trpc.import.resetTournament.useMutation({
     onSuccess: () => {
-      alert('Турнир сброшен! Все данные удалены.')
+      alert('Tournament reset! All data deleted.')
       window.location.reload()
     },
     onError: (error) => {
-      alert(`Ошибка при сбросе турнира: ${error.message}`)
+      alert(`Error resetting tournament: ${error.message}`)
     }
   })
   const importCSV = trpc.import.importCSV.useMutation({
     onSuccess: (data) => {
-      alert(`Импорт завершен! Создано ${data.divisions} дивизионов и ${data.teams} команд.`)
+      alert(`Import completed! Created ${data.divisions} divisions and ${data.teams} teams.`)
       window.location.reload()
     },
     onError: (error) => {
-      alert(`Ошибка при импорте: ${error.message}`)
+      alert(`Import error: ${error.message}`)
     }
   })
 
@@ -38,13 +38,13 @@ export default function ImportPage() {
     if (file && file.type === 'text/csv') {
       setCsvFile(file)
     } else {
-      alert('Пожалуйста, выберите CSV файл')
+      alert('Please select a CSV file')
     }
   }
 
   const handleImport = async () => {
     if (!csvFile) {
-      alert('Пожалуйста, выберите CSV файл')
+      alert('Please select a CSV file')
       return
     }
 
@@ -58,7 +58,7 @@ export default function ImportPage() {
         csvData: base64Data
       })
     } catch (error) {
-      alert(`Ошибка при чтении файла: ${error}`)
+      alert(`Error reading file: ${error}`)
     } finally {
       setIsImporting(false)
     }
@@ -66,20 +66,20 @@ export default function ImportPage() {
 
   const handleReset = () => {
     const confirmed = window.confirm(
-      'ВНИМАНИЕ! Это действие удалит ВСЕ данные турнира:\n\n' +
-      '• Все дивизионы\n' +
-      '• Все команды\n' +
-      '• Всех игроков\n' +
-      '• Все матчи\n' +
-      '• Все результаты\n\n' +
-      'Это действие НЕЛЬЗЯ отменить!\n\n' +
-      'Вы уверены, что хотите сбросить турнир?'
+      'WARNING! This action will delete ALL tournament data:\n\n' +
+      '• All divisions\n' +
+      '• All teams\n' +
+      '• All players\n' +
+      '• All matches\n' +
+      '• All results\n\n' +
+      'This action CANNOT be undone!\n\n' +
+      'Are you sure you want to reset the tournament?'
     )
     
     if (confirmed) {
       const doubleConfirm = window.confirm(
-        'Последний шанс! Вы действительно хотите удалить ВСЕ данные турнира?\n\n' +
-        'Нажмите OK только если вы абсолютно уверены!'
+        'Last chance! Do you really want to delete ALL tournament data?\n\n' +
+        'Press OK only if you are absolutely sure!'
       )
       
       if (doubleConfirm) {
@@ -100,7 +100,7 @@ export default function ImportPage() {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Загрузка турнира...</div>
+        <div className="text-lg">Loading tournament...</div>
       </div>
     )
   }
@@ -108,9 +108,9 @@ export default function ImportPage() {
   if (!tournament) {
     return (
       <div className="text-center py-12">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Турнир не найден</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
         <Link href="/admin" className="text-blue-600 hover:text-blue-800">
-          ← Вернуться к списку турниров
+          ← Back to tournaments list
         </Link>
       </div>
     )
@@ -120,14 +120,14 @@ export default function ImportPage() {
     <div>
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Импорт данных</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Data Import</h1>
           <p className="text-gray-600 mt-2">{tournament.title}</p>
         </div>
         <Link
           href={`/admin/${tournamentId}`}
           className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
         >
-          ← Назад
+          ← Back
         </Link>
       </div>
 
@@ -135,15 +135,15 @@ export default function ImportPage() {
         {/* Import CSV */}
         <Card>
           <CardHeader>
-            <CardTitle>Импорт участников из CSV</CardTitle>
+            <CardTitle>Import Participants from CSV</CardTitle>
             <CardDescription>
-              Загрузите CSV файл с данными участников для автоматического создания дивизионов и команд
+              Upload a CSV file with participant data to automatically create divisions and teams
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Выберите CSV файл
+                Select CSV file
               </label>
               <input
                 type="file"
@@ -153,7 +153,7 @@ export default function ImportPage() {
               />
               {csvFile && (
                 <p className="text-sm text-green-600 mt-1">
-                  Выбран файл: {csvFile.name}
+                  File selected: {csvFile.name}
                 </p>
               )}
             </div>
@@ -164,23 +164,23 @@ export default function ImportPage() {
                 disabled={!csvFile || isImporting || importCSV.isPending}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
-                {isImporting || importCSV.isPending ? 'Импорт...' : 'Импортировать'}
+                {isImporting || importCSV.isPending ? 'Importing...' : 'Import'}
               </Button>
               <Button
                 onClick={downloadTemplate}
                 variant="outline"
               >
-                Скачать шаблон
+                Download Template
               </Button>
             </div>
 
             <div className="text-sm text-gray-600">
-              <p className="font-medium mb-2">Требуемые колонки в CSV:</p>
+              <p className="font-medium mb-2">Required columns in CSV:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Имя, Фамилия, Пол (M/F), Возраст</li>
-                <li>DUPR rating, Дивизион, Тип (1v1/2v2/4v4)</li>
-                <li>Ограничение по возрасту, Ограничение по DUPR</li>
-                <li>Pool (опционально), Команда</li>
+                <li>First Name, Last Name, Gender (M/F), Age</li>
+                <li>DUPR rating, Division, Type (1v1/2v2/4v4)</li>
+                <li>Age Constraint, DUPR Constraint</li>
+                <li>Pool (optional), Team</li>
               </ul>
             </div>
           </CardContent>
@@ -189,20 +189,20 @@ export default function ImportPage() {
         {/* Reset Tournament */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-red-600">Сброс турнира</CardTitle>
+            <CardTitle className="text-red-600">Reset Tournament</CardTitle>
             <CardDescription>
-              ОПАСНО! Удаляет все данные турнира для возможности загрузки новых данных
+              DANGEROUS! Deletes all tournament data to allow loading new data
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <h4 className="font-medium text-red-800 mb-2">Что будет удалено:</h4>
+              <h4 className="font-medium text-red-800 mb-2">What will be deleted:</h4>
               <ul className="text-sm text-red-700 space-y-1">
-                <li>• Все дивизионы и их настройки</li>
-                <li>• Все команды и игроки</li>
-                <li>• Все матчи и результаты</li>
-                <li>• Все призы и награды</li>
-                <li>• Вся история изменений</li>
+                <li>• All divisions and their settings</li>
+                <li>• All teams and players</li>
+                <li>• All matches and results</li>
+                <li>• All prizes and awards</li>
+                <li>• All change history</li>
               </ul>
             </div>
 
@@ -212,13 +212,13 @@ export default function ImportPage() {
                 disabled={resetTournament.isPending}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {resetTournament.isPending ? 'Сброс...' : 'Сбросить турнир'}
+                {resetTournament.isPending ? 'Resetting...' : 'Reset Tournament'}
               </Button>
             </div>
 
             <div className="text-sm text-gray-600">
-              <p className="font-medium text-red-600 mb-1">⚠️ Внимание!</p>
-              <p>Это действие нельзя отменить. Используйте только для полной очистки турнира перед загрузкой новых данных.</p>
+              <p className="font-medium text-red-600 mb-1">⚠️ Warning!</p>
+              <p>This action cannot be undone. Use only for complete tournament cleanup before loading new data.</p>
             </div>
           </CardContent>
         </Card>
@@ -227,19 +227,19 @@ export default function ImportPage() {
       {/* Current Tournament Status */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Текущее состояние турнира</CardTitle>
+          <CardTitle>Current Tournament Status</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">{tournament.divisions.length}</div>
-              <div className="text-sm text-gray-600">Дивизионов</div>
+              <div className="text-sm text-gray-600">Divisions</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
                 {tournament.divisions.reduce((sum, div) => sum + div.teams.length, 0)}
               </div>
-              <div className="text-sm text-gray-600">Команд</div>
+              <div className="text-sm text-gray-600">Teams</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
@@ -247,13 +247,13 @@ export default function ImportPage() {
                   sum + div.teams.reduce((teamSum, team) => teamSum + (team.teamPlayers?.length || 0), 0), 0
                 )}
               </div>
-              <div className="text-sm text-gray-600">Игроков</div>
+              <div className="text-sm text-gray-600">Players</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
                 {tournament.divisions.reduce((sum, div) => sum + (div.matches?.length || 0), 0)}
               </div>
-              <div className="text-sm text-gray-600">Матчей</div>
+              <div className="text-sm text-gray-600">Matches</div>
             </div>
           </div>
         </CardContent>

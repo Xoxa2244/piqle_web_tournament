@@ -362,7 +362,7 @@ export const standingsRouter = createTRPCRouter({
         )
 
         if (completedPlayInMatches.length !== playInMatches.length) {
-          throw new Error('Плей-офф не может быть сгенерирован. Вы должны ввести результаты всех матчей плей-ина.')
+          throw new Error('Play-off cannot be generated. You must enter results for all play-in matches.')
         }
       }
 

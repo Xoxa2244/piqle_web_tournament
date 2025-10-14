@@ -8,7 +8,7 @@ export const divisionRouter = createTRPCRouter({
       name: z.string().min(1),
       teamKind: z.enum(['SINGLES_1v1', 'DOUBLES_2v2', 'SQUAD_4v4']),
       pairingMode: z.enum(['FIXED', 'MIX_AND_MATCH']),
-      poolCount: z.number().int().min(1).default(1),  // Количество пулов (1 = без пулов)
+      poolCount: z.number().int().min(1).default(1),  // Number of pools (1 = no pools)
       maxTeams: z.number().optional(),
       // Constraints
       minDupr: z.number().optional(),
@@ -31,7 +31,7 @@ export const divisionRouter = createTRPCRouter({
               maxAge: maxAge ? maxAge : null,
             }
           },
-          // Создаем пулы если poolCount >= 1
+          // Create pools if poolCount >= 1
           pools: poolCount >= 1 ? {
             create: Array.from({ length: poolCount }, (_, i) => ({
               name: `Pool ${i + 1}`,

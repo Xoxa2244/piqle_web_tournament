@@ -2,21 +2,21 @@
 
 ## 0) Goal
 
-Построить веб-консоль турнирного директора для проведения турниров по pickleball с командами 1v1, 2v2 и 4v4. Консоль решает:
+Build a tournament director web console for conducting pickleball tournaments with 1v1, 2v2 and 4v4 teams. The console handles:
 
-1. настройку турнира (инфо-карточка, правила, призы),
-2. создание дивизионов с ограничениями по возрасту/DU⁠PR/гендеру и режимом `FIXED`/`MIX_AND_MATCH`, опциональными пулами,
-3. импорт игроков/команд из CSV (PickleballTournaments) и ручной ввод/редактирование,
-4. drag-and-drop перемещения игроков/команд между командами/пулами/дивизионами,
-5. генерацию round-robin (RR), учёт результатов матчей/геймов, таблицы и тай-брейки,
-6. автоматическую генерацию стадии элиминации с play-in (добор до 4/8/16),
-7. ролевой доступ (TD и ассистенты с привязкой к дивизионам) и журнал правок,
-8. публичную страницу «табло» (RR standings + плей-офф + призы) с live-обновлениями,
-9. **новое:** возможность **сливать два и более дивизионов** в **единый RR-пул** при малом количестве команд с **авто-разворотом обратно** по исходным дивизионам при старте плей-офф.
+1. tournament setup (info card, rules, prizes),
+2. creating divisions with age/DUPR/gender constraints and `FIXED`/`MIX_AND_MATCH` mode, optional pools,
+3. importing players/teams from CSV (PickleballTournaments) and manual input/editing,
+4. drag-and-drop movement of players/teams between teams/pools/divisions,
+5. round-robin (RR) generation, match/game results tracking, standings and tiebreakers,
+6. automatic elimination stage generation with play-in (fill to 4/8/16),
+7. role-based access (TD and assistants assigned to divisions) and audit log,
+8. public scoreboard page (RR standings + playoffs + prizes) with live updates,
+9. **new:** ability to **merge two or more divisions** into **unified RR pool** with small team counts and **auto-split back** to original divisions when playoffs start.
 
 ## 1) Tech stack & scaffolding
 
-* Next.js 15 (App Router) + TypeScript; deploy на Vercel.
+* Next.js 15 (App Router) + TypeScript; deploy to Vercel.
 * Supabase: Postgres + Auth (magic link, invite-only) + Realtime + RLS.
 * Prisma (ORM) + Prisma Migrate.
 * tRPC (server routes) + Zod.
@@ -24,7 +24,7 @@
 * TailwindCSS + shadcn/ui (UI).
 * DnD: `@dnd-kit/core` (+ sortable).
 * CSV: `papaparse`.
-* Brackets: `react-brackets` (или собственный легкий компонент).
+* Brackets: `react-brackets` (or custom lightweight component).
 * Tests: Vitest + Testing Library; Playwright e2e.
 * Repo layout:
 
@@ -36,18 +36,18 @@
   PROMPT.md
   ```
 
-## 2) Environment (ожидаемые переменные)
+## 2) Environment (expected variables)
 
 ```
 DATABASE_URL="postgresql://postgres:<PASSWORD>@db.<PROJECT_ID>.supabase.co:5432/postgres"
 NEXT_PUBLIC_SUPABASE_URL="https://<PROJECT_ID>.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
-SUPABASE_SERVICE_ROLE_KEY="..."  // на серверной стороне
+SUPABASE_SERVICE_ROLE_KEY="..."  // server-side
 ```
 
 ## 3) Data model (Prisma)
 
-Все сущности с `id uuid`, `createdAt`, `updatedAt`.
+All entities with `id uuid`, `createdAt`, `updatedAt`.
 
 * **User**: email, name, role ('TD', 'ASSISTANT'), isActive.
 * **Tournament**: title, description, rulesUrl, venueName, venueAddress, startDate, endDate, entryFee (Decimal?), isPublicBoardEnabled (Bool), publicSlug (String @unique).
@@ -57,171 +57,171 @@ SUPABASE_SERVICE_ROLE_KEY="..."  // на серверной стороне
 * **AssistantAssignment**: userId, divisionId.
 * **Pool**: divisionId, name, order.
 * **Team**: divisionId, poolId (nullable), name, seed (Int?), note.
-* **Player**: firstName, lastName, email (String?), gender ('M' | 'F' | 'X' | null), dupr (Decimal?), birthDate (DateTime?) или age (Int?), externalId (String?).
+* **Player**: firstName, lastName, email (String?), gender ('M' | 'F' | 'X' | null), dupr (Decimal?), birthDate (DateTime?) or age (Int?), externalId (String?).
 * **TeamPlayer**: teamId, playerId, role ('CAPTAIN' | 'PLAYER' | 'SUB').
 * **RoundRobinGroup**: tournamentId, name (e.g., "Merged RR #1"); rrSettingsId (FK).
 * **RRSettings**: targetPoints (Int, default 11), winBy (Int, default 2), gamesPerMatch (Int, default 1), bestOfMode ('FIXED\_GAMES' | 'BEST\_OF').
-* **DivisionRRBinding**: divisionId, rrGroupId, status ('BOUND' | 'UNBOUND'). // для слитых RR
+* **DivisionRRBinding**: divisionId, rrGroupId, status ('BOUND' | 'UNBOUND'). // for merged RR
 * **Match**: rrGroupId (nullable), divisionId (nullable), poolId (nullable), roundIndex (Int), stage ('ROUND\_ROBIN' | 'ELIMINATION' | 'PLAY\_IN'), teamAId, teamBId, bestOfMode, gamesCount, targetPoints, winBy, winnerTeamId (uuid?), locked (Bool).
 * **Game**: matchId, index, scoreA, scoreB, winner ('A' | 'B' | null).
 * **Standing**: rrGroupId? divisionId? poolId? teamId, wins, losses, pointsFor, pointsAgainst, pointDiff.
 
-  * Для RR в слитом режиме — `rrGroupId` заполнен, `divisionId` null.
-  * Для RR без слияния — `divisionId` заполнен, `rrGroupId` null.
+  * For RR in merged mode — `rrGroupId` is filled, `divisionId` is null.
+  * For RR without merging — `divisionId` is filled, `rrGroupId` is null.
 * **ImportJob**: tournamentId, source ('PBT\_CSV'), status, mappingJson, rawFileUrl.
 * **AuditLog**: actorUserId, action, entityType, entityId, payload JSON.
 
-RLS: чтение/запись только TD и назначенные ассистенты; публичная доска — read-only по `publicSlug`.
+RLS: read/write only for TD and assigned assistants; public board — read-only by `publicSlug`.
 
 ## 4) Auth & Roles
 
-* TD: полный доступ; приглашает ассистентов и привязывает их к division.
-* ASSISTANT: доступ только к назначенным division и к матчу/таблицам внутри.
-* Все мутации пишутся в AuditLog.
+* TD: full access; invites assistants and assigns them to divisions.
+* ASSISTANT: access only to assigned divisions and matches/tables within.
+* All mutations are written to AuditLog.
 
 ## 5) Tournament setup — Wizard
 
-**Step 1 — Info:** название, даты, место, правила (markdown/url), entry fee, опционально общие призы.
-**Step 2 — Divisions:** создаём один или несколько division:
+**Step 1 — Info:** title, dates, venue, rules (markdown/url), entry fee, optionally general prizes.
+**Step 2 — Divisions:** create one or more divisions:
 
 * teamKind, pairingMode;
-* constraints: включаем/выключаем возраст/DU⁠PR, min/max, genders;
-* poolsEnabled (для слияния требуется один пул);
-* призы на уровне division.
-  **Step 3 — Teams & Players:** команды вручную или импорт CSV; назначение игроков в команды; валидации constraints; force-override с предупреждением.
-  **Step 4 — Pools:** если включены — разложение по пулам (DnD). Для слияния — должен быть одиночный пул.
-  **Step 5 — RR Settings:** targetPoints=11, winBy=2, gamesPerMatch=1 (или BEST\_OF).
-  **Step 6 — Public Board:** включить/выключить, slug.
+* constraints: enable/disable age/DUPR, min/max, genders;
+* poolsEnabled (merging requires single pool);
+* division-level prizes.
+  **Step 3 — Teams & Players:** teams manually or CSV import; player assignment to teams; constraints validation; force-override with warning.
+  **Step 4 — Pools:** if enabled — distribute to pools (DnD). For merging — must be single pool.
+  **Step 5 — RR Settings:** targetPoints=11, winBy=2, gamesPerMatch=1 (or BEST\_OF).
+  **Step 6 — Public Board:** enable/disable, slug.
 
-Навигация: левый сайдбар (Tournament → Divisions → Pools → Teams → Matches). Верхние табы: `Setup | Teams | Scheduling | Results | Prizes | Audit`.
+Navigation: left sidebar (Tournament → Divisions → Pools → Teams → Matches). Top tabs: `Setup | Teams | Scheduling | Results | Prizes | Audit`.
 
 ## 6) CSV Import
 
-* Drag-&-drop .csv; превью 100 строк.
-* Маппинг столбцов на `Player`/`Team`/`Division`/`Pool`. Поддержать concat/split/regex/trim, парсинг возраста из DoB.
-* Дедупликация: по email или fuzzy (name+DoB) с подтверждением.
-* Автосоздание division по eventName (опционально).
-* ImportJob с undo (транзакционно удалить созданные сущности).
+* Drag-&-drop .csv; preview 100 rows.
+* Column mapping to `Player`/`Team`/`Division`/`Pool`. Support concat/split/regex/trim, age parsing from DoB.
+* Deduplication: by email or fuzzy (name+DoB) with confirmation.
+* Auto-create division by eventName (optional).
+* ImportJob with undo (transactionally delete created entities).
 
 ## 7) Drag-and-drop
 
-* Players ↔ Teams (в division), валидировать constraints.
-* Teams ↔ Pools (в division).
-* Teams ↔ Divisions (только TD; если RR ещё не начат).
-* Контекстные меню: Move/Edit/Remove; подсветка проблем.
+* Players ↔ Teams (in division), validate constraints.
+* Teams ↔ Pools (in division).
+* Teams ↔ Divisions (TD only; if RR not started yet).
+* Context menus: Move/Edit/Remove; highlight issues.
 
 ## 8) Round-Robin (RR)
 
-### 8.1 Генерация
+### 8.1 Generation
 
-* Для обычного RR без слияния:
+* For regular RR without merging:
 
-  * чётное K — circle method; нечётное — добавляем BYE.
-  * создаём **Match** (stage=ROUND\_ROBIN) и нужные **Game**.
-  * standings по division (или по pool, если есть пулы).
+  * even K — circle method; odd — add BYE.
+  * create **Match** (stage=ROUND\_ROBIN) and required **Game**.
+  * standings by division (or by pool, if pools exist).
 
-* **Merged RR (новое):**
+* **Merged RR (new):**
 
-  * TD может **сливать** два и более division в **единый RR-пул** при условиях:
+  * TD can **merge** two or more divisions into **unified RR pool** under conditions:
 
-    1. одинаковые `teamKind`, `pairingMode`, `RRSettings` (targetPoints/winBy/gamesPerMatch/bestOf),
-    2. у каждого division **один пул** (или пулов нет),
-    3. операция выполняется **до начала RR** либо **после генерации RR, но пока ни один матч не сыгран** (при слиянии существующее несостоявшееся расписание удаляется и перегенерируется в рамках общего RR).
-  * При слиянии создаём **RoundRobinGroup** и записи **DivisionRRBinding** для входящих division.
-  * Расписание RR и standings считаются **по rrGroupId** (единая таблица).
-  * UI: в админке и на публичной странице доступен переключатель
+    1. identical `teamKind`, `pairingMode`, `RRSettings` (targetPoints/winBy/gamesPerMatch/bestOf),
+    2. each division has **one pool** (or no pools),
+    3. operation performed **before RR starts** or **after RR generation, but before any matches played** (when merging, existing unplayed schedule is deleted and regenerated within common RR).
+  * When merging, create **RoundRobinGroup** and **DivisionRRBinding** records for participating divisions.
+  * RR schedule and standings calculated **by rrGroupId** (unified table).
+  * UI: admin and public page have toggle
     «Combined Table (All) / Filter by Division».
-  * Разделение (unmerge) доступно **только до первого сыгранного матча**; при unmerge RR пересоздаётся отдельно для каждого division.
+  * Split (unmerge) available **only before first played match**; when unmerging, RR is recreated separately for each division.
 
-### 8.2 Ввод счёта и standings
+### 8.2 Score Input and Standings
 
-* Ввод очков на уровне Game; автоматическое определение победителя матча.
-* **Standing** обновляется после каждого сохранения: wins, losses, PF, PA, Diff.
-* Тай-брейки (см. 8.3) применяются к текущему контексту (rrGroupId или divisionId).
+* Point input at Game level; automatic match winner determination.
+* **Standing** updated after each save: wins, losses, PF, PA, Diff.
+* Tiebreakers (see 8.3) applied to current context (rrGroupId or divisionId).
 
-### 8.3 Тай-брейки (в порядке приоритета)
+### 8.3 Tiebreakers (in priority order)
 
 1. Matches Won,
 2. Point Differential — Head-to-Head,
 3. Point Differential — Within Entry Pool/Group,
 4. Point Differential — vs Next Highest-Ranked Team.
-   UI показывает breakdown «почему так».
+   UI shows breakdown "why this ranking".
 
-## 9) Переход к плей-офф (Elimination)
+## 9) Transition to Playoffs (Elimination)
 
-* Кнопка **Start Elimination** доступна TD на уровне турнира: **запускает плей-офф одновременно для всех дивизионов** (включая участвующие в merged RR).
-* Нажатие фиксирует snapshot standings **в текущий момент** (RR замораживается).
-* Для merged RR: посев внутри **каждого** division строим из **общей таблицы rrGroup** с **фильтрацией по исходному division**. То есть учитываются все результаты против всех соперников из объединённого RR, затем формируется сортировка по тай-брейкам и берутся только команды данного division.
-* Далее создаётся сетка плей-офф **внутри каждого division** независимо от того, что RR был общий.
+* **Start Elimination** button available to TD at tournament level: **starts playoffs simultaneously for all divisions** (including those in merged RR).
+* Clicking locks snapshot of standings **at current moment** (RR is frozen).
+* For merged RR: seeding within **each** division is built from **common rrGroup table** with **filtering by original division**. That is, all results against all opponents from unified RR are considered, then sorted by tiebreakers and only teams from given division are taken.
+* Then playoff bracket is created **within each division** independently of the fact that RR was common.
 
-### 9.1 Play-in и сетка
+### 9.1 Play-in and Bracket
 
-* Базовые цели сетки: target ∈ {4, 8, 16, 24, …}
-* Примеры:
+* Base bracket targets: target ∈ {4, 8, 16, 24, …}
+* Examples:
 
-  * N=4 → полуфиналы: 1–4, 2–3.
-  * N=5 → play-in 4–5 за слот #4; далее 1 vs winner, 2 vs 3.
-  * N=9 → play-in 8–9 за #8; далее сетка на 8.
-  * N=10 → play-in 7–10 и 8–9; далее 8.
-  * N=11 → play-in 6–11, 7–10, 8–9; далее 8.
-  * N=17 → play-in 16–17; далее 16.
-  * N=20 → play-in 13–20, 14–19, 15–18, 16–17; далее 16.
-* Пары плей-офф: 1 vs last, 2 vs last-1 … до середины; BYE-слоты для топ-сидов если N < target.
-* Формат матчей плей-офф — из настроек division (по умолчанию bestOf=3, до 11, winBy=2).
-* Матчи помечаются stage: `PLAY_IN` → затем `ELIMINATION`.
+  * N=4 → semi-finals: 1–4, 2–3.
+  * N=5 → play-in 4–5 for slot #4; then 1 vs winner, 2 vs 3.
+  * N=9 → play-in 8–9 for #8; then bracket of 8.
+  * N=10 → play-in 7–10 and 8–9; then 8.
+  * N=11 → play-in 6–11, 7–10, 8–9; then 8.
+  * N=17 → play-in 16–17; then 16.
+  * N=20 → play-in 13–20, 14–19, 15–18, 16–17; then 16.
+* Playoff pairings: 1 vs last, 2 vs last-1 … to middle; BYE slots for top seeds if N < target.
+* Playoff match format — from division settings (default bestOf=3, to 11, winBy=2).
+* Matches marked with stage: `PLAY_IN` → then `ELIMINATION`.
 
-## 10) Публичная страница «табло» `/t/[publicSlug]`
+## 10) Public Scoreboard Page `/t/[publicSlug]`
 
-* Селектор Division; для merged RR — переключатель **Combined / By Division**.
-* Разделы: **Round-Robin Standings**, **Brackets**, **Prizes**.
-* Live-обновления через Supabase Realtime (Game/Match/Standing).
-* Read-only, без логина, адаптивно для планшетов/ТВ.
+* Division selector; for merged RR — toggle **Combined / By Division**.
+* Sections: **Round-Robin Standings**, **Brackets**, **Prizes**.
+* Live updates via Supabase Realtime (Game/Match/Standing).
+* Read-only, no login, responsive for tablets/TV.
 
-## 11) Scoring UX (директоры/ассистенты)
+## 11) Scoring UX (directors/assistants)
 
-* Список матчей текущего раунда RR или стадии плей-офф, поиск по командам.
-* Карточка матча: список геймов, ввод очков, автопобедитель, lock/unlock.
-* Правки после lock — только TD, фиксируются в AuditLog.
+* List of current round RR matches or playoff stage, search by teams.
+* Match card: game list, score input, auto-winner, lock/unlock.
+* Edits after lock — TD only, recorded in AuditLog.
 
 ## 12) Prizes
 
-* На уровне Tournament (общие) и на уровне Division (место/сумма/описание).
-* Публичная доска показывает призы и победителей.
+* At Tournament level (general) and Division level (place/amount/description).
+* Public board shows prizes and winners.
 
 ## 13) Validations & constraints
 
-* Соответствие игрока ограничениям division; предупреждение и force-override TD.
-* teamKind vs состав команды.
-* MIX\_AND\_MATCH — предупреждение при некратном количестве игроков.
-* 1v1: команда = игрок (при импорте создаём команду с именем игрока).
-* Перемещение команды между division после начала RR запрещено (если матчи сыграны).
-* Для merge: проверка идентичности настроек и «единственного пула».
-* Merge/unmerge запрещён после сыгранных матчей общего RR.
+* Player compliance with division constraints; warning and force-override by TD.
+* teamKind vs team composition.
+* MIX\_AND\_MATCH — warning for non-multiple player count.
+* 1v1: team = player (during import create team with player's name).
+* Moving team between divisions after RR starts is prohibited (if matches played).
+* For merge: check settings identity and "single pool".
+* Merge/unmerge prohibited after played matches in common RR.
 
 ## 14) Admin tools
 
-* Приглашение ассистентов (magic link), привязка к division.
-* Включение/отключение публичной доски.
-* Экспорт CSV (матчи, standings, сетка).
-* AuditLog с фильтрами.
+* Invite assistants (magic link), assign to division.
+* Enable/disable public board.
+* CSV export (matches, standings, bracket).
+* AuditLog with filters.
 
 ## 15) Non-functional
 
-* До 500 игроков / 40+ команд в division, live-обновления < 1.5s.
-* Supabase RLS; tRPC процедуры проверяют роль и ассайнменты.
-* Доступность: фокус-стили, ARIA для DnD.
-* UI desktop-first, минимум горизонтального/вертикального скролла, виртуализация списков.
+* Up to 500 players / 40+ teams in division, live updates < 1.5s.
+* Supabase RLS; tRPC procedures check role and assignments.
+* Accessibility: focus styles, ARIA for DnD.
+* UI desktop-first, minimal horizontal/vertical scroll, list virtualization.
 
-## 16) API/tRPC (минимум)
+## 16) API/tRPC (minimum)
 
 * `tournament.create/update/get`
 * `division.create/update/delete/list`
 * `division.setConstraints`
-* `division.merge.start({divisionIds[], rrSettingsId?})`  // проверка условий, создание RoundRobinGroup, привязка DivisionRRBinding, реген RR
-* `division.merge.unmerge({rrGroupId})`                   // разрешено пока игр нет
-* `division.generateRoundRobin({divisionId})`             // обычный режим
-* `division.generateElimination({divisionId})`            // используется внутри старт-кнопки
-* `tournament.startElimination()`                         // общая кнопка: freeze standings и сгенерировать плей-офф всем division (в т.ч. из rrGroup)
+* `division.merge.start({divisionIds[], rrSettingsId?})`  // check conditions, create RoundRobinGroup, bind DivisionRRBinding, regen RR
+* `division.merge.unmerge({rrGroupId})`                   // allowed while no games played
+* `division.generateRoundRobin({divisionId})`             // regular mode
+* `division.generateElimination({divisionId})`            // used inside start button
+* `tournament.startElimination()`                         // common button: freeze standings and generate playoffs for all divisions (incl. from rrGroup)
 * `pool.create/update/delete/reorder`
 * `team.create/update/delete/move`
 * `player.create/update/delete/move`
@@ -232,24 +232,24 @@ RLS: чтение/запись только TD и назначенные асс�
 * `assistant.invite`, `assistant.assign`, `assistant.revoke`
 * `public.getBoard(slug)`
 
-## 17) Алгоритмы (детали)
+## 17) Algorithms (details)
 
-### 17.1 RR генератор (circle method)
+### 17.1 RR Generator (circle method)
 
-* Если K нечётное — добавить BYE, пара с BYE пропускается.
-* Для `MIX_AND_MATCH`: внутри раунда строим пары/четвёрки с минимизацией повторов партнёров (жадный алгоритм с локальными свапами); гарантируем корректность до 24 игроков.
+* If K is odd — add BYE, pair with BYE is skipped.
+* For `MIX_AND_MATCH`: within round build pairs/quads minimizing partner repeats (greedy algorithm with local swaps); guarantee correctness up to 24 players.
 
-### 17.2 Тай-брейки — реализация
+### 17.2 Tiebreakers — Implementation
 
-* Детализированная сортировка:
+* Detailed sorting:
 
   1. wins desc,
-  2. head-to-head diff среди связанных,
-  3. overall diff в пуле/rrGroup,
-  4. diff vs next highest-ranked team (итеративно).
-* Возвращать «explain» для UI.
+  2. head-to-head diff among tied teams,
+  3. overall diff in pool/rrGroup,
+  4. diff vs next highest-ranked team (iteratively).
+* Return «explain» for UI.
 
-### 17.3 Плей-офф — выбор target
+### 17.3 Playoffs — Target Selection
 
 ```
 N = teams count in division
@@ -259,44 +259,44 @@ else:
   target = 16 + 8 * floor((N-1)/16)
 ```
 
-* Если N == target → классическая сетка.
-* Если N > target → создать PLAY\_IN для «хвоста» за последние слоты.
-* Если N < target → BYE для top seeds.
+* If N == target → classic bracket.
+* If N > target → create PLAY\_IN for "tail" competing for last slots.
+* If N < target → BYE for top seeds.
 
-## 18) UI детали
+## 18) UI Details
 
-* **Teams board:** три панели (Unassigned | Teams | Pools). DnD со валидацией.
-* **RR Standings:** `Seed | Team | W-L | PF | PA | Diff | i` (иконка «почему»).
-* **Merged RR:** шапка «Combined RR: \[Div A + Div B + …]», переключатель Combined/By Division.
-* **Brackets:** дерево; плей-ин помечен отдельно; BYE слоты скрыты как матчи.
-* **Audit:** таблица изменений с фильтрами (actor, division, action).
+* **Teams board:** three panels (Unassigned | Teams | Pools). DnD with validation.
+* **RR Standings:** `Seed | Team | W-L | PF | PA | Diff | i` (icon "why").
+* **Merged RR:** header «Combined RR: \[Div A + Div B + …]», toggle Combined/By Division.
+* **Brackets:** tree; play-in marked separately; BYE slots hidden as matches.
+* **Audit:** changes table with filters (actor, division, action).
 
 ## 19) Edge cases
 
-* <4 команд — предупреждение: формировать финал вручную или через упрощённую сетку.
-* Удаление команды после сыгранных матчей — запрещено; только archive.
-* Смена pairingMode после генерации RR — требует регенерации (confirm).
-* Merge возможен: до RR или после генерации, но пока игр нет; unmerge — только пока игр нет.
-* При merge все несостоявшиеся матчи предыдущих отдельных RR удаляются (логируется в AuditLog).
+* <4 teams — warning: form final manually or via simplified bracket.
+* Team deletion after played matches — prohibited; archive only.
+* Changing pairingMode after RR generation — requires regeneration (confirm).
+* Merge possible: before RR or after generation, but while no games played; unmerge — only while no games played.
+* During merge all unplayed matches from previous separate RRs are deleted (logged in AuditLog).
 
 ## 20) Acceptance Criteria
 
-1. TD создаёт турнир, дивизионы, constraints, призы.
-2. Импорт CSV маппится в игроков/команды/дивизионы, есть превью и undo.
-3. DnD: player↔team, team↔pool, team↔division (до старта RR).
-4. RR генерируется; счёт вводится; standings пересчитываются; тай-брейки применяются.
-5. **Merged RR:** возможен при совпадающих настройках и одном пуле; общий RR и общая таблица; public-board умеет Combined/By Division.
-6. Кнопка **Start Elimination** фиксирует результаты и строит плей-офф **для каждого division отдельно**, используя посев из общей таблицы rrGroup, отфильтрованной по division.
-7. Play-in/сетку генерируем по правилам; e2e тесты проходят кейсы N=4,5,6,7,8,9,10,11,16,17,20.
-8. Роли и RLS соблюдены; ассистент видит только свои дивизионы.
-9. Публичная доска красивая, live, без логина.
-10. AuditLog фиксирует каждую правку.
+1. TD creates tournament, divisions, constraints, prizes.
+2. CSV import maps to players/teams/divisions, has preview and undo.
+3. DnD: player↔team, team↔pool, team↔division (before RR starts).
+4. RR generated; scores entered; standings recalculated; tiebreakers applied.
+5. **Merged RR:** possible with matching settings and single pool; common RR and unified table; public-board supports Combined/By Division.
+6. **Start Elimination** button locks results and builds playoffs **for each division separately**, using seeding from common rrGroup table filtered by division.
+7. Play-in/bracket generated by rules; e2e tests pass cases N=4,5,6,7,8,9,10,11,16,17,20.
+8. Roles and RLS enforced; assistant sees only their divisions.
+9. Public board is beautiful, live, no login.
+10. AuditLog records every edit.
 
 ## 21) Milestones
 
-* **M1 — Scaffolding & DB:** проект, Prisma schema, миграции, базовые админ-страницы, auth (invite-only), RLS.
-* **M2 — CSV & Teams Board:** импортёр, превью/маппинг/undo, DnD панели, constraints-валидации.
-* **M3 — RR & Scoring:** генератор RR (even/odd, BYE, MIX\_AND\_MATCH), формы ввода счёта, standings+тай-брейки.
-* **M4 — Merged RR:** RoundRobinGroup, DivisionRRBinding, объединённая таблица, Combined/By Division в UI, merge/unmerge правила.
-* **M5 — Elimination & Public Board:** play-in и сетка, старт одной кнопкой, публичная доска с live-обновлениями, призы.
-* **M6 — Roles & Audit & e2e:** ассистенты, AuditLog, экспорт CSV, e2e сценарий «импорт → RR (в т.ч. merged) → счёт → плей-офф → паблик».
+* **M1 — Scaffolding & DB:** project, Prisma schema, migrations, basic admin pages, auth (invite-only), RLS.
+* **M2 — CSV & Teams Board:** importer, preview/mapping/undo, DnD panels, constraints validation.
+* **M3 — RR & Scoring:** RR generator (even/odd, BYE, MIX\_AND\_MATCH), score input forms, standings+tiebreakers.
+* **M4 — Merged RR:** RoundRobinGroup, DivisionRRBinding, unified table, Combined/By Division in UI, merge/unmerge rules.
+* **M5 — Elimination & Public Board:** play-in and bracket, start with one button, public board with live updates, prizes.
+* **M6 — Roles & Audit & e2e:** assistants, AuditLog, CSV export, e2e scenario «import → RR (incl. merged) → score → playoffs → public».

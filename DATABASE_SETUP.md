@@ -1,29 +1,29 @@
 # Database Setup Instructions
 
-## Проблема
-База данных Supabase не создана, поэтому при попытке создать турнир возникает ошибка 404.
+## Problem
+Supabase database is not created, so when trying to create a tournament, a 404 error occurs.
 
-## Решение
+## Solution
 
-### Вариант 1: Создать новый проект Supabase
-1. Перейдите на [supabase.com](https://supabase.com)
-2. Создайте новый проект
-3. Получите новые учетные данные:
+### Option 1: Create New Supabase Project
+1. Go to [supabase.com](https://supabase.com)
+2. Create a new project
+3. Get new credentials:
    - Database URL
    - Supabase URL
    - Anon Key
    - Service Role Key
-4. Обновите переменные окружения в Vercel
+4. Update environment variables in Vercel
 
-### Вариант 2: Использовать существующий проект
-Если у вас уже есть проект Supabase:
-1. Перейдите в панель управления Supabase
-2. Откройте раздел "SQL Editor"
-3. Выполните SQL скрипт из файла `prisma/migrations/20250101000000_init/migration.sql`
-4. Убедитесь, что переменные окружения настроены правильно
+### Option 2: Use Existing Project
+If you already have a Supabase project:
+1. Go to Supabase Dashboard
+2. Open "SQL Editor" section
+3. Execute SQL script from file `prisma/migrations/20250101000000_init/migration.sql`
+4. Make sure environment variables are configured correctly
 
-### Вариант 3: Локальная настройка
-1. Создайте файл `.env.local` в корне проекта:
+### Option 3: Local Setup
+1. Create `.env.local` file in project root:
 ```env
 DATABASE_URL="postgresql://postgres:Kwpc75md8!!!@db.angwdmyswzztmlrdzgxm.supabase.co:5432/postgres"
 NEXT_PUBLIC_SUPABASE_URL="https://angwdmyswzztmlrdzgxm.supabase.co"
@@ -31,16 +31,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJz
 SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFuZ3dkbXlzd3p6dG1scmR6Z3htIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODg3MDcyOCwiZXhwIjoyMDc0NDQ2NzI4fQ.o88piotALs9_JHN5KRzZffrFku6fgueLw6Wuu4kBtF8"
 ```
 
-2. Выполните команду:
+2. Execute command:
 ```bash
 npx prisma db push
 ```
 
-## Проверка
-После настройки базы данных:
-1. Перезапустите приложение
-2. Попробуйте создать турнир
-3. Проверьте, что данные сохраняются в Supabase
+## Verification
+After database setup:
+1. Restart the application
+2. Try creating a tournament
+3. Verify that data is saved in Supabase
 
-## SQL для создания таблиц
-Если нужно создать таблицы вручную, используйте SQL из файла `prisma/migrations/20250101000000_init/migration.sql`
+## SQL for Creating Tables
+If you need to create tables manually, use SQL from file `prisma/migrations/20250101000000_init/migration.sql`

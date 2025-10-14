@@ -29,7 +29,7 @@ export default function ScoreInputModal({
     const scoreBValue = parseInt(scoreB)
     
     if (isNaN(scoreAValue) || isNaN(scoreBValue) || scoreAValue < 0 || scoreBValue < 0) {
-      alert('Пожалуйста, введите корректные счета (неотрицательные числа)')
+      alert('Please enter valid scores (non-negative numbers)')
       return
     }
 
@@ -47,7 +47,7 @@ export default function ScoreInputModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h2 className="text-xl font-bold mb-4">Ввод счета</h2>
+        <h2 className="text-xl font-bold mb-4">Enter Score</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -57,12 +57,12 @@ export default function ScoreInputModal({
             <input
               type="number"
               value={scoreA}
-              onChange={(e) => setScoreA(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Счет команды A"
-              min="0"
-              required
-            />
+                  onChange={(e) => setScoreA(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Team A score"
+                  min="0"
+                  required
+                />
           </div>
 
           <div className="text-center text-gray-500 font-medium">VS</div>
@@ -74,12 +74,12 @@ export default function ScoreInputModal({
             <input
               type="number"
               value={scoreB}
-              onChange={(e) => setScoreB(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Счет команды B"
-              min="0"
-              required
-            />
+                  onChange={(e) => setScoreB(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Team B score"
+                  min="0"
+                  required
+                />
           </div>
 
           <div className="flex space-x-3 pt-4">
@@ -90,14 +90,14 @@ export default function ScoreInputModal({
               className="flex-1"
               disabled={isLoading}
             >
-              Отмена
+              Cancel
             </Button>
             <Button
               type="submit"
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               disabled={isLoading}
             >
-              {isLoading ? 'Сохранение...' : 'Сохранить счет'}
+              {isLoading ? 'Saving...' : 'Save Score'}
             </Button>
           </div>
         </form>

@@ -1,53 +1,53 @@
-# 📦 Информация о резервной копии проекта
+# 📦 Project Backup Information
 
-## ✅ Резервная копия создана!
+## ✅ Backup Created!
 
-**Дата**: 13 октября 2025, 19:49  
-**Расположение**: `/Users/rodion/Piqle_web_backup_20251013_194938`
+**Date**: October 13, 2025, 19:49  
+**Location**: `/Users/rodion/Piqle_web_backup_20251013_194938`
 
-## 📁 Что включено в копию:
+## 📁 What's Included in Backup:
 
-- ✅ Весь исходный код
-- ✅ Все зависимости (node_modules)
-- ✅ Конфигурационные файлы
-- ✅ Prisma схема и миграции
-- ✅ Документация
-- ✅ Git история (.git)
+- ✅ All source code
+- ✅ All dependencies (node_modules)
+- ✅ Configuration files
+- ✅ Prisma schema and migrations
+- ✅ Documentation
+- ✅ Git history (.git)
 
-## 📖 Инструкции по использованию:
+## 📖 Usage Instructions:
 
-Перейдите в папку копии и откройте `START_HERE.md`:
+Navigate to backup folder and open `START_HERE.md`:
 
 ```bash
 cd /Users/rodion/Piqle_web_backup_20251013_194938
 cat START_HERE.md
 ```
 
-Или откройте в Finder:
+Or open in Finder:
 
 ```bash
 open /Users/rodion/Piqle_web_backup_20251013_194938
 ```
 
-## 🎯 Для создания нового независимого проекта:
+## 🎯 To Create New Independent Project:
 
-1. **Создайте новую БД в Supabase** → https://supabase.com/dashboard
-2. **Настройте `.env.local`** в папке копии
-3. **Запустите `./quick-setup.sh`** в папке копии
-4. **Создайте новый проект в Vercel** (опционально)
+1. **Create new DB in Supabase** → https://supabase.com/dashboard
+2. **Configure `.env.local`** in backup folder
+3. **Run `./quick-setup.sh`** in backup folder
+4. **Create new Vercel project** (optional)
 
-Подробная инструкция: см. `SETUP_NEW_PROJECT.md` в папке копии
+Detailed instructions: see `SETUP_NEW_PROJECT.md` in backup folder
 
-## ⚠️ Важно:
+## ⚠️ Important:
 
-- Копия **независима** от этого проекта
-- Требуется **новая** база данных Supabase
-- Не используйте переменные окружения из этого проекта
-- Копия включает все файлы на момент создания
+- Backup is **independent** from this project
+- Requires **new** Supabase database
+- Don't use environment variables from this project
+- Backup includes all files at creation time
 
-## 📊 Размер копии: ~967 MB
+## 📊 Backup Size: ~967 MB
 
-Включает node_modules. Можно удалить и переустановить:
+Includes node_modules. Can be deleted and reinstalled:
 
 ```bash
 cd /Users/rodion/Piqle_web_backup_20251013_194938
@@ -57,4 +57,4 @@ npm install
 
 ---
 
-**Создано автоматически**: 13 октября 2025, 19:49
+**Created automatically**: October 13, 2025, 19:49
