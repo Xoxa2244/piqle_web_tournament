@@ -112,7 +112,7 @@ export default function TeamsPage() {
     },
     onError: (error) => {
       console.error('Failed to delete team:', error)
-      alert('Ошибка при удалении команды')
+      alert('Error deleting team')
     }
   })
 
@@ -167,7 +167,7 @@ export default function TeamsPage() {
   }
 
   const handleDeleteTeam = (teamId: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту команду? Все участники будут перемещены в общий список.')) {
+    if (!confirm('Are you sure you want to delete this team? All participants will be moved to the general list.')) {
       return
     }
     
@@ -194,7 +194,7 @@ export default function TeamsPage() {
   if (!tournament) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Загрузка турнира...</div>
+        <div className="text-lg">Loading tournament...</div>
       </div>
     )
   }
@@ -207,12 +207,12 @@ export default function TeamsPage() {
           <Link href={`/admin/${tournamentId}`}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Назад к турниру
+              Back to Tournament
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Команды и участники</h1>
-            <p className="text-gray-600 mt-1">Управление составом и распределением</p>
+            <h1 className="text-3xl font-bold text-gray-900">Teams & Participants</h1>
+            <p className="text-gray-600 mt-1">Manage roster and distribution</p>
           </div>
         </div>
       </div>
@@ -227,15 +227,15 @@ export default function TeamsPage() {
               <div>
                 <CardTitle className="flex items-center space-x-2">
                   <Users className="h-5 w-5" />
-                  <span>Все участники</span>
+                  <span>All Participants</span>
                 </CardTitle>
                 <CardDescription>
-                  Участники, не входящие ни в одну команду
+                  Participants not in any team
                 </CardDescription>
               </div>
               <Button onClick={handleAddParticipant} size="sm">
                 <UserPlus className="h-4 w-4 mr-2" />
-                Добавить участника
+                Add Participant
               </Button>
             </div>
           </CardHeader>
@@ -245,7 +245,7 @@ export default function TeamsPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Поиск по имени, email или DUPR ID..."
+                  placeholder="Search by name, email or DUPR ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -257,7 +257,7 @@ export default function TeamsPage() {
             <div className="space-y-2">
               {filteredPlayers.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchQuery ? 'Участники не найдены' : 'Нет свободных участников'}
+                  {searchQuery ? 'Participants not found' : 'No free participants'}
                 </div>
               ) : (
                 filteredPlayers.map((player) => (
@@ -275,7 +275,7 @@ export default function TeamsPage() {
                       </div>
                     </div>
                     <Badge variant="outline" className="ml-2">
-                      Свободен
+                      Free
                     </Badge>
                   </div>
                 ))
@@ -283,7 +283,7 @@ export default function TeamsPage() {
             </div>
 
             <div className="mt-4 text-sm text-gray-500">
-              Всего свободных участников: {filteredPlayers.length}
+              Total free participants: {filteredPlayers.length}
             </div>
           </CardContent>
         </Card>
@@ -295,15 +295,15 @@ export default function TeamsPage() {
               <div>
                 <CardTitle className="flex items-center space-x-2">
                   <Users className="h-5 w-5" />
-                  <span>Команды</span>
+                  <span>Teams</span>
                 </CardTitle>
                 <CardDescription>
-                  Управление командами и их составом
+                  Manage teams and their roster
                 </CardDescription>
               </div>
               <Button onClick={handleAddTeam} size="sm">
                 <Plus className="h-4 w-4 mr-2" />
-                Создать команду
+                Create Team
               </Button>
             </div>
           </CardHeader>
@@ -311,7 +311,7 @@ export default function TeamsPage() {
             <div className="space-y-4">
               {teams && teams.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  Нет созданных команд
+                  No teams created
                 </div>
               ) : (
                 teams?.map((team) => {
@@ -339,10 +339,10 @@ export default function TeamsPage() {
                             {getTeamDisplayName(team)}
                           </div>
                           <div className="text-sm text-gray-500">
-                            Состав: {currentPlayers}/{maxPlayers}
+                            Roster: {currentPlayers}/{maxPlayers}
                             {isOverLimit && (
                               <span className="text-red-600 ml-2">
-                                (превышен лимит!)
+                                (limit exceeded!)
                               </span>
                             )}
                           </div>
@@ -370,7 +370,7 @@ export default function TeamsPage() {
                       <div className="space-y-2">
                         {team.teamPlayers.length === 0 ? (
                           <div className="text-sm text-gray-500 italic">
-                            Нет участников в команде
+                            No participants in team
                           </div>
                         ) : (
                           team.teamPlayers.map((teamPlayer) => (
@@ -398,7 +398,7 @@ export default function TeamsPage() {
                       {/* Warning for teams without division */}
                       {!team.divisionId && (
                         <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-700">
-                          ⚠️ Команда не привязана к дивизиону
+                          ⚠️ Team not linked to division
                         </div>
                       )}
                     </div>
@@ -408,7 +408,7 @@ export default function TeamsPage() {
             </div>
 
             <div className="mt-4 text-sm text-gray-500">
-              Всего команд: {teams?.length || 0}
+              Total teams: {teams?.length || 0}
             </div>
           </CardContent>
         </Card>

@@ -141,7 +141,7 @@ function WaitList({
       >
         {waitListTeams.length === 0 ? (
           <div className="text-center text-gray-400 text-sm py-4">
-            Перетащите команды сюда для ожидания
+            Drag teams here to wait
           </div>
         ) : (
           <div className="space-y-2">
@@ -201,7 +201,7 @@ function PoolCard({
       >
         {poolTeams.length === 0 ? (
           <div className="text-center text-blue-400 text-sm py-4">
-            Перетащите команды сюда
+            Drag teams here
           </div>
         ) : (
           <div className="space-y-2">
@@ -390,7 +390,7 @@ function DivisionCard({
             <div>
               <CardTitle className="text-lg">{division.name}</CardTitle>
               <CardDescription className="flex items-center space-x-2 mt-1">
-                <span>{totalTeams} команд</span>
+                <span>{totalTeams} teams</span>
                 <span>•</span>
                 <span>{division.teamKind}</span>
                 <span>•</span>
@@ -398,13 +398,13 @@ function DivisionCard({
                 {division.poolCount >= 1 && (
                   <>
                     <span>•</span>
-                    <span>{division.poolCount} пулов</span>
+                    <span>{division.poolCount} pools</span>
                   </>
                 )}
                 {division.maxTeams && (
                   <>
                     <span>•</span>
-                    <span>лимит: {division.maxTeams}</span>
+                    <span>limit: {division.maxTeams}</span>
                   </>
                 )}
               </CardDescription>
@@ -429,7 +429,7 @@ function DivisionCard({
                 size="sm"
                 onClick={onAddTeam}
                 className="h-8 w-8 p-0"
-                title="Добавить команду в дивизион"
+                title="Add team to division"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -468,7 +468,7 @@ function DivisionCard({
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-medium text-sm text-green-600 flex items-center">
                     <Trophy className="h-4 w-4 mr-1" />
-                    Активные команды ({activeTeams.length})
+                    Active teams ({activeTeams.length})
                   </h4>
                 </div>
                 
@@ -548,7 +548,7 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Ошибка при перемещении команды: ${error.message}`)
+      alert(`Error moving team: ${error.message}`)
     }
   })
 
@@ -559,7 +559,7 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       console.error('moveToPool error:', error)
-      alert(`Ошибка при перемещении команды: ${error.message}`)
+      alert(`Error moving team: ${error.message}`)
     }
   })
 
@@ -568,7 +568,7 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Ошибка при обновлении дивизиона: ${error.message}`)
+      alert(`Error updating division: ${error.message}`)
     }
   })
 
@@ -814,12 +814,12 @@ export default function DivisionsPage() {
               <Link href={`/admin/${tournamentId}`}>
                 <Button variant="ghost" size="sm" className="flex items-center space-x-2">
                   <ArrowLeft className="h-4 w-4" />
-                  <span>Назад</span>
+                  <span>Back</span>
                 </Button>
               </Link>
               
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Дивизионы</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
                 <p className="text-sm text-gray-500">{tournament.title}</p>
               </div>
             </div>
@@ -847,7 +847,7 @@ export default function DivisionsPage() {
               
               <Button className="flex items-center space-x-2">
                 <Plus className="h-4 w-4" />
-                <span>Создать дивизион</span>
+                <span>Create Division</span>
               </Button>
             </div>
           </div>
@@ -861,12 +861,12 @@ export default function DivisionsPage() {
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-2">Поиск и фильтры</h3>
+                  <h3 className="font-medium text-gray-900 mb-2">Search and filters</h3>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Поиск дивизионов..."
+                      placeholder="Search divisions..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -875,19 +875,19 @@ export default function DivisionsPage() {
                 </div>
                 
                 <div>
-                  <h4 className="font-medium text-gray-700 mb-2">Быстрые действия</h4>
+                  <h4 className="font-medium text-gray-700 mb-2">Quick actions</h4>
                   <div className="space-y-2">
                     <Button variant="outline" size="sm" className="w-full justify-start">
                       <Settings className="h-4 w-4 mr-2" />
-                      Настройки
+                      Settings
                     </Button>
                     <Button variant="outline" size="sm" className="w-full justify-start">
                       <Copy className="h-4 w-4 mr-2" />
-                      Дублировать
+                      Duplicate
                     </Button>
                     <Button variant="outline" size="sm" className="w-full justify-start">
                       <Download className="h-4 w-4 mr-2" />
-                      Экспорт
+                      Export
                     </Button>
                   </div>
                 </div>
