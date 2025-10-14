@@ -55,12 +55,10 @@ export default function PlayerSelectionModal({
     return availablePlayers.filter(player => {
       const fullName = `${player.firstName} ${player.lastName}`.toLowerCase()
       const email = player.email?.toLowerCase() || ''
-      const dupr = player.dupr?.toLowerCase() || ''
       
       return (
         fullName.includes(query) ||
         email.includes(query) ||
-        dupr.includes(query) ||
         (player.duprRating && player.duprRating.toString().includes(query))
       )
     })
@@ -109,7 +107,7 @@ export default function PlayerSelectionModal({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search by name, email, DUPR ID, or rating..."
+              placeholder="Search by name, email, or rating..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -158,18 +156,11 @@ export default function PlayerSelectionModal({
                                 {player.firstName} {player.lastName}
                               </div>
                               
-                              <div className="flex items-center space-x-4 mt-1">
+                              <div className="flex items-center space-x-3 mt-1">
                                 {player.email && (
                                   <div className="flex items-center space-x-1 text-xs text-gray-500">
                                     <Mail className="h-3 w-3" />
-                                    <span className="truncate max-w-32">{player.email}</span>
-                                  </div>
-                                )}
-                                
-                                {player.dupr && (
-                                  <div className="flex items-center space-x-1 text-xs text-gray-500">
-                                    <Hash className="h-3 w-3" />
-                                    <span>{player.dupr}</span>
+                                    <span className="truncate max-w-28">{player.email}</span>
                                   </div>
                                 )}
                                 

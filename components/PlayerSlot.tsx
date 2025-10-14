@@ -77,28 +77,28 @@ export default function PlayerSlot({
   }
 
   if (!player) {
-    // Empty slot
-    return (
-      <div className="flex items-center space-x-3 p-3 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-        <div className="flex items-center justify-center w-8 h-8 bg-gray-200 rounded-full">
-          <span className="text-sm font-medium text-gray-500">{slotIndex + 1}</span>
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-500">Empty slot</div>
-          <div className="text-xs text-gray-400">Click + to add player</div>
-        </div>
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onAddPlayer(slotIndex)}
-          className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+  // Empty slot
+  return (
+    <div className="flex items-center space-x-2 p-2 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+      <div className="flex items-center justify-center w-6 h-6 bg-gray-200 rounded-full">
+        <span className="text-xs font-medium text-gray-500">{slotIndex + 1}</span>
       </div>
-    )
+      
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium text-gray-500">Empty slot</div>
+        <div className="text-xs text-gray-400">Click + to add</div>
+      </div>
+      
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onAddPlayer(slotIndex)}
+        className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+      >
+        <Plus className="h-3 w-3" />
+      </Button>
+    </div>
+  )
   }
 
   // Filled slot
@@ -106,33 +106,26 @@ export default function PlayerSlot({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center space-x-3 p-3 bg-white border rounded-lg shadow-sm ${
+      className={`flex items-center space-x-2 p-2 bg-white border rounded-lg shadow-sm ${
         isDragging ? 'opacity-50' : ''
       }`}
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full">
-        <span className="text-sm font-medium text-blue-600">{slotIndex + 1}</span>
+      <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
+        <span className="text-xs font-medium text-blue-600">{slotIndex + 1}</span>
       </div>
       
       <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm truncate">
+        <div className="font-medium text-xs truncate">
           {player.firstName} {player.lastName}
         </div>
         
-        <div className="flex items-center space-x-3 mt-1">
+        <div className="flex items-center space-x-2 mt-1">
           {player.email && (
             <div className="flex items-center space-x-1 text-xs text-gray-500">
               <Mail className="h-3 w-3" />
-              <span className="truncate max-w-24">{player.email}</span>
-            </div>
-          )}
-          
-          {player.dupr && (
-            <div className="flex items-center space-x-1 text-xs text-gray-500">
-              <Hash className="h-3 w-3" />
-              <span>{player.dupr}</span>
+              <span className="truncate max-w-20">{player.email}</span>
             </div>
           )}
           
@@ -148,7 +141,7 @@ export default function PlayerSlot({
       <div className="flex items-center space-x-1">
         {!isDragDisabled && (
           <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
-            <GripVertical className="h-4 w-4" />
+            <GripVertical className="h-3 w-3" />
           </div>
         )}
         
@@ -156,14 +149,14 @@ export default function PlayerSlot({
           variant="ghost"
           size="sm"
           onClick={handleRemoveClick}
-          className={`h-8 w-8 p-0 ${
+          className={`h-6 w-6 p-0 ${
             showRemoveConfirm 
               ? 'text-red-600 hover:text-red-700 bg-red-50' 
               : 'text-red-500 hover:text-red-700'
           }`}
           title={showRemoveConfirm ? 'Click again to confirm removal' : 'Remove player'}
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3 w-3" />
         </Button>
       </div>
     </div>
