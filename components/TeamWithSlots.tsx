@@ -161,12 +161,20 @@ export default function TeamWithSlots({
 
   const handleDragStart = (event: DragStartEvent) => {
     const activeId = event.active.id as string
+    console.log('[TeamWithSlots] DragStart - activeId:', activeId)
+    console.log('[TeamWithSlots] DragStart - team:', team.name, 'teamId:', team.id)
+    
     if (activeId.startsWith('player-slot-')) {
       const slotIndex = parseInt(activeId.replace('player-slot-', ''))
       const player = slots[slotIndex]
+      console.log('[TeamWithSlots] DragStart - slotIndex:', slotIndex, 'player:', player?.firstName, player?.lastName)
+      
       if (player) {
         setActivePlayer(player)
         setActiveSlotIndex(slotIndex)
+        console.log('[TeamWithSlots] DragStart - Set active player and slot')
+      } else {
+        console.log('[TeamWithSlots] DragStart - No player in slot')
       }
     }
   }
@@ -174,7 +182,11 @@ export default function TeamWithSlots({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     
+    console.log('[TeamWithSlots] DragEnd - active:', active?.id, 'over:', over?.id)
+    console.log('[TeamWithSlots] DragEnd - activePlayer:', activePlayer?.firstName, 'activeSlotIndex:', activeSlotIndex)
+    
     if (!over || !activePlayer || activeSlotIndex === null) {
+      console.log('[TeamWithSlots] DragEnd - Missing required data, aborting')
       setActivePlayer(null)
       setActiveSlotIndex(null)
       return
@@ -183,22 +195,33 @@ export default function TeamWithSlots({
     const activeId = active.id as string
     const overId = over.id as string
 
+    console.log('[TeamWithSlots] DragEnd - activeId:', activeId, 'overId:', overId)
+
     // Check if dropping on another player slot
     if (overId.startsWith('player-slot-')) {
       const targetSlotIndex = parseInt(overId.replace('player-slot-', ''))
       const targetPlayer = slots[targetSlotIndex]
       
+      console.log('[TeamWithSlots] DragEnd - targetSlotIndex:', targetSlotIndex, 'targetPlayer:', targetPlayer?.firstName)
+      console.log('[TeamWithSlots] DragEnd - Same slot?', targetSlotIndex === activeSlotIndex)
+      
       if (targetSlotIndex !== activeSlotIndex) {
-        // Different slot - check if target slot is in different team
-        // For now, we'll handle same-team swaps
+        console.log('[TeamWithSlots] DragEnd - Calling onMovePlayer')
+        console.log('[TeamWithSlots] DragEnd - From team:', team.id, 'To team:', team.id)
+        console.log('[TeamWithSlots] DragEnd - From slot:', activeSlotIndex, 'To slot:', targetSlotIndex)
+        
         if (targetPlayer) {
-          // Swap players
+          console.log('[TeamWithSlots] DragEnd - Swapping with player:', targetPlayer.firstName, targetPlayer.lastName)
           onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
         } else {
-          // Move to empty slot
+          console.log('[TeamWithSlots] DragEnd - Moving to empty slot')
           onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
         }
+      } else {
+        console.log('[TeamWithSlots] DragEnd - Same slot, no action')
       }
+    } else {
+      console.log('[TeamWithSlots] DragEnd - Not dropped on player slot')
     }
 
     setActivePlayer(null)

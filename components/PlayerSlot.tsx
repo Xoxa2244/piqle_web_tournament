@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -48,8 +47,11 @@ export default function PlayerSlot({
   onMovePlayer,
   isDragDisabled = false
 }: PlayerSlotProps) {
-  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
-
+  const slotId = `player-slot-${slotIndex}`
+  const isDisabled = !player || isDragDisabled
+  
+  console.log('[PlayerSlot] Render - slotId:', slotId, 'teamId:', teamId, 'player:', player?.firstName, 'disabled:', isDisabled)
+  
   const {
     attributes,
     listeners,
@@ -58,23 +60,28 @@ export default function PlayerSlot({
     transition,
     isDragging,
   } = useSortable({ 
-    id: `player-slot-${slotIndex}`,
-    disabled: !player || isDragDisabled
+    id: slotId,
+    disabled: isDisabled,
+    data: {
+      teamId,
+      slotIndex,
+      playerId: player?.id
+    }
   })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   }
+  
+  if (isDragging) {
+    console.log('[PlayerSlot] Is dragging - slotId:', slotId, 'player:', player?.firstName)
+  }
 
   const handleRemoveClick = () => {
-    if (showRemoveConfirm) {
+    if (window.confirm(`Are you sure you want to remove ${player?.firstName} ${player?.lastName} from this team?`)) {
+      console.log('[PlayerSlot] Removing player from slot:', slotIndex)
       onRemovePlayer(slotIndex)
-      setShowRemoveConfirm(false)
-    } else {
-      setShowRemoveConfirm(true)
-      // Auto-hide confirmation after 3 seconds
-      setTimeout(() => setShowRemoveConfirm(false), 3000)
     }
   }
 
