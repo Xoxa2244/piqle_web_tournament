@@ -169,7 +169,7 @@ function WaitList({
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
-                onToggleExpansion={() => toggleTeamExpansion(team.id)}
+                onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
@@ -247,7 +247,7 @@ function PoolCard({
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
-                onToggleExpansion={() => toggleTeamExpansion(team.id)}
+                onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
@@ -540,7 +540,7 @@ function DivisionCard({
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
-                      onToggleExpansion={() => toggleTeamExpansion(team.id)}
+                      onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
                       onContextMenu={() => {}}
