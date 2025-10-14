@@ -14,8 +14,8 @@ interface Player {
   email: string | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
-  // isPaid: boolean // Temporarily disabled until migration
-  // isWaitlist: boolean // Temporarily disabled until migration
+  isPaid: boolean
+  isWaitlist: boolean
 }
 
 interface EditPlayerModalProps {
@@ -32,8 +32,8 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
   const [email, setEmail] = useState('')
   const [dupr, setDupr] = useState('')
   const [duprRating, setDuprRating] = useState('')
-  // const [isPaid, setIsPaid] = useState(false) // Temporarily disabled until migration
-  // const [isWaitlist, setIsWaitlist] = useState(false) // Temporarily disabled until migration
+  const [isPaid, setIsPaid] = useState(false)
+  const [isWaitlist, setIsWaitlist] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Initialize form data when player changes
@@ -44,8 +44,8 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
       setEmail(player.email || '')
       setDupr(player.dupr || '')
       setDuprRating(player.duprRating || '')
-      // setIsPaid(player.isPaid) // Temporarily disabled until migration
-      // setIsWaitlist(player.isWaitlist) // Temporarily disabled until migration
+      setIsPaid(player.isPaid)
+      setIsWaitlist(player.isWaitlist)
     }
   }, [player])
 
@@ -80,8 +80,8 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
         email: email.trim() || undefined,
         dupr: dupr.trim() || undefined,
         duprRating: duprRating ? parseFloat(duprRating) : undefined,
-        // isPaid, // Temporarily disabled until migration
-        // isWaitlist, // Temporarily disabled until migration
+        isPaid,
+        isWaitlist,
       })
     } catch (error) {
       // Error handling is done in the mutation onError
@@ -201,7 +201,6 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
               </div>
             </div>
 
-            {/* Temporarily disabled until migration
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -263,7 +262,6 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                 </div>
               </div>
             </div>
-            */}
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button
