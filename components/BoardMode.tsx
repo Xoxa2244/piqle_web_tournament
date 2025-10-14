@@ -58,6 +58,7 @@ interface Team {
       lastName: string
       gender: string | null
       dupr: string | null
+      duprRating: string | null
       birthDate: string | null
     }
   }>
