@@ -71,14 +71,11 @@ export default function PlayersPage() {
     { enabled: !!tournamentId }
   )
 
-  // Get all teams for filter
-  const { data: teams } = trpc.team.list.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId }
-  )
-
-  // Get divisions for filter
+  // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
+  
+  // Get all teams from all divisions for filter
+  const teams = divisions.flatMap(division => division.teams || [])
 
   // Filter players based on all criteria
   const filteredPlayers = useMemo(() => {
