@@ -173,9 +173,9 @@ function WaitList({
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
-                onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
-                onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
-                onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -251,9 +251,9 @@ function PoolCard({
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
-                onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
-                onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
-                onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -544,9 +544,9 @@ function DivisionCard({
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
                       onContextMenu={() => {}}
-                      onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
-                      onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
-                      onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
+                      onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                      onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                      onMovePlayer={(fromSlot, toSlot) => onMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
                     />
                   ))}
                 </div>
