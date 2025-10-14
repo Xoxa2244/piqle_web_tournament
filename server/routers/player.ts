@@ -20,7 +20,10 @@ export const playerRouter = createTRPCRouter({
       const { tournamentId, ...playerData } = input
       
       const player = await ctx.prisma.player.create({
-        data: playerData,
+        data: {
+          ...playerData,
+          tournamentId,
+        },
       })
 
       // Log the creation
