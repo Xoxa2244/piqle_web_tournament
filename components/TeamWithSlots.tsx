@@ -14,21 +14,7 @@ import {
   Plus,
   Star
 } from 'lucide-react'
-import {
-  DndContext,
-  DragEndEvent,
-  DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  useDroppable,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable'
+import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
@@ -94,16 +80,6 @@ export default function TeamWithSlots({
 }: TeamWithSlotsProps) {
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
-  const [activePlayer, setActivePlayer] = useState<Player | null>(null)
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  )
 
   const {
     attributes,
@@ -157,75 +133,6 @@ export default function TeamWithSlots({
     }
     setShowPlayerSelection(false)
     setSelectedSlotIndex(null)
-  }
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const activeId = event.active.id as string
-    console.log('[TeamWithSlots] DragStart - activeId:', activeId)
-    console.log('[TeamWithSlots] DragStart - team:', team.name, 'teamId:', team.id)
-    
-    if (activeId.startsWith('player-slot-')) {
-      const slotIndex = parseInt(activeId.replace('player-slot-', ''))
-      const player = slots[slotIndex]
-      console.log('[TeamWithSlots] DragStart - slotIndex:', slotIndex, 'player:', player?.firstName, player?.lastName)
-      
-      if (player) {
-        setActivePlayer(player)
-        setActiveSlotIndex(slotIndex)
-        console.log('[TeamWithSlots] DragStart - Set active player and slot')
-      } else {
-        console.log('[TeamWithSlots] DragStart - No player in slot')
-      }
-    }
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    
-    console.log('[TeamWithSlots] DragEnd - active:', active?.id, 'over:', over?.id)
-    console.log('[TeamWithSlots] DragEnd - activePlayer:', activePlayer?.firstName, 'activeSlotIndex:', activeSlotIndex)
-    
-    if (!over || !activePlayer || activeSlotIndex === null) {
-      console.log('[TeamWithSlots] DragEnd - Missing required data, aborting')
-      setActivePlayer(null)
-      setActiveSlotIndex(null)
-      return
-    }
-
-    const activeId = active.id as string
-    const overId = over.id as string
-
-    console.log('[TeamWithSlots] DragEnd - activeId:', activeId, 'overId:', overId)
-
-    // Check if dropping on another player slot
-    if (overId.startsWith('player-slot-')) {
-      const targetSlotIndex = parseInt(overId.replace('player-slot-', ''))
-      const targetPlayer = slots[targetSlotIndex]
-      
-      console.log('[TeamWithSlots] DragEnd - targetSlotIndex:', targetSlotIndex, 'targetPlayer:', targetPlayer?.firstName)
-      console.log('[TeamWithSlots] DragEnd - Same slot?', targetSlotIndex === activeSlotIndex)
-      
-      if (targetSlotIndex !== activeSlotIndex) {
-        console.log('[TeamWithSlots] DragEnd - Calling onMovePlayer')
-        console.log('[TeamWithSlots] DragEnd - From team:', team.id, 'To team:', team.id)
-        console.log('[TeamWithSlots] DragEnd - From slot:', activeSlotIndex, 'To slot:', targetSlotIndex)
-        
-        if (targetPlayer) {
-          console.log('[TeamWithSlots] DragEnd - Swapping with player:', targetPlayer.firstName, targetPlayer.lastName)
-          onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
-        } else {
-          console.log('[TeamWithSlots] DragEnd - Moving to empty slot')
-          onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
-        }
-      } else {
-        console.log('[TeamWithSlots] DragEnd - Same slot, no action')
-      }
-    } else {
-      console.log('[TeamWithSlots] DragEnd - Not dropped on player slot')
-    }
-
-    setActivePlayer(null)
-    setActiveSlotIndex(null)
   }
 
   return (
@@ -306,48 +213,21 @@ export default function TeamWithSlots({
 
         {/* Player Slots */}
         {isExpanded && (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="p-2 space-y-2">
-              <SortableContext items={slots.map((_, index) => `player-slot-${index}`)} strategy={verticalListSortingStrategy}>
-                {slots.map((player, index) => (
-                  <PlayerSlot
-                    key={index}
-                    slotIndex={index}
-                    player={player}
-                    teamKind={teamKind}
-                    teamId={team.id}
-                    onAddPlayer={handleAddPlayerClick}
-                    onRemovePlayer={onRemovePlayer}
-                    onMovePlayer={onMovePlayer}
-                    isDragDisabled={isDragDisabled}
-                  />
-                ))}
-              </SortableContext>
-            </div>
-
-            <DragOverlay>
-              {activePlayer ? (
-                <div className="flex items-center space-x-2 p-2 bg-white border rounded-lg shadow-lg">
-                  <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
-                    <span className="text-xs font-medium text-blue-600">{activeSlotIndex! + 1}</span>
-                  </div>
-                  <div className="font-medium text-xs">
-                    {activePlayer.firstName} {activePlayer.lastName}
-                  </div>
-                  {activePlayer.duprRating && (
-                    <Badge variant="outline" className="text-xs">
-                      <Star className="h-3 w-3 mr-1" />
-                      {activePlayer.duprRating}
-                    </Badge>
-                  )}
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+          <div className="p-2 space-y-2">
+            {slots.map((player, index) => (
+              <PlayerSlot
+                key={`${team.id}-slot-${index}`}
+                slotIndex={index}
+                player={player}
+                teamKind={teamKind}
+                teamId={team.id}
+                onAddPlayer={handleAddPlayerClick}
+                onRemovePlayer={onRemovePlayer}
+                onMovePlayer={onMovePlayer}
+                isDragDisabled={isDragDisabled}
+              />
+            ))}
+          </div>
         )}
       </div>
 

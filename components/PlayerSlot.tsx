@@ -47,7 +47,7 @@ export default function PlayerSlot({
   onMovePlayer,
   isDragDisabled = false
 }: PlayerSlotProps) {
-  const slotId = `player-slot-${slotIndex}`
+  const slotId = `player-${teamId}-slot-${slotIndex}`
   const isDisabled = !player || isDragDisabled
   
   console.log('[PlayerSlot] Render - slotId:', slotId, 'teamId:', teamId, 'player:', player?.firstName, 'disabled:', isDisabled)
