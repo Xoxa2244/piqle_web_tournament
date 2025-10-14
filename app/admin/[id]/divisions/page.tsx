@@ -654,19 +654,31 @@ export default function DivisionsPage() {
 
   // Player slot management mutations
   const addPlayerToSlotMutation = trpc.teamPlayer.addPlayerToSlot.useMutation({
+    onMutate: async (variables) => {
+      // Optimistically update the UI
+      optimisticAddPlayer(variables.teamId, variables.playerId, variables.slotIndex)
+    },
     onSuccess: () => {
       refetch()
     },
     onError: (error) => {
+      // Rollback on error
+      refetch()
       alert(`Error adding player: ${error.message}`)
     }
   })
 
   const removePlayerFromSlotMutation = trpc.teamPlayer.removePlayerFromSlot.useMutation({
+    onMutate: async (variables) => {
+      // Optimistically update the UI
+      optimisticRemovePlayer(variables.teamId, variables.slotIndex)
+    },
     onSuccess: () => {
       refetch()
     },
     onError: (error) => {
+      // Rollback on error
+      refetch()
       alert(`Error removing player: ${error.message}`)
     }
   })
@@ -786,6 +798,62 @@ export default function DivisionsPage() {
             }
           }
           
+          return team
+        })
+      }))
+    })
+  }
+
+  const optimisticRemovePlayer = (teamId: string, slotIndex: number) => {
+    setLocalDivisions(prevDivisions => {
+      return prevDivisions.map(division => ({
+        ...division,
+        teams: division.teams.map(team => {
+          if (team.id === teamId) {
+            const newTeamPlayers = [...team.teamPlayers]
+            // Remove player from the specified slot
+            newTeamPlayers.splice(slotIndex, 1)
+            
+            return {
+              ...team,
+              teamPlayers: newTeamPlayers
+            }
+          }
+          return team
+        })
+      }))
+    })
+  }
+
+  const optimisticAddPlayer = (teamId: string, playerId: string, slotIndex: number) => {
+    setLocalDivisions(prevDivisions => {
+      return prevDivisions.map(division => ({
+        ...division,
+        teams: division.teams.map(team => {
+          if (team.id === teamId) {
+            // Find the player in the tournament
+            const player = tournament?.players?.find(p => p.id === playerId)
+            if (!player) return team
+            
+            const newTeamPlayers = [...team.teamPlayers]
+            // Add player to the specified slot
+            newTeamPlayers[slotIndex] = {
+              id: `temp-${Date.now()}`, // Temporary ID for optimistic update
+              teamId: teamId,
+              playerId: playerId,
+              slotIndex: slotIndex,
+              player: {
+                ...player,
+                teamId: teamId,
+                teamName: team.name
+              }
+            }
+            
+            return {
+              ...team,
+              teamPlayers: newTeamPlayers
+            }
+          }
           return team
         })
       }))
