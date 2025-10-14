@@ -736,9 +736,34 @@ export default function DivisionsPage() {
       return
     }
 
-    const teamId = active.id as string
+    const activeId = active.id as string
     const overId = over.id as string
 
+    console.log('[divisions/page] handleDragEnd - activeId:', activeId, 'overId:', overId)
+
+    // Check if this is a player drag event
+    const playerPattern = /^player-([^-]+)-slot-(\d+)$/
+    const activePlayerMatch = activeId.match(playerPattern)
+    const overPlayerMatch = overId.match(playerPattern)
+
+    if (activePlayerMatch && overPlayerMatch) {
+      // Player drag-and-drop
+      const fromTeamId = activePlayerMatch[1]
+      const fromSlotIndex = parseInt(activePlayerMatch[2])
+      const toTeamId = overPlayerMatch[1]
+      const toSlotIndex = parseInt(overPlayerMatch[2])
+
+      console.log('[divisions/page] Player drag detected')
+      console.log('[divisions/page] From:', fromTeamId, 'slot:', fromSlotIndex)
+      console.log('[divisions/page] To:', toTeamId, 'slot:', toSlotIndex)
+
+      handleMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlotIndex, toSlotIndex)
+      return
+    }
+
+    // Team drag-and-drop (existing logic)
+    const teamId = activeId
+    
     // Parse drop zone ID and determine target
     let targetDivisionId: string | null = null
     let targetPoolId: string | null = null
