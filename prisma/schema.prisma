@@ -172,18 +172,18 @@ model Team {
 model Player {
   id          String    @id @default(uuid())
   tournamentId String   @map("tournament_id") // Link player to specific tournament
-  firstName   String
-  lastName    String
+  firstName   String    @map("firstName")
+  lastName    String    @map("lastName")
   email       String?
   gender      Gender?
   dupr        String?   // Changed to String for DUPR ID
   duprRating  Decimal?  @db.Decimal(3, 2) @map("dupr_rating") // New field for DUPR rating
   isPaid      Boolean   @default(false)   @map("is_paid")   // New field for payment status
   isWaitlist  Boolean   @default(false)   @map("is_waitlist")   // New field for waitlist status
-  birthDate   DateTime?
-  externalId  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  birthDate   DateTime? @map("birthDate")
+  externalId  String?   @map("externalId")
+  createdAt   DateTime  @default(now()) @map("createdAt")
+  updatedAt   DateTime  @updatedAt @map("updatedAt")
 
   // Relations
   tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -194,11 +194,11 @@ model Player {
 
 model TeamPlayer {
   id       String      @id @default(uuid())
-  teamId   String
-  playerId String
+  teamId   String      @map("teamId")
+  playerId String      @map("playerId")
   role     PlayerRole  @default(PLAYER)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime   @default(now()) @map("createdAt")
+  updatedAt DateTime   @updatedAt @map("updatedAt")
 
   // Relations
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
