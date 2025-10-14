@@ -920,7 +920,7 @@ export default function DivisionsPage() {
                 <DragOverlay>
                   {activeTeam ? (
                     <div className="bg-white border rounded-lg shadow-lg p-2">
-                      Перемещение команды...
+                      Moving team...
                     </div>
                   ) : null}
                 </DragOverlay>

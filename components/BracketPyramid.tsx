@@ -52,7 +52,7 @@ export default function BracketPyramid({
       let roundName = ''
       const totalTeams = matches.length * 2 // Approximate
       
-      // Правильные названия раундов согласно ТЗ
+      // Correct round names according to specification
       if (roundIndex === 0) {
         if (totalTeams <= 4) {
           roundName = 'Semi-Final'
@@ -83,16 +83,16 @@ export default function BracketPyramid({
 
   const getMatchStatus = (match: Match) => {
     if (!match.games || match.games.length === 0) {
-      return { status: 'scheduled', text: 'Ожидает счёта' }
+      return { status: 'scheduled', text: 'Awaiting score' }
     }
     
     const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
     const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
     
     if (totalScoreA > totalScoreB || totalScoreB > totalScoreA) {
-      return { status: 'completed', text: 'Завершён' }
+      return { status: 'completed', text: 'Completed' }
     } else {
-      return { status: 'tie', text: 'Ничья' }
+      return { status: 'tie', text: 'Tie' }
     }
   }
 
@@ -120,8 +120,8 @@ export default function BracketPyramid({
     return (
       <div className="text-center py-8">
         <Trophy className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-        <p className="text-gray-500">Нет матчей плей-офф</p>
-        <p className="text-sm text-gray-400">Сгенерируйте плей-офф для отображения сетки</p>
+        <p className="text-gray-500">No playoff matches</p>
+        <p className="text-sm text-gray-400">Generate playoffs to display bracket</p>
       </div>
     )
   }

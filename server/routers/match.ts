@@ -186,7 +186,7 @@ export const matchRouter = createTRPCRouter({
   regenerateRR: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // Получаем дивизион с командами и пулами
+      // Get division with teams and pools
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
@@ -212,7 +212,7 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      // Удаляем все существующие матчи RR
+      // Delete all existing RR matches
       await ctx.prisma.match.deleteMany({
         where: { 
           divisionId: input.divisionId,
@@ -220,12 +220,12 @@ export const matchRouter = createTRPCRouter({
         },
       })
 
-      // Генерируем новый Round Robin (используем ту же логику что и в generateRR)
+      // Generate new Round Robin (using same logic as in generateRR)
       const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string | null }> = []
       let currentRoundIndex = 0
 
       if (division.pools.length > 0) {
-        // Генерируем RR для каждого пула отдельно
+        // Generate RR for each pool separately
         for (const pool of division.pools) {
           const poolTeams = division.teams.filter(team => team.poolId === pool.id)
           
@@ -236,10 +236,10 @@ export const matchRouter = createTRPCRouter({
 
           console.log(`Regenerating RR for pool ${pool.name} with ${poolTeams.length} teams`)
           
-          // Генерируем RR для этого пула
+          // Generate RR for this pool
           const poolRounds = generateRoundRobinForTeams(poolTeams, currentRoundIndex, pool.id)
           
-          // Добавляем матчи пула в основной массив
+          // Add pool matches to main array
           rounds.push(...poolRounds.map(round => ({
             teamA: poolTeams.find(t => t.id === round.teamAId),
             teamB: poolTeams.find(t => t.id === round.teamBId),
@@ -247,12 +247,12 @@ export const matchRouter = createTRPCRouter({
             poolId: pool.id,
           })))
 
-          // Обновляем индекс раунда для следующего пула
+          // Update round index for next pool
           const poolRoundsCount = Math.max(...poolRounds.map(r => r.roundIndex)) + 1
           currentRoundIndex = poolRoundsCount
         }
 
-        // Также генерируем RR для команд в WaitList (poolId === null)
+        // Also generate RR for teams in WaitList (poolId === null)
         const waitListTeams = division.teams.filter(team => team.poolId === null)
         if (waitListTeams.length >= 2) {
           console.log(`Regenerating RR for WaitList with ${waitListTeams.length} teams`)
@@ -267,7 +267,7 @@ export const matchRouter = createTRPCRouter({
           })))
         }
       } else {
-        // Нет пулов - генерируем RR для всех команд дивизиона
+        // No pools - generate RR for all division teams
         const teams = division.teams
         console.log(`Regenerating RR for division with ${teams.length} teams (no pools)`)
         
@@ -281,28 +281,28 @@ export const matchRouter = createTRPCRouter({
         })))
       }
 
-      // Создаем новые матчи в базе данных
+      // Create new matches in database
       const matches = await Promise.all(
         rounds.map((round) =>
           ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
-              poolId: round.poolId, // Добавляем poolId к матчу
+              poolId: round.poolId, // Add poolId to match
               teamAId: round.teamA.id,
               teamBId: round.teamB.id,
               roundIndex: round.roundIndex,
               stage: 'ROUND_ROBIN',
-              bestOfMode: 'FIXED_GAMES', // По умолчанию фиксированные игры
-              gamesCount: 1, // По умолчанию 1 игра на матч
-              targetPoints: 11, // По умолчанию до 11 очков
-              winBy: 2, // По умолчанию выигрыш с разницей в 2
+              bestOfMode: 'FIXED_GAMES', // Default fixed games
+              gamesCount: 1, // Default 1 game per match
+              targetPoints: 11, // Default to 11 points
+              winBy: 2, // Default win by 2
               locked: false,
             },
           })
         )
       )
 
-      // Логируем перегенерацию RR
+      // Log RR regeneration
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,
@@ -329,7 +329,7 @@ export const matchRouter = createTRPCRouter({
   fillRandomResults: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // Получаем все матчи RR для дивизиона
+      // Get all RR matches for division
       const matches = await ctx.prisma.match.findMany({
         where: { 
           divisionId: input.divisionId,
@@ -344,31 +344,31 @@ export const matchRouter = createTRPCRouter({
         throw new Error('No Round Robin matches found for this division')
       }
 
-      // Функция для генерации случайного счета
+      // Function to generate random score
       const generateRandomScore = () => {
         let scoreA, scoreB
         do {
           scoreA = Math.floor(Math.random() * 30) + 1 // 1-30
           scoreB = Math.floor(Math.random() * 30) + 1 // 1-30
-        } while (Math.abs(scoreA - scoreB) < 3) // Разница минимум 3 очка
+        } while (Math.abs(scoreA - scoreB) < 3) // Minimum 3 point difference
         
         return { scoreA, scoreB }
       }
 
-      // Заполняем случайными результатами все матчи без результатов
+      // Fill all matches without results with random results
       const results = []
       
       for (const match of matches) {
-        // Проверяем, есть ли уже результаты
+        // Check if results already exist
         const hasResults = match.games && match.games.length > 0 && match.games[0].scoreA > 0
         
         if (!hasResults) {
           const { scoreA, scoreB } = generateRandomScore()
           const winner = scoreA > scoreB ? 'A' : 'B'
           
-          // Создаем или обновляем игру
+          // Create or update game
           if (match.games && match.games.length > 0) {
-            // Обновляем существующую игру
+            // Update existing game
             await ctx.prisma.game.update({
               where: { id: match.games[0].id },
               data: {
@@ -378,7 +378,7 @@ export const matchRouter = createTRPCRouter({
               }
             })
           } else {
-            // Создаем новую игру
+            // Create new game
             await ctx.prisma.game.create({
               data: {
                 matchId: match.id,
@@ -390,7 +390,7 @@ export const matchRouter = createTRPCRouter({
             })
           }
           
-          // Обновляем победителя матча
+          // Update match winner
           await ctx.prisma.match.update({
             where: { id: match.id },
             data: {
@@ -407,7 +407,7 @@ export const matchRouter = createTRPCRouter({
         }
       }
 
-      // Логируем заполнение случайными результатами
+      // Log random results filling
       await ctx.prisma.auditLog.create({
         data: {
           actorUserId: ctx.session.user.id,

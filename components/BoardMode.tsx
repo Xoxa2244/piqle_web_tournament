@@ -191,11 +191,11 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
     if (!stage) return ''
     
     if (stage.includes('RR_COMPLETE')) {
-      return 'Round Robin уже завершен. Перемещение команды потребует перегенерации RR.'
+      return 'Round Robin already completed. Moving team will require RR regeneration.'
     } else if (stage.includes('PLAY_IN')) {
-      return 'Play-In уже создан. Перемещение команды потребует перегенерации Play-In и Play-Off.'
+      return 'Play-In already created. Moving team will require Play-In and Play-Off regeneration.'
     } else if (stage.includes('PO_') || stage.includes('FINAL')) {
-      return 'Play-Off уже создан. Перемещение команды потребует полной перегенерации турнира.'
+      return 'Play-Off already created. Moving team will require full tournament regeneration.'
     }
     
     return ''
@@ -457,7 +457,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Поиск команды..."
+              placeholder="Search team..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 w-64"
@@ -466,7 +466,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           
           {filteredTeams.length > 0 && (
             <div className="text-sm text-gray-600">
-              Найдено: {filteredTeams.length} команд
+              Found: {filteredTeams.length} teams
             </div>
           )}
         </div>
@@ -480,7 +480,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
               className="flex items-center space-x-1"
             >
               <Undo className="h-4 w-4" />
-              <span>Отменить</span>
+              <span>Undo</span>
             </Button>
           )}
           
@@ -493,7 +493,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
                 className="flex items-center space-x-1"
               >
                 <X className="h-4 w-4" />
-                <span>Отменить изменения</span>
+                <span>Cancel Changes</span>
               </Button>
               
               <Button
@@ -502,7 +502,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
                 className="flex items-center space-x-1"
               >
                 <Save className="h-4 w-4" />
-                <span>Сохранить</span>
+                <span>Save</span>
               </Button>
             </>
           )}
@@ -553,14 +553,14 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
         <div className="border-t bg-gray-50 p-3">
           <div className="flex items-center space-x-2 text-sm text-gray-600">
             <Clock className="h-4 w-4" />
-            <span>Последние действия:</span>
+            <span>Recent actions:</span>
             {actionHistory.slice(0, 3).map((action, index) => (
               <Badge key={action.id} variant="outline" className="text-xs">
                 {action.teamName} → {action.toDivisionId === action.fromDivisionId ? 'Pool' : 'Division'}
               </Badge>
             ))}
             {actionHistory.length > 3 && (
-              <span className="text-gray-400">+{actionHistory.length - 3} еще</span>
+              <span className="text-gray-400">+{actionHistory.length - 3} more</span>
             )}
           </div>
         </div>
@@ -572,7 +572,7 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center space-x-3 mb-4">
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
-              <h3 className="text-lg font-semibold text-gray-900">Предупреждение</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Warning</h3>
             </div>
             
             <p className="text-gray-600 mb-6">{showWarning.message}</p>
@@ -582,13 +582,13 @@ export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamM
                 variant="outline"
                 onClick={showWarning.onCancel}
               >
-                Отменить
+                Cancel
               </Button>
               <Button
                 onClick={showWarning.onConfirm}
                 className="bg-yellow-500 hover:bg-yellow-600"
               >
-                Продолжить
+                Continue
               </Button>
             </div>
           </div>
@@ -664,7 +664,7 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, 
                 variant="ghost" 
                 size="sm"
                 onClick={() => onAddTeam?.(division)}
-                title="Добавить команду в дивизион"
+                title="Add team to division"
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -676,7 +676,7 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, 
           
           <div className="flex items-center space-x-2 text-sm text-gray-600">
             <Users className="h-4 w-4" />
-            <span>{division.teams.length} команд</span>
+            <span>{division.teams.length} teams</span>
             {division.maxTeams && (
               <>
                 <span>/</span>
@@ -732,7 +732,7 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, 
             ref={setDivisionRef}
             className="min-h-[60px] p-2 border-2 border-dashed border-green-300 rounded-lg bg-green-50 flex items-center justify-center"
           >
-            <span className="text-sm text-gray-600">Перетащите команду сюда</span>
+            <span className="text-sm text-gray-600">Drag team here</span>
           </div>
         </CardContent>
       </Card>

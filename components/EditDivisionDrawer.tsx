@@ -111,7 +111,7 @@ export default function EditDivisionDrawer({
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
       <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-lg">
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Редактировать дивизион</h2>
+          <h2 className="text-xl font-semibold">Edit Division</h2>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -128,7 +128,7 @@ export default function EditDivisionDrawer({
                     Changing pool count
                   </h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    Changing pool count потребует регенерации Round Robin и всех последующих стадий (Play-In/Play-Off).
+                    Changing pool count will require regeneration of Round Robin and all subsequent stages (Play-In/Play-Off).
                   </p>
                 </div>
               </div>
@@ -138,52 +138,52 @@ export default function EditDivisionDrawer({
           {/* Basic Information */}
           <Card>
             <CardHeader>
-              <CardTitle>Основная информация</CardTitle>
+              <CardTitle>Basic Information</CardTitle>
               <CardDescription>
-                Настройки дивизиона и команд
+                Division and team settings
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Название дивизиона *
+                  Division Name *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Введите название дивизиона"
+                  placeholder="Enter division name"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Тип команд
+                    Team Type
                   </label>
                   <select
                     value={formData.teamKind}
                     onChange={(e) => setFormData({ ...formData, teamKind: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="SINGLES_1v1">1v1 (Одиночки)</option>
-                    <option value="DOUBLES_2v2">2v2 (Пары)</option>
-                    <option value="SQUAD_4v4">4v4 (Команды)</option>
+                    <option value="SINGLES_1v1">1v1 (Singles)</option>
+                    <option value="DOUBLES_2v2">2v2 (Doubles)</option>
+                    <option value="SQUAD_4v4">4v4 (Squads)</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Режим пар
+                    Pairing Mode
                   </label>
                   <select
                     value={formData.pairingMode}
                     onChange={(e) => setFormData({ ...formData, pairingMode: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="FIXED">Фиксированные</option>
-                    <option value="MIX_AND_MATCH">Смешанные</option>
+                    <option value="FIXED">Fixed</option>
+                    <option value="MIX_AND_MATCH">Mix and Match</option>
                   </select>
                 </div>
               </div>
@@ -191,7 +191,7 @@ export default function EditDivisionDrawer({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Количество пулов
+                    Number of Pools
                   </label>
                   <input
                     type="number"
@@ -202,13 +202,13 @@ export default function EditDivisionDrawer({
                     placeholder="1"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {formData.poolCount === 1 ? 'Будет создан 1 пул' : `Будет создано ${formData.poolCount} пулов`}
+                    {formData.poolCount === 1 ? '1 pool will be created' : `${formData.poolCount} pools will be created`}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Лимит команд (опционально)
+                    Team Limit (optional)
                   </label>
                   <input
                     type="number"
@@ -216,7 +216,7 @@ export default function EditDivisionDrawer({
                     value={formData.maxTeams || ''}
                     onChange={(e) => setFormData({ ...formData, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Без лимита"
+                    placeholder="No limit"
                   />
                 </div>
               </div>
@@ -226,16 +226,16 @@ export default function EditDivisionDrawer({
           {/* Constraints */}
           <Card>
             <CardHeader>
-              <CardTitle>Ограничения</CardTitle>
+              <CardTitle>Constraints</CardTitle>
               <CardDescription>
-                Дополнительные требования к участникам
+                Additional participant requirements
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Минимальный DUPR рейтинг
+                    Minimum DUPR Rating
                   </label>
                   <input
                     type="number"
@@ -251,7 +251,7 @@ export default function EditDivisionDrawer({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Максимальный DUPR рейтинг
+                    Maximum DUPR Rating
                   </label>
                   <input
                     type="number"
@@ -269,7 +269,7 @@ export default function EditDivisionDrawer({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Минимальный возраст
+                    Minimum Age
                   </label>
                   <input
                     type="number"
@@ -284,7 +284,7 @@ export default function EditDivisionDrawer({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Максимальный возраст
+                    Maximum Age
                   </label>
                   <input
                     type="number"
@@ -304,10 +304,10 @@ export default function EditDivisionDrawer({
         {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex items-center justify-end space-x-3">
           <Button variant="outline" onClick={onClose}>
-            Отмена
+            Cancel
           </Button>
           <Button onClick={handleSave}>
-            Сохранить изменения
+            Save Changes
           </Button>
         </div>
       </div>

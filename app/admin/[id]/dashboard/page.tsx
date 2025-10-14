@@ -102,7 +102,7 @@ export default function DivisionDashboard() {
       setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
     },
     onError: (error) => {
-      alert(`Ошибка: ${error.message}`)
+      alert(`Error: ${error.message}`)
     },
   })
 
@@ -112,7 +112,7 @@ export default function DivisionDashboard() {
       refetchTournament()
     },
     onError: (error) => {
-      alert(`Ошибка: ${error.message}`)
+      alert(`Error: ${error.message}`)
     },
   })
 
@@ -148,15 +148,15 @@ export default function DivisionDashboard() {
   }
 
   if (tournamentLoading) {
-    return <div className="flex items-center justify-center min-h-screen">Загрузка...</div>
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
 
   if (!tournament) {
-    return <div className="flex items-center justify-center min-h-screen">Турнир не найден</div>
+    return <div className="flex items-center justify-center min-h-screen">Tournament not found</div>
   }
 
   if (tournament.divisions.length === 0) {
-    return <div className="flex items-center justify-center min-h-screen">Нет дивизионов</div>
+    return <div className="flex items-center justify-center min-h-screen">No divisions</div>
   }
 
   const standings = standingsData?.standings || []
@@ -169,11 +169,11 @@ export default function DivisionDashboard() {
   // Calculate Play-In logic based on team count and target bracket size
   const teamCount = standings.length
   const getTargetBracketSize = (teamCount: number) => {
-    if (teamCount <= 8) return 4      // До 8 команд → сетка 4
-    if (teamCount <= 16) return 8     // 9-16 команд → сетка 8
-    if (teamCount <= 24) return 16    // 17-24 команд → сетка 16
-    if (teamCount <= 32) return 32    // 25-32 команд → сетка 32
-    return 64                         // 33+ команд → сетка 64
+    if (teamCount <= 8) return 4      // Up to 8 teams → bracket 4
+    if (teamCount <= 16) return 8     // 9-16 teams → bracket 8
+    if (teamCount <= 24) return 16    // 17-24 teams → bracket 16
+    if (teamCount <= 32) return 32    // 25-32 teams → bracket 32
+    return 64                         // 33+ teams → bracket 64
   }
   
   const targetBracketSize = getTargetBracketSize(teamCount)
@@ -199,7 +199,7 @@ export default function DivisionDashboard() {
                     {currentStage.replace(/_/g, ' ')}
                   </Badge>
                   <span className="text-sm text-gray-500">
-                    {currentDivision.teams.length} команд
+                    {currentDivision.teams.length} teams
                   </span>
                   {(currentStage.endsWith('_COMPLETE') && !currentStage.includes('DIVISION_COMPLETE')) && (
                     <Button 
@@ -208,7 +208,7 @@ export default function DivisionDashboard() {
                       onClick={handleTransitionToNextStage}
                       disabled={transitionToNextStageMutation.isPending}
                     >
-                      {transitionToNextStageMutation.isPending ? 'Переход...' : 'Следующая стадия'}
+                      {transitionToNextStageMutation.isPending ? 'Transitioning...' : 'Next Stage'}
                     </Button>
                   )}
                 </div>
@@ -301,7 +301,7 @@ export default function DivisionDashboard() {
                             <div className="flex items-center space-x-1">
                               <AlertCircle className="h-4 w-4 text-yellow-600" />
                               <span className="text-sm text-yellow-800">
-                                Не все результаты внесены — посев и плей-офф недоступны
+                                Not all results entered — seeding and playoffs unavailable
                               </span>
                             </div>
                           </div>
@@ -398,8 +398,8 @@ export default function DivisionDashboard() {
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
                     <p className="text-sm text-gray-600">
-                      Предварительный этап для сокращения до {currentDivision.teams.length <= 4 ? '4' : 
-                                                           currentDivision.teams.length <= 8 ? '8' : '16'} участников
+                      Preliminary stage to reduce to {currentDivision.teams.length <= 4 ? '4' : 
+                                                           currentDivision.teams.length <= 8 ? '8' : '16'} participants
                     </p>
                   </CardHeader>
                   <CardContent>
@@ -418,14 +418,14 @@ export default function DivisionDashboard() {
                           <div key={match.id} className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 h-36 flex flex-col">
                             {/* Header - Match Status */}
                             <div className="flex justify-between items-center mb-3">
-                              <div className="text-xs text-gray-500 font-medium">Плей-ин</div>
+                              <div className="text-xs text-gray-500 font-medium">Play-in</div>
                               {!hasResults ? (
                                 <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                  Запланирован
+                                  Scheduled
                                 </div>
                               ) : (
                                 <div className="text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-full">
-                                  Завершён
+                                  Completed
                                 </div>
                               )}
                             </div>
@@ -443,7 +443,7 @@ export default function DivisionDashboard() {
                                   </div>
                                   {winner === 'A' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                      Победитель
+                                      Winner
                                     </div>
                                   )}
                                 </div>
@@ -474,7 +474,7 @@ export default function DivisionDashboard() {
                                   </div>
                                   {winner === 'B' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                      Победитель
+                                      Winner
                                     </div>
                                   )}
                                 </div>
@@ -604,7 +604,7 @@ export default function DivisionDashboard() {
           </>
         ) : (
           <div className="text-center py-8">
-            <p className="text-gray-500">Выберите дивизион</p>
+            <p className="text-gray-500">Select division</p>
           </div>
         )}
       </div>

@@ -87,7 +87,7 @@ export const importRouter = createTRPCRouter({
       const headers = lines[0].split(',').map(h => h.trim())
       
       // Validate headers
-      const requiredHeaders = ['Имя', 'Фамилия', 'Пол', 'Возраст', 'DUPR rating', 'Дивизион', 'Тип', 'Команда']
+      const requiredHeaders = ['First Name', 'Last Name', 'Gender', 'Age', 'DUPR rating', 'Division', 'Type', 'Team']
       const missingHeaders = requiredHeaders.filter(h => !headers.includes(h))
       if (missingHeaders.length > 0) {
         throw new Error(`Missing required headers: ${missingHeaders.join(', ')}`)
@@ -100,14 +100,14 @@ export const importRouter = createTRPCRouter({
           participant[header] = values[index] || ''
         })
         return participant
-      }).filter(p => p['Имя'] && p['Фамилия'])
+      }).filter(p => p['First Name'] && p['Last Name'])
 
       // Group participants by division and team
       const divisionMap = new Map()
       
       for (const participant of participants) {
-        const divisionName = participant['Дивизион']
-        const teamName = participant['Команда']
+        const divisionName = participant['Division']
+        const teamName = participant['Team']
         
         if (!divisionMap.has(divisionName)) {
           divisionMap.set(divisionName, new Map())
@@ -127,17 +127,17 @@ export const importRouter = createTRPCRouter({
       for (const [divisionName, teams] of Array.from(divisionMap.entries())) {
         // Get first participant to determine division settings
         const firstParticipant = teams.values().next().value[0]
-        const teamKind = firstParticipant['Тип'] === '1v1' ? 'SINGLES_1v1' : 
-                        firstParticipant['Тип'] === '2v2' ? 'DOUBLES_2v2' : 'SQUAD_4v4'
+        const teamKind = firstParticipant['Type'] === '1v1' ? 'SINGLES_1v1' : 
+                        firstParticipant['Type'] === '2v2' ? 'DOUBLES_2v2' : 'SQUAD_4v4'
         
         // Parse age constraints
-        const ageConstraint = firstParticipant['Ограничение по возрасту'] || ''
+        const ageConstraint = firstParticipant['Age Constraint'] || ''
         const ageMatch = ageConstraint.match(/(\d+)-(\d+)/)
         const minAge = ageMatch ? parseInt(ageMatch[1]) : null
         const maxAge = ageMatch ? parseInt(ageMatch[2]) : null
         
         // Parse DUPR constraints
-        const duprConstraint = firstParticipant['Ограничение по DUPR'] || ''
+        const duprConstraint = firstParticipant['DUPR Constraint'] || ''
         const duprMatch = duprConstraint.match(/(\d+\.?\d*)-(\d+\.?\d*)/)
         const minDupr = duprMatch ? parseFloat(duprMatch[1]) : null
         const maxDupr = duprMatch ? parseFloat(duprMatch[2]) : null
@@ -222,10 +222,10 @@ export const importRouter = createTRPCRouter({
           for (const participant of teamParticipants) {
             const player = await ctx.prisma.player.create({
               data: {
-                firstName: participant['Имя'],
-                lastName: participant['Фамилия'],
-                gender: participant['Пол'] === 'M' ? 'M' : 'F',
-                birthDate: new Date(new Date().getFullYear() - parseInt(participant['Возраст']), 0, 1),
+                firstName: participant['First Name'],
+                lastName: participant['Last Name'],
+                gender: participant['Gender'] === 'M' ? 'M' : 'F',
+                birthDate: new Date(new Date().getFullYear() - parseInt(participant['Age']), 0, 1),
                 dupr: participant['DUPR rating'] ? String(participant['DUPR rating']) : null,
               }
             })

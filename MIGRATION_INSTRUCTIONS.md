@@ -1,18 +1,18 @@
-# Применение миграции к продакшн базе данных
+# Applying Migration to Production Database
 
-## Проблема
-Ошибка: `The column 'isPaid' does not exist in the current database`
+## Problem
+Error: `The column 'isPaid' does not exist in the current database`
 
-Это означает, что миграция для обновления модели Player не была применена к продакшн базе данных.
+This means the migration to update the Player model has not been applied to the production database.
 
-## Решение
+## Solution
 
-### Вариант 1: Через Supabase Dashboard (Рекомендуется)
+### Option 1: Through Supabase Dashboard (Recommended)
 
-1. Откройте Supabase Dashboard
-2. Перейдите в ваш проект
-3. Откройте SQL Editor
-4. Выполните следующий SQL:
+1. Open Supabase Dashboard
+2. Go to your project
+3. Open SQL Editor
+4. Execute the following SQL:
 
 ```sql
 -- Migration to update Player model with new fields
@@ -43,23 +43,23 @@ COMMENT ON COLUMN players.is_paid IS 'Payment status of the player';
 COMMENT ON COLUMN players.is_waitlist IS 'Whether player is on waitlist';
 ```
 
-### Вариант 2: Через скрипт (если есть доступ к DATABASE_URL)
+### Option 2: Through Script (if you have DATABASE_URL access)
 
-1. Установите pg: `npm install pg`
-2. Установите переменную окружения DATABASE_URL с продакшн строкой подключения
-3. Запустите: `node apply-production-migration.js`
+1. Install pg: `npm install pg`
+2. Set DATABASE_URL environment variable with production connection string
+3. Run: `node apply-production-migration.js`
 
-## Проверка
+## Verification
 
-После применения миграции проверьте, что:
-1. Колонки `is_paid` и `is_waitlist` существуют в таблице `players`
-2. Колонка `dupr` имеет тип VARCHAR
-3. Колонка `dupr_rating` имеет тип DECIMAL(3,2)
+After applying the migration, verify that:
+1. Columns `is_paid` and `is_waitlist` exist in `players` table
+2. Column `dupr` has type VARCHAR
+3. Column `dupr_rating` has type DECIMAL(3,2)
 
-## Альтернативное решение
+## Alternative Solution
 
-Если миграция не работает, можно временно убрать новые поля из кода:
+If migration doesn't work, you can temporarily remove new fields from code:
 
-1. В `server/routers/player.ts` убрать `isPaid` и `isWaitlist` из create/update мутаций
-2. В компонентах убрать эти поля из форм
-3. Применить миграцию позже
+1. In `server/routers/player.ts` remove `isPaid` and `isWaitlist` from create/update mutations
+2. In components remove these fields from forms
+3. Apply migration later

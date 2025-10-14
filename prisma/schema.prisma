@@ -79,7 +79,7 @@ model Division {
   name         String
   teamKind     TeamKind
   pairingMode  PairingMode
-  poolCount    Int         @default(1)  // Количество пулов (1 = без пулов)
+  poolCount    Int         @default(1)  // Number of pools (1 = no pools)
   maxTeams     Int?
   stage        DivisionStage @default(RR_IN_PROGRESS)
   createdAt    DateTime    @default(now())
