@@ -2,9 +2,37 @@
 
 import { trpc } from '@/lib/trpc'
 import Link from 'next/link'
+import { useState } from 'react'
 
 export default function AdminPage() {
-  const { data: tournaments, isLoading } = trpc.tournament.list.useQuery()
+  const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
+  const deleteTournament = trpc.tournament.delete.useMutation({
+    onSuccess: () => {
+      refetch()
+    }
+  })
+  
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the tournament "${tournamentTitle}"?\n\n` +
+      `This action cannot be undone and will permanently remove:\n` +
+      `• All tournament data\n` +
+      `• All divisions and teams\n` +
+      `• All matches and results\n` +
+      `• All player information\n\n` +
+      `Type "DELETE" to confirm:`
+    )
+    
+    if (confirmed) {
+      const userInput = window.prompt('Type "DELETE" to confirm:')
+      if (userInput === 'DELETE') {
+        setDeleteConfirmId(tournamentId)
+        deleteTournament.mutate({ id: tournamentId })
+      }
+    }
+  }
 
   if (isLoading) {
     return (
@@ -42,7 +70,7 @@ export default function AdminPage() {
                 )}
               </div>
 
-              <div className="mt-4 flex space-x-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   href={`/admin/${tournament.id}`}
                   className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
@@ -57,6 +85,13 @@ export default function AdminPage() {
                     View Board
                   </Link>
                 )}
+                <button
+                  onClick={() => handleDeleteClick(tournament.id, tournament.title)}
+                  disabled={deleteConfirmId === tournament.id}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                >
+                  {deleteConfirmId === tournament.id ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
             </div>
           ))}
