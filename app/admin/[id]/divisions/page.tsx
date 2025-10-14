@@ -840,9 +840,9 @@ export default function DivisionsPage() {
             // Add player to the specified slot
             newTeamPlayers[slotIndex] = {
               id: `temp-${Date.now()}`, // Temporary ID for optimistic update
-              teamId: teamId,
-              playerId: playerId,
-              slotIndex: slotIndex,
+              role: 'player', // Default role
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
               player: {
                 ...player,
                 teamId: teamId,
