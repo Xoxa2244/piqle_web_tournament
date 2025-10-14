@@ -171,7 +171,7 @@ model Team {
 
 model Player {
   id          String    @id @default(uuid())
-  tournamentId String   // Link player to specific tournament
+  tournamentId String   @map("tournament_id") // Link player to specific tournament
   firstName   String
   lastName    String
   email       String?
