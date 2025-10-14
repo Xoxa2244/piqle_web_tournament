@@ -742,9 +742,14 @@ export default function DivisionsPage() {
     console.log('[divisions/page] handleDragEnd - activeId:', activeId, 'overId:', overId)
 
     // Check if this is a player drag event
-    const playerPattern = /^player-([^-]+)-slot-(\d+)$/
+    // Pattern: player-{teamId}-slot-{slotIndex}
+    // teamId is a UUID with dashes: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    const playerPattern = /^player-(.+)-slot-(\d+)$/
     const activePlayerMatch = activeId.match(playerPattern)
     const overPlayerMatch = overId.match(playerPattern)
+    
+    console.log('[divisions/page] activePlayerMatch:', activePlayerMatch)
+    console.log('[divisions/page] overPlayerMatch:', overPlayerMatch)
 
     if (activePlayerMatch && overPlayerMatch) {
       // Player drag-and-drop

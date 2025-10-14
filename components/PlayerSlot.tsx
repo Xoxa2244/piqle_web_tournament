@@ -50,8 +50,6 @@ export default function PlayerSlot({
   const slotId = `player-${teamId}-slot-${slotIndex}`
   const isDisabled = !player || isDragDisabled
   
-  console.log('[PlayerSlot] Render - slotId:', slotId, 'teamId:', teamId, 'player:', player?.firstName, 'disabled:', isDisabled)
-  
   const {
     attributes,
     listeners,
@@ -72,10 +70,6 @@ export default function PlayerSlot({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-  }
-  
-  if (isDragging) {
-    console.log('[PlayerSlot] Is dragging - slotId:', slotId, 'player:', player?.firstName)
   }
 
   const handleRemoveClick = () => {
