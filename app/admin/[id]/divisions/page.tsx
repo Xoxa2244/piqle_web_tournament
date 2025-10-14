@@ -177,7 +177,7 @@ function WaitList({
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
-                onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
               />
             ))}
@@ -255,7 +255,7 @@ function PoolCard({
                 onDelete={() => onDeleteTeam(team)}
                 onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
-                onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
               />
             ))}
@@ -548,7 +548,7 @@ function DivisionCard({
                       onDelete={() => onDeleteTeam(team)}
                       onContextMenu={() => {}}
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
-                      onRemovePlayer={(slotIndex) => onRemovePlayerFromSlot(team.id, slotIndex)}
+                      onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
                     />
                   ))}
