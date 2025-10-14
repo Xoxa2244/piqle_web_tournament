@@ -11,9 +11,22 @@ import {
   Edit, 
   Trash2, 
   MoreVertical,
-  Plus
+  Plus,
+  Star
 } from 'lucide-react'
 import {
+  DndContext,
+  DragEndEvent,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  useDroppable,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -60,7 +73,7 @@ interface TeamWithSlotsProps {
   onContextMenu: () => void
   onAddPlayer: (slotIndex: number, playerId: string) => void
   onRemovePlayer: (slotIndex: number) => void
-  onMovePlayer: (fromSlot: number, toSlot: number) => void
+  onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
 }
 
@@ -81,6 +94,16 @@ export default function TeamWithSlots({
 }: TeamWithSlotsProps) {
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
+  const [activePlayer, setActivePlayer] = useState<Player | null>(null)
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   const {
     attributes,
@@ -134,6 +157,52 @@ export default function TeamWithSlots({
     }
     setShowPlayerSelection(false)
     setSelectedSlotIndex(null)
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeId = event.active.id as string
+    if (activeId.startsWith('player-slot-')) {
+      const slotIndex = parseInt(activeId.replace('player-slot-', ''))
+      const player = slots[slotIndex]
+      if (player) {
+        setActivePlayer(player)
+        setActiveSlotIndex(slotIndex)
+      }
+    }
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    
+    if (!over || !activePlayer || activeSlotIndex === null) {
+      setActivePlayer(null)
+      setActiveSlotIndex(null)
+      return
+    }
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    // Check if dropping on another player slot
+    if (overId.startsWith('player-slot-')) {
+      const targetSlotIndex = parseInt(overId.replace('player-slot-', ''))
+      const targetPlayer = slots[targetSlotIndex]
+      
+      if (targetSlotIndex !== activeSlotIndex) {
+        // Different slot - check if target slot is in different team
+        // For now, we'll handle same-team swaps
+        if (targetPlayer) {
+          // Swap players
+          onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
+        } else {
+          // Move to empty slot
+          onMovePlayer(team.id, team.id, activeSlotIndex, targetSlotIndex)
+        }
+      }
+    }
+
+    setActivePlayer(null)
+    setActiveSlotIndex(null)
   }
 
   return (
@@ -214,20 +283,47 @@ export default function TeamWithSlots({
 
         {/* Player Slots */}
         {isExpanded && (
-          <div className="p-3 space-y-2">
-            {slots.map((player, index) => (
-              <PlayerSlot
-                key={index}
-                slotIndex={index}
-                player={player}
-                teamKind={teamKind}
-                onAddPlayer={handleAddPlayerClick}
-                onRemovePlayer={onRemovePlayer}
-                onMovePlayer={onMovePlayer}
-                isDragDisabled={isDragDisabled}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="p-2 space-y-2">
+              <SortableContext items={slots.map((_, index) => `player-slot-${index}`)} strategy={verticalListSortingStrategy}>
+                {slots.map((player, index) => (
+                  <PlayerSlot
+                    key={index}
+                    slotIndex={index}
+                    player={player}
+                    teamKind={teamKind}
+                    onAddPlayer={handleAddPlayerClick}
+                    onRemovePlayer={onRemovePlayer}
+                    onMovePlayer={onMovePlayer}
+                    isDragDisabled={isDragDisabled}
+                  />
+                ))}
+              </SortableContext>
+            </div>
+
+            <DragOverlay>
+              {activePlayer ? (
+                <div className="flex items-center space-x-2 p-2 bg-white border rounded-lg shadow-lg">
+                  <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
+                    <span className="text-xs font-medium text-blue-600">{activeSlotIndex! + 1}</span>
+                  </div>
+                  <div className="font-medium text-xs">
+                    {activePlayer.firstName} {activePlayer.lastName}
+                  </div>
+                  {activePlayer.duprRating && (
+                    <Badge variant="outline" className="text-xs">
+                      <Star className="h-3 w-3 mr-1" />
+                      {activePlayer.duprRating}
+                    </Badge>
+                  )}
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
 
