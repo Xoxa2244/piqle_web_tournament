@@ -78,7 +78,7 @@ export default function TournamentDetailPage() {
     return (
       <div className="text-center py-12">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
-        <p className="text-gray-600 mb-4">The tournament may have been deleted or you don't have access</p>
+        <p className="text-gray-600 mb-4">The tournament may have been deleted or you don&apos;t have access</p>
         <Link href="/admin" className="text-blue-600 hover:text-blue-800">
           ← Back to tournaments
         </Link>
