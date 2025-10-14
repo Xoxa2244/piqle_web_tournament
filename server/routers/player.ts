@@ -10,6 +10,9 @@ export const playerRouter = createTRPCRouter({
       email: z.string().email().optional(),
       gender: z.enum(['M', 'F', 'X']).optional(),
       dupr: z.string().optional(), // Changed to string for DUPR ID
+      duprRating: z.number().min(0).max(5).optional(),
+      isPaid: z.boolean().default(false),
+      isWaitlist: z.boolean().default(false),
       birthDate: z.date().optional(),
       externalId: z.string().optional(),
     }))
@@ -107,7 +110,10 @@ export const playerRouter = createTRPCRouter({
       lastName: z.string().min(1).optional(),
       email: z.string().email().optional(),
       gender: z.enum(['M', 'F', 'X']).optional(),
-      dupr: z.number().optional(),
+      dupr: z.string().optional(),
+      duprRating: z.number().min(0).max(5).optional(),
+      isPaid: z.boolean().optional(),
+      isWaitlist: z.boolean().optional(),
       birthDate: z.date().optional(),
       externalId: z.string().optional(),
     }))
