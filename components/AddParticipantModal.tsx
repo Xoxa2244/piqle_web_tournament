@@ -22,12 +22,13 @@ interface Team {
 
 interface AddParticipantModalProps {
   tournamentId: string
+  teams?: Team[]
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function AddParticipantModal({ tournamentId, isOpen, onClose, onSuccess }: AddParticipantModalProps) {
+export default function AddParticipantModal({ tournamentId, teams = [], isOpen, onClose, onSuccess }: AddParticipantModalProps) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -65,9 +66,6 @@ export default function AddParticipantModal({ tournamentId, isOpen, onClose, onS
       setIsSubmitting(false)
     }
   })
-
-  // Get teams for dropdown
-  const { data: teams } = trpc.team.list.useQuery({ tournamentId })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

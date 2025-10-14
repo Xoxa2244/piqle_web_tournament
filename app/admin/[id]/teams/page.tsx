@@ -417,6 +417,7 @@ export default function TeamsPage() {
       {/* Modals */}
       <AddParticipantModal
         tournamentId={tournamentId}
+        teams={teams}
         isOpen={showAddParticipantModal}
         onClose={() => setShowAddParticipantModal(false)}
         onSuccess={() => {
