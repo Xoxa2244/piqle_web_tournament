@@ -671,7 +671,7 @@ export default function DivisionsPage() {
   const removePlayerFromSlotMutation = trpc.teamPlayer.removePlayerFromSlot.useMutation({
     onMutate: async (variables) => {
       // Optimistically update the UI
-      optimisticRemovePlayer(variables.teamId, variables.slotIndex)
+      optimisticRemovePlayer(variables.teamPlayerId, variables.slotIndex)
     },
     onSuccess: () => {
       refetch()
@@ -804,15 +804,16 @@ export default function DivisionsPage() {
     })
   }
 
-  const optimisticRemovePlayer = (teamId: string, slotIndex: number) => {
+  const optimisticRemovePlayer = (teamPlayerId: string, slotIndex: number) => {
     setLocalDivisions(prevDivisions => {
       return prevDivisions.map(division => ({
         ...division,
         teams: division.teams.map(team => {
-          if (team.id === teamId) {
+          const teamPlayerIndex = team.teamPlayers.findIndex(tp => tp.id === teamPlayerId)
+          if (teamPlayerIndex !== -1) {
             const newTeamPlayers = [...team.teamPlayers]
-            // Remove player from the specified slot
-            newTeamPlayers.splice(slotIndex, 1)
+            // Remove player by teamPlayerId
+            newTeamPlayers.splice(teamPlayerIndex, 1)
             
             return {
               ...team,
@@ -1073,19 +1074,11 @@ export default function DivisionsPage() {
     })
   }
 
-  const handleRemovePlayerFromSlot = (teamId: string, slotIndex: number) => {
-    // Find the team player to remove
-    const team = localDivisions
-      .flatMap(d => d.teams)
-      .find(t => t.id === teamId)
-    
-    if (team && team.teamPlayers[slotIndex]) {
-      const teamPlayer = team.teamPlayers[slotIndex]
-      removePlayerFromSlotMutation.mutate({
-        teamPlayerId: teamPlayer.id,
-        slotIndex
-      })
-    }
+  const handleRemovePlayerFromSlot = (teamPlayerId: string, slotIndex: number) => {
+    removePlayerFromSlotMutation.mutate({
+      teamPlayerId,
+      slotIndex
+    })
   }
 
   const handleMovePlayerBetweenSlots = (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => {

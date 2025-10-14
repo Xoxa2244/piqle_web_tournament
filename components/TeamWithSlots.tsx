@@ -58,7 +58,7 @@ interface TeamWithSlotsProps {
   onDelete: () => void
   onContextMenu: () => void
   onAddPlayer: (slotIndex: number, playerId: string) => void
-  onRemovePlayer: (slotIndex: number) => void
+  onRemovePlayer: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
 }
@@ -105,14 +105,17 @@ export default function TeamWithSlots({
     }
   }, [teamKind])
 
-  // Create slots array with players
+  // Create slots array with players and teamPlayerIds
   const slots = useMemo(() => {
-    const slotsArray: (Player | null)[] = new Array(slotCount).fill(null)
+    const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
     // Fill slots with existing players
     team.teamPlayers.forEach((teamPlayer, index) => {
       if (index < slotCount) {
-        slotsArray[index] = teamPlayer.player
+        slotsArray[index] = {
+          ...teamPlayer.player,
+          teamPlayerId: teamPlayer.id
+        }
       }
     })
     
