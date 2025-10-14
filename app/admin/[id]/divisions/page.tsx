@@ -672,10 +672,16 @@ export default function DivisionsPage() {
   })
 
   const movePlayerBetweenSlotsMutation = trpc.teamPlayer.movePlayerBetweenSlots.useMutation({
+    onMutate: async (variables) => {
+      // Optimistically update the UI
+      optimisticMovePlayer(variables.fromTeamId, variables.toTeamId, variables.fromSlotIndex, variables.toSlotIndex)
+    },
     onSuccess: () => {
       refetch()
     },
     onError: (error) => {
+      // Rollback on error
+      refetch()
       alert(`Error moving player: ${error.message}`)
     }
   })
@@ -714,6 +720,76 @@ export default function DivisionsPage() {
     if (tournament?.divisions) {
       setLocalDivisions(tournament.divisions)
     }
+  }
+
+  const optimisticMovePlayer = (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => {
+    setLocalDivisions(prevDivisions => {
+      return prevDivisions.map(division => ({
+        ...division,
+        teams: division.teams.map(team => {
+          // Get the player being moved
+          const fromTeam = prevDivisions.flatMap(d => d.teams).find(t => t.id === fromTeamId)
+          const toTeam = prevDivisions.flatMap(d => d.teams).find(t => t.id === toTeamId)
+          
+          if (!fromTeam || !toTeam) return team
+          
+          const playerToMove = fromTeam.teamPlayers[fromSlotIndex]
+          const targetPlayer = toTeam.teamPlayers[toSlotIndex]
+          
+          if (!playerToMove) return team
+          
+          // Handle from team
+          if (team.id === fromTeamId) {
+            const newTeamPlayers = [...team.teamPlayers]
+            
+            if (fromTeamId === toTeamId) {
+              // Same team - swap or reorder
+              if (targetPlayer) {
+                // Swap
+                newTeamPlayers[fromSlotIndex] = targetPlayer
+                newTeamPlayers[toSlotIndex] = playerToMove
+              } else {
+                // Move to empty slot (just visual, no actual change needed)
+              }
+            } else {
+              // Different team - remove from this team
+              if (targetPlayer) {
+                // Swap - replace with target player
+                newTeamPlayers[fromSlotIndex] = targetPlayer
+              } else {
+                // Just remove
+                newTeamPlayers.splice(fromSlotIndex, 1)
+              }
+            }
+            
+            return {
+              ...team,
+              teamPlayers: newTeamPlayers
+            }
+          }
+          
+          // Handle to team (only if different from from team)
+          if (team.id === toTeamId && fromTeamId !== toTeamId) {
+            const newTeamPlayers = [...team.teamPlayers]
+            
+            if (targetPlayer) {
+              // Swap - target player already moved to from team
+              newTeamPlayers[toSlotIndex] = playerToMove
+            } else {
+              // Add to empty slot
+              newTeamPlayers.push(playerToMove)
+            }
+            
+            return {
+              ...team,
+              teamPlayers: newTeamPlayers
+            }
+          }
+          
+          return team
+        })
+      }))
+    })
   }
 
   const filteredDivisions = useMemo(() => {
