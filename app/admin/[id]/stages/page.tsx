@@ -370,7 +370,7 @@ export default function DivisionStageManagement() {
               className="flex items-center space-x-2"
             >
               <BarChart3 className="h-4 w-4" />
-              <span>Дашборд</span>
+              <span>Dashboard</span>
             </Button>
             
             {/* Переключатель дивизионов */}
@@ -525,7 +525,7 @@ export default function DivisionStageManagement() {
                   className="flex items-center space-x-2"
                 >
                   <BarChart3 className="h-4 w-4" />
-                  <span>Дашборд</span>
+                  <span>Dashboard</span>
                 </Button>
               </div>
             </div>
@@ -605,7 +605,7 @@ export default function DivisionStageManagement() {
                                                     {match.games[0].scoreA} - {match.games[0].scoreB}
                                                   </div>
                                                   <div className="text-sm text-green-600 font-medium">
-                                                    Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                    Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                   </div>
                                                   <Button
                                                     size="sm"
@@ -613,7 +613,7 @@ export default function DivisionStageManagement() {
                                                     onClick={() => handleScoreInput(match)}
                                                     className="w-full"
                                                   >
-                                                    Изменить счет
+                                                    Change Score
                                                   </Button>
                                                 </div>
                                               ) : (
@@ -622,7 +622,7 @@ export default function DivisionStageManagement() {
                                                   onClick={() => handleScoreInput(match)}
                                                   className="w-full"
                                                 >
-                                                  Ввести счет
+                                                  Enter Score
                                                 </Button>
                                               )}
                                             </div>
@@ -671,7 +671,7 @@ export default function DivisionStageManagement() {
                                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                                 </div>
                                                 <div className="text-sm text-green-600 font-medium">
-                                                  Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                 </div>
                                                 <Button
                                                   size="sm"
@@ -679,7 +679,7 @@ export default function DivisionStageManagement() {
                                                   onClick={() => handleScoreInput(match)}
                                                   className="w-full"
                                                 >
-                                                  Изменить счет
+                                                  Change Score
                                                 </Button>
                                               </div>
                                             ) : (
@@ -688,7 +688,7 @@ export default function DivisionStageManagement() {
                                                 onClick={() => handleScoreInput(match)}
                                                 className="w-full"
                                               >
-                                                Ввести счет
+                                                Enter Score
                                               </Button>
                                             )}
                                           </div>
@@ -839,7 +839,7 @@ export default function DivisionStageManagement() {
                             {match.games[0].scoreA} - {match.games[0].scoreB}
                           </div>
                           <div className="text-sm text-green-600 font-medium">
-                            Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                            Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                           </div>
                           <Button
                             size="sm"
@@ -847,7 +847,7 @@ export default function DivisionStageManagement() {
                             onClick={() => handleScoreInput(match)}
                             className="w-full"
                           >
-                            Изменить счет
+                            Change Score
                           </Button>
                         </div>
                       ) : (
@@ -856,7 +856,7 @@ export default function DivisionStageManagement() {
                           onClick={() => handleScoreInput(match)}
                           className="w-full"
                         >
-                          Ввести счет
+                          Enter Score
                         </Button>
                       )}
                     </div>
@@ -985,7 +985,7 @@ export default function DivisionStageManagement() {
                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                 </div>
                                 <div className="text-sm text-green-600 font-medium">
-                                  Победитель: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                 </div>
                                 <Button
                                   size="sm"
@@ -993,7 +993,7 @@ export default function DivisionStageManagement() {
                                   onClick={() => handleScoreInput(match)}
                                   className="w-full"
                                 >
-                                  Изменить счет
+                                  Change Score
                                 </Button>
                               </div>
                             ) : (
@@ -1002,7 +1002,7 @@ export default function DivisionStageManagement() {
                                 onClick={() => handleScoreInput(match)}
                                 className="w-full"
                               >
-                                Ввести счет
+                                Enter Score
                               </Button>
                             )}
                           </div>
