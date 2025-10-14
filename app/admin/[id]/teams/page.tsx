@@ -119,8 +119,18 @@ export default function TeamsPage() {
   // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
   
-  // Get all teams from all divisions
-  const teams = divisions.flatMap(division => division.teams || [])
+  // Get all teams from all divisions and add division reference
+  const teams = divisions.flatMap(division => 
+    (division.teams || []).map(team => ({
+      ...team,
+      division: {
+        id: division.id,
+        name: division.name,
+        teamKind: division.teamKind,
+        maxTeams: division.maxTeams
+      }
+    }))
+  )
   
   // Refetch function for teams (via tournament refetch)
   const refetchTeams = refetch
