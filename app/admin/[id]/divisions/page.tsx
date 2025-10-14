@@ -76,8 +76,8 @@ interface Team {
       duprRating: string | null
       birthDate: string | null
       isWaitlist: boolean
-      teamId: string | null
-      teamName: string | null
+      teamId?: string | null
+      teamName?: string | null
     }
   }>
 }
