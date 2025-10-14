@@ -163,12 +163,8 @@ export default function PlayerSlot({
           variant="ghost"
           size="sm"
           onClick={handleRemoveClick}
-          className={`h-6 w-6 p-0 ${
-            showRemoveConfirm 
-              ? 'text-red-600 hover:text-red-700 bg-red-50' 
-              : 'text-red-500 hover:text-red-700'
-          }`}
-          title={showRemoveConfirm ? 'Click again to confirm removal' : 'Remove player'}
+          className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+          title="Remove player"
         >
           <Trash2 className="h-3 w-3" />
         </Button>
