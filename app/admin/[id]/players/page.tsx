@@ -71,6 +71,17 @@ export default function PlayersPage() {
     { enabled: !!tournamentId }
   )
 
+  // Delete player mutation
+  const deletePlayerMutation = trpc.player.delete.useMutation({
+    onSuccess: () => {
+      refetchPlayers()
+    },
+    onError: (error) => {
+      console.error('Failed to delete player:', error)
+      alert('Ошибка при удалении игрока')
+    }
+  })
+
   // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
   
@@ -134,18 +145,12 @@ export default function PlayersPage() {
     setShowEditPlayerModal(true)
   }
 
-  const handleDeletePlayer = async (playerId: string) => {
+  const handleDeletePlayer = (playerId: string) => {
     if (!confirm('Вы уверены, что хотите удалить этого игрока?')) {
       return
     }
     
-    try {
-      await trpc.player.delete.mutate({ id: playerId })
-      refetchPlayers()
-    } catch (error) {
-      console.error('Failed to delete player:', error)
-      alert('Ошибка при удалении игрока')
-    }
+    deletePlayerMutation.mutate({ id: playerId })
   }
 
   const getPlayerDivision = (player: Player) => {
