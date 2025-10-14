@@ -232,11 +232,11 @@ export default function TournamentDetailPage() {
                   </div>
                 </Button>
               </Link>
-              <Link href={`/admin/${tournamentId}/teams`}>
+              <Link href={`/admin/${tournamentId}/players`}>
                 <Button variant="outline" className="h-20 w-full">
                   <div className="text-center">
-                    <div className="font-medium">Команды и участники</div>
-                    <div className="text-sm text-gray-500">Управление составом и распределением</div>
+                    <div className="font-medium">Управление игроками</div>
+                    <div className="text-sm text-gray-500">Общий список участников турнира</div>
                   </div>
                 </Button>
               </Link>

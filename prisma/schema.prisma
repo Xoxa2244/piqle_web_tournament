@@ -174,7 +174,10 @@ model Player {
   lastName    String
   email       String?
   gender      Gender?
-  dupr        Decimal?  @db.Decimal(4, 2)
+  dupr        String?   // Changed to String for DUPR ID
+  duprRating  Decimal?  @db.Decimal(3, 2) // New field for DUPR rating
+  isPaid      Boolean   @default(false)   // New field for payment status
+  isWaitlist  Boolean   @default(false)   // New field for waitlist status
   birthDate   DateTime?
   externalId  String?
   createdAt   DateTime  @default(now())
