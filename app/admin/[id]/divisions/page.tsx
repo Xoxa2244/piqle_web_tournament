@@ -530,6 +530,9 @@ export default function DivisionsPage() {
     { enabled: !!tournamentId }
   )
   
+  // Get divisions for team creation
+  const divisions = tournament?.divisions || []
+  
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
   
