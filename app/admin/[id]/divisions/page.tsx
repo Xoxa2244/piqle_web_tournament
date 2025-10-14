@@ -51,6 +51,7 @@ import {
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import TeamWithSlots from '@/components/TeamWithSlots'
 
 interface Team {
   id: string
@@ -113,12 +114,26 @@ function WaitList({
   division, 
   onTeamMove, 
   onEditTeam, 
-  onDeleteTeam 
+  onDeleteTeam,
+  expandedTeams,
+  availablePlayers,
+  tournamentId,
+  onToggleTeamExpansion,
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
 }: {
   division: Division
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
+  expandedTeams: Set<string>
+  availablePlayers: any[]
+  tournamentId: string
+  onToggleTeamExpansion: (teamId: string) => void
+  onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }) {
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   
@@ -146,16 +161,20 @@ function WaitList({
         ) : (
           <div className="space-y-2">
             {waitListTeams.map((team) => (
-              <SortableTeam
+              <TeamWithSlots
                 key={team.id}
                 team={team}
+                teamKind={division.teamKind as any}
+                isExpanded={expandedTeams.has(team.id)}
+                availablePlayers={availablePlayers}
+                tournamentId={tournamentId}
+                onToggleExpansion={() => toggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
-                onExpand={() => {}}
-                isExpanded={false}
                 onContextMenu={() => {}}
-                onDeletePlayer={() => {}}
-                onPlayerContextMenu={() => {}}
+                onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
+                onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
+                onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -171,13 +190,27 @@ function PoolCard({
   division, 
   onTeamMove, 
   onEditTeam, 
-  onDeleteTeam 
+  onDeleteTeam,
+  expandedTeams,
+  availablePlayers,
+  tournamentId,
+  onToggleTeamExpansion,
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
 }: {
   pool: Pool
   division: Division
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
+  expandedTeams: Set<string>
+  availablePlayers: any[]
+  tournamentId: string
+  onToggleTeamExpansion: (teamId: string) => void
+  onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }) {
   // Compute teams for this pool dynamically
   const poolTeams = division.teams.filter(team => team.poolId === pool.id)
@@ -206,16 +239,20 @@ function PoolCard({
         ) : (
           <div className="space-y-2">
             {poolTeams.map((team) => (
-              <SortableTeam
+              <TeamWithSlots
                 key={team.id}
                 team={team}
+                teamKind={division.teamKind as any}
+                isExpanded={expandedTeams.has(team.id)}
+                availablePlayers={availablePlayers}
+                tournamentId={tournamentId}
+                onToggleExpansion={() => toggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
-                onExpand={() => {}}
-                isExpanded={false}
                 onContextMenu={() => {}}
-                onDeletePlayer={() => {}}
-                onPlayerContextMenu={() => {}}
+                onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
+                onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
+                onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
               />
             ))}
           </div>
@@ -331,7 +368,14 @@ function DivisionCard({
   onAddTeam, 
   onTeamMove, 
   onEditTeam, 
-  onDeleteTeam 
+  onDeleteTeam,
+  expandedTeams,
+  availablePlayers,
+  tournamentId,
+  onToggleTeamExpansion,
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
 }: {
   division: Division
   isExpanded: boolean
@@ -341,6 +385,13 @@ function DivisionCard({
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
+  expandedTeams: Set<string>
+  availablePlayers: any[]
+  tournamentId: string
+  onToggleTeamExpansion: (teamId: string) => void
+  onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }) {
   const activeTeams = division.teams.filter(team => team.poolId !== null)
   const waitListTeams = division.teams.filter(team => team.poolId === null)
@@ -460,6 +511,13 @@ function DivisionCard({
                     onTeamMove={onTeamMove}
                     onEditTeam={onEditTeam}
                     onDeleteTeam={onDeleteTeam}
+                    expandedTeams={expandedTeams}
+                    availablePlayers={availablePlayers}
+                    tournamentId={tournamentId}
+                    onToggleTeamExpansion={onToggleTeamExpansion}
+                    onAddPlayerToSlot={onAddPlayerToSlot}
+                    onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                    onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
                   />
                 ))}
               </div>
@@ -474,16 +532,20 @@ function DivisionCard({
                 
                 <div className="space-y-2">
                   {activeTeams.map((team) => (
-                    <SortableTeam
+                    <TeamWithSlots
                       key={team.id}
                       team={team}
+                      teamKind={division.teamKind as any}
+                      isExpanded={expandedTeams.has(team.id)}
+                      availablePlayers={availablePlayers}
+                      tournamentId={tournamentId}
+                      onToggleExpansion={() => toggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
-                      onExpand={() => {}}
-                      isExpanded={false}
                       onContextMenu={() => {}}
-                      onDeletePlayer={() => {}}
-                      onPlayerContextMenu={() => {}}
+                      onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
+                      onRemovePlayer={(slotIndex) => handleRemovePlayerFromSlot(team.id, slotIndex)}
+                      onMovePlayer={(fromSlot, toSlot) => handleMovePlayerBetweenSlots(team.id, team.id, fromSlot, toSlot)}
                     />
                   ))}
                 </div>
@@ -496,6 +558,13 @@ function DivisionCard({
               onTeamMove={onTeamMove}
               onEditTeam={onEditTeam}
               onDeleteTeam={onDeleteTeam}
+              expandedTeams={expandedTeams}
+              availablePlayers={availablePlayers}
+              tournamentId={tournamentId}
+              onToggleTeamExpansion={onToggleTeamExpansion}
+              onAddPlayerToSlot={onAddPlayerToSlot}
+              onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+              onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
             />
           </div>
         </CardContent>
@@ -510,6 +579,7 @@ export default function DivisionsPage() {
   
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set())
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
@@ -527,6 +597,12 @@ export default function DivisionsPage() {
 
   const { data: tournament, refetch } = trpc.tournament.get.useQuery(
     { id: tournamentId },
+    { enabled: !!tournamentId }
+  )
+
+  // Get available players for the tournament
+  const { data: availablePlayers = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
+    { tournamentId },
     { enabled: !!tournamentId }
   )
   
@@ -569,6 +645,34 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       alert(`Error updating division: ${error.message}`)
+    }
+  })
+
+  // Player slot management mutations
+  const addPlayerToSlotMutation = trpc.teamPlayer.addPlayerToSlot.useMutation({
+    onSuccess: () => {
+      refetch()
+    },
+    onError: (error) => {
+      alert(`Error adding player: ${error.message}`)
+    }
+  })
+
+  const removePlayerFromSlotMutation = trpc.teamPlayer.removePlayerFromSlot.useMutation({
+    onSuccess: () => {
+      refetch()
+    },
+    onError: (error) => {
+      alert(`Error removing player: ${error.message}`)
+    }
+  })
+
+  const movePlayerBetweenSlotsMutation = trpc.teamPlayer.movePlayerBetweenSlots.useMutation({
+    onSuccess: () => {
+      refetch()
+    },
+    onError: (error) => {
+      alert(`Error moving player: ${error.message}`)
     }
   })
 
@@ -773,6 +877,62 @@ export default function DivisionsPage() {
     console.log('Delete team:', team.name)
   }
 
+  const toggleTeamExpansion = (teamId: string) => {
+    const newExpanded = new Set(expandedTeams)
+    if (newExpanded.has(teamId)) {
+      newExpanded.delete(teamId)
+    } else {
+      newExpanded.add(teamId)
+    }
+    setExpandedTeams(newExpanded)
+  }
+
+  const handleAddPlayerToSlot = (teamId: string, slotIndex: number, playerId: string) => {
+    addPlayerToSlotMutation.mutate({
+      teamId,
+      playerId,
+      slotIndex
+    })
+  }
+
+  const handleRemovePlayerFromSlot = (teamId: string, slotIndex: number) => {
+    // Find the team player to remove
+    const team = localDivisions
+      .flatMap(d => d.teams)
+      .find(t => t.id === teamId)
+    
+    if (team && team.teamPlayers[slotIndex]) {
+      const teamPlayer = team.teamPlayers[slotIndex]
+      removePlayerFromSlotMutation.mutate({
+        teamPlayerId: teamPlayer.id,
+        slotIndex
+      })
+    }
+  }
+
+  const handleMovePlayerBetweenSlots = (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => {
+    // Find the team players to swap
+    const fromTeam = localDivisions
+      .flatMap(d => d.teams)
+      .find(t => t.id === fromTeamId)
+    
+    const toTeam = localDivisions
+      .flatMap(d => d.teams)
+      .find(t => t.id === toTeamId)
+    
+    if (fromTeam && toTeam && fromTeam.teamPlayers[fromSlotIndex] && toTeam.teamPlayers[toSlotIndex]) {
+      const fromTeamPlayer = fromTeam.teamPlayers[fromSlotIndex]
+      const toTeamPlayer = toTeam.teamPlayers[toSlotIndex]
+      
+      movePlayerBetweenSlotsMutation.mutate({
+        fromTeamPlayerId: fromTeamPlayer.id,
+        toTeamPlayerId: toTeamPlayer.id,
+        fromSlotIndex,
+        toSlotIndex
+      })
+    }
+  }
+
   const handleSaveDivision = (data: {
     name: string
     teamKind: string
@@ -913,6 +1073,13 @@ export default function DivisionsPage() {
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
                       onDeleteTeam={handleDeleteTeam}
+                      expandedTeams={expandedTeams}
+                      availablePlayers={availablePlayers}
+                      tournamentId={tournamentId}
+                      onToggleTeamExpansion={toggleTeamExpansion}
+                      onAddPlayerToSlot={handleAddPlayerToSlot}
+                      onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
+                      onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
                     />
                   ))}
                 </div>
