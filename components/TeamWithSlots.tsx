@@ -26,7 +26,7 @@ interface Player {
   lastName: string
   email: string | null
   dupr: string | null
-  duprRating: number | null
+  duprRating: string | null
   gender: string | null
 }
 
