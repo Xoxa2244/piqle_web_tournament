@@ -949,7 +949,8 @@ export default function DivisionsPage() {
 
       {/* Add Team Modal */}
       <AddTeamModal
-        division={selectedDivisionForTeam}
+        divisions={divisions}
+        selectedDivisionId={selectedDivisionForTeam?.id}
         isOpen={showAddTeamModal}
         onClose={() => {
           setShowAddTeamModal(false)
