@@ -832,8 +832,8 @@ export default function DivisionsPage() {
         ...division,
         teams: division.teams.map(team => {
           if (team.id === teamId) {
-            // Find the player in the tournament
-            const player = tournament?.players?.find(p => p.id === playerId)
+            // Find the player in available players
+            const player = availablePlayers.find(p => p.id === playerId)
             if (!player) return team
             
             const newTeamPlayers = [...team.teamPlayers]
