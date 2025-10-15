@@ -419,7 +419,7 @@ export const teamPlayerRouter = createTRPCRouter({
 
       // Get players at specified slots
       const fromTeamPlayer = fromTeam.teamPlayers[input.fromSlotIndex]
-      const toTeamPlayer = toTeam.teamPlayers[input.toSlotIndex]
+      const toTeamPlayer = input.toSlotIndex < toTeam.teamPlayers.length ? toTeam.teamPlayers[input.toSlotIndex] : null
 
       console.log('[movePlayerBetweenSlots] From player:', fromTeamPlayer?.player.firstName, fromTeamPlayer?.player.lastName)
       console.log('[movePlayerBetweenSlots] To player:', toTeamPlayer?.player.firstName, toTeamPlayer?.player.lastName)
@@ -433,7 +433,9 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error(`Invalid source slot index: ${input.fromSlotIndex}`)
       }
       
-      if (input.toSlotIndex < 0 || input.toSlotIndex >= toTeam.teamPlayers.length) {
+      // For target slot, allow index up to the maximum slot count (not current team size)
+      const maxSlots = 4 // Maximum slots per team
+      if (input.toSlotIndex < 0 || input.toSlotIndex >= maxSlots) {
         throw new Error(`Invalid target slot index: ${input.toSlotIndex}`)
       }
 
