@@ -228,7 +228,7 @@ function PoolCard({
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-medium text-sm text-blue-600 flex items-center">
           <Target className="h-4 w-4 mr-1" />
-          {pool.name} ({poolTeams.length})
+          Pool {pool.name} ({poolTeams.length})
         </h4>
       </div>
       

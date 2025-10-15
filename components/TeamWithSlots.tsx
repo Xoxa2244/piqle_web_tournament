@@ -125,6 +125,29 @@ export default function TeamWithSlots({
   const filledSlots = slots.filter(slot => slot !== null).length
   const teamName = team.name || `${team.teamPlayers[0]?.player.firstName} ${team.teamPlayers[0]?.player.lastName}`
 
+  // Calculate DUPR ratings
+  const duprStats = useMemo(() => {
+    const playersWithRatings = team.teamPlayers
+      .map(tp => tp.player)
+      .filter(player => player.duprRating !== null)
+    
+    if (playersWithRatings.length === 0) {
+      return { sum: null, avg: null, count: 0 }
+    }
+    
+    const sum = playersWithRatings.reduce((total, player) => {
+      return total + parseFloat(player.duprRating || '0')
+    }, 0)
+    
+    const avg = sum / playersWithRatings.length
+    
+    return {
+      sum: sum.toFixed(1),
+      avg: avg.toFixed(1),
+      count: playersWithRatings.length
+    }
+  }, [team.teamPlayers])
+
   const handleAddPlayerClick = (slotIndex: number) => {
     setSelectedSlotIndex(slotIndex)
     setShowPlayerSelection(true)
@@ -187,6 +210,14 @@ export default function TeamWithSlots({
           </div>
           
           <div className="flex items-center space-x-1">
+            {/* DUPR Stats */}
+            {duprStats.count > 0 && (
+              <Badge variant="outline" className="text-xs">
+                <Star className="h-3 w-3 mr-1" />
+                SUM: {duprStats.sum} | AVG: {duprStats.avg}
+              </Badge>
+            )}
+            
             <Badge variant="outline" className="text-xs">
               <Users className="h-3 w-3 mr-1" />
               {filledSlots}/{slotCount}
