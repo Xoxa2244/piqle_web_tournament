@@ -8,7 +8,7 @@ export const divisionRouter = createTRPCRouter({
       name: z.string().min(1),
       teamKind: z.enum(['SINGLES_1v1', 'DOUBLES_2v2', 'SQUAD_4v4']),
       pairingMode: z.enum(['FIXED', 'MIX_AND_MATCH']),
-      poolCount: z.number().int().min(1).default(1),  // Number of pools (1 = no pools)
+      poolCount: z.number().int().min(0).default(1),  // Number of pools (0 = waitlist only, 1 = single pool)
       maxTeams: z.number().optional(),
       // Constraints
       minDupr: z.number().optional(),
@@ -34,7 +34,7 @@ export const divisionRouter = createTRPCRouter({
           // Create pools if poolCount >= 1
           pools: poolCount >= 1 ? {
             create: Array.from({ length: poolCount }, (_, i) => ({
-              name: `Pool ${i + 1}`,
+              name: poolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
               order: i + 1,
             }))
           } : undefined
@@ -104,7 +104,7 @@ export const divisionRouter = createTRPCRouter({
       name: z.string().min(1).optional(),
       teamKind: z.enum(['SINGLES_1v1', 'DOUBLES_2v2', 'SQUAD_4v4']).optional(),
       pairingMode: z.enum(['FIXED', 'MIX_AND_MATCH']).optional(),
-      poolCount: z.number().int().min(1).optional(),
+      poolCount: z.number().int().min(0).optional(),
       maxTeams: z.number().optional(),
       // Constraints
       minDupr: z.number().optional(),
@@ -149,11 +149,27 @@ export const divisionRouter = createTRPCRouter({
       if (poolCount !== undefined && poolCount !== currentDivision.poolCount) {
         console.log('Pool count is changing:', { from: currentDivision.poolCount, to: poolCount })
         
-        if (poolCount > currentDivision.poolCount) {
+        if (poolCount === 0) {
+          // Remove all pools (move teams to waitlist)
+          console.log('Removing all pools - moving teams to waitlist')
+          
+          for (const pool of currentDivision.pools) {
+            // Move teams from pool to waitlist (poolId = null)
+            await ctx.prisma.team.updateMany({
+              where: { poolId: pool.id },
+              data: { poolId: null }
+            })
+            
+            // Delete the pool
+            await ctx.prisma.pool.delete({
+              where: { id: pool.id }
+            })
+          }
+        } else if (poolCount > currentDivision.poolCount) {
           // Add new pools
           const newPools = Array.from({ length: poolCount - currentDivision.poolCount }, (_, i) => ({
             divisionId: id,
-            name: `Pool ${currentDivision.poolCount + i + 1}`,
+            name: poolCount === 1 ? 'Pool 1' : `Pool ${currentDivision.poolCount + i + 1}`,
             order: currentDivision.poolCount + i + 1,
           }))
           
@@ -162,7 +178,7 @@ export const divisionRouter = createTRPCRouter({
           await ctx.prisma.pool.createMany({
             data: newPools
           })
-        } else if (poolCount < currentDivision.poolCount) {
+        } else if (poolCount < currentDivision.poolCount && poolCount > 0) {
           // Remove excess pools (move teams to first pool)
           const poolsToRemove = currentDivision.pools
             .filter(pool => pool.order > poolCount)
