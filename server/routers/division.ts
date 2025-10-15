@@ -311,4 +311,124 @@ export const divisionRouter = createTRPCRouter({
 
       return constraints
     }),
+
+  distributeTeamsByDupr: tdProcedure
+    .input(z.object({
+      divisionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get division with teams and players
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true
+                }
+              }
+            }
+          },
+          pools: {
+            orderBy: { order: 'asc' }
+          }
+        }
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (division.pools.length === 0) {
+        throw new Error('No pools available for distribution')
+      }
+
+      // Calculate team DUPR ratings
+      const teamsWithRatings = division.teams.map(team => {
+        const playersWithRatings = team.teamPlayers
+          .map(tp => tp.player)
+          .filter(player => player.duprRating !== null)
+        
+        const totalRating = playersWithRatings.reduce((sum, player) => {
+          return sum + (player.duprRating?.toNumber() || 0)
+        }, 0)
+        
+        const averageRating = playersWithRatings.length > 0 
+          ? totalRating / playersWithRatings.length 
+          : null
+
+        return {
+          team,
+          averageRating,
+          hasRating: playersWithRatings.length > 0
+        }
+      })
+
+      // Separate teams with and without ratings
+      const teamsWithRatingsSorted = teamsWithRatings
+        .filter(t => t.hasRating)
+        .sort((a, b) => (b.averageRating || 0) - (a.averageRating || 0))
+
+      const teamsWithoutRatings = teamsWithRatings
+        .filter(t => !t.hasRating)
+        .sort(() => Math.random() - 0.5) // Random order
+
+      // Distribute teams by DUPR rating
+      const distribution: Array<{ teamId: string; poolId: string }> = []
+      
+      // First distribute teams with ratings (snake draft)
+      teamsWithRatingsSorted.forEach((teamData, index) => {
+        const poolIndex = index % division.pools.length
+        const pool = division.pools[poolIndex]
+        distribution.push({
+          teamId: teamData.team.id,
+          poolId: pool.id
+        })
+      })
+
+      // Then distribute teams without ratings randomly
+      teamsWithoutRatings.forEach((teamData, index) => {
+        const poolIndex = (teamsWithRatingsSorted.length + index) % division.pools.length
+        const pool = division.pools[poolIndex]
+        distribution.push({
+          teamId: teamData.team.id,
+          poolId: pool.id
+        })
+      })
+
+      // Update teams in database
+      for (const { teamId, poolId } of distribution) {
+        await ctx.prisma.team.update({
+          where: { id: teamId },
+          data: { poolId }
+        })
+      }
+
+      // Log the distribution
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: division.tournamentId,
+          action: 'DISTRIBUTE_TEAMS',
+          entityType: 'Division',
+          entityId: input.divisionId,
+          payload: {
+            teamsWithRatings: teamsWithRatingsSorted.length,
+            teamsWithoutRatings: teamsWithoutRatings.length,
+            distribution: distribution.map(d => ({
+              teamId: d.teamId,
+              poolId: d.poolId
+            }))
+          },
+        },
+      })
+
+      return {
+        success: true,
+        message: `Distributed ${distribution.length} teams across ${division.pools.length} pools`,
+        teamsWithRatings: teamsWithRatingsSorted.length,
+        teamsWithoutRatings: teamsWithoutRatings.length
+      }
+    }),
 })

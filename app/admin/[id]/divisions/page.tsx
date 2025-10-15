@@ -406,23 +406,6 @@ function DivisionCard({
     id: `division-${division.id}`,
   })
 
-  const getStageBadge = (stage: string) => {
-    const stageMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      'RR_IN_PROGRESS': { label: 'RR', variant: 'default' },
-      'RR_COMPLETE': { label: 'RR ✓', variant: 'secondary' },
-      'PLAY_IN_SCHEDULED': { label: 'Play-In', variant: 'outline' },
-      'PLAY_IN_IN_PROGRESS': { label: 'Play-In', variant: 'default' },
-      'PLAY_IN_COMPLETE': { label: 'Play-In ✓', variant: 'secondary' },
-      'PO_R1_SCHEDULED': { label: 'R1', variant: 'outline' },
-      'PO_R1_IN_PROGRESS': { label: 'R1', variant: 'default' },
-      'PO_R1_COMPLETE': { label: 'R1 ✓', variant: 'secondary' },
-      'FINAL_COMPLETE': { label: 'Final ✓', variant: 'secondary' },
-      'DIVISION_COMPLETE': { label: 'Complete', variant: 'secondary' },
-    }
-    return stageMap[stage] || { label: stage, variant: 'outline' }
-  }
-
-  const stageInfo = getStageBadge(division.stage)
 
   return (
     <Card ref={setDivisionNodeRef} className="mb-4 border-2 border-dashed border-green-300 hover:border-green-400 hover:bg-green-50 transition-colors">
@@ -467,7 +450,16 @@ function DivisionCard({
           </div>
           
           <div className="flex items-center space-x-2">
-            <Badge variant={stageInfo.variant}>{stageInfo.label}</Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDistributeTeams(division.id)}
+              className="h-8 px-3"
+              title="Distribute teams by DUPR rating"
+            >
+              <Target className="h-4 w-4 mr-1" />
+              Distribute
+            </Button>
             
             <div className="flex items-center space-x-1">
               <Button
@@ -649,6 +641,16 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       alert(`Error updating division: ${error.message}`)
+    }
+  })
+
+  const distributeTeamsMutation = trpc.division.distributeTeamsByDupr.useMutation({
+    onSuccess: (result) => {
+      refetch()
+      alert(`Successfully distributed teams!\n\nTeams with DUPR ratings: ${result.teamsWithRatings}\nTeams without ratings: ${result.teamsWithoutRatings}`)
+    },
+    onError: (error) => {
+      alert(`Error distributing teams: ${error.message}`)
     }
   })
 
@@ -1018,6 +1020,12 @@ export default function DivisionsPage() {
   const handleAddTeam = (division: Division) => {
     setSelectedDivisionForTeam(division)
     setShowAddTeamModal(true)
+  }
+
+  const handleDistributeTeams = (divisionId: string) => {
+    if (window.confirm('Are you sure you want to redistribute teams by DUPR rating? This will move all teams from their current pools.')) {
+      distributeTeamsMutation.mutate({ divisionId })
+    }
   }
 
   const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
