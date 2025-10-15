@@ -100,6 +100,10 @@ interface BoardModeProps {
   divisionStages?: Record<string, string> // divisionId -> stage
   onEditDivision?: (division: Division) => void
   onAddTeam?: (division: Division) => void
+  availablePlayers?: any[]
+  onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }
 
 interface ActionHistory {
@@ -114,7 +118,19 @@ interface ActionHistory {
   timestamp: Date
 }
 
-export default function BoardMode({ tournamentId, divisions, onTeamMove, onTeamMoveToPool, divisionStages = {}, onEditDivision, onAddTeam }: BoardModeProps) {
+export default function BoardMode({ 
+  tournamentId, 
+  divisions, 
+  onTeamMove, 
+  onTeamMoveToPool, 
+  divisionStages = {}, 
+  onEditDivision, 
+  onAddTeam,
+  availablePlayers = [],
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
+}: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [actionHistory, setActionHistory] = useState<ActionHistory[]>([])
@@ -691,6 +707,27 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, 
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/* Pools */}
+          {poolTeams.map(({ pool, teams }) => {
+            if (!pool) {
+              console.warn('Skipping pool due to undefined pool object')
+              return null
+            }
+            return (
+              <PoolDropZone
+                key={pool.id}
+                pool={pool}
+                teams={teams}
+                divisionId={division.id}
+                isTeamHighlighted={isTeamHighlighted}
+                availablePlayers={availablePlayers}
+                onAddPlayerToSlot={onAddPlayerToSlot}
+                onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+              />
+            )
+          })}
+
           {/* WaitList */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -708,28 +745,15 @@ function DivisionColumn({ division, searchQuery, filteredTeams, onEditDivision, 
                     key={team.id}
                     team={team}
                     highlighted={isTeamHighlighted(team.id)}
+                    availablePlayers={availablePlayers}
+                    onAddPlayerToSlot={onAddPlayerToSlot}
+                    onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                    onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
                   />
                 ))}
               </SortableContext>
             </div>
           </div>
-
-          {/* Pools */}
-          {poolTeams.map(({ pool, teams }) => {
-            if (!pool) {
-              console.warn('Skipping pool due to undefined pool object')
-              return null
-            }
-            return (
-              <PoolDropZone
-                key={pool.id}
-                pool={pool}
-                teams={teams}
-                divisionId={division.id}
-                isTeamHighlighted={isTeamHighlighted}
-              />
-            )
-          })}
 
           {/* Division Drop Zone */}
           <div
@@ -749,12 +773,20 @@ function PoolDropZone({
   pool, 
   teams, 
   divisionId, 
-  isTeamHighlighted 
+  isTeamHighlighted,
+  availablePlayers,
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
 }: { 
   pool: Pool
   teams: Team[]
   divisionId: string
   isTeamHighlighted: (teamId: string) => boolean
+  availablePlayers: any[]
+  onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }) {
   const { setNodeRef } = useDroppable({
     id: `pool-${divisionId}-${pool?.id || 'unknown'}`,
@@ -768,7 +800,7 @@ function PoolDropZone({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="font-medium text-gray-900">{pool.name}</h4>
+        <h4 className="font-medium text-gray-900">Pool {pool.name}</h4>
         <Badge variant="outline">{teams.length}</Badge>
       </div>
       
@@ -782,6 +814,10 @@ function PoolDropZone({
               key={team.id}
               team={team}
               highlighted={isTeamHighlighted(team.id)}
+              availablePlayers={availablePlayers}
+              onAddPlayerToSlot={onAddPlayerToSlot}
+              onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+              onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
             />
           ))}
         </SortableContext>
@@ -791,7 +827,21 @@ function PoolDropZone({
 }
 
 // Sortable Team Card Component
-function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: boolean }) {
+function SortableTeamCard({ 
+  team, 
+  highlighted,
+  availablePlayers,
+  onAddPlayerToSlot,
+  onRemovePlayerFromSlot,
+  onMovePlayerBetweenSlots
+}: { 
+  team: Team
+  highlighted: boolean
+  availablePlayers: any[]
+  onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
+  onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
+  onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+}) {
   const {
     attributes,
     listeners,
@@ -815,20 +865,74 @@ function SortableTeamCard({ team, highlighted }: { team: Team; highlighted: bool
     <div
       ref={setNodeRef}
       style={style}
-      className={`mb-2 p-2 bg-white border rounded-lg shadow-sm cursor-grab ${
+      className={`mb-2 p-2 bg-white border rounded-lg shadow-sm ${
         highlighted ? 'ring-2 ring-yellow-400 bg-yellow-50' : ''
       } ${isDragging ? 'opacity-50' : ''}`}
-      {...attributes}
-      {...listeners}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{team.name}</div>
           {team.seed && (
             <div className="text-xs text-gray-500">Seed: {team.seed}</div>
           )}
         </div>
-        <GripVertical className="h-4 w-4 text-gray-400 flex-shrink-0" />
+        <div className="flex items-center space-x-1">
+          <div {...attributes} {...listeners}>
+            <GripVertical className="h-4 w-4 text-gray-400 flex-shrink-0 cursor-grab" />
+          </div>
+        </div>
+      </div>
+      
+      {/* Players */}
+      <div className="space-y-1">
+        {team.teamPlayers.map((teamPlayer, index) => (
+          <div key={teamPlayer.id} className="flex items-center justify-between text-xs bg-gray-50 rounded p-1">
+            <span className="truncate">
+              {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+            </span>
+            {teamPlayer.player.duprRating && (
+              <Badge variant="outline" className="text-xs ml-1">
+                {teamPlayer.player.duprRating}
+              </Badge>
+            )}
+            {onRemovePlayerFromSlot && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRemovePlayerFromSlot(teamPlayer.id, index)
+                }}
+                className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+        
+        {/* Add Player Button */}
+        {onAddPlayerToSlot && availablePlayers.length > 0 && (
+          <div className="text-xs">
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  onAddPlayerToSlot(team.id, team.teamPlayers.length, e.target.value)
+                  e.target.value = ''
+                }
+              }}
+              className="w-full text-xs border rounded p-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value="">Add player...</option>
+              {availablePlayers.map(player => (
+                <option key={player.id} value={player.id}>
+                  {player.firstName} {player.lastName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   )
