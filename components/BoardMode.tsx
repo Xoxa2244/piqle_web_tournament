@@ -339,19 +339,34 @@ export default function BoardMode({
       .flatMap(d => d.teams)
       .find(t => t.id === teamId)
 
-    if (!team) return
+    if (!team) {
+      console.error('Team not found:', teamId)
+      return
+    }
+
+    console.log('Dragging team:', team.name, 'from division:', getTeamDivisionId(teamId))
 
     // Parse drop zone ID and determine target
     let targetDivisionId: string
     let targetPoolId: string | null
 
+    console.log('Drop target:', overId)
+
     if (overId.startsWith('waitlist-')) {
       targetDivisionId = overId.replace('waitlist-', '')
       targetPoolId = null
     } else if (overId.startsWith('pool-')) {
-      const [_, divisionId, poolId] = overId.split('-')
-      targetDivisionId = divisionId
-      targetPoolId = poolId
+      // Format: pool-{divisionId}-{poolId}
+      // Remove 'pool-' prefix and split by first occurrence of '-'
+      const withoutPrefix = overId.replace('pool-', '')
+      const firstDashIndex = withoutPrefix.indexOf('-')
+      if (firstDashIndex > 0) {
+        targetDivisionId = withoutPrefix.substring(0, firstDashIndex)
+        targetPoolId = withoutPrefix.substring(firstDashIndex + 1)
+      } else {
+        console.error('Invalid pool ID format:', overId)
+        return
+      }
     } else if (overId.startsWith('division-')) {
       targetDivisionId = overId.replace('division-', '')
       // For division drops, use first pool or waitlist
@@ -360,6 +375,8 @@ export default function BoardMode({
     } else {
       return
     }
+
+    console.log('Target division:', targetDivisionId, 'Target pool:', targetPoolId)
 
     const teamDivisionId = getTeamDivisionId(teamId)
     if (!teamDivisionId) return
@@ -438,9 +455,17 @@ export default function BoardMode({
       targetDivisionId = overId.replace('waitlist-', '')
       targetPoolId = null
     } else if (overId.startsWith('pool-')) {
-      const [_, divisionId, poolId] = overId.split('-')
-      targetDivisionId = divisionId
-      targetPoolId = poolId
+      // Format: pool-{divisionId}-{poolId}
+      // Remove 'pool-' prefix and split by first occurrence of '-'
+      const withoutPrefix = overId.replace('pool-', '')
+      const firstDashIndex = withoutPrefix.indexOf('-')
+      if (firstDashIndex > 0) {
+        targetDivisionId = withoutPrefix.substring(0, firstDashIndex)
+        targetPoolId = withoutPrefix.substring(firstDashIndex + 1)
+      } else {
+        console.error('Invalid pool ID format:', overId)
+        return
+      }
     } else if (overId.startsWith('division-')) {
       targetDivisionId = overId.replace('division-', '')
       // For division drops, use first pool or waitlist
@@ -615,7 +640,10 @@ export default function BoardMode({
 
           <DragOverlay>
             {activeTeam ? (
-              <TeamCard team={localDivisions.flatMap(d => d.teams).find(t => t.id === activeTeam)!} />
+              (() => {
+                const team = localDivisions.flatMap(d => d.teams).find(t => t.id === activeTeam)
+                return team ? <TeamCard team={team} /> : null
+              })()
             ) : activePlayer ? (
               <div className="p-2 bg-white border rounded-lg shadow-lg">
                 <div className="text-sm font-medium">Moving player...</div>
