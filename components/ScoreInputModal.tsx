@@ -9,6 +9,7 @@ interface ScoreInputModalProps {
   onSubmit: (scoreA: number, scoreB: number) => void
   teamAName: string
   teamBName: string
+  poolName?: string
   isLoading?: boolean
 }
 
@@ -18,6 +19,7 @@ export default function ScoreInputModal({
   onSubmit,
   teamAName,
   teamBName,
+  poolName,
   isLoading = false,
 }: ScoreInputModalProps) {
   const [scoreA, setScoreA] = useState('')
@@ -47,7 +49,14 @@ export default function ScoreInputModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h2 className="text-xl font-bold mb-4">Enter Score</h2>
+        <h2 className="text-xl font-bold mb-4">
+          Enter Score
+          {poolName && (
+            <span className="text-sm font-normal text-gray-600 ml-2">
+              - Pool {poolName}
+            </span>
+          )}
+        </h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

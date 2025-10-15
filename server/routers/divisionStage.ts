@@ -19,8 +19,16 @@ export const divisionStageRouter = createTRPCRouter({
           },
           matches: {
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  pool: true
+                }
+              },
+              teamB: {
+                include: {
+                  pool: true
+                }
+              },
               games: true,
             },
           },
@@ -43,8 +51,16 @@ export const divisionStageRouter = createTRPCRouter({
           teams: true,
           matches: {
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  pool: true
+                }
+              },
+              teamB: {
+                include: {
+                  pool: true
+                }
+              },
               games: true,
             },
           },

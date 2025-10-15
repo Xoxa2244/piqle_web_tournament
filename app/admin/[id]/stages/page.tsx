@@ -1027,6 +1027,7 @@ export default function DivisionStageManagement() {
           }}
           teamAName={selectedMatch.teamA.name}
           teamBName={selectedMatch.teamB.name}
+          poolName={selectedMatch.teamA.pool?.name}
           isLoading={updateMatchResultMutation.isPending}
         />
       )}

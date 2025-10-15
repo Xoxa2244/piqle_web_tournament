@@ -117,42 +117,39 @@ export default function PlayerSlot({
         isDragging ? 'opacity-50' : ''
       }`}
     >
-      <div className="flex items-center justify-center w-6 h-6 bg-blue-100 rounded-full">
-        <span className="text-xs font-medium text-blue-600">{slotIndex + 1}</span>
-      </div>
+      {/* Drag handle moved to the beginning */}
+      {!isDragDisabled && (
+        <div 
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+        >
+          <GripVertical className="h-3 w-3" />
+        </div>
+      )}
       
       <div className="flex-1 min-w-0">
         <div className="font-medium text-xs truncate">
           {player.firstName} {player.lastName}
         </div>
         
-        <div className="flex items-center space-x-2 mt-1">
-          {player.email && (
-            <div className="flex items-center space-x-1 text-xs text-gray-500">
-              <Mail className="h-3 w-3" />
-              <span className="truncate max-w-20">{player.email}</span>
-            </div>
-          )}
-          
-          {player.duprRating && (
-            <Badge variant="outline" className="text-xs">
-              <Star className="h-3 w-3 mr-1" />
-              {player.duprRating}
-            </Badge>
-          )}
-        </div>
-      </div>
-      
-      <div className="flex items-center space-x-1">
-        {!isDragDisabled && (
-          <div 
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
-          >
-            <GripVertical className="h-3 w-3" />
+        {player.email && (
+          <div className="flex items-center space-x-1 text-xs text-gray-500 mt-1">
+            <Mail className="h-3 w-3" />
+            <span className="truncate max-w-20">{player.email}</span>
           </div>
         )}
+      </div>
+      
+      {/* DUPR rating moved to the right */}
+      {player.duprRating && (
+        <Badge variant="outline" className="text-xs">
+          <Star className="h-3 w-3 mr-1" />
+          {player.duprRating}
+        </Badge>
+      )}
+      
+      <div className="flex items-center space-x-1">
         
         <Button
           variant="ghost"
