@@ -370,6 +370,7 @@ function DivisionCard({
   onToggleExpansion, 
   onEditDivision, 
   onAddTeam, 
+  onDistributeTeams,
   onTeamMove, 
   onEditTeam, 
   onDeleteTeam,
@@ -386,6 +387,7 @@ function DivisionCard({
   onToggleExpansion: () => void
   onEditDivision: () => void
   onAddTeam: () => void
+  onDistributeTeams: (divisionId: string) => void
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
@@ -453,7 +455,7 @@ function DivisionCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleDistributeTeams(division.id)}
+              onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
             >
@@ -1259,6 +1261,7 @@ export default function DivisionsPage() {
                       onToggleExpansion={() => toggleDivisionExpansion(division.id)}
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
+                      onDistributeTeams={handleDistributeTeams}
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
                       onDeleteTeam={handleDeleteTeam}
