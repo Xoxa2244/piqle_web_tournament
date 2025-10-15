@@ -147,7 +147,7 @@ export const importRouter = createTRPCRouter({
           team.some((p: any) => p['Pool'] && p['Pool'].trim())
         )
         
-        // Count unique pools if enabled
+        // Count unique pools if enabled, otherwise default to 1 pool
         let poolCount = 1
         if (poolsEnabled) {
           const uniquePools = new Set()
@@ -160,6 +160,8 @@ export const importRouter = createTRPCRouter({
           })
           poolCount = Math.max(uniquePools.size, 1)
           console.log(`Division ${divisionName}: Found ${uniquePools.size} unique pools:`, Array.from(uniquePools), `Setting poolCount to ${poolCount}`)
+        } else {
+          console.log(`Division ${divisionName}: No pools specified in CSV, creating default pool`)
         }
         
         // Create division
@@ -179,8 +181,8 @@ export const importRouter = createTRPCRouter({
                 genders: 'ANY' as any
               }
             },
-            // Create pools if poolCount > 1
-            pools: poolCount > 1 ? {
+            // Create pools if poolCount >= 1
+            pools: poolCount >= 1 ? {
               create: Array.from({ length: poolCount }, (_, i) => ({
                 name: String(i + 1), // Use "1", "2", etc. to match CSV values
                 order: i + 1,
@@ -198,7 +200,7 @@ export const importRouter = createTRPCRouter({
         for (const [teamName, teamParticipants] of Array.from(teams.entries() as any[])) {
           // Determine which pool this team belongs to
           let poolId = null
-          if (poolCount > 1) {
+          if (poolCount >= 1) {
             const teamPool = teamParticipants[0]?.['Pool']?.trim()
             if (teamPool) {
               // Find the pool by name
@@ -208,9 +210,18 @@ export const importRouter = createTRPCRouter({
                 console.log(`Team ${teamName} assigned to pool ${teamPool} (ID: ${poolId})`)
               } else {
                 console.log(`Pool not found for team ${teamName}, pool value: "${teamPool}", available pools:`, division.pools.map(p => p.name))
+                // If pool not found, assign to first pool
+                if (division.pools.length > 0) {
+                  poolId = division.pools[0].id
+                  console.log(`Team ${teamName} assigned to first pool (ID: ${poolId})`)
+                }
               }
             } else {
-              console.log(`No pool specified for team ${teamName}`)
+              // No pool specified, assign to first pool
+              if (division.pools.length > 0) {
+                poolId = division.pools[0].id
+                console.log(`Team ${teamName} assigned to first pool (ID: ${poolId})`)
+              }
             }
           }
           
