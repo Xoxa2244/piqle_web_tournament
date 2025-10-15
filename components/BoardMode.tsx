@@ -15,6 +15,7 @@ import {
   useSensors,
   DragOverlay,
   useDroppable,
+  DragOverEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -35,7 +36,9 @@ import {
   X,
   AlertTriangle,
   Clock,
-  Target
+  Target,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react'
 
 interface Team {
@@ -133,6 +136,7 @@ export default function BoardMode({
 }: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
+  const [activePlayer, setActivePlayer] = useState<string | null>(null)
   const [actionHistory, setActionHistory] = useState<ActionHistory[]>([])
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [divisionOrder, setDivisionOrder] = useState<string[]>(divisions.map(d => d.id))
@@ -245,7 +249,30 @@ export default function BoardMode({
   }, [searchQuery, localDivisions])
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveTeam(event.active.id as string)
+    const activeId = event.active.id as string
+    
+    // Check if it's a player drag (starts with 'player-')
+    if (activeId.startsWith('player-')) {
+      setActivePlayer(activeId)
+    } else {
+      setActiveTeam(activeId)
+    }
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    // Handle drag over for players
+    const { active, over } = event
+    
+    if (!over) return
+    
+    const activeId = active.id as string
+    const overId = over.id as string
+    
+    // Check if we're dragging a player
+    if (activeId.startsWith('player-') && overId.startsWith('player-')) {
+      // Player to player drag - could be used for reordering within team
+      // For now, we'll handle this in drag end
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -256,11 +283,32 @@ export default function BoardMode({
 
     if (!over) {
       setActiveTeam(null)
+      setActivePlayer(null)
       return
     }
 
     const activeId = active.id as string
     const overId = over.id as string
+
+    // Check if we're dragging a player
+    if (activeId.startsWith('player-') && overId.startsWith('player-')) {
+      // Player to player drag
+      const playerPattern = /^player-(.+)-slot-(\d+)$/
+      const activePlayerMatch = activeId.match(playerPattern)
+      const overPlayerMatch = overId.match(playerPattern)
+      
+      if (activePlayerMatch && overPlayerMatch && onMovePlayerBetweenSlots) {
+        const fromTeamId = activePlayerMatch[1]
+        const fromSlotIndex = parseInt(activePlayerMatch[2])
+        const toTeamId = overPlayerMatch[1]
+        const toSlotIndex = parseInt(overPlayerMatch[2])
+        
+        onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlotIndex, toSlotIndex)
+      }
+      
+      setActivePlayer(null)
+      return
+    }
 
     // Check if we're dragging a division (starts with 'division-header-')
     if (activeId.startsWith('division-header-')) {
@@ -531,11 +579,12 @@ export default function BoardMode({
 
       {/* Board Content */}
       <div className="flex-1 overflow-hidden">
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
+              <DndContext
+                sensors={sensors}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+              >
           <div className="flex-1 overflow-hidden">
             <div className="h-full overflow-x-auto overflow-y-hidden">
               <div className="flex space-x-4 p-4 min-w-max h-full">
@@ -567,6 +616,10 @@ export default function BoardMode({
           <DragOverlay>
             {activeTeam ? (
               <TeamCard team={localDivisions.flatMap(d => d.teams).find(t => t.id === activeTeam)!} />
+            ) : activePlayer ? (
+              <div className="p-2 bg-white border rounded-lg shadow-lg">
+                <div className="text-sm font-medium">Moving player...</div>
+              </div>
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -742,6 +795,7 @@ function DivisionColumn({
                 onAddPlayerToSlot={onAddPlayerToSlot}
                 onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                 onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                teamKind={division.teamKind}
               />
             )
           })}
@@ -767,19 +821,20 @@ function DivisionColumn({
                     onAddPlayerToSlot={onAddPlayerToSlot}
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                     onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                    teamKind={division.teamKind}
                   />
                 ))}
               </SortableContext>
             </div>
           </div>
 
-          {/* Division Drop Zone */}
-          <div
+          {/* Division Drop Zone - Hidden */}
+          {/* <div
             ref={setDivisionRef}
             className="min-h-[60px] p-2 border-2 border-dashed border-green-300 rounded-lg bg-green-50 flex items-center justify-center"
           >
             <span className="text-sm text-gray-600">Drag team here</span>
-          </div>
+          </div> */}
         </CardContent>
       </Card>
     </div>
@@ -795,7 +850,8 @@ function PoolDropZone({
   availablePlayers,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  teamKind
 }: { 
   pool: Pool
   teams: Team[]
@@ -805,6 +861,7 @@ function PoolDropZone({
   onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  teamKind?: string
 }) {
   const { setNodeRef } = useDroppable({
     id: `pool-${divisionId}-${pool?.id || 'unknown'}`,
@@ -836,6 +893,7 @@ function PoolDropZone({
               onAddPlayerToSlot={onAddPlayerToSlot}
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
               onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+              teamKind={teamKind}
             />
           ))}
         </SortableContext>
@@ -851,7 +909,8 @@ function SortableTeamCard({
   availablePlayers,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  teamKind
 }: { 
   team: Team
   highlighted: boolean
@@ -859,6 +918,7 @@ function SortableTeamCard({
   onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  teamKind?: string
 }) {
   const {
     attributes,
@@ -869,10 +929,26 @@ function SortableTeamCard({
     isDragging,
   } = useSortable({ id: team?.id || 'unknown' })
 
+  const [isExpanded, setIsExpanded] = useState(false)
+
   if (!team) {
     console.warn('SortableTeamCard: team is undefined')
     return null
   }
+
+  // Determine max players based on team kind
+  const getMaxPlayers = (teamKind?: string) => {
+    switch (teamKind) {
+      case 'SINGLES_1v1': return 1
+      case 'DOUBLES_2v2': return 2
+      case 'SQUAD_4v4': return 4
+      default: return 2 // Default to doubles
+    }
+  }
+
+  const maxPlayers = getMaxPlayers(teamKind)
+  const isTeamFull = team.teamPlayers.length >= maxPlayers
+  const canAddPlayer = !isTeamFull && availablePlayers.length > 0
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -895,61 +971,131 @@ function SortableTeamCard({
           )}
         </div>
         <div className="flex items-center space-x-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsExpanded(!isExpanded)
+            }}
+            className="h-6 w-6 p-0"
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+          </Button>
           <div {...attributes} {...listeners}>
             <GripVertical className="h-4 w-4 text-gray-400 flex-shrink-0 cursor-grab" />
           </div>
         </div>
       </div>
       
-      {/* Players */}
-      <div className="space-y-1">
-        {team.teamPlayers.map((teamPlayer, index) => (
-          <div key={teamPlayer.id} className="flex items-center justify-between text-xs bg-gray-50 rounded p-1">
-            <span className="truncate">
-              {teamPlayer.player.firstName} {teamPlayer.player.lastName}
-            </span>
-            {teamPlayer.player.duprRating && (
-              <Badge variant="outline" className="text-xs ml-1">
-                {teamPlayer.player.duprRating}
-              </Badge>
-            )}
-            {onRemovePlayerFromSlot && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRemovePlayerFromSlot(teamPlayer.id, index)
+      {/* Players - only show when expanded */}
+      {isExpanded && (
+        <div className="space-y-1">
+          <SortableContext items={team.teamPlayers.map((_, index) => `player-${team.id}-slot-${index}`)} strategy={verticalListSortingStrategy}>
+            {team.teamPlayers.map((teamPlayer, index) => (
+              <SortablePlayerCard
+                key={teamPlayer.id}
+                teamPlayer={teamPlayer}
+                teamId={team.id}
+                slotIndex={index}
+                onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+              />
+            ))}
+          </SortableContext>
+          
+          {/* Add Player Button - only show if team is not full */}
+          {canAddPlayer && onAddPlayerToSlot && (
+            <div className="text-xs">
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    onAddPlayerToSlot(team.id, team.teamPlayers.length, e.target.value)
+                    e.target.value = ''
+                  }
                 }}
-                className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+                className="w-full text-xs border rounded p-1"
+                onClick={(e) => e.stopPropagation()}
               >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-        ))}
-        
-        {/* Add Player Button */}
-        {onAddPlayerToSlot && availablePlayers.length > 0 && (
-          <div className="text-xs">
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  onAddPlayerToSlot(team.id, team.teamPlayers.length, e.target.value)
-                  e.target.value = ''
-                }
-              }}
-              className="w-full text-xs border rounded p-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <option value="">Add player...</option>
-              {availablePlayers.map(player => (
-                <option key={player.id} value={player.id}>
-                  {player.firstName} {player.lastName}
-                </option>
-              ))}
-            </select>
-          </div>
+                <option value="">Add player...</option>
+                {availablePlayers.map(player => (
+                  <option key={player.id} value={player.id}>
+                    {player.firstName} {player.lastName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Sortable Player Card Component
+function SortablePlayerCard({ 
+  teamPlayer, 
+  teamId, 
+  slotIndex, 
+  onRemovePlayerFromSlot 
+}: { 
+  teamPlayer: any
+  teamId: string
+  slotIndex: number
+  onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `player-${teamId}-slot-${slotIndex}` })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between text-xs bg-gray-50 rounded p-1 ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      <div className="flex items-center space-x-1 flex-1 min-w-0">
+        <div {...attributes} {...listeners}>
+          <GripVertical className="h-3 w-3 text-gray-400 cursor-grab" />
+        </div>
+        <span className="truncate">
+          {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+        </span>
+      </div>
+      
+      <div className="flex items-center space-x-1">
+        {teamPlayer.player.duprRating && (
+          <Badge variant="outline" className="text-xs">
+            {teamPlayer.player.duprRating}
+          </Badge>
+        )}
+        {onRemovePlayerFromSlot && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemovePlayerFromSlot(teamPlayer.id, slotIndex)
+            }}
+            className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+          >
+            <X className="h-3 w-3" />
+          </Button>
         )}
       </div>
     </div>
