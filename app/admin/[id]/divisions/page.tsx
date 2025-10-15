@@ -428,11 +428,9 @@ function DivisionCard({
             </Button>
             
             <div>
-              <CardTitle className="text-lg">{division.name}</CardTitle>
+              <CardTitle className="text-lg">{division.name} / {division.teamKind}</CardTitle>
               <CardDescription className="flex items-center space-x-2 mt-1">
                 <span>{totalTeams} teams</span>
-                <span>•</span>
-                <span>{division.teamKind}</span>
                 <span>•</span>
                 <span>{division.pairingMode}</span>
                 {division.poolCount >= 1 && (
@@ -1320,6 +1318,10 @@ export default function DivisionsPage() {
             onTeamMoveToPool={handleTeamMoveToPool}
             onEditDivision={handleEditDivision}
             onAddTeam={handleAddTeam}
+            availablePlayers={availablePlayers}
+            onAddPlayerToSlot={handleAddPlayerToSlot}
+            onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
+            onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
           />
         )}
       </div>
