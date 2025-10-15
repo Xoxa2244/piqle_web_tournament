@@ -689,11 +689,14 @@ export default function DivisionsPage() {
 
   const movePlayerBetweenSlotsMutation = trpc.teamPlayer.movePlayerBetweenSlots.useMutation({
     onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await refetch()
       // Optimistically update the UI
       optimisticMovePlayer(variables.fromTeamId, variables.toTeamId, variables.fromSlotIndex, variables.toSlotIndex)
     },
     onSuccess: () => {
-      refetch()
+      // Don't refetch immediately - let the optimistic update stay
+      // The data will be fresh on next page load or manual refresh
     },
     onError: (error) => {
       // Rollback on error
@@ -792,8 +795,8 @@ export default function DivisionsPage() {
               // Swap - target player already moved to from team
               newTeamPlayers[toSlotIndex] = playerToMove
             } else {
-              // Add to empty slot
-              newTeamPlayers.push(playerToMove)
+              // Add to empty slot at specific index
+              newTeamPlayers[toSlotIndex] = playerToMove
             }
             
             return {
