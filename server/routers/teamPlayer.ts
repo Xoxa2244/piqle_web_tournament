@@ -428,6 +428,15 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('No player in source slot')
       }
 
+      // Validate slot indices
+      if (input.fromSlotIndex < 0 || input.fromSlotIndex >= fromTeam.teamPlayers.length) {
+        throw new Error(`Invalid source slot index: ${input.fromSlotIndex}`)
+      }
+      
+      if (input.toSlotIndex < 0 || input.toSlotIndex >= toTeam.teamPlayers.length) {
+        throw new Error(`Invalid target slot index: ${input.toSlotIndex}`)
+      }
+
       // Same team - reorder within team
       if (input.fromTeamId === input.toTeamId) {
         if (toTeamPlayer) {
@@ -465,29 +474,8 @@ export const teamPlayerRouter = createTRPCRouter({
             },
           })
         } else {
-          // Move to empty slot within same team - update timestamp to place at toSlotIndex
-          const teamPlayers = fromTeam.teamPlayers.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-          
-          let newCreatedAt: Date
-          if (input.toSlotIndex === 0) {
-            // Place at beginning
-            newCreatedAt = new Date(teamPlayers[0].createdAt.getTime() - 1000)
-          } else if (input.toSlotIndex >= teamPlayers.length) {
-            // Place at end
-            newCreatedAt = new Date(teamPlayers[teamPlayers.length - 1].createdAt.getTime() + 1000)
-          } else {
-            // Place between existing players
-            const beforePlayer = teamPlayers[input.toSlotIndex - 1]
-            const afterPlayer = teamPlayers[input.toSlotIndex]
-            newCreatedAt = new Date((beforePlayer.createdAt.getTime() + afterPlayer.createdAt.getTime()) / 2)
-          }
-          
-          await ctx.prisma.teamPlayer.update({
-            where: { id: fromTeamPlayer.id },
-            data: { createdAt: newCreatedAt },
-          })
-
-          console.log('[movePlayerBetweenSlots] Moved player to empty slot within same team at position', input.toSlotIndex)
+          // Move to empty slot within same team - no action needed
+          console.log('[movePlayerBetweenSlots] Move to empty slot within same team - no action needed')
         }
 
         return { success: true }
@@ -526,32 +514,16 @@ export const teamPlayerRouter = createTRPCRouter({
         })
       } else {
         // Move to empty slot in different team
-        // We need to set the createdAt timestamp to position the player at the correct slot
-        const targetTeamPlayers = toTeam.teamPlayers.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-        
-        let newCreatedAt: Date
-        if (input.toSlotIndex === 0) {
-          // Place at beginning
-          newCreatedAt = new Date(targetTeamPlayers[0].createdAt.getTime() - 1000)
-        } else if (input.toSlotIndex >= targetTeamPlayers.length) {
-          // Place at end
-          newCreatedAt = new Date(targetTeamPlayers[targetTeamPlayers.length - 1].createdAt.getTime() + 1000)
-        } else {
-          // Place between existing players
-          const beforePlayer = targetTeamPlayers[input.toSlotIndex - 1]
-          const afterPlayer = targetTeamPlayers[input.toSlotIndex]
-          newCreatedAt = new Date((beforePlayer.createdAt.getTime() + afterPlayer.createdAt.getTime()) / 2)
-        }
-        
+        // Simply move the player and let the frontend handle positioning
         await ctx.prisma.teamPlayer.update({
           where: { id: fromTeamPlayer.id },
           data: { 
             teamId: toTeam.id,
-            createdAt: newCreatedAt
+            createdAt: new Date() // Use current timestamp for simple ordering
           },
         })
 
-        console.log('[movePlayerBetweenSlots] Moved player to empty slot in different team at position', input.toSlotIndex)
+        console.log('[movePlayerBetweenSlots] Moved player to different team')
 
         // Log the move
         await ctx.prisma.auditLog.create({
