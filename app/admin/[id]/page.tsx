@@ -3,10 +3,17 @@
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { Plus, Users, Calendar, BarChart3 } from 'lucide-react'
+import { 
+  Users, 
+  Calendar, 
+  BarChart3, 
+  Settings,
+  FileText,
+  Target
+} from 'lucide-react'
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -16,9 +23,8 @@ export default function TournamentDetailPage() {
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
     pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
-    poolCount: 1,  // Number of pools (1 = no pools)
+    poolCount: 1,
     maxTeams: undefined as number | undefined,
-    // Constraints
     minDupr: undefined as number | undefined,
     maxDupr: undefined as number | undefined,
     minAge: undefined as number | undefined,
@@ -40,7 +46,6 @@ export default function TournamentDetailPage() {
         minAge: undefined,
         maxAge: undefined,
       })
-      // Refetch tournament data to show new division
       window.location.reload()
     },
   })
@@ -50,7 +55,6 @@ export default function TournamentDetailPage() {
       alert('Please enter division name')
       return
     }
-
     createDivision.mutate({
       tournamentId,
       name: divisionForm.name,
@@ -64,7 +68,6 @@ export default function TournamentDetailPage() {
       maxAge: divisionForm.maxAge,
     })
   }
-
 
   if (isLoading) {
     return (
@@ -87,191 +90,143 @@ export default function TournamentDetailPage() {
   }
 
   return (
-    <div style={{ position: 'relative', zIndex: 1 }}>
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{tournament.title}</h1>
-          {tournament.description && (
-            <p className="text-gray-600 mt-2">{tournament.description}</p>
-          )}
-        </div>
-        
-        <div className="flex space-x-2">
-          <Link
-            href={`/admin/${tournamentId}/import`}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            CSV Import
-          </Link>
-          {tournament.isPublicBoardEnabled && (
-            <Link
-              href={`/t/${tournament.publicSlug}`}
-              className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Public Board
-            </Link>
-          )}
-          <Link
-            href="/admin"
-            className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            ← Back
-          </Link>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex justify-between items-baseline">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 leading-tight">
+                {tournament.title}
+              </h1>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <Link
+                href={`/admin/${tournamentId}/import`}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-base"
+              >
+                CSV Import
+              </Link>
+              {tournament.isPublicBoardEnabled && (
+                <Link
+                  href={`/t/${tournament.publicSlug}`}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-base"
+                >
+                  Public Board
+                </Link>
+              )}
+              <Link
+                href="/admin"
+                className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-base"
+              >
+                ← Back
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Tournament Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div>
-              <span className="font-medium">Start Date:</span>
-              <span className="ml-2">{new Date(tournament.startDate).toLocaleDateString()}</span>
-            </div>
-            <div>
-              <span className="font-medium">End Date:</span>
-              <span className="ml-2">{new Date(tournament.endDate).toLocaleDateString()}</span>
-            </div>
-            {tournament.venueName && (
-              <div>
-                <span className="font-medium">Venue:</span>
-                <span className="ml-2">{tournament.venueName}</span>
-              </div>
-            )}
-            {tournament.entryFee && (
-              <div>
-                <span className="font-medium">Entry Fee:</span>
-                <span className="ml-2">${tournament.entryFee}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Divisions</CardTitle>
-            <CardDescription>
-              {tournament.divisions.length} divisions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tournament.divisions.length > 0 ? (
-              <div className="space-y-2">
-                {tournament.divisions.map((division) => (
-                  <div key={division.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <span className="font-medium">{division.name}</span>
-                    <span className="text-sm text-gray-500">
-                      {division.teams.length} teams
-                    </span>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid gap-8 lg:grid-cols-3">
+          {/* Tournament Information - Left Column (60%) */}
+          <div className="lg:col-span-2">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="text-xl font-semibold">Tournament Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 uppercase tracking-wide">Start Date</label>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {new Date(tournament.startDate).toLocaleDateString()}
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No divisions created</p>
-            )}
-            <Button 
-              className="w-full mt-4 relative z-10" 
-              variant="outline"
-              onClick={() => {
-                console.log('Create Division button clicked!')
-                setShowCreateDivision(true)
-              }}
-              style={{ pointerEvents: 'auto' }}
-            >
-              Create Division
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Prizes</CardTitle>
-            <CardDescription>
-              {tournament.prizes.length} prizes
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tournament.prizes.length > 0 ? (
-              <div className="space-y-2">
-                {tournament.prizes.map((prize) => (
-                  <div key={prize.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <span className="font-medium">{prize.label}</span>
-                    {prize.amount && (
-                      <span className="text-sm text-gray-500">${prize.amount}</span>
-                    )}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 uppercase tracking-wide">End Date</label>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {new Date(tournament.endDate).toLocaleDateString()}
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No prizes set</p>
-            )}
-            <Button className="w-full mt-4" variant="outline">
-              Add Prize
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>
-              Tournament management
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Link href={`/admin/${tournamentId}/divisions`}>
-                <Button variant="outline" className="h-20 w-full">
-                  <div className="text-center">
-                    <div className="font-medium">Divisions</div>
-                    <div className="text-sm text-gray-500">Manage divisions</div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 uppercase tracking-wide">Venue</label>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {tournament.venueName || '—'}
+                    </p>
                   </div>
-                </Button>
-              </Link>
-              <Link href={`/admin/${tournamentId}/players`}>
-                <Button variant="outline" className="h-20 w-full">
-                  <div className="text-center">
-                    <div className="font-medium">Player Management</div>
-                    <div className="text-sm text-gray-500">General tournament participants list</div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 uppercase tracking-wide">Entry Fee</label>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {tournament.entryFee ? `$${tournament.entryFee}` : '—'}
+                    </p>
                   </div>
-                </Button>
-              </Link>
-              <Link href={`/admin/${tournamentId}/stages`}>
-                <Button variant="outline" className="h-20 w-full">
-                  <div className="text-center">
-                    <div className="font-medium">Schedule</div>
-                    <div className="text-sm text-gray-500">RR and playoffs</div>
-                  </div>
-                </Button>
-              </Link>
-              <Link href={`/admin/${tournamentId}/dashboard`}>
-                <Button variant="outline" className="h-20 w-full">
-                  <div className="text-center">
-                    <BarChart3 className="h-6 w-6 mx-auto mb-1" />
-                    <div className="font-medium">Dashboard</div>
-                    <div className="text-sm text-gray-500">Division overview</div>
-                  </div>
-                </Button>
-              </Link>
-              <Button variant="outline" className="h-20">
-                <div className="text-center">
-                  <div className="font-medium">Results</div>
-                  <div className="text-sm text-gray-500">Score input</div>
                 </div>
-              </Button>
-              <Button variant="outline" className="h-20">
-                <div className="text-center">
-                  <div className="font-medium">Settings</div>
-                  <div className="text-sm text-gray-500">Edit</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Quick Actions - Right Column (40%) */}
+          <div className="lg:col-span-1">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="text-xl font-semibold">Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <Link href={`/admin/${tournamentId}/divisions`}>
+                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gray-50">
+                      <div className="flex items-center space-x-3 w-full">
+                        <Settings className="h-6 w-6 text-gray-600" />
+                        <div className="text-left">
+                          <div className="font-semibold text-base">Divisions</div>
+                          <div className="text-sm text-gray-500">Manage divisions</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </Link>
+                  
+                  <Link href={`/admin/${tournamentId}/players`}>
+                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gray-50">
+                      <div className="flex items-center space-x-3 w-full">
+                        <Users className="h-6 w-6 text-gray-600" />
+                        <div className="text-left">
+                          <div className="font-semibold text-base">Player Management</div>
+                          <div className="text-sm text-gray-500">General tournament participants list</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </Link>
+                  
+                  <Link href={`/admin/${tournamentId}/stages`}>
+                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gray-50">
+                      <div className="flex items-center space-x-3 w-full">
+                        <Target className="h-6 w-6 text-gray-600" />
+                        <div className="text-left">
+                          <div className="font-semibold text-base">Score Input</div>
+                          <div className="text-sm text-gray-500">Ввод счёта</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </Link>
+                  
+                  <Link href={`/admin/${tournamentId}/dashboard`}>
+                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gray-50">
+                      <div className="flex items-center space-x-3 w-full">
+                        <BarChart3 className="h-6 w-6 text-gray-600" />
+                        <div className="text-left">
+                          <div className="font-semibold text-base">Dashboard</div>
+                          <div className="text-sm text-gray-500">Division overview</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </Link>
                 </div>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
 
       {/* Create Division Modal */}
@@ -303,9 +258,9 @@ export default function TournamentDetailPage() {
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="SINGLES_1v1">1v1 (Singles)</option>
-                  <option value="DOUBLES_2v2">2v2 (Doubles)</option>
-                  <option value="SQUAD_4v4">4v4 (Squads)</option>
+                  <option value="SINGLES_1v1">Singles (1v1)</option>
+                  <option value="DOUBLES_2v2">Doubles (2v2)</option>
+                  <option value="SQUAD_4v4">Squad (4v4)</option>
                 </select>
               </div>
 
@@ -318,8 +273,8 @@ export default function TournamentDetailPage() {
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="FIXED">Fixed pairs</option>
-                  <option value="MIX_AND_MATCH">Mixed pairs</option>
+                  <option value="FIXED">Fixed Teams</option>
+                  <option value="MIX_AND_MATCH">Mix and Match</option>
                 </select>
               </div>
 
@@ -329,15 +284,11 @@ export default function TournamentDetailPage() {
                 </label>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   value={divisionForm.poolCount}
                   onChange={(e) => setDivisionForm({ ...divisionForm, poolCount: parseInt(e.target.value) || 1 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="1"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  {divisionForm.poolCount === 1 ? '1 pool will be created' : `${divisionForm.poolCount} pools will be created`}
-                </p>
               </div>
 
               <div>
@@ -346,84 +297,16 @@ export default function TournamentDetailPage() {
                 </label>
                 <input
                   type="number"
+                  min="1"
                   value={divisionForm.maxTeams || ''}
                   onChange={(e) => setDivisionForm({ ...divisionForm, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., 16"
+                  placeholder="No limit"
                 />
-              </div>
-
-              {/* Constraints Section */}
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Participation Constraints</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      DUPR Rating From
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="6"
-                      value={divisionForm.minDupr || ''}
-                      onChange={(e) => setDivisionForm({ ...divisionForm, minDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., 3.0"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      DUPR Rating To
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="6"
-                      value={divisionForm.maxDupr || ''}
-                      onChange={(e) => setDivisionForm({ ...divisionForm, maxDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., 4.5"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Age From
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={divisionForm.minAge || ''}
-                      onChange={(e) => setDivisionForm({ ...divisionForm, minAge: e.target.value ? parseInt(e.target.value) : undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., 18"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Age To
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={divisionForm.maxAge || ''}
-                      onChange={(e) => setDivisionForm({ ...divisionForm, maxAge: e.target.value ? parseInt(e.target.value) : undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., 65"
-                    />
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 mt-6">
+            <div className="flex justify-end space-x-3 mt-6">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateDivision(false)}
@@ -435,7 +318,7 @@ export default function TournamentDetailPage() {
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
               >
-                {createDivision.isPending ? 'Creating...' : 'Create'}
+                {createDivision.isPending ? 'Creating...' : 'Create Division'}
               </Button>
             </div>
           </div>
