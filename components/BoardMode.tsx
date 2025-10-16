@@ -410,7 +410,7 @@ export default function BoardMode({
     if (!teamDivisionId) return
 
     // Check if moving to a division with existing matches
-    if (hasMatchesCreated(targetDivisionId)) {
+    if (targetDivisionId && hasMatchesCreated(targetDivisionId)) {
       const warningMessage = getStageWarningMessage(targetDivisionId)
       if (warningMessage) {
         setShowWarning({
