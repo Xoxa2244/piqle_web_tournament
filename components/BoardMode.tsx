@@ -540,15 +540,17 @@ export default function BoardMode({
     }
 
     // Add to history
-    addToHistory({
-      type: 'move',
-      teamId,
-      teamName: team.name,
-      fromDivisionId: teamDivisionId,
-      fromPoolId: team.poolId,
-      toDivisionId: targetDivisionId,
-      toPoolId: targetPoolId,
-    })
+    if (targetDivisionId) {
+      addToHistory({
+        type: 'move',
+        teamId,
+        teamName: team.name,
+        fromDivisionId: teamDivisionId,
+        fromPoolId: team.poolId,
+        toDivisionId: targetDivisionId,
+        toPoolId: targetPoolId,
+      })
+    }
 
     try {
       // Make server request
