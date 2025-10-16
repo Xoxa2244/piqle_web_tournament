@@ -514,7 +514,8 @@ export default function DivisionDashboard() {
                       } : null,
                       games: match.games || [],
                       roundIndex: match.roundIndex,
-                      stage: match.stage
+                      stage: match.stage,
+                      note: (match as any).note
                     }))}
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
@@ -587,7 +588,8 @@ export default function DivisionDashboard() {
                           } : null,
                           games: match.games || [],
                           roundIndex: match.roundIndex,
-                          stage: match.stage
+                          stage: match.stage,
+                          note: (match as any).note
                         }))}
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {

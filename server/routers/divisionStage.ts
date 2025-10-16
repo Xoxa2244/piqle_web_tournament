@@ -31,6 +31,25 @@ export const divisionStageRouter = createTRPCRouter({
               },
               games: true,
             },
+            select: {
+              id: true,
+              teamAId: true,
+              teamBId: true,
+              roundIndex: true,
+              stage: true,
+              note: true,
+              teamA: {
+                include: {
+                  pool: true
+                }
+              },
+              teamB: {
+                include: {
+                  pool: true
+                }
+              },
+              games: true,
+            },
           },
         },
       })
