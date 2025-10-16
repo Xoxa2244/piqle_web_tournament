@@ -50,27 +50,43 @@ export default function BracketPyramid({
     const roundMatches = matches.filter(m => m.roundIndex === roundIndex)
     if (roundMatches.length > 0) {
       let roundName = ''
-      const totalTeams = matches.length * 2 // Approximate
       
-      // Correct round names according to specification
+      // Calculate total rounds dynamically
+      const totalRounds = maxRound + 1
+      
+      // Determine round name based on position in bracket
       if (roundIndex === 0) {
-        if (totalTeams <= 4) {
+        // First round - determine based on total rounds
+        if (totalRounds === 1) {
+          roundName = 'Final'
+        } else if (totalRounds === 2) {
           roundName = 'Semi-Final'
-        } else if (totalTeams <= 8) {
+        } else if (totalRounds === 3) {
           roundName = 'Quarter-Final'
-        } else if (totalTeams <= 16) {
+        } else if (totalRounds === 4) {
           roundName = 'Round of 16'
-        } else if (totalTeams <= 32) {
+        } else if (totalRounds === 5) {
           roundName = 'Round of 32'
         } else {
           roundName = 'Round of 64'
         }
-      } else if (roundIndex === 1) {
-        roundName = totalTeams <= 4 ? 'Final' : 'Semi-Final'
-      } else if (roundIndex === 2) {
+      } else if (roundIndex === maxRound) {
+        // Last round is always Final
         roundName = 'Final'
       } else {
-        roundName = 'Final'
+        // Middle rounds
+        const roundsFromEnd = maxRound - roundIndex
+        if (roundsFromEnd === 1) {
+          roundName = 'Semi-Final'
+        } else if (roundsFromEnd === 2) {
+          roundName = 'Quarter-Final'
+        } else if (roundsFromEnd === 3) {
+          roundName = 'Round of 16'
+        } else if (roundsFromEnd === 4) {
+          roundName = 'Round of 32'
+        } else {
+          roundName = 'Round of 64'
+        }
       }
       
       rounds.push({
@@ -163,19 +179,26 @@ export default function BracketPyramid({
                       >
                         <CardContent className="p-3 h-full flex flex-col justify-center">
                           {/* Team A */}
-                          <div className="flex items-center justify-between mb-3">
+                          <div className={`flex items-center justify-between mb-3 ${
+                            winner === match.teamA ? 'bg-green-50 border border-green-200 rounded-md p-1' : ''
+                          }`}>
                             <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              {winner === match.teamA && (
+                                <Crown className="h-3 w-3 text-green-600 flex-shrink-0" />
+                              )}
                               <div className="text-xs text-gray-500 font-medium">
                                 #{match.teamA?.seed || '?'}
                               </div>
                               <div className={`text-sm font-medium truncate ${
-                                winner === match.teamB ? 'text-gray-400' : 'text-gray-900'
+                                winner === match.teamB ? 'text-gray-400' : 
+                                winner === match.teamA ? 'text-green-800 font-semibold' : 
+                                'text-gray-900'
                               }`} title={match.teamA?.name || 'TBD'}>
                                 {match.teamA?.name || 'TBD'}
                               </div>
                             </div>
                             <div className={`text-lg font-semibold font-mono tabular-nums text-right ${
-                              winner === match.teamA ? 'text-gray-900' : 
+                              winner === match.teamA ? 'text-green-800' : 
                               winner === match.teamB ? 'text-gray-400' : 
                               'text-gray-900'
                             }`}>
@@ -184,19 +207,26 @@ export default function BracketPyramid({
                           </div>
 
                           {/* Team B */}
-                          <div className="flex items-center justify-between">
+                          <div className={`flex items-center justify-between ${
+                            winner === match.teamB ? 'bg-green-50 border border-green-200 rounded-md p-1' : ''
+                          }`}>
                             <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              {winner === match.teamB && (
+                                <Crown className="h-3 w-3 text-green-600 flex-shrink-0" />
+                              )}
                               <div className="text-xs text-gray-500 font-medium">
                                 #{match.teamB?.seed || '?'}
                               </div>
                               <div className={`text-sm font-medium truncate ${
-                                winner === match.teamA ? 'text-gray-400' : 'text-gray-900'
+                                winner === match.teamA ? 'text-gray-400' : 
+                                winner === match.teamB ? 'text-green-800 font-semibold' : 
+                                'text-gray-900'
                               }`} title={match.teamB?.name || 'TBD'}>
                                 {match.teamB?.name || 'TBD'}
                               </div>
                             </div>
                             <div className={`text-lg font-semibold font-mono tabular-nums text-right ${
-                              winner === match.teamB ? 'text-gray-900' : 
+                              winner === match.teamB ? 'text-green-800' : 
                               winner === match.teamA ? 'text-gray-400' : 
                               'text-gray-900'
                             }`}>
@@ -216,10 +246,7 @@ export default function BracketPyramid({
                         </div>
                       )}
 
-                      {/* Connecting Lines to Next Round */}
-                      {showConnectingLines && roundIdx < rounds.length - 1 && (
-                        <div className="absolute top-1/2 -right-4 w-8 h-px bg-gray-400 transform -translate-y-1/2 z-0" />
-                      )}
+                      {/* Connecting Lines to Next Round - Removed per user request */}
                     </div>
                   )
                 })}
