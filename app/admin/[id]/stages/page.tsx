@@ -566,7 +566,7 @@ export default function DivisionStageManagement() {
                           {pools.map(poolId => {
                             const poolMatches = rrMatches.filter(m => m.poolId === poolId)
                             const pool = currentDivision?.pools?.find(p => p.id === poolId)
-                            const poolName = pool?.name || `Pool ${poolId}`
+                            const poolName = pool?.name?.startsWith('Pool ') ? pool.name : `Pool ${pool?.name || poolId}`
                             
                             // Group pool matches by rounds and sort
                             const rounds = Array.from(new Set(poolMatches.map(m => m.roundIndex))).sort()
