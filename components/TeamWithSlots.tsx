@@ -109,8 +109,13 @@ export default function TeamWithSlots({
   const slots = useMemo(() => {
     const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
-    // Fill slots with existing players
-    team.teamPlayers.forEach((teamPlayer, index) => {
+    // Sort teamPlayers by createdAt to ensure consistent ordering
+    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )
+    
+    // Fill slots with existing players in sorted order
+    sortedTeamPlayers.forEach((teamPlayer, index) => {
       if (index < slotCount) {
         slotsArray[index] = {
           ...teamPlayer.player,

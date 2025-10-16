@@ -5,52 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { X, Edit, Trash2, UserPlus } from 'lucide-react'
-
-interface Player {
-  id: string
-  firstName: string
-  lastName: string
-  email: string | null
-  dupr: string | null
-  teamPlayers: Array<{
-    id: string
-    teamId: string
-    role: string
-  }>
-}
-
-interface Team {
-  id: string
-  name: string
-  seed: number | null
-  note: string | null
-  poolId: string | null
-  divisionId: string
-  teamPlayers: Array<{
-    id: string
-    role: string
-    player: {
-      id: string
-      firstName: string
-      lastName: string
-      email: string | null
-      dupr: string | null
-    }
-  }>
-  division: {
-    id: string
-    name: string
-    teamKind: string
-    maxTeams: number | null
-  }
-  pool?: {
-    id: string
-    name: string
-    order: number
-  } | null
-}
+import { X, Save, Trash2 } from 'lucide-react'
 
 interface Division {
   id: string
@@ -64,30 +19,39 @@ interface Division {
   }>
 }
 
+interface Team {
+  id: string
+  name: string
+  seed: number | null
+  note: string | null
+  poolId: string | null
+  divisionId: string
+}
+
 interface EditTeamModalProps {
-  team: Team
+  team: Team | null
   divisions: Division[]
-  tournamentId: string
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export default function EditTeamModal({ team, divisions, tournamentId, isOpen, onClose, onSuccess }: EditTeamModalProps) {
+export default function EditTeamModal({ team, divisions, isOpen, onClose, onSuccess }: EditTeamModalProps) {
   const [teamName, setTeamName] = useState('')
-  const [teamNote, setTeamNote] = useState('')
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [selectedPoolId, setSelectedPoolId] = useState('')
+  const [teamNote, setTeamNote] = useState('')
+  const [teamSeed, setTeamSeed] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showAddPlayer, setShowAddPlayer] = useState(false)
 
-  // Initialize form data when team changes
+  // Initialize form with team data
   useEffect(() => {
     if (team) {
       setTeamName(team.name)
-      setTeamNote(team.note || '')
       setSelectedDivisionId(team.divisionId)
       setSelectedPoolId(team.poolId || '')
+      setTeamNote(team.note || '')
+      setTeamSeed(team.seed?.toString() || '')
     }
   }, [team])
 
@@ -104,39 +68,25 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
     }
   })
 
-  const removeFromTeamMutation = trpc.player.removeFromTeam.useMutation({
+  const deleteTeamMutation = trpc.team.delete.useMutation({
     onSuccess: () => {
+      setIsSubmitting(false)
       onSuccess?.()
+      onClose()
     },
     onError: (error) => {
-      console.error('Failed to remove player:', error)
-      alert(`Error removing player: ${error.message}`)
+      console.error('Failed to delete team:', error)
+      alert(`Error deleting team: ${error.message}`)
+      setIsSubmitting(false)
     }
   })
 
-  // Get available players for adding to team
-  const { data: availablePlayers } = trpc.player.list.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId }
-  )
-
   const selectedDivision = divisions.find(d => d.id === selectedDivisionId)
-  const currentPlayers = team.teamPlayers || []
-
-  const getMaxPlayersForTeam = (teamKind: string) => {
-    switch (teamKind) {
-      case 'SINGLES_1v1': return 1
-      case 'DOUBLES_2v2': return 2
-      case 'SQUAD_4v4': return 4
-      default: return 2
-    }
-  }
-
-  const maxPlayers = selectedDivision ? getMaxPlayersForTeam(selectedDivision.teamKind) : 2
-  const canAddMorePlayers = currentPlayers.length < maxPlayers
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!team) return
     
     if (!teamName.trim()) {
       alert('Enter team name')
@@ -154,22 +104,29 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
       await updateTeamMutation.mutateAsync({
         id: team.id,
         name: teamName.trim(),
-        note: teamNote.trim() || undefined,
         divisionId: selectedDivisionId,
+        note: teamNote.trim() || undefined,
         poolId: selectedPoolId || undefined,
+        seed: teamSeed ? parseInt(teamSeed) : undefined,
       })
     } catch (error) {
       // Error handling is done in the mutation onError
     }
   }
 
-  const handleRemovePlayer = async (teamPlayerId: string) => {
-    if (!confirm('Remove player from team?')) {
+  const handleDelete = async () => {
+    if (!team) return
+    
+    if (!window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
       return
     }
 
+    setIsSubmitting(true)
+    
     try {
-      await removeFromTeamMutation.mutateAsync({ teamPlayerId })
+      await deleteTeamMutation.mutateAsync({
+        id: team.id
+      })
     } catch (error) {
       // Error handling is done in the mutation onError
     }
@@ -177,7 +134,6 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
 
   const handleClose = () => {
     if (!isSubmitting) {
-      setShowAddPlayer(false)
       onClose()
     }
   }
@@ -187,16 +143,16 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
     setSelectedPoolId('') // Reset pool when division changes
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !team) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+      <Card className="w-full max-w-md mx-4">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
             <CardTitle className="text-lg font-semibold">Edit Team</CardTitle>
             <CardDescription>
-              Change team information and manage roster
+              Update team information
             </CardDescription>
           </div>
           <Button
@@ -211,58 +167,40 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Team Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Team Name *
-                </label>
-                <Input
-                  id="teamName"
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="Enter team name"
-                  disabled={isSubmitting}
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="division" className="block text-sm font-medium text-gray-700 mb-1">
-                  Division *
-                </label>
-                <select
-                  id="division"
-                  value={selectedDivisionId}
-                  onChange={(e) => handleDivisionChange(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select division</option>
-                  {divisions.map((division) => (
-                    <option key={division.id} value={division.id}>
-                      {division.name} ({division.teamKind})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="teamNote" className="block text-sm font-medium text-gray-700 mb-1">
-                Note (optional)
+              <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-1">
+                Team Name *
               </label>
               <Input
-                id="teamNote"
+                id="teamName"
                 type="text"
-                value={teamNote}
-                onChange={(e) => setTeamNote(e.target.value)}
-                placeholder="Additional team information"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="Enter team name"
                 disabled={isSubmitting}
                 className="w-full"
               />
+            </div>
+
+            <div>
+              <label htmlFor="division" className="block text-sm font-medium text-gray-700 mb-1">
+                Division *
+              </label>
+              <select
+                id="division"
+                value={selectedDivisionId}
+                onChange={(e) => handleDivisionChange(e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select division</option>
+                {divisions.map((division) => (
+                  <option key={division.id} value={division.id}>
+                    {division.name} ({division.teamKind})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {selectedDivision && selectedDivision.pools.length > 0 && (
@@ -287,101 +225,83 @@ export default function EditTeamModal({ team, divisions, tournamentId, isOpen, o
               </div>
             )}
 
-            {/* Team Players */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-700">
-                  Team Roster ({currentPlayers.length}/{maxPlayers})
-                </h3>
-                {canAddMorePlayers && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddPlayer(!showAddPlayer)}
-                    className="flex items-center space-x-1"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    <span>Add Player</span>
-                  </Button>
-                )}
-              </div>
-
-              {!canAddMorePlayers && (
-                <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
-                  ⚠️ Maximum team size reached for this division type
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {currentPlayers.length === 0 ? (
-                  <div className="text-sm text-gray-500 italic py-4">
-                    No players in team
-                  </div>
-                ) : (
-                  currentPlayers.map((teamPlayer) => (
-                    <div
-                      key={teamPlayer.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium">
-                          {teamPlayer.player.firstName} {teamPlayer.player.lastName}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {teamPlayer.player.email}
-                          {teamPlayer.player.dupr && ` • DUPR: ${teamPlayer.player.dupr}`}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="secondary" className="text-xs">
-                          {teamPlayer.role}
-                        </Badge>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemovePlayer(teamPlayer.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+              <label htmlFor="seed" className="block text-sm font-medium text-gray-700 mb-1">
+                Seed (optional)
+              </label>
+              <Input
+                id="seed"
+                type="number"
+                value={teamSeed}
+                onChange={(e) => setTeamSeed(e.target.value)}
+                placeholder="Enter seed number"
+                disabled={isSubmitting}
+                className="w-full"
+              />
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
+            <div>
+              <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-1">
+                Note (optional)
+              </label>
+              <Input
+                id="note"
+                type="text"
+                value={teamNote}
+                onChange={(e) => setTeamNote(e.target.value)}
+                placeholder="Enter team note"
+                disabled={isSubmitting}
+                className="w-full"
+              />
+            </div>
+
+            <div className="flex justify-between pt-4">
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleClose}
+                onClick={handleDelete}
                 disabled={isSubmitting}
+                className="flex items-center space-x-2 text-red-600 hover:text-red-700 hover:bg-red-50"
               >
-                Cancel
+                <Trash2 className="h-4 w-4" />
+                <span>Delete Team</span>
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting || !teamName.trim() || !selectedDivisionId}
-                className="flex items-center space-x-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Edit className="h-4 w-4" />
-                    <span>Save Changes</span>
-                  </>
-                )}
-              </Button>
+              
+              <div className="flex space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !teamName.trim() || !selectedDivisionId}
+                  className="flex items-center space-x-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </form>
+
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm text-blue-700">
+              <strong>Info:</strong> If no pool is specified, the team will be placed in the WaitList of the selected division.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

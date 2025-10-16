@@ -49,6 +49,7 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
+import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
@@ -405,26 +406,6 @@ function DivisionCard({
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const totalTeams = division.teams.length
 
-  // State for context menu
-  const [showContextMenu, setShowContextMenu] = useState(false)
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showContextMenu) {
-        setShowContextMenu(false)
-      }
-    }
-
-    if (showContextMenu) {
-      document.addEventListener('click', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside)
-    }
-  }, [showContextMenu])
-
   // Add drop zone for division
   const { setNodeRef: setDivisionNodeRef } = useDroppable({
     id: `division-${division.id}`,
@@ -506,31 +487,16 @@ function DivisionCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => setShowContextMenu(!showContextMenu)}
+                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
+                    onDeleteDivision(division.id)
+                  }
+                }}
+                title="Delete Division"
               >
-                <MoreVertical className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               </Button>
-              
-              {/* Context Menu */}
-              {showContextMenu && (
-                <div className="absolute right-0 top-8 bg-white border rounded-lg shadow-lg z-10 min-w-[120px]">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
-                        onDeleteDivision(division.id)
-                        setShowContextMenu(false)
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Division
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -624,6 +590,8 @@ export default function DivisionsPage() {
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
+  const [showEditTeamModal, setShowEditTeamModal] = useState(false)
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
   const sensors = useSensors(
@@ -712,6 +680,16 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       alert(`Error deleting division: ${error.message}`)
+    }
+  })
+
+  const deleteTeamMutation = trpc.team.delete.useMutation({
+    onSuccess: () => {
+      refetch()
+      alert('Team deleted successfully!')
+    },
+    onError: (error) => {
+      alert(`Error deleting team: ${error.message}`)
     }
   })
 
@@ -1162,13 +1140,15 @@ export default function DivisionsPage() {
   }
 
   const handleEditTeam = (team: Team) => {
-    // TODO: Implement edit team modal
-    console.log('Edit team:', team.name)
+    setSelectedTeam(team)
+    setShowEditTeamModal(true)
   }
 
   const handleDeleteTeam = (team: Team) => {
-    // TODO: Implement delete team confirmation
-    console.log('Delete team:', team.name)
+    if (window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
+      // Use the existing deleteTeamMutation
+      deleteTeamMutation.mutate({ id: team.id })
+    }
   }
 
   const toggleTeamExpansion = (teamId: string) => {
@@ -1428,6 +1408,20 @@ export default function DivisionsPage() {
         onClose={() => {
           setShowAddTeamModal(false)
           setSelectedDivisionForTeam(null)
+        }}
+        onSuccess={() => {
+          refetch()
+        }}
+      />
+
+      {/* Edit Team Modal */}
+      <EditTeamModal
+        team={selectedTeam}
+        divisions={divisions}
+        isOpen={showEditTeamModal}
+        onClose={() => {
+          setShowEditTeamModal(false)
+          setSelectedTeam(null)
         }}
         onSuccess={() => {
           refetch()
