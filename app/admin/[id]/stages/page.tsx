@@ -150,7 +150,7 @@ export default function DivisionStageManagement() {
     eliminationMatchesDetails: eliminationMatches.map(m => ({
       id: m.id,
       roundIndex: m.roundIndex,
-      note: m.note,
+      note: (m as any).note, // Temporary cast until DB migration
       teamA: m.teamA?.name,
       teamB: m.teamB?.name
     }))
@@ -1011,7 +1011,7 @@ export default function DivisionStageManagement() {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {roundMatches.map((match) => {
                           // Check if this is a third place match
-                          const isThirdPlace = match.note === 'Third Place Match'
+                          const isThirdPlace = (match as any).note === 'Third Place Match'
                           
                           return (
                             <div key={match.id} className={`border border-gray-200 rounded-lg p-4 ${
