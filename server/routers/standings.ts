@@ -522,6 +522,28 @@ export const standingsRouter = createTRPCRouter({
         })
       }
 
+      // If this is the semi-final round (2 teams), create third place match
+      if (winners.length === 2) {
+        // Get losers from semi-finals
+        const semiFinalLosers = currentRoundMatches.map(match => {
+          const game = match.games?.[0]
+          if (!game) throw new Error('No game found for completed match')
+          
+          return game.winner === 'A' ? match.teamB : match.teamA
+        })
+
+        // Create third place match
+        if (semiFinalLosers.length === 2) {
+          nextRoundMatches.push({
+            teamAId: semiFinalLosers[0].id,
+            teamBId: semiFinalLosers[1].id,
+            roundIndex: currentRound + 1,
+            stage: 'ELIMINATION' as const,
+            isThirdPlace: true,
+          })
+        }
+      }
+
       // Create next round matches in database
       const createdMatches = await Promise.all(
         nextRoundMatches.map(match =>
@@ -537,6 +559,8 @@ export const standingsRouter = createTRPCRouter({
               targetPoints: 11,
               winBy: 2,
               locked: false,
+              // Add third place flag if it exists
+              ...(match.isThirdPlace && { note: 'Third Place Match' }),
             },
           })
         )
@@ -777,5 +801,30 @@ function generateSingleEliminationMatches(teams: any[], startRound: number) {
     })
   }
 
+  return matches
+}
+
+function generateThirdPlaceMatch(semiFinalMatches: any[], startRound: number) {
+  const matches = []
+  
+  // Find semi-final losers
+  const semiFinalLosers = semiFinalMatches
+    .map(match => {
+      // This will be called after semi-finals are completed
+      // For now, we'll create placeholder teams
+      return {
+        teamAId: match.teamAId, // Will be updated to actual loser
+        teamBId: match.teamBId, // Will be updated to actual loser
+        roundIndex: startRound,
+        stage: 'ELIMINATION' as const,
+        isThirdPlace: true,
+      }
+    })
+    .filter((_, index) => index === 0) // Only create one third place match
+  
+  if (semiFinalLosers.length > 0) {
+    matches.push(semiFinalLosers[0])
+  }
+  
   return matches
 }
