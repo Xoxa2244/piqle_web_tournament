@@ -189,12 +189,12 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                 <Input
                   id="duprRating"
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   max="5"
                   value={duprRating}
                   onChange={(e) => setDuprRating(e.target.value)}
-                  placeholder="3.5"
+                  placeholder="3.54"
                   disabled={isSubmitting}
                   className="w-full"
                 />
