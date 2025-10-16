@@ -241,15 +241,21 @@ export default function DivisionStageManagement() {
       match.games && match.games.length > 0 && match.games[0].scoreA > 0
     )
     
+    // Check if this is the final round (has both final and third place matches)
+    const hasThirdPlaceMatch = currentRoundMatches.some(m => (m as any).note === 'Third Place Match')
+    const isFinalRound = currentRoundMatches.length === 2 && hasThirdPlaceMatch
+    
     console.log('canGenerateNextRound check:', {
       eliminationMatchesLength: eliminationMatches.length,
       currentRound,
       currentRoundMatchesLength: currentRoundMatches.length,
       allCompleted,
-      canGenerate: allCompleted && currentRoundMatches.length > 1
+      hasThirdPlaceMatch,
+      isFinalRound,
+      canGenerate: allCompleted && !isFinalRound
     })
     
-    return allCompleted && currentRoundMatches.length > 1 // Not final
+    return allCompleted && !isFinalRound // Don't generate next round if this is the final round
   }
 
   const handleGenerateNextRound = () => {
@@ -918,15 +924,49 @@ export default function DivisionStageManagement() {
               <p className="text-sm text-gray-600">
                 Teams in division: {teamCount}. Target bracket size: {targetBracketSize}.
               </p>
-              {needsPlayIn ? (
-                <p className="text-sm text-gray-600">
-                  Play-In needed: {playInExcess * 2} teams (bottom {playInExcess * 2} seeds) for {playInExcess} Play-Off slots.
-                </p>
+              
+              {/* Show different descriptions based on current stage */}
+              {eliminationMatches.length === 0 ? (
+                // No playoff matches yet
+                needsPlayIn ? (
+                  <p className="text-sm text-gray-600">
+                    Play-In needed: {playInExcess * 2} teams (bottom {playInExcess * 2} seeds) for {playInExcess} Play-Off slots.
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    All teams advance to Play-Off directly.
+                  </p>
+                )
               ) : (
-                <p className="text-sm text-gray-600">
-                  All teams advance to Play-Off directly.
-                </p>
+                // Playoff matches exist - show current stage info
+                (() => {
+                  const maxRound = Math.max(...eliminationMatches.map(m => m.roundIndex))
+                  const currentRoundMatches = eliminationMatches.filter(m => m.roundIndex === maxRound)
+                  const hasThirdPlaceMatch = currentRoundMatches.some(m => (m as any).note === 'Third Place Match')
+                  const isFinalRound = currentRoundMatches.length === 2 && hasThirdPlaceMatch
+                  
+                  if (isFinalRound) {
+                    return (
+                      <p className="text-sm text-gray-600">
+                        Final stage: 1st Place Match + 3rd Place Match
+                      </p>
+                    )
+                  } else if (currentRoundMatches.length === 2) {
+                    return (
+                      <p className="text-sm text-gray-600">
+                        Semi-Final stage: 2 matches
+                      </p>
+                    )
+                  } else {
+                    return (
+                      <p className="text-sm text-gray-600">
+                        Play-Off stage: {currentRoundMatches.length} match{currentRoundMatches.length > 1 ? 'es' : ''}
+                      </p>
+                    )
+                  }
+                })()
               )}
+              
               <p className="text-sm text-gray-600">
                 {eliminationMatches.length > 0 ? `${eliminationMatches.length} matches generated` : 'No matches generated'}
               </p>

@@ -503,6 +503,15 @@ export const standingsRouter = createTRPCRouter({
         }
       })
 
+      // Check if this is the final round (has both final and third place matches)
+      const hasThirdPlaceMatch = nextRoundMatches.some(match => match.isThirdPlace)
+      const isFinalRound = winners.length === 2 && hasThirdPlaceMatch
+      
+      // If this is the final round, tournament will be complete after these matches
+      if (isFinalRound) {
+        console.log('This is the final round - tournament will be complete after these matches')
+      }
+      
       // If only one winner left, tournament is complete
       if (winners.length === 1) {
         // Update division stage to DIVISION_COMPLETE
@@ -582,6 +591,11 @@ export const standingsRouter = createTRPCRouter({
           })
         )
       )
+
+      // If this is the final round, mark division as ready for completion
+      if (isFinalRound) {
+        console.log('Final round created - division will be marked complete when matches are finished')
+      }
 
       // Update division stage to next round
       const nextStage = `PO_R${currentRound + 2}_SCHEDULED` as any
