@@ -640,7 +640,7 @@ export default function DivisionsPage() {
   )
 
   // Get available players for the tournament
-  const { data: availablePlayers = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
+  const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
     { tournamentId },
     { enabled: !!tournamentId }
   )
@@ -650,6 +650,7 @@ export default function DivisionsPage() {
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
+  const [availablePlayers, setAvailablePlayers] = useState<any[]>([])
   
   // Sync local divisions with fetched data
   useEffect(() => {
@@ -657,6 +658,13 @@ export default function DivisionsPage() {
       setLocalDivisions(tournament.divisions)
     }
   }, [tournament?.divisions])
+  
+  // Sync local availablePlayers with fetched data
+  useEffect(() => {
+    if (availablePlayersData) {
+      setAvailablePlayers(availablePlayersData)
+    }
+  }, [availablePlayersData])
 
   const moveTeamToDivisionMutation = trpc.team.moveToDivision.useMutation({
     onSuccess: () => {
@@ -727,6 +735,17 @@ export default function DivisionsPage() {
     onMutate: async (variables) => {
       // Optimistically update the UI
       optimisticRemovePlayer(variables.teamPlayerId, variables.slotIndex)
+      
+      // Also optimistically update availablePlayers
+      const teamPlayer = localDivisions
+        .flatMap(d => d.teams)
+        .flatMap(t => t.teamPlayers)
+        .find(tp => tp.id === variables.teamPlayerId)
+      
+      if (teamPlayer) {
+        // Add player back to availablePlayers optimistically
+        setAvailablePlayers(prev => [...prev, teamPlayer.player])
+      }
     },
     onSuccess: () => {
       refetch()
@@ -908,6 +927,9 @@ export default function DivisionsPage() {
   }
 
   const optimisticAddPlayer = (teamId: string, playerId: string, slotIndex: number) => {
+    // Remove player from availablePlayers optimistically
+    setAvailablePlayers(prev => prev.filter(p => p.id !== playerId))
+    
     setLocalDivisions(prevDivisions => {
       return prevDivisions.map(division => ({
         ...division,
