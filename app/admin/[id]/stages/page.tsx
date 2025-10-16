@@ -150,6 +150,7 @@ export default function DivisionStageManagement() {
     eliminationMatchesDetails: eliminationMatches.map(m => ({
       id: m.id,
       roundIndex: m.roundIndex,
+      note: m.note,
       teamA: m.teamA?.name,
       teamB: m.teamB?.name
     }))
@@ -986,10 +987,15 @@ export default function DivisionStageManagement() {
                   if (roundMatches.length === 0) return null
                   
                   const roundName = (() => {
-                    // Determine round name based on number of matches and round index
-                    if (roundMatches.length === 2) {
-                      // 2 matches = Semi-Final
+                    // Check if this round has a third place match
+                    const hasThirdPlaceMatch = roundMatches.some(m => m.note === 'Third Place Match')
+                    
+                    if (roundMatches.length === 2 && !hasThirdPlaceMatch) {
+                      // 2 matches without third place = Semi-Final
                       return 'Semi-Final'
+                    } else if (roundMatches.length === 2 && hasThirdPlaceMatch) {
+                      // 2 matches with third place = Final & 3rd Place
+                      return 'Final & 3rd Place'
                     } else if (roundMatches.length === 1) {
                       // 1 match = Final
                       return 'Final'
@@ -1003,17 +1009,28 @@ export default function DivisionStageManagement() {
                     <div key={roundIndex} className="space-y-4">
                       <h4 className="font-medium text-lg">{roundName}</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {roundMatches.map((match) => (
-                          <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="text-sm font-medium">
-                                {match.teamA.name}
+                        {roundMatches.map((match) => {
+                          // Check if this is a third place match
+                          const isThirdPlace = match.note === 'Third Place Match'
+                          
+                          return (
+                            <div key={match.id} className={`border border-gray-200 rounded-lg p-4 ${
+                              isThirdPlace ? 'bg-orange-50 border-orange-200' : ''
+                            }`}>
+                              {isThirdPlace && (
+                                <div className="text-xs text-orange-600 font-medium mb-2 text-center">
+                                  3rd Place Match
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-sm font-medium">
+                                  {match.teamA.name}
+                                </div>
+                                <div className="text-sm text-gray-500">vs</div>
+                                <div className="text-sm font-medium">
+                                  {match.teamB.name}
+                                </div>
                               </div>
-                              <div className="text-sm text-gray-500">vs</div>
-                              <div className="text-sm font-medium">
-                                {match.teamB.name}
-                              </div>
-                            </div>
                             
                             {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
                               <div className="text-center space-y-2">
@@ -1041,8 +1058,9 @@ export default function DivisionStageManagement() {
                                 Enter Score
                               </Button>
                             )}
-                          </div>
-                        ))}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )
