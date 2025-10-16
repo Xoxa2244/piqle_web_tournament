@@ -329,12 +329,8 @@ export default function DivisionStageManagement() {
       // Regenerate Round Robin
       handleRegenerateRR()
     } else if (regenerateType === 'playin') {
-      // Regenerate Play-In with updated RR results
-      regeneratePlayInMutation.mutate({ 
-        divisionId: selectedDivisionId, 
-        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
-        regenerate: true
-      })
+      // Regenerate Play-Off after Play-In results changed
+      handleRegeneratePlayoffs()
     } else if (regenerateType === 'playoff') {
       // Regenerate Play-Off
       handleRegeneratePlayoffs()
@@ -349,7 +345,7 @@ export default function DivisionStageManagement() {
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
-  const canRegeneratePlayIn = playInMatches.length > 0
+  const canRegeneratePlayIn = playInMatches.length > 0 && eliminationMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
 
   // Debug button availability
@@ -855,7 +851,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <RotateCcw className="h-4 w-4" />
-                    <span>Regenerate Play-In</span>
+                    <span>Regenerate Play-Off</span>
                   </Button>
                 )}
               </div>
@@ -1173,13 +1169,13 @@ export default function DivisionStageManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">
-              Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
+              Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-Off' : 'Play-Off'}
             </h3>
             <p className="text-gray-600 mb-6">
               {regenerateType === 'rr' 
                 ? 'All Round Robin matches will be reset. This will allow teams to be redistributed across pools and create new matches. Continue?'
                 : regenerateType === 'playin' 
-                  ? 'All Play-In results and subsequent Play-Off stages will be reset. Continue?'
+                  ? 'All Play-Off matches will be reset and regenerated with updated Play-In results. Continue?'
                   : 'All Play-Off results will be reset. Continue?'
               }
             </p>
