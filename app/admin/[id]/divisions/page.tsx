@@ -371,6 +371,7 @@ function DivisionCard({
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
+  onDeleteDivision,
   onTeamMove, 
   onEditTeam, 
   onDeleteTeam,
@@ -388,6 +389,7 @@ function DivisionCard({
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
+  onDeleteDivision: (divisionId: string) => void
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
   onDeleteTeam: (team: Team) => void
@@ -402,6 +404,26 @@ function DivisionCard({
   const activeTeams = division.teams.filter(team => team.poolId !== null)
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const totalTeams = division.teams.length
+
+  // State for context menu
+  const [showContextMenu, setShowContextMenu] = useState(false)
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showContextMenu) {
+        setShowContextMenu(false)
+      }
+    }
+
+    if (showContextMenu) {
+      document.addEventListener('click', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showContextMenu])
 
   // Add drop zone for division
   const { setNodeRef: setDivisionNodeRef } = useDroppable({
@@ -485,9 +507,30 @@ function DivisionCard({
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
+                onClick={() => setShowContextMenu(!showContextMenu)}
               >
                 <MoreVertical className="h-4 w-4" />
               </Button>
+              
+              {/* Context Menu */}
+              {showContextMenu && (
+                <div className="absolute right-0 top-8 bg-white border rounded-lg shadow-lg z-10 min-w-[120px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
+                        onDeleteDivision(division.id)
+                        setShowContextMenu(false)
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Division
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -651,6 +694,16 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       alert(`Error distributing teams: ${error.message}`)
+    }
+  })
+
+  const deleteDivisionMutation = trpc.division.delete.useMutation({
+    onSuccess: () => {
+      refetch()
+      alert('Division deleted successfully! All players are now free agents.')
+    },
+    onError: (error) => {
+      alert(`Error deleting division: ${error.message}`)
     }
   })
 
@@ -1054,6 +1107,12 @@ export default function DivisionsPage() {
     }
   }
 
+  const handleDeleteDivision = (divisionId: string) => {
+    if (window.confirm('Are you sure you want to delete this division? All players in this division will become free agents and can be added to any other division.')) {
+      deleteDivisionMutation.mutate({ id: divisionId })
+    }
+  }
+
   const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
     try {
       await moveTeamToDivisionMutation.mutateAsync({
@@ -1286,6 +1345,7 @@ export default function DivisionsPage() {
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
+                      onDeleteDivision={handleDeleteDivision}
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
                       onDeleteTeam={handleDeleteTeam}
@@ -1318,6 +1378,7 @@ export default function DivisionsPage() {
             onTeamMoveToPool={handleTeamMoveToPool}
             onEditDivision={handleEditDivision}
             onAddTeam={handleAddTeam}
+            onDeleteDivision={handleDeleteDivision}
             availablePlayers={availablePlayers}
             onAddPlayerToSlot={handleAddPlayerToSlot}
             onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
