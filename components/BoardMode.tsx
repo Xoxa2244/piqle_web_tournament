@@ -534,8 +534,10 @@ export default function BoardMode({
     }
 
     // Apply optimistic update immediately
-    optimisticMoveTeam(teamId, targetDivisionId, targetPoolId)
-    setHasUnsavedChanges(true)
+    if (targetDivisionId) {
+      optimisticMoveTeam(teamId, targetDivisionId, targetPoolId)
+      setHasUnsavedChanges(true)
+    }
 
     // Add to history
     addToHistory({
