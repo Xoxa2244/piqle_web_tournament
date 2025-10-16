@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   Clock,
   Target,
+  Trash2,
   ChevronDown,
   ChevronRight
 } from 'lucide-react'
@@ -804,6 +805,26 @@ function DivisionColumn({
     id: `division-header-${division?.id || 'unknown'}`,
   })
 
+  // State for context menu
+  const [showContextMenu, setShowContextMenu] = useState(false)
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showContextMenu) {
+        setShowContextMenu(false)
+      }
+    }
+
+    if (showContextMenu) {
+      document.addEventListener('click', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showContextMenu])
+
   if (!division) {
     console.warn('DivisionColumn: division is undefined')
     return null
@@ -826,26 +847,6 @@ function DivisionColumn({
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
-
-  // State for context menu
-  const [showContextMenu, setShowContextMenu] = useState(false)
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showContextMenu) {
-        setShowContextMenu(false)
-      }
-    }
-
-    if (showContextMenu) {
-      document.addEventListener('click', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside)
-    }
-  }, [showContextMenu])
 
   return (
     <div className="w-80 flex-shrink-0" style={style}>
