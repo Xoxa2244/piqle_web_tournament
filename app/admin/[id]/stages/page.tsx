@@ -223,10 +223,19 @@ export default function DivisionStageManagement() {
       match.games && match.games.length > 0 && match.games[0].scoreA > 0
     )
     
+    console.log('canGenerateNextRound check:', {
+      eliminationMatchesLength: eliminationMatches.length,
+      currentRound,
+      currentRoundMatchesLength: currentRoundMatches.length,
+      allCompleted,
+      canGenerate: allCompleted && currentRoundMatches.length > 1
+    })
+    
     return allCompleted && currentRoundMatches.length > 1 // Not final
   }
 
   const handleGenerateNextRound = () => {
+    console.log('handleGenerateNextRound called with divisionId:', selectedDivisionId)
     if (selectedDivisionId) {
       generateNextPlayoffRoundMutation.mutate({ divisionId: selectedDivisionId })
     }

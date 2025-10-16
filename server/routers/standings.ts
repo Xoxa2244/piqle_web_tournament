@@ -493,7 +493,14 @@ export const standingsRouter = createTRPCRouter({
         const game = match.games?.[0]
         if (!game) throw new Error('No game found for completed match')
         
-        return game.winner === 'A' ? match.teamA : match.teamB
+        // Determine winner by score instead of relying on game.winner field
+        if (game.scoreA > game.scoreB) {
+          return match.teamA
+        } else if (game.scoreB > game.scoreA) {
+          return match.teamB
+        } else {
+          throw new Error('Match cannot have a tie score')
+        }
       })
 
       // If only one winner left, tournament is complete
@@ -522,6 +529,8 @@ export const standingsRouter = createTRPCRouter({
         })
       }
 
+      console.log('Generated next round matches:', nextRoundMatches.length, 'winners:', winners.length)
+
       // If this is the semi-final round (2 teams), create third place match
       if (winners.length === 2) {
         // Get losers from semi-finals
@@ -529,11 +538,19 @@ export const standingsRouter = createTRPCRouter({
           const game = match.games?.[0]
           if (!game) throw new Error('No game found for completed match')
           
-          return game.winner === 'A' ? match.teamB : match.teamA
+          // Determine loser by score
+          if (game.scoreA > game.scoreB) {
+            return match.teamB
+          } else if (game.scoreB > game.scoreA) {
+            return match.teamA
+          } else {
+            throw new Error('Match cannot have a tie score')
+          }
         })
 
         // Create third place match
         if (semiFinalLosers.length === 2) {
+          console.log('Creating third place match between:', semiFinalLosers[0].name, 'vs', semiFinalLosers[1].name)
           nextRoundMatches.push({
             teamAId: semiFinalLosers[0].id,
             teamBId: semiFinalLosers[1].id,
