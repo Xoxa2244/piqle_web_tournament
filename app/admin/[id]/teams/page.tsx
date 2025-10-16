@@ -439,7 +439,6 @@ export default function TeamsPage() {
         <EditTeamModal
           team={selectedTeam}
           divisions={divisions}
-          tournamentId={tournamentId}
           isOpen={showEditTeamModal}
           onClose={() => {
             setShowEditTeamModal(false)
