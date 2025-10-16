@@ -183,6 +183,7 @@ export default function BracketPyramid({
                   const winner = getWinner(match)
                   const scores = getScores(match)
                   const isHovered = hoveredMatch === match.id
+                  const isThirdPlaceMatch = (match as any).note === 'Third Place Match'
                   
                   return (
                     <div
@@ -195,12 +196,21 @@ export default function BracketPyramid({
                     >
                       {/* Match Card */}
                       <Card 
-                        className={`w-48 h-32 cursor-pointer bg-white border border-gray-200 rounded-lg ${
+                        className={`w-48 h-32 cursor-pointer ${
+                          isThirdPlaceMatch ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'
+                        } rounded-lg ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
                       >
                         <CardContent className="p-3 h-full flex flex-col justify-center">
+                          {/* Third Place Match Label */}
+                          {isThirdPlaceMatch && (
+                            <div className="text-xs text-orange-600 font-medium mb-2 text-center">
+                              3rd Place Match
+                            </div>
+                          )}
+                          
                           {/* Team A */}
                           <div className={`flex items-center justify-between mb-3 ${
                             winner === match.teamA ? 'bg-green-50 border border-green-200 rounded-md p-1' : ''
@@ -260,20 +270,20 @@ export default function BracketPyramid({
                       </Card>
 
                       {/* Champion Badge for Final Winner */}
-                      {round.roundName === 'Final' && round.matches.length === 1 && winner && (
+                      {round.roundName === 'Final' && !isThirdPlaceMatch && winner && (
                         <div className="flex items-center justify-center mt-2">
                           <div className="flex items-center space-x-1 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded-full">
                             <Trophy className="h-3 w-3 text-yellow-600" />
-                            <span className="text-xs text-yellow-700 font-medium">Champion</span>
+                            <span className="text-xs text-yellow-700 font-medium">Champion: {winner.name}</span>
                           </div>
                         </div>
                       )}
 
-                      {/* 2nd and 3rd Place Results */}
-                      {round.roundName === 'Final' && round.matches.length === 1 && winner && (() => {
+                      {/* 2nd and 3rd Place Results - Moved to the right */}
+                      {round.roundName === 'Final' && !isThirdPlaceMatch && winner && (() => {
                         const { secondPlace, thirdPlace } = getPlacementTeams()
                         return (
-                          <div className="mt-4 space-y-2">
+                          <div className="mt-4 ml-8 space-y-2">
                             {/* 2nd Place */}
                             {secondPlace && (
                               <div className="flex items-center justify-center">
