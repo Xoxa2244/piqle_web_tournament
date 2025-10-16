@@ -384,8 +384,23 @@ export default function BoardMode({
         targetPoolId = targetDivision.pools.length ? targetDivision.pools[0].id : null
         console.log('Team dropped on division header, using first pool:', targetPoolId)
       } else {
-        console.error('Unknown drop target:', overId)
-        return
+        // overId is not a drop zone - it's probably another team
+        const targetTeam = localDivisions
+          .flatMap(division => division.teams)
+          .find(team => team.id === overId)
+        
+        if (targetTeam) {
+          targetPoolId = targetTeam.poolId
+          // Find division for this team
+          const division = localDivisions.find(d => 
+            d.teams.some(t => t.id === overId)
+          )
+          targetDivisionId = division?.id || null
+          console.log('Team dropped on another team:', targetTeam.name, 'pool:', targetPoolId)
+        } else {
+          console.error('Unknown drop target:', overId)
+          return
+        }
       }
     }
 
@@ -496,8 +511,23 @@ export default function BoardMode({
         targetPoolId = targetDivision.pools.length ? targetDivision.pools[0].id : null
         console.log('Team dropped on division header, using first pool:', targetPoolId)
       } else {
-        console.error('Unknown drop target:', overId)
-        return
+        // overId is not a drop zone - it's probably another team
+        const targetTeam = localDivisions
+          .flatMap(division => division.teams)
+          .find(team => team.id === overId)
+        
+        if (targetTeam) {
+          targetPoolId = targetTeam.poolId
+          // Find division for this team
+          const division = localDivisions.find(d => 
+            d.teams.some(t => t.id === overId)
+          )
+          targetDivisionId = division?.id || null
+          console.log('Team dropped on another team:', targetTeam.name, 'pool:', targetPoolId)
+        } else {
+          console.error('Unknown drop target:', overId)
+          return
+        }
       }
     }
 
