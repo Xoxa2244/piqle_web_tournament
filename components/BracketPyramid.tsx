@@ -132,6 +132,29 @@ export default function BracketPyramid({
     return { scoreA: totalScoreA, scoreB: totalScoreB }
   }
 
+  const getPlacementTeams = () => {
+    const finalMatch = matches.find(m => m.roundIndex === maxRound)
+    const semiFinalMatches = matches.filter(m => m.roundIndex === maxRound - 1)
+    
+    if (!finalMatch || semiFinalMatches.length === 0) return { secondPlace: null, thirdPlace: null }
+    
+    const finalWinner = getWinner(finalMatch)
+    const finalLoser = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
+    
+    // Find semi-final losers
+    const semiFinalLosers = semiFinalMatches
+      .map(match => {
+        const winner = getWinner(match)
+        return winner === match.teamA ? match.teamB : match.teamA
+      })
+      .filter(team => team !== null)
+    
+    return {
+      secondPlace: finalLoser,
+      thirdPlace: semiFinalLosers.length > 0 ? semiFinalLosers[0] : null
+    }
+  }
+
   if (matches.length === 0) {
     return (
       <div className="text-center py-8">
@@ -172,7 +195,7 @@ export default function BracketPyramid({
                     >
                       {/* Match Card */}
                       <Card 
-                        className={`w-36 h-28 cursor-pointer bg-white border border-gray-200 rounded-lg ${
+                        className={`w-48 h-32 cursor-pointer bg-white border border-gray-200 rounded-lg ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
@@ -245,6 +268,34 @@ export default function BracketPyramid({
                           </div>
                         </div>
                       )}
+
+                      {/* 2nd and 3rd Place Results */}
+                      {round.roundName === 'Final' && round.matches.length === 1 && winner && (() => {
+                        const { secondPlace, thirdPlace } = getPlacementTeams()
+                        return (
+                          <div className="mt-4 space-y-2">
+                            {/* 2nd Place */}
+                            {secondPlace && (
+                              <div className="flex items-center justify-center">
+                                <div className="flex items-center space-x-1 bg-gray-50 border border-gray-200 px-2 py-1 rounded-full">
+                                  <Trophy className="h-3 w-3 text-gray-600" />
+                                  <span className="text-xs text-gray-700 font-medium">2nd: {secondPlace.name}</span>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* 3rd Place */}
+                            {thirdPlace && (
+                              <div className="flex items-center justify-center">
+                                <div className="flex items-center space-x-1 bg-orange-50 border border-orange-200 px-2 py-1 rounded-full">
+                                  <Trophy className="h-3 w-3 text-orange-600" />
+                                  <span className="text-xs text-orange-700 font-medium">3rd: {thirdPlace.name}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
 
                       {/* Connecting Lines to Next Round - Removed per user request */}
                     </div>
