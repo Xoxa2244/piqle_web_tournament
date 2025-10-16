@@ -347,7 +347,7 @@ export default function BoardMode({
     console.log('Dragging team:', team.name, 'from division:', getTeamDivisionId(teamId))
 
     // Parse drop zone ID and determine target
-    let targetDivisionId: string
+    let targetDivisionId: string | null
     let targetPoolId: string | null
 
     console.log('Drop target:', overId)
@@ -457,9 +457,9 @@ export default function BoardMode({
 
     try {
       // Make server request
-      if (targetDivisionId !== teamDivisionId) {
+      if (targetDivisionId && targetDivisionId !== teamDivisionId) {
         await onTeamMove(teamId, targetDivisionId, targetPoolId)
-      } else {
+      } else if (targetDivisionId) {
         await onTeamMoveToPool(teamId, targetPoolId)
       }
     } catch (error) {
@@ -476,7 +476,7 @@ export default function BoardMode({
     if (!teamDivisionId) return
 
     // Parse drop zone ID and determine target
-    let targetDivisionId: string
+    let targetDivisionId: string | null
     let targetPoolId: string | null
 
     if (overId.startsWith('waitlist-')) {
@@ -548,9 +548,9 @@ export default function BoardMode({
 
     try {
       // Make server request
-      if (targetDivisionId !== teamDivisionId) {
+      if (targetDivisionId && targetDivisionId !== teamDivisionId) {
         await onTeamMove(teamId, targetDivisionId, targetPoolId)
-      } else {
+      } else if (targetDivisionId) {
         await onTeamMoveToPool(teamId, targetPoolId)
       }
     } catch (error) {
