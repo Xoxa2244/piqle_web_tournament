@@ -60,6 +60,7 @@ interface Team {
   seed: number | null
   note: string | null
   poolId: string | null
+  divisionId: string
   teamPlayers: Array<{
     id: string
     role: string
