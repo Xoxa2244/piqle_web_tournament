@@ -532,8 +532,6 @@ export const standingsRouter = createTRPCRouter({
       console.log('Generated next round matches:', nextRoundMatches.length, 'winners:', winners.length)
 
       // If this is the semi-final round (2 teams), create third place match
-      // Temporarily disabled until DB migration adds note field
-      /*
       if (winners.length === 2) {
         // Get losers from semi-finals
         const semiFinalLosers = currentRoundMatches.map(match => {
@@ -562,7 +560,6 @@ export const standingsRouter = createTRPCRouter({
           })
         }
       }
-      */
 
       // Create next round matches in database
       const createdMatches = await Promise.all(
@@ -579,8 +576,8 @@ export const standingsRouter = createTRPCRouter({
               targetPoints: 11,
               winBy: 2,
               locked: false,
-              // Note: Third place match detection temporarily disabled until DB migration
-              // ...(match.isThirdPlace && { note: 'Third Place Match' }),
+              // Add third place flag if it exists
+              ...(match.isThirdPlace && { note: 'Third Place Match' }),
             },
           })
         )
