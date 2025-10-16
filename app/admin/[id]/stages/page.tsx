@@ -1012,14 +1012,22 @@ export default function DivisionStageManagement() {
                         {roundMatches.map((match) => {
                           // Check if this is a third place match
                           const isThirdPlace = match.note === 'Third Place Match'
+                          // Check if this is a final match (1 match in final round or 2 matches where this is not third place)
+                          const isFinalMatch = roundMatches.length === 1 || (roundMatches.length === 2 && !isThirdPlace)
                           
                           return (
                             <div key={match.id} className={`border border-gray-200 rounded-lg p-4 ${
-                              isThirdPlace ? 'bg-orange-50 border-orange-200' : ''
+                              isThirdPlace ? 'bg-orange-50 border-orange-200' : 
+                              isFinalMatch ? 'bg-blue-50 border-blue-200' : ''
                             }`}>
                               {isThirdPlace && (
                                 <div className="text-xs text-orange-600 font-medium mb-2 text-center">
                                   3rd Place Match
+                                </div>
+                              )}
+                              {isFinalMatch && !isThirdPlace && (
+                                <div className="text-xs text-blue-600 font-medium mb-2 text-center">
+                                  1st Place Match
                                 </div>
                               )}
                               <div className="flex items-center justify-between mb-2">
