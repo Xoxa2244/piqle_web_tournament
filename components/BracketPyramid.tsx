@@ -205,21 +205,12 @@ export default function BracketPyramid({
                       )}
                       {/* Match Card */}
                       <Card 
-                        className={`w-48 h-32 cursor-pointer ${
-                          isThirdPlaceMatch ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'
-                        } rounded-lg ${
+                        className={`w-48 h-32 cursor-pointer bg-white border-gray-200 rounded-lg ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
                       >
                         <CardContent className="p-3 h-full flex flex-col justify-center">
-                          {/* Third Place Match Label */}
-                          {isThirdPlaceMatch && (
-                            <div className="text-xs text-orange-600 font-medium mb-2 text-center">
-                              3rd Place Match
-                            </div>
-                          )}
-                          
                           {/* Team A */}
                           <div className={`flex items-center justify-between mb-3 ${
                             winner === match.teamA ? 'bg-green-50 border border-green-200 rounded-md p-1' : ''
