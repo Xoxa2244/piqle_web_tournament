@@ -1057,15 +1057,18 @@ export default function DivisionStageManagement() {
                           
                           return (
                             <div key={match.id} className={`border border-gray-200 rounded-lg p-4 ${
-                              isThirdPlace ? 'bg-orange-50 border-orange-200' : 
-                              isFinalMatch ? 'bg-blue-50 border-blue-200' : ''
+                              // Only apply colors to Final round matches
+                              roundName === 'Final & 3rd Place' 
+                                ? (isThirdPlace ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200')
+                                : 'bg-white'
                             }`}>
-                              {isThirdPlace && (
+                              {/* Only show place labels in Final round */}
+                              {roundName === 'Final & 3rd Place' && isThirdPlace && (
                                 <div className="text-xs text-orange-600 font-medium mb-2 text-center">
                                   3rd Place Match
                                 </div>
                               )}
-                              {isFinalMatch && !isThirdPlace && (
+                              {roundName === 'Final & 3rd Place' && isFinalMatch && !isThirdPlace && (
                                 <div className="text-xs text-blue-600 font-medium mb-2 text-center">
                                   1st Place Match
                                 </div>
