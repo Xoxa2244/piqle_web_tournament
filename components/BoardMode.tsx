@@ -355,6 +355,7 @@ export default function BoardMode({
     if (overId.startsWith('waitlist-')) {
       targetDivisionId = overId.replace('waitlist-', '')
       targetPoolId = null
+      console.log('Dropped on waitlist')
     } else if (overId.startsWith('pool-')) {
       // Format: pool-{divisionId}-{poolId}
       // Remove 'pool-' prefix and split by first occurrence of '-'
@@ -363,6 +364,7 @@ export default function BoardMode({
       if (firstDashIndex > 0) {
         targetDivisionId = withoutPrefix.substring(0, firstDashIndex)
         targetPoolId = withoutPrefix.substring(firstDashIndex + 1)
+        console.log('Dropped on pool:', targetPoolId)
       } else {
         console.error('Invalid pool ID format:', overId)
         return
@@ -372,8 +374,19 @@ export default function BoardMode({
       // For division drops, use first pool or waitlist
       const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
       targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
+      console.log('Dropped on division, using first pool:', targetPoolId)
     } else {
-      return
+      // Handle case where team drops on division header or other element
+      // Check if overId is a division ID
+      const targetDivision = localDivisions.find(d => d.id === overId)
+      if (targetDivision) {
+        targetDivisionId = overId
+        targetPoolId = targetDivision.pools.length ? targetDivision.pools[0].id : null
+        console.log('Team dropped on division header, using first pool:', targetPoolId)
+      } else {
+        console.error('Unknown drop target:', overId)
+        return
+      }
     }
 
     console.log('Target division:', targetDivisionId, 'Target pool:', targetPoolId)
@@ -454,6 +467,7 @@ export default function BoardMode({
     if (overId.startsWith('waitlist-')) {
       targetDivisionId = overId.replace('waitlist-', '')
       targetPoolId = null
+      console.log('Dropped on waitlist')
     } else if (overId.startsWith('pool-')) {
       // Format: pool-{divisionId}-{poolId}
       // Remove 'pool-' prefix and split by first occurrence of '-'
@@ -462,6 +476,7 @@ export default function BoardMode({
       if (firstDashIndex > 0) {
         targetDivisionId = withoutPrefix.substring(0, firstDashIndex)
         targetPoolId = withoutPrefix.substring(firstDashIndex + 1)
+        console.log('Dropped on pool:', targetPoolId)
       } else {
         console.error('Invalid pool ID format:', overId)
         return
@@ -471,8 +486,19 @@ export default function BoardMode({
       // For division drops, use first pool or waitlist
       const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
       targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
+      console.log('Dropped on division, using first pool:', targetPoolId)
     } else {
-      return
+      // Handle case where team drops on division header or other element
+      // Check if overId is a division ID
+      const targetDivision = localDivisions.find(d => d.id === overId)
+      if (targetDivision) {
+        targetDivisionId = overId
+        targetPoolId = targetDivision.pools.length ? targetDivision.pools[0].id : null
+        console.log('Team dropped on division header, using first pool:', targetPoolId)
+      } else {
+        console.error('Unknown drop target:', overId)
+        return
+      }
     }
 
     // Apply optimistic update immediately
