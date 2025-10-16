@@ -44,6 +44,7 @@ export const publicRouter = createTRPCRouter({
                   roundIndex: true,
                   stage: true,
                   note: true,
+                  poolId: true,
                   teamA: true,
                   teamB: true,
                   games: {
@@ -132,6 +133,7 @@ export const publicRouter = createTRPCRouter({
           roundIndex: true,
           stage: true,
           note: true,
+          poolId: true,
           teamA: true,
           teamB: true,
           games: {
