@@ -53,7 +53,7 @@ export default function ScoreInputModal({
           Enter Score
           {poolName && (
             <span className="text-sm font-normal text-gray-600 ml-2">
-              - Pool {poolName}
+              - {poolName}
             </span>
           )}
         </h2>
