@@ -37,13 +37,6 @@ export const publicRouter = createTRPCRouter({
                 ],
               },
               matches: {
-                include: {
-                  teamA: true,
-                  teamB: true,
-                  games: {
-                    orderBy: { index: 'asc' },
-                  },
-                },
                 select: {
                   id: true,
                   teamAId: true,
@@ -131,13 +124,6 @@ export const publicRouter = createTRPCRouter({
           ...(input.divisionId && { divisionId: input.divisionId }),
           ...(input.rrGroupId && { rrGroupId: input.rrGroupId }),
           ...(input.stage && { stage: input.stage }),
-        },
-        include: {
-          teamA: true,
-          teamB: true,
-          games: {
-            orderBy: { index: 'asc' },
-          },
         },
         select: {
           id: true,

@@ -186,17 +186,6 @@ export default function BracketPyramid({
                   const isThirdPlaceMatch = (match as any).note === 'Third Place Match'
                   const isFinalMatch = round.roundName === 'Final' && !isThirdPlaceMatch
                   
-                  // Debug logging
-                  console.log('Match debug:', {
-                    matchId: match.id,
-                    teamA: match.teamA,
-                    teamB: match.teamB,
-                    note: (match as any).note,
-                    isThirdPlaceMatch,
-                    isFinalMatch,
-                    roundName: round.roundName
-                  })
-                  
                   return (
                     <div
                       key={match.id}
