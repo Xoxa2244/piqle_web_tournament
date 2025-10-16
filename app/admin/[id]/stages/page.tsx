@@ -89,8 +89,13 @@ export default function DivisionStageManagement() {
 
   const regeneratePlayInMutation = trpc.standings.generatePlayoffs.useMutation({
     onSuccess: () => {
+      console.log('regeneratePlayInMutation success')
       refetchDivision()
       refetchTournament()
+    },
+    onError: (error) => {
+      console.error('regeneratePlayInMutation error:', error)
+      alert(`Error regenerating Play-In: ${error.message}`)
     }
   })
 
@@ -107,15 +112,25 @@ export default function DivisionStageManagement() {
 
   const regeneratePlayoffsMutation = trpc.standings.regeneratePlayoffs.useMutation({
     onSuccess: () => {
+      console.log('regeneratePlayoffsMutation success')
       refetchDivision()
       refetchTournament()
+    },
+    onError: (error) => {
+      console.error('regeneratePlayoffsMutation error:', error)
+      alert(`Error regenerating Play-Off: ${error.message}`)
     }
   })
 
   const regenerateRRMutation = trpc.match.regenerateRR.useMutation({
     onSuccess: () => {
+      console.log('regenerateRRMutation success')
       refetchDivision()
       refetchTournament()
+    },
+    onError: (error) => {
+      console.error('regenerateRRMutation error:', error)
+      alert(`Error regenerating RR: ${error.message}`)
     }
   })
 
@@ -336,6 +351,22 @@ export default function DivisionStageManagement() {
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
   const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
+
+  // Debug button availability
+  console.log('Button availability debug:', {
+    canGenerateRR,
+    canRegenerateRR,
+    canGeneratePlayIn,
+    canRegeneratePlayIn,
+    canGeneratePlayoff,
+    rrMatchesLength: rrMatches.length,
+    playInMatchesLength: playInMatches.length,
+    eliminationMatchesLength: eliminationMatches.length,
+    completedRRMatchesLength: completedRRMatches.length,
+    currentStage,
+    needsPlayIn,
+    completedPlayInMatchesLength: completedPlayInMatches.length
+  })
 
   // Debug information
   console.log('Debug Play-Off generation:', {
