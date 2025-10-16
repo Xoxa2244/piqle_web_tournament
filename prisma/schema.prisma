@@ -272,7 +272,6 @@ model Match {
   winBy         Int
   winnerTeamId  String?
   locked        Boolean     @default(false)
-  note          String?     // Optional note for special matches (e.g., "Third Place Match")
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

@@ -150,7 +150,6 @@ export default function DivisionStageManagement() {
     eliminationMatchesDetails: eliminationMatches.map(m => ({
       id: m.id,
       roundIndex: m.roundIndex,
-      note: (m as any).note, // Temporary cast until DB migration
       teamA: m.teamA?.name,
       teamB: m.teamB?.name
     }))
@@ -1009,28 +1008,17 @@ export default function DivisionStageManagement() {
                     <div key={roundIndex} className="space-y-4">
                       <h4 className="font-medium text-lg">{roundName}</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {roundMatches.map((match) => {
-                          // Check if this is a third place match
-                          const isThirdPlace = (match as any).note === 'Third Place Match'
-                          
-                          return (
-                            <div key={match.id} className={`border border-gray-200 rounded-lg p-4 ${
-                              isThirdPlace ? 'bg-orange-50 border-orange-200' : ''
-                            }`}>
-                              {isThirdPlace && (
-                                <div className="text-xs text-orange-600 font-medium mb-2 text-center">
-                                  3rd Place Match
-                                </div>
-                              )}
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-sm font-medium">
-                                  {match.teamA.name}
-                                </div>
-                                <div className="text-sm text-gray-500">vs</div>
-                                <div className="text-sm font-medium">
-                                  {match.teamB.name}
-                                </div>
+                        {roundMatches.map((match) => (
+                          <div key={match.id} className="border border-gray-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">
+                                {match.teamA.name}
                               </div>
+                              <div className="text-sm text-gray-500">vs</div>
+                              <div className="text-sm font-medium">
+                                {match.teamB.name}
+                              </div>
+                            </div>
                             
                             {match.games && match.games.length > 0 && match.games[0].scoreA > 0 ? (
                               <div className="text-center space-y-2">
@@ -1058,9 +1046,8 @@ export default function DivisionStageManagement() {
                                 Enter Score
                               </Button>
                             )}
-                            </div>
-                          )
-                        })}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )
