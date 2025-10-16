@@ -986,20 +986,15 @@ export default function DivisionStageManagement() {
                   if (roundMatches.length === 0) return null
                   
                   const roundName = (() => {
-                    // Check if this is the final round (highest roundIndex)
-                    const maxRound = Math.max(...eliminationMatches.map(m => m.roundIndex))
-                    if (roundIndex === maxRound) {
-                      // This is the final round
-                      if (roundMatches.length === 1) {
-                        return 'Final'
-                      } else if (roundMatches.length === 2) {
-                        return 'Final & 3rd Place'
-                      } else {
-                        return 'Final Round'
-                      }
-                    } else if (roundMatches.length === 2) {
+                    // Determine round name based on number of matches and round index
+                    if (roundMatches.length === 2) {
+                      // 2 matches = Semi-Final
                       return 'Semi-Final'
+                    } else if (roundMatches.length === 1) {
+                      // 1 match = Final
+                      return 'Final'
                     } else {
+                      // Other cases
                       return `Round ${roundIndex + 1}`
                     }
                   })()
