@@ -432,7 +432,9 @@ export default function BoardMode({
     }
 
     // No warning needed, perform move directly with optimistic update
-    performMoveWithOptimisticUpdate(teamId, targetDivisionId, targetPoolId, team)
+    if (targetDivisionId) {
+      performMoveWithOptimisticUpdate(teamId, targetDivisionId, targetPoolId, team)
+    }
     setActiveTeam(null)
   }
 
