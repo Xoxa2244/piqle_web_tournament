@@ -205,7 +205,11 @@ export default function BracketPyramid({
                       )}
                       {/* Match Card */}
                       <Card 
-                        className={`w-48 h-32 cursor-pointer bg-white border-gray-200 rounded-lg ${
+                        className={`w-48 h-32 cursor-pointer ${
+                          round.roundName === 'Final' 
+                            ? (isThirdPlaceMatch ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200')
+                            : 'bg-white border-gray-200'
+                        } rounded-lg ${
                           isHovered ? 'shadow-lg' : 'shadow-sm'
                         }`}
                         onClick={() => onMatchClick?.(match.id)}
@@ -288,7 +292,7 @@ export default function BracketPyramid({
           const { secondPlace, thirdPlace } = getPlacementTeams()
           
           return (
-            <div className="ml-8 flex flex-col items-center space-y-2">
+            <div className="ml-8 flex flex-col items-center justify-center space-y-2 bg-gray-100 rounded-lg p-4 h-64">
               {/* Champion */}
               {winner && (
                 <div className="flex items-center space-x-1 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded-full">
