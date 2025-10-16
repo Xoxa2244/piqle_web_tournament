@@ -103,6 +103,7 @@ interface BoardModeProps {
   divisionStages?: Record<string, string> // divisionId -> stage
   onEditDivision?: (division: Division) => void
   onAddTeam?: (division: Division) => void
+  onDeleteDivision?: (divisionId: string) => void
   availablePlayers?: any[]
   onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
@@ -129,6 +130,7 @@ export default function BoardMode({
   divisionStages = {}, 
   onEditDivision, 
   onAddTeam,
+  onDeleteDivision,
   availablePlayers = [],
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -688,6 +690,7 @@ export default function BoardMode({
                         filteredTeams={filteredTeams}
                         onEditDivision={onEditDivision}
                         onAddTeam={onAddTeam}
+                        onDeleteDivision={onDeleteDivision}
                         availablePlayers={availablePlayers}
                         onAddPlayerToSlot={onAddPlayerToSlot}
                         onRemovePlayerFromSlot={onRemovePlayerFromSlot}
@@ -772,6 +775,7 @@ function DivisionColumn({
   filteredTeams, 
   onEditDivision, 
   onAddTeam,
+  onDeleteDivision,
   availablePlayers,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -782,6 +786,7 @@ function DivisionColumn({
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
   onEditDivision?: (division: Division) => void
   onAddTeam?: (division: Division) => void
+  onDeleteDivision?: (divisionId: string) => void
   availablePlayers: any[]
   onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
@@ -822,6 +827,26 @@ function DivisionColumn({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // State for context menu
+  const [showContextMenu, setShowContextMenu] = useState(false)
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showContextMenu) {
+        setShowContextMenu(false)
+      }
+    }
+
+    if (showContextMenu) {
+      document.addEventListener('click', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showContextMenu])
+
   return (
     <div className="w-80 flex-shrink-0" style={style}>
       <Card className="h-full">
@@ -849,9 +874,33 @@ function DivisionColumn({
               >
                 <Plus className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowContextMenu(!showContextMenu)}
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
+              
+              {/* Context Menu */}
+              {showContextMenu && (
+                <div className="absolute right-0 top-8 bg-white border rounded-lg shadow-lg z-10 min-w-[120px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
+                        onDeleteDivision?.(division.id)
+                        setShowContextMenu(false)
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Division
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
           
