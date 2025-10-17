@@ -633,6 +633,28 @@ export const standingsRouter = createTRPCRouter({
       return { success: true }
     }),
 
+  regeneratePlayInAndPlayoff: tdProcedure
+    .input(z.object({ 
+      divisionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Delete all existing Play-In and Play-Off matches
+      await ctx.prisma.match.deleteMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: { in: ['PLAY_IN', 'ELIMINATION'] }
+        }
+      })
+
+      // Reset division stage to RR_COMPLETE (so Play-In can be regenerated)
+      await ctx.prisma.division.update({
+        where: { id: input.divisionId },
+        data: { stage: 'RR_COMPLETE' as any },
+      })
+
+      return { success: true }
+    }),
+
   generatePlayoffAfterPlayIn: tdProcedure
     .input(z.object({ 
       divisionId: z.string(),
