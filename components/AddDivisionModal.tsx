@@ -56,7 +56,7 @@ export default function AddDivisionModal({
       name: formData.name.trim(),
       teamKind: formData.teamKind,
       pairingMode: formData.pairingMode,
-      poolCount: formData.poolCount
+      poolCount: parseInt(formData.poolCount.toString())
     })
   }
 
@@ -64,7 +64,7 @@ export default function AddDivisionModal({
     const { name, value } = e.target
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: name === 'poolCount' ? parseInt(value) || 1 : value
     }))
   }
 
