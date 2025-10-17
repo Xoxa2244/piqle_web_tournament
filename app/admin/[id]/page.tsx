@@ -144,6 +144,14 @@ export default function TournamentDetailPage() {
     }))
   }
 
+  const formatText = (text: string) => {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>') // Code
+      .replace(/\n/g, '<br>') // Line breaks
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
@@ -249,9 +257,18 @@ export default function TournamentDetailPage() {
               <CardContent className="space-y-6">
                 {/* Tournament Description */}
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                  <p className="text-lg font-medium text-slate-900">
-                    {tournament.description || 'No description provided'}
-                  </p>
+                  <div className="h-24 overflow-y-auto">
+                    {tournament.description ? (
+                      <div 
+                        className="text-lg font-medium text-slate-900 prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: formatText(tournament.description) }}
+                      />
+                    ) : (
+                      <p className="text-lg font-medium text-slate-900 text-gray-500 italic">
+                        No description provided
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid gap-6 sm:grid-cols-2">
