@@ -1050,7 +1050,7 @@ export default function DivisionStageManagement() {
               
               {eliminationMatches.length > 0 && (
                 <Button
-                  onClick={() => setShowRegenerateModal(true)}
+                  onClick={() => handleRegenerate('playoff')}
                   variant="outline"
                   className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                 >
