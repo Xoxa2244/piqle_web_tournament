@@ -100,7 +100,7 @@ export default function TournamentDetailPage() {
       alert('Public Scoreboard is not available. Please enable it in tournament settings.')
       return
     }
-    window.open(`/course/${tournamentId}`, '_blank')
+    window.open(`/scoreboard/${tournamentId}`, '_blank')
   }
 
   const handleEditTournamentClick = () => {

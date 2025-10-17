@@ -126,7 +126,7 @@ export default function PublicCoursePage() {
           <div className="hidden sm:flex items-center justify-between py-4">
             <div className="flex items-center space-x-4">
               <Link
-                href="/course"
+                href="/scoreboard"
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
@@ -181,7 +181,7 @@ export default function PublicCoursePage() {
             {/* Back Button */}
             <div>
               <Link
-                href="/course"
+                href="/scoreboard"
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
