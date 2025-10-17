@@ -122,7 +122,8 @@ export default function PublicCoursePage() {
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
+          {/* Desktop Header */}
+          <div className="hidden sm:flex items-center justify-between py-4">
             <div className="flex items-center space-x-4">
               <Link
                 href="/course"
@@ -154,6 +155,64 @@ export default function PublicCoursePage() {
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {tournament.divisions.map((division) => (
+                  <option key={division.id} value={division.id}>
+                    {division.name}
+                  </option>
+                ))}
+              </select>
+              
+              <button
+                className="p-2 hover:bg-gray-100 rounded-md"
+                onClick={() => {
+                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                }}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Header */}
+          <div className="sm:hidden py-4 space-y-3">
+            {/* Back Button */}
+            <div>
+              <Link
+                href="/course"
+                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                <span className="text-sm font-medium">Back to Tournaments</span>
+              </Link>
+            </div>
+            
+            {/* Tournament Title */}
+            <div>
+              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+                Tournament Results: {tournament.title}
+              </h1>
+            </div>
+            
+            {/* Division Switcher */}
+            <div className="flex items-center justify-center space-x-2">
+              <button
+                className="p-2 hover:bg-gray-100 rounded-md"
+                onClick={() => {
+                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
+                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              
+              <select
+                value={selectedDivisionId}
+                onChange={(e) => setSelectedDivisionId(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center min-w-0 flex-1"
               >
                 {tournament.divisions.map((division) => (
                   <option key={division.id} value={division.id}>
@@ -471,11 +530,106 @@ export default function PublicCoursePage() {
                   <Card>
                     <CardHeader>
                       <CardTitle>Play-In</CardTitle>
+                      <p className="text-sm text-gray-600">
+                        Preliminary stage to reduce to {currentDivision.teams.length <= 4 ? '4' : 
+                                                           currentDivision.teams.length <= 8 ? '8' : '16'} participants
+                      </p>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-center text-gray-500 py-8">
-                        <p>Play-In matches will be shown here</p>
-                      </div>
+                      {hasPlayIn ? (
+                        <div className="space-y-3">
+                          {playInMatches.map((match) => {
+                            const hasResults = match.games && match.games.length > 0
+                            const scoreA = hasResults ? match.games[0]?.scoreA : null
+                            const scoreB = hasResults ? match.games[0]?.scoreB : null
+                            const winner = scoreA !== null && scoreB !== null ? (scoreA > scoreB ? 'A' : scoreB > scoreA ? 'B' : null) : null
+                            
+                            // Get seeds from standings
+                            const teamASeed = standings.find(s => s.teamId === match.teamA?.id)?.rank
+                            const teamBSeed = standings.find(s => s.teamId === match.teamB?.id)?.rank
+                            
+                            return (
+                              <div key={match.id} className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4">
+                                {/* Header - Match Status */}
+                                <div className="flex justify-between items-center mb-3">
+                                  <div className="text-xs text-gray-500 font-medium">Play-in</div>
+                                  {!hasResults ? (
+                                    <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                      Scheduled
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-full">
+                                      Completed
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Body - Teams and Scores */}
+                                <div className="space-y-2">
+                                  {/* Team A */}
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                      <div className="text-xs text-gray-500 font-medium w-6">
+                                        #{teamASeed || '?'}
+                                      </div>
+                                      <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA?.name || 'TBD'}>
+                                        {match.teamA?.name || 'TBD'}
+                                      </div>
+                                      {winner === 'A' && (
+                                        <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                          Winner
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className={`text-xl font-semibold font-mono tabular-nums ${
+                                      winner === 'A' ? 'text-blue-600' : 
+                                      winner === 'B' ? 'text-gray-400' : 
+                                      'text-blue-600'
+                                    }`}>
+                                      {scoreA !== null ? scoreA : '—'}
+                                    </div>
+                                  </div>
+
+                                  {/* Divider */}
+                                  <div className="border-t border-gray-100"></div>
+
+                                  {/* Team B */}
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                      <div className="text-xs text-gray-500 font-medium w-6">
+                                        #{teamBSeed || '?'}
+                                      </div>
+                                      <div className={`text-sm font-medium truncate ${
+                                        winner === 'B' ? 'text-gray-900' : 
+                                        winner === 'A' ? 'text-gray-500' : 
+                                        'text-gray-900'
+                                      }`} title={match.teamB?.name || 'TBD'}>
+                                        {match.teamB?.name || 'TBD'}
+                                      </div>
+                                      {winner === 'B' && (
+                                        <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                                          Winner
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className={`text-xl font-semibold font-mono tabular-nums ${
+                                      winner === 'B' ? 'text-blue-600' : 
+                                      winner === 'A' ? 'text-gray-400' : 
+                                      'text-blue-600'
+                                    }`}>
+                                      {scoreB !== null ? scoreB : '—'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center text-gray-500 py-8">
+                          <p>No Play-In matches for this division</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
