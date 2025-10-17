@@ -728,6 +728,10 @@ export const standingsRouter = createTRPCRouter({
                 teamBId: playoffTeams[teamBIndex].teamId,
                 stage: 'ELIMINATION',
                 roundIndex: round,
+                bestOfMode: 'FIXED_GAMES',
+                gamesCount: 1,
+                targetPoints: 11,
+                winBy: 2,
               }
             })
           }
