@@ -138,14 +138,6 @@ export default function LoginPage() {
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
-
-            <div className="mt-6 text-center">
-              <div className="text-xs text-gray-500">
-                <p>Demo credentials:</p>
-                <p><strong>Username:</strong> Admin</p>
-                <p><strong>Password:</strong> 1234</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
