@@ -270,7 +270,11 @@ export default function DivisionStageManagement() {
 
   const handleRegeneratePlayoffs = () => {
     if (selectedDivisionId) {
-      regeneratePlayoffsMutation.mutate({ divisionId: selectedDivisionId })
+      generatePlayoffsMutation.mutate({ 
+        divisionId: selectedDivisionId,
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
+        regenerate: true
+      })
     }
   }
 
