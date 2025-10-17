@@ -110,8 +110,8 @@ export default function TournamentDetailPage() {
       title: tournament.title,
       description: tournament.description || '',
       venueName: tournament.venueName || '',
-      startDate: tournament.startDate.toISOString().split('T')[0],
-      endDate: tournament.endDate.toISOString().split('T')[0],
+      startDate: new Date(tournament.startDate).toISOString().split('T')[0],
+      endDate: new Date(tournament.endDate).toISOString().split('T')[0],
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
     })
