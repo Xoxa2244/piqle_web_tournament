@@ -110,19 +110,19 @@ export default function DivisionStageManagement() {
     }
   })
 
-  const regeneratePlayInAndPlayoffMutation = trpc.standings.regeneratePlayInAndPlayoff.useMutation({
+  const regeneratePlayInMutation = trpc.standings.generatePlayoffs.useMutation({
     onSuccess: () => {
-      console.log('regeneratePlayInAndPlayoffMutation success')
+      console.log('regeneratePlayInMutation success')
       refetchDivision()
       refetchTournament()
     },
     onError: (error) => {
-      console.error('regeneratePlayInAndPlayoffMutation error:', error)
-      alert(`Error regenerating Play-In and Play-Off: ${error.message}`)
+      console.error('regeneratePlayInMutation error:', error)
+      alert(`Error regenerating Play-In: ${error.message}`)
     }
   })
 
-  const regeneratePlayoffsMutation = trpc.standings.regeneratePlayoffs.useMutation({
+  const generateNextPlayoffRoundMutation = trpc.standings.generateNextPlayoffRound.useMutation({
     onSuccess: () => {
       console.log('regeneratePlayoffsMutation success')
       refetchDivision()
@@ -341,8 +341,12 @@ export default function DivisionStageManagement() {
       // Regenerate Round Robin
       handleRegenerateRR()
     } else if (regenerateType === 'playin') {
-      // Regenerate both Play-In and Play-Off
-      regeneratePlayInAndPlayoffMutation.mutate({ divisionId: selectedDivisionId })
+      // Regenerate Play-In (resets both Play-In and Play-Off, but recreates only Play-In)
+      regeneratePlayInMutation.mutate({ 
+        divisionId: selectedDivisionId, 
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
+        regenerate: true
+      })
     } else if (regenerateType === 'playoff') {
       // Regenerate Play-Off
       handleRegeneratePlayoffs()
@@ -863,7 +867,7 @@ export default function DivisionStageManagement() {
                     className="flex items-center space-x-2"
                   >
                     <RotateCcw className="h-4 w-4" />
-                    <span>Regenerate Play-In & Play-Off</span>
+                    <span>Regenerate Play-In</span>
                   </Button>
                 )}
               </div>
@@ -1181,14 +1185,14 @@ export default function DivisionStageManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">
-              Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In & Play-Off' : 'Play-Off'}
+              Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
             </h3>
             <p className="text-gray-600 mb-6">
               {regenerateType === 'rr' 
                 ? 'All Round Robin matches will be reset. This will allow teams to be redistributed across pools and create new matches. Continue?'
                 : regenerateType === 'playin' 
-                  ? 'All Play-In and Play-Off matches will be reset. You can then regenerate them with updated results. Continue?'
-                  : 'All Play-Off results will be reset. Continue?'
+                  ? 'All Play-In and Play-Off matches will be reset. Play-In will be regenerated based on current Round Robin results. Continue?'
+                  : 'All Play-Off matches will be reset and regenerated. Continue?'
               }
             </p>
             <div className="flex justify-end space-x-3">

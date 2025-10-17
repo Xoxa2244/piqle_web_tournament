@@ -616,6 +616,31 @@ export const standingsRouter = createTRPCRouter({
       divisionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Get division with teams and matches
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: true,
+          matches: {
+            where: { stage: 'ROUND_ROBIN' },
+            include: {
+              teamA: true,
+              teamB: true,
+              games: true,
+            },
+          },
+          tournament: { select: { id: true } },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (division.teams.length < 2) {
+        throw new Error('Need at least 2 teams to generate playoffs')
+      }
+
       // Delete all existing Play-Off matches
       await ctx.prisma.match.deleteMany({
         where: {
@@ -624,32 +649,95 @@ export const standingsRouter = createTRPCRouter({
         }
       })
 
+      // Calculate standings from Round Robin
+      const teamStats: Map<string, TeamStats> = new Map()
+      
+      division.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: 0,
+          losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+          pointDiff: 0,
+          headToHead: new Map()
+        })
+      })
+
+      // Process Round Robin matches
+      division.matches.forEach(match => {
+        if (match.games.length === 0) return
+
+        const game = match.games[0]
+        const teamAStats = teamStats.get(match.teamAId)!
+        const teamBStats = teamStats.get(match.teamBId)!
+
+        teamAStats.pointsFor += game.scoreA
+        teamAStats.pointsAgainst += game.scoreB
+        teamBStats.pointsFor += game.scoreB
+        teamBStats.pointsAgainst += game.scoreA
+
+        if (game.scoreA > game.scoreB) {
+          teamAStats.wins++
+          teamBStats.losses++
+        } else if (game.scoreB > game.scoreA) {
+          teamBStats.wins++
+          teamAStats.losses++
+        }
+      })
+
+      // Calculate point differentials
+      teamStats.forEach(stats => {
+        stats.pointDiff = stats.pointsFor - stats.pointsAgainst
+      })
+
+      // Sort teams by standings
+      const sortedTeams = Array.from(teamStats.values())
+        .sort((a, b) => {
+          if (b.wins !== a.wins) return b.wins - a.wins
+          if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff
+          return b.pointsFor - a.pointsFor
+        })
+
+      // Determine bracket size
+      const teamCount = sortedTeams.length
+      let targetBracketSize = 4
+      if (teamCount <= 8) targetBracketSize = 4
+      else if (teamCount <= 16) targetBracketSize = 8
+      else if (teamCount <= 24) targetBracketSize = 16
+      else if (teamCount <= 32) targetBracketSize = 32
+      else targetBracketSize = 64
+
+      // Generate Play-Off matches
+      const playoffTeams = sortedTeams.slice(0, targetBracketSize)
+      const rounds = Math.log2(targetBracketSize)
+      
+      for (let round = 0; round < rounds; round++) {
+        const matchesInRound = Math.pow(2, rounds - round - 1)
+        
+        for (let match = 0; match < matchesInRound; match++) {
+          const teamAIndex = match * 2
+          const teamBIndex = match * 2 + 1
+          
+          if (teamAIndex < playoffTeams.length && teamBIndex < playoffTeams.length) {
+            await ctx.prisma.match.create({
+              data: {
+                divisionId: input.divisionId,
+                teamAId: playoffTeams[teamAIndex].teamId,
+                teamBId: playoffTeams[teamBIndex].teamId,
+                stage: 'ELIMINATION',
+                roundIndex: round,
+              }
+            })
+          }
+        }
+      }
+
       // Reset division stage to PO_R1_SCHEDULED
       await ctx.prisma.division.update({
         where: { id: input.divisionId },
         data: { stage: 'PO_R1_SCHEDULED' as any },
-      })
-
-      return { success: true }
-    }),
-
-  regeneratePlayInAndPlayoff: tdProcedure
-    .input(z.object({ 
-      divisionId: z.string(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      // Delete all existing Play-In and Play-Off matches
-      await ctx.prisma.match.deleteMany({
-        where: {
-          divisionId: input.divisionId,
-          stage: { in: ['PLAY_IN', 'ELIMINATION'] }
-        }
-      })
-
-      // Reset division stage to RR_COMPLETE (so Play-In can be regenerated)
-      await ctx.prisma.division.update({
-        where: { id: input.divisionId },
-        data: { stage: 'RR_COMPLETE' as any },
       })
 
       return { success: true }
