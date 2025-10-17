@@ -275,7 +275,7 @@ export default function DivisionStageManagement() {
   }
 
   const handleRegeneratePlayoffs = () => {
-    alert('Функция в разработке. Если вам нужно перегенерировать плей-офф, перегенерите "PlayIn".')
+    alert('Function under development. If you need to regenerate playoffs, please regenerate "PlayIn" instead.')
     return
     
     console.log('=== handleRegeneratePlayoffs called ===')
