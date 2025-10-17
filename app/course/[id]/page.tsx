@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +13,8 @@ import {
   ChevronRight,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  ArrowLeft
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 
@@ -121,7 +123,15 @@ export default function PublicCoursePage() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
-            <div>
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/course"
+                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                <span className="text-sm font-medium">Back to Tournaments</span>
+              </Link>
+              <div className="h-6 w-px bg-gray-300"></div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Tournament Results: {tournament.title}
               </h1>
