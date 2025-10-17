@@ -392,19 +392,12 @@ export const standingsRouter = createTRPCRouter({
         const playInTeams = standings.slice(N - 2 * E) // Bottom 2E teams
         const autoQualified = standings.slice(0, N - 2 * E) // Top teams auto-qualify
 
-        // Only generate play-in matches if not regenerating Play-Off only
-        if (input.regenerateType !== 'playoff') {
-          // Generate play-in matches
-          const playInMatches = generatePlayInMatches(playInTeams, 0)
-          matches.push(...playInMatches)
+        // Generate play-in matches
+        const playInMatches = generatePlayInMatches(playInTeams, 0)
+        matches.push(...playInMatches)
 
-          // DO NOT generate playoff matches yet - they will be generated after play-in completion
-          // This prevents premature playoff generation before play-in results are known
-        } else {
-          // For Play-Off regeneration, generate Play-Off matches based on existing Play-In results
-          const playoffMatches = generateSingleEliminationMatches(standings, 0)
-          matches.push(...playoffMatches)
-        }
+        // DO NOT generate playoff matches yet - they will be generated after play-in completion
+        // This prevents premature playoff generation before play-in results are known
       } else {
         throw new Error(`Invalid team count ${N} for bracket size ${B}`)
       }
