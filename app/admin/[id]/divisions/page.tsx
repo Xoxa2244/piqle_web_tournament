@@ -906,15 +906,12 @@ export default function DivisionsPage() {
   }
 
   const optimisticAddPlayer = (teamId: string, playerId: string, slotIndex: number) => {
-    // Remove player from availablePlayers optimistically
-    setAvailablePlayers(prev => prev.filter(p => p.id !== playerId))
-    
     setLocalDivisions(prevDivisions => {
       return prevDivisions.map(division => ({
         ...division,
         teams: division.teams.map(team => {
           if (team.id === teamId) {
-            // Find the player in available players
+            // Find the player in available players BEFORE removing them
             const player = availablePlayers.find(p => p.id === playerId)
             if (!player) return team
             
@@ -941,6 +938,9 @@ export default function DivisionsPage() {
         })
       }))
     })
+    
+    // Remove player from availablePlayers after successfully adding to team
+    setAvailablePlayers(prev => prev.filter(p => p.id !== playerId))
   }
 
   const filteredDivisions = useMemo(() => {
