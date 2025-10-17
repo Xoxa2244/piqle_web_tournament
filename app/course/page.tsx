@@ -86,7 +86,7 @@ export default function PublicTournamentsPage() {
                   )}
 
                   {/* Entry Fee */}
-                  {tournament.entryFee && tournament.entryFee > 0 && (
+                  {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
                     <div className="flex items-center text-sm text-gray-600">
                       <Trophy className="h-4 w-4 mr-2" />
                       <span>Entry Fee: ${tournament.entryFee}</span>
