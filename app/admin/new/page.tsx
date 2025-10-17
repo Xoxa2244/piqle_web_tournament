@@ -6,6 +6,9 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+// Force dynamic rendering to prevent static generation issues
+export const dynamic = 'force-dynamic'
+
 export default function NewTournamentPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({

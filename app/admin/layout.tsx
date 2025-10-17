@@ -1,11 +1,23 @@
+'use client'
+
 import Link from 'next/link'
+import { useCallback } from 'react'
 import AuthGuard from '@/components/AuthGuard'
+
+// Force dynamic rendering to prevent static generation issues
+export const dynamic = 'force-dynamic'
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const handleLogout = useCallback(() => {
+    sessionStorage.removeItem('isAuthenticated')
+    localStorage.removeItem('isAuthenticated')
+    window.location.href = '/login'
+  }, [])
+
   return (
     <AuthGuard>
       <div className="min-h-screen bg-gray-50">
@@ -29,11 +41,7 @@ export default function AdminLayout({
                   Home
                 </Link>
                 <button
-                  onClick={() => {
-                    sessionStorage.removeItem('isAuthenticated')
-                    localStorage.removeItem('isAuthenticated')
-                    window.location.href = '/login'
-                  }}
+                  onClick={handleLogout}
                   className="text-red-600 hover:text-red-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Logout
