@@ -345,16 +345,18 @@ export const standingsRouter = createTRPCRouter({
         throw new Error(`Not enough teams for ${B}-team bracket. Have ${N}, need ${B}`)
       }
 
-      // Check if playoffs already exist
-      const existingPlayoffs = await ctx.prisma.match.findMany({
-        where: { 
-          divisionId: input.divisionId,
-          stage: { in: ['PLAY_IN', 'ELIMINATION'] },
-        },
-      })
+      // Check if playoffs already exist (only if not regenerating)
+      if (!input.regenerate) {
+        const existingPlayoffs = await ctx.prisma.match.findMany({
+          where: { 
+            divisionId: input.divisionId,
+            stage: { in: ['PLAY_IN', 'ELIMINATION'] },
+          },
+        })
 
-      if (existingPlayoffs.length > 0) {
-        throw new Error('Playoffs already generated for this division')
+        if (existingPlayoffs.length > 0) {
+          throw new Error('Playoffs already generated for this division')
+        }
       }
 
       // Check if play-in is complete (if it exists)
