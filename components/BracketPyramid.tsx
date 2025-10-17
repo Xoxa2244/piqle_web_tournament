@@ -296,7 +296,7 @@ export default function BracketPyramid({
           const finalRoundHeight = finalRound ? finalRound.matches.length * 192 + 32 : 256 // 192px per match + 32px header
           
           return (
-            <div className="ml-8 flex flex-col items-center justify-end space-y-2 bg-gray-100 rounded-lg p-4" style={{ height: `${finalRoundHeight}px` }}>
+            <div className="ml-8 flex flex-col items-center justify-center space-y-2 bg-gray-100 rounded-lg p-4" style={{ height: `${finalRoundHeight}px` }}>
               {/* Champion */}
               {winner && (
                 <div className="flex items-center space-x-1 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded-full">
