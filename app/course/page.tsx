@@ -1,14 +1,30 @@
 'use client'
 
+import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, MapPin, Users, Trophy } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, Eye } from 'lucide-react'
 
 export default function PublicTournamentsPage() {
+  const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const { data: tournaments, isLoading } = trpc.tournament.list.useQuery()
+
+  const truncateText = (text: string, maxLines: number = 3) => {
+    const lines = text.split('\n')
+    if (lines.length <= maxLines) return text
+    return lines.slice(0, maxLines).join('\n')
+  }
+
+  const formatText = (text: string) => {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>') // Code
+      .replace(/\n/g, '<br>') // Line breaks
+  }
 
   if (isLoading) {
     return (
@@ -45,8 +61,19 @@ export default function PublicTournamentsPage() {
                 <CardHeader>
                   <CardTitle className="text-xl">{tournament.title}</CardTitle>
                   {tournament.description && (
-                    <div className="mt-2 h-16 overflow-y-auto">
-                      <p className="text-gray-600 text-sm whitespace-pre-wrap break-words">{tournament.description}</p>
+                    <div className="mt-2">
+                      <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
+                        {truncateText(tournament.description)}
+                      </div>
+                      {tournament.description.split('\n').length > 3 && (
+                        <button
+                          onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description})}
+                          className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Show full description
+                        </button>
+                      )}
                     </div>
                   )}
                 </CardHeader>
@@ -117,6 +144,33 @@ export default function PublicTournamentsPage() {
           </div>
         )}
       </div>
+
+      {/* Description Modal */}
+      {selectedDescription && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900">{selectedDescription.title}</h2>
+              <p className="text-gray-600 mt-1">Tournament Description</p>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div 
+                className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: formatText(selectedDescription.description) }}
+              />
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <Button
+                onClick={() => setSelectedDescription(null)}
+                variant="outline"
+                className="px-6"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
