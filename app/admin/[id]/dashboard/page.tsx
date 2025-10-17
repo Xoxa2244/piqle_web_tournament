@@ -377,8 +377,7 @@ export default function DivisionDashboard() {
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
                     <p className="text-sm text-gray-600">
-                      Preliminary stage to reduce to {currentDivision.teams.length <= 4 ? '4' : 
-                                                           currentDivision.teams.length <= 8 ? '8' : '16'} participants
+                      Preliminary stage to reduce to the required number of participants
                     </p>
                   </CardHeader>
                   <CardContent>
