@@ -262,7 +262,6 @@ export default function PublicCoursePage() {
                               <th className="text-center py-2">PF</th>
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
-                              <th className="text-center py-2">H2H Diff</th>
                               <th className="text-center py-2">Status</th>
                             </tr>
                           </thead>
@@ -280,7 +279,6 @@ export default function PublicCoursePage() {
                                     {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
                                   </span>
                                 </td>
-                                <td className="py-2 text-center">—</td>
                                 <td className="py-2 text-center">
                                   {team.rank <= autoQualifiedCount && hasPlayIn ? (
                                     <Badge variant="default" className="bg-green-100 text-green-800">
