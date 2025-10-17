@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,10 @@ export default function NewTournamentPage() {
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
   }
+
+  const handleCancel = useCallback(() => {
+    router.back()
+  }, [router])
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -184,7 +188,7 @@ export default function NewTournamentPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.back()}
+                onClick={handleCancel}
               >
                 Cancel
               </Button>
