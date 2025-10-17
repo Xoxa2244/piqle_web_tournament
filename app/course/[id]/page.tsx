@@ -625,7 +625,8 @@ export default function PublicCoursePage() {
                         </div>
                       ) : (
                         <div className="text-center text-gray-500 py-8">
-                          <p>No Play-In matches for this division</p>
+                          <p>Play-In matches not started yet</p>
+                          <p className="text-sm text-gray-400 mt-1">Matches will appear here once Play-In begins</p>
                         </div>
                       )}
                     </CardContent>

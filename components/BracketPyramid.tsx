@@ -159,8 +159,8 @@ export default function BracketPyramid({
     return (
       <div className="text-center py-8">
         <Trophy className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-        <p className="text-gray-500">No playoff matches</p>
-        <p className="text-sm text-gray-400">Generate playoffs to display bracket</p>
+        <p className="text-gray-500">Playoff matches not started yet</p>
+        <p className="text-sm text-gray-400">Matches will appear here once playoffs begin</p>
       </div>
     )
   }
