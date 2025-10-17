@@ -17,7 +17,8 @@ export default function AdminPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
 
-  const truncateText = (text: string, maxLines: number = 3) => {
+  const truncateText = (text: string | null, maxLines: number = 3) => {
+    if (!text) return ''
     const lines = text.split('\n')
     if (lines.length <= maxLines) return text
     return lines.slice(0, maxLines).join('\n')
@@ -81,9 +82,9 @@ export default function AdminPage() {
                   <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
                     {truncateText(tournament.description)}
                   </div>
-                  {tournament.description.split('\n').length > 3 && (
+                  {tournament.description && tournament.description.split('\n').length > 3 && (
                     <button
-                      onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description})}
+                      onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
                       className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                     >
                       <Eye className="h-3 w-3 mr-1" />
