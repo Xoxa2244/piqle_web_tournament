@@ -20,10 +20,10 @@ export default function HomePage() {
               Tournament Director Console
             </Link>
             <Link
-              href="/t/demo"
+              href="/course/demo"
               className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
-              View Public Scoreboard
+              Scoreboard
             </Link>
           </div>
         </div>
