@@ -66,13 +66,19 @@ export default function DivisionStageManagement() {
   })
 
   const generatePlayoffsMutation = trpc.standings.generatePlayoffs.useMutation({
-    onSuccess: () => {
-      console.log('generatePlayoffs success')
+    onMutate: (variables) => {
+      console.log('=== generatePlayoffsMutation.onMutate called ===')
+      console.log('Variables:', variables)
+    },
+    onSuccess: (data) => {
+      console.log('=== generatePlayoffsMutation.onSuccess called ===')
+      console.log('Success data:', data)
       refetchDivision()
       refetchTournament()
     },
     onError: (error) => {
-      console.error('generatePlayoffs error:', error)
+      console.error('=== generatePlayoffsMutation.onError called ===')
+      console.error('Error details:', error)
     }
   })
 
@@ -269,12 +275,26 @@ export default function DivisionStageManagement() {
   }
 
   const handleRegeneratePlayoffs = () => {
+    console.log('=== handleRegeneratePlayoffs called ===')
+    console.log('selectedDivisionId:', selectedDivisionId)
+    console.log('targetBracketSize:', targetBracketSize)
+    console.log('targetBracketSize.toString():', targetBracketSize.toString())
+    console.log('regenerateType:', regenerateType)
+    
     if (selectedDivisionId) {
+      console.log('Calling generatePlayoffsMutation.mutate with:', {
+        divisionId: selectedDivisionId,
+        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
+        regenerate: true
+      })
+      
       generatePlayoffsMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
         regenerate: true
       })
+    } else {
+      console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
     }
   }
 
@@ -317,10 +337,16 @@ export default function DivisionStageManagement() {
   }
 
   const confirmRegenerate = () => {
+    console.log('=== confirmRegenerate called ===')
+    console.log('regenerateType:', regenerateType)
+    console.log('selectedDivisionId:', selectedDivisionId)
+    
     if (regenerateType === 'rr') {
+      console.log('Regenerating Round Robin')
       // Regenerate Round Robin
       handleRegenerateRR()
     } else if (regenerateType === 'playin') {
+      console.log('Regenerating Play-In')
       // Regenerate Play-In (resets both Play-In and Play-Off, but recreates only Play-In)
       regeneratePlayInMutation.mutate({ 
         divisionId: selectedDivisionId, 
@@ -328,8 +354,11 @@ export default function DivisionStageManagement() {
         regenerate: true
       })
     } else if (regenerateType === 'playoff') {
+      console.log('Regenerating Play-Off - calling handleRegeneratePlayoffs')
       // Regenerate Play-Off
       handleRegeneratePlayoffs()
+    } else {
+      console.error('Unknown regenerateType:', regenerateType)
     }
     setShowRegenerateModal(false)
     setRegenerateType(null)
