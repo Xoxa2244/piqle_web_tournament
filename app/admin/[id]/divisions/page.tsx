@@ -32,6 +32,28 @@ import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
+import { 
+  ChevronDown, 
+  ChevronRight, 
+  GripVertical, 
+  Users, 
+  Edit, 
+  Trash2, 
+  MoreVertical,
+  Plus,
+  Search,
+  Filter,
+  Grid3X3,
+  List,
+  Settings,
+  Copy,
+  Download,
+  ArrowLeft,
+  Clock,
+  Trophy,
+  Target,
+  AlertTriangle
+} from 'lucide-react'
 
 interface Team {
   id: string
