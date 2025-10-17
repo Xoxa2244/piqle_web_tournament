@@ -45,7 +45,9 @@ export default function PublicTournamentsPage() {
                 <CardHeader>
                   <CardTitle className="text-xl">{tournament.title}</CardTitle>
                   {tournament.description && (
-                    <p className="text-gray-600 text-sm mt-2">{tournament.description}</p>
+                    <div className="mt-2 h-16 overflow-y-auto">
+                      <p className="text-gray-600 text-sm whitespace-pre-wrap break-words">{tournament.description}</p>
+                    </div>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
