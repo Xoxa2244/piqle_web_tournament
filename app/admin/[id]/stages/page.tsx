@@ -275,6 +275,9 @@ export default function DivisionStageManagement() {
   }
 
   const handleRegeneratePlayoffs = () => {
+    alert('Функция в разработке. Если вам нужно перегенерировать плей-офф, перегенерите "PlayIn".')
+    return
+    
     console.log('=== handleRegeneratePlayoffs called ===')
     console.log('selectedDivisionId:', selectedDivisionId)
     console.log('targetBracketSize:', targetBracketSize)
