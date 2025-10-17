@@ -15,13 +15,24 @@ import {
   Target,
   ArrowLeft,
   Upload,
-  Globe
+  Globe,
+  Edit
 } from 'lucide-react'
 
 export default function TournamentDetailPage() {
   const params = useParams()
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
+  const [showEditTournament, setShowEditTournament] = useState(false)
+  const [tournamentForm, setTournamentForm] = useState({
+    title: '',
+    description: '',
+    venueName: '',
+    startDate: '',
+    endDate: '',
+    entryFee: '',
+    isPublicBoardEnabled: false,
+  })
   const [divisionForm, setDivisionForm] = useState({
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
@@ -35,6 +46,18 @@ export default function TournamentDetailPage() {
   })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
+  
+  const updateTournament = trpc.tournament.update.useMutation({
+    onSuccess: () => {
+      setShowEditTournament(false)
+      window.location.reload()
+    },
+    onError: (error) => {
+      console.error('Error updating tournament:', error)
+      alert('Error updating tournament: ' + error.message)
+    },
+  })
+  
   const createDivision = trpc.division.create.useMutation({
     onSuccess: () => {
       setShowCreateDivision(false)
@@ -70,6 +93,55 @@ export default function TournamentDetailPage() {
       minAge: divisionForm.minAge,
       maxAge: divisionForm.maxAge,
     })
+  }
+
+  const handlePublicScoreboardClick = () => {
+    if (!tournament?.isPublicBoardEnabled) {
+      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      return
+    }
+    window.open(`/course/${tournamentId}`, '_blank')
+  }
+
+  const handleEditTournamentClick = () => {
+    if (!tournament) return
+    
+    setTournamentForm({
+      title: tournament.title,
+      description: tournament.description || '',
+      venueName: tournament.venueName || '',
+      startDate: tournament.startDate.toISOString().split('T')[0],
+      endDate: tournament.endDate.toISOString().split('T')[0],
+      entryFee: tournament.entryFee?.toString() || '',
+      isPublicBoardEnabled: tournament.isPublicBoardEnabled,
+    })
+    setShowEditTournament(true)
+  }
+
+  const handleTournamentSubmit = () => {
+    if (!tournamentForm.title || !tournamentForm.startDate || !tournamentForm.endDate) {
+      alert('Please fill in required fields')
+      return
+    }
+
+    updateTournament.mutate({
+      id: tournamentId,
+      title: tournamentForm.title,
+      description: tournamentForm.description || undefined,
+      venueName: tournamentForm.venueName || undefined,
+      startDate: tournamentForm.startDate,
+      endDate: tournamentForm.endDate,
+      entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
+      isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
+    })
+  }
+
+  const handleTournamentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target
+    setTournamentForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }))
   }
 
   if (isLoading) {
@@ -131,15 +203,23 @@ export default function TournamentDetailPage() {
                 <Upload className="w-4 h-4 mr-2" />
                 <span className="font-medium">CSV Import</span>
               </Link>
-              {tournament.isPublicBoardEnabled && (
-                <Link
-                  href={`/t/${tournament.publicSlug}`}
-                  className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  <Globe className="w-4 h-4 mr-2" />
-                  <span className="font-medium">Public Board</span>
-                </Link>
-              )}
+              
+              <button
+                onClick={handlePublicScoreboardClick}
+                className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <Globe className="w-4 h-4 mr-2" />
+                <span className="font-medium">Public Scoreboard</span>
+              </button>
+              
+              <button
+                onClick={handleEditTournamentClick}
+                className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                <span className="font-medium">Edit Tournament</span>
+              </button>
+              
               <Link
                 href="/admin"
                 className="group flex items-center px-4 py-2.5 bg-slate-600 text-white rounded-xl hover:bg-slate-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -410,6 +490,139 @@ export default function TournamentDetailPage() {
                 className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 {createDivision.isPending ? 'Creating...' : 'Create Division'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Tournament Modal */}
+      {showEditTournament && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center mb-6">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
+                <Edit className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">Edit Tournament</h2>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Tournament Name *
+                </label>
+                <input
+                  type="text"
+                  name="title"
+                  value={tournamentForm.title}
+                  onChange={handleTournamentChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  placeholder="e.g., Pickleball Championship 2024"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  value={tournamentForm.description}
+                  onChange={handleTournamentChange}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  placeholder="Tournament description, rules, features..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Venue
+                </label>
+                <input
+                  type="text"
+                  name="venueName"
+                  value={tournamentForm.venueName}
+                  onChange={handleTournamentChange}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  placeholder="Sports complex name"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    name="startDate"
+                    value={tournamentForm.startDate}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    End Date *
+                  </label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    value={tournamentForm.endDate}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Entry Fee ($)
+                </label>
+                <input
+                  type="number"
+                  name="entryFee"
+                  value={tournamentForm.entryFee}
+                  onChange={handleTournamentChange}
+                  min="0"
+                  step="0.01"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="isPublicBoardEnabled"
+                  checked={tournamentForm.isPublicBoardEnabled}
+                  onChange={handleTournamentChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label className="ml-2 block text-sm text-gray-700">
+                  Enable public results board
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-8">
+              <Button
+                variant="outline"
+                onClick={() => setShowEditTournament(false)}
+                disabled={updateTournament.isPending}
+                className="px-6 py-2.5 rounded-xl border-slate-300 hover:bg-slate-50 transition-all duration-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleTournamentSubmit}
+                disabled={updateTournament.isPending}
+                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
             </div>
           </div>
