@@ -110,18 +110,6 @@ export default function DivisionStageManagement() {
     }
   })
 
-  const generateNextPlayoffRoundMutation = trpc.standings.generateNextPlayoffRound.useMutation({
-    onSuccess: () => {
-      console.log('regeneratePlayoffsMutation success')
-      refetchDivision()
-      refetchTournament()
-    },
-    onError: (error) => {
-      console.error('regeneratePlayoffsMutation error:', error)
-      alert(`Error regenerating Play-Off: ${error.message}`)
-    }
-  })
-
   const regenerateRRMutation = trpc.match.regenerateRR.useMutation({
     onSuccess: () => {
       console.log('regenerateRRMutation success')
