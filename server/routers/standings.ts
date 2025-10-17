@@ -622,7 +622,7 @@ export const standingsRouter = createTRPCRouter({
         include: {
           teams: true,
           matches: {
-            where: { stage: 'ROUND_ROBIN' },
+            where: { stage: { in: ['ROUND_ROBIN', 'PLAY_IN'] } },
             include: {
               teamA: true,
               teamB: true,
@@ -649,7 +649,7 @@ export const standingsRouter = createTRPCRouter({
         }
       })
 
-      // Calculate standings from Round Robin
+      // Calculate standings from Round Robin and Play-In matches
       const teamStats: Map<string, TeamStats> = new Map()
       
       division.teams.forEach(team => {
@@ -665,7 +665,7 @@ export const standingsRouter = createTRPCRouter({
         })
       })
 
-      // Process Round Robin matches
+      // Process Round Robin and Play-In matches
       division.matches.forEach(match => {
         if (match.games.length === 0) return
 
