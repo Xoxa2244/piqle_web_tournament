@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
-import { X, Users, Settings } from 'lucide-react'
+import { X, Users } from 'lucide-react'
 
 interface AddDivisionModalProps {
   isOpen: boolean
@@ -24,12 +24,7 @@ export default function AddDivisionModal({
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
     pairingMode: 'FIXED' as 'FIXED' | 'MIX_AND_MATCH',
-    poolCount: 1,
-    maxTeams: '',
-    minDupr: '',
-    maxDupr: '',
-    minAge: '',
-    maxAge: ''
+    poolCount: 1
   })
 
   const createDivisionMutation = trpc.division.create.useMutation({
@@ -40,12 +35,7 @@ export default function AddDivisionModal({
         name: '',
         teamKind: 'DOUBLES_2v2',
         pairingMode: 'FIXED',
-        poolCount: 1,
-        maxTeams: '',
-        minDupr: '',
-        maxDupr: '',
-        minAge: '',
-        maxAge: ''
+        poolCount: 1
       })
     },
     onError: (error) => {
@@ -66,12 +56,7 @@ export default function AddDivisionModal({
       name: formData.name.trim(),
       teamKind: formData.teamKind,
       pairingMode: formData.pairingMode,
-      poolCount: formData.poolCount,
-      maxTeams: formData.maxTeams ? parseInt(formData.maxTeams) : undefined,
-      minDupr: formData.minDupr ? parseFloat(formData.minDupr) : undefined,
-      maxDupr: formData.maxDupr ? parseFloat(formData.maxDupr) : undefined,
-      minAge: formData.minAge ? parseInt(formData.minAge) : undefined,
-      maxAge: formData.maxAge ? parseInt(formData.maxAge) : undefined,
+      poolCount: formData.poolCount
     })
   }
 
@@ -111,41 +96,6 @@ export default function AddDivisionModal({
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Team Type *
-              </label>
-              <select
-                name="teamKind"
-                value={formData.teamKind}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                required
-              >
-                <option value="SINGLES_1v1">Singles (1v1)</option>
-                <option value="DOUBLES_2v2">Doubles (2v2)</option>
-                <option value="SQUAD_4v4">Squad (4v4)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Pairing Mode *
-              </label>
-              <select
-                name="pairingMode"
-                value={formData.pairingMode}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                required
-              >
-                <option value="FIXED">Fixed Teams</option>
-                <option value="MIX_AND_MATCH">Mix & Match</option>
-              </select>
-            </div>
-          </div>
-
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               Number of Pools *
@@ -163,96 +113,6 @@ export default function AddDivisionModal({
             <p className="text-sm text-gray-500 mt-1">
               0 = Waitlist only, 1+ = Number of pools
             </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Maximum Teams (Optional)
-            </label>
-            <input
-              type="number"
-              name="maxTeams"
-              value={formData.maxTeams}
-              onChange={handleChange}
-              min="1"
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-              placeholder="Leave empty for unlimited"
-            />
-          </div>
-
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center">
-              <Settings className="w-5 h-5 mr-2" />
-              Constraints (Optional)
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Min DUPR Rating
-                </label>
-                <input
-                  type="number"
-                  name="minDupr"
-                  value={formData.minDupr}
-                  onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., 3.0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Max DUPR Rating
-                </label>
-                <input
-                  type="number"
-                  name="maxDupr"
-                  value={formData.maxDupr}
-                  onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., 5.0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Min Age
-                </label>
-                <input
-                  type="number"
-                  name="minAge"
-                  value={formData.minAge}
-                  onChange={handleChange}
-                  min="0"
-                  max="100"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., 18"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Max Age
-                </label>
-                <input
-                  type="number"
-                  name="maxAge"
-                  value={formData.maxAge}
-                  onChange={handleChange}
-                  min="0"
-                  max="100"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                  placeholder="e.g., 65"
-                />
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end space-x-3 pt-6">
