@@ -291,7 +291,8 @@ export default function DivisionStageManagement() {
       generatePlayoffsMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
-        regenerate: true
+        regenerate: true,
+        regenerateType: 'playoff'
       })
     } else {
       console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
@@ -351,7 +352,8 @@ export default function DivisionStageManagement() {
       regeneratePlayInMutation.mutate({ 
         divisionId: selectedDivisionId, 
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
-        regenerate: true
+        regenerate: true,
+        regenerateType: 'playin'
       })
     } else if (regenerateType === 'playoff') {
       console.log('Regenerating Play-Off - calling handleRegeneratePlayoffs')
@@ -858,7 +860,8 @@ export default function DivisionStageManagement() {
                       // Generate Play-In through standings.generatePlayoffs
                       generatePlayoffsMutation.mutate({ 
                         divisionId: selectedDivisionId, 
-                        bracketSize: targetBracketSize.toString() as "4" | "8" | "16"
+                        bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
+                        regenerateType: 'playin'
                       })
                     }}
                     disabled={generatePlayoffsMutation.isPending}
