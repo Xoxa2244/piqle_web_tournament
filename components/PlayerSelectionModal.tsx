@@ -117,7 +117,7 @@ export default function PlayerSelectionModal({
 
         {/* Player List */}
         <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto p-6">
+          <div className="h-full overflow-y-auto p-6 max-h-96">
             {filteredPlayers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
