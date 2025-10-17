@@ -26,28 +26,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  GripVertical, 
-  Users, 
-  Edit, 
-  Trash2, 
-  MoreVertical,
-  Plus,
-  Search,
-  Filter,
-  Grid3X3,
-  List,
-  Settings,
-  Copy,
-  Download,
-  ArrowLeft,
-  Clock,
-  Trophy,
-  Target,
-  AlertTriangle
-} from 'lucide-react'
+import AddDivisionModal from '@/components/AddDivisionModal'
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
@@ -592,6 +571,7 @@ export default function DivisionsPage() {
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
+  const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
@@ -1282,7 +1262,10 @@ export default function DivisionsPage() {
                 <span>Board</span>
               </Button>
               
-              <Button className="flex items-center space-x-2">
+              <Button 
+                className="flex items-center space-x-2"
+                onClick={() => setShowAddDivisionModal(true)}
+              >
                 <Plus className="h-4 w-4" />
                 <span>Create Division</span>
               </Button>
@@ -1410,6 +1393,16 @@ export default function DivisionsPage() {
           setShowAddTeamModal(false)
           setSelectedDivisionForTeam(null)
         }}
+        onSuccess={() => {
+          refetch()
+        }}
+      />
+
+      {/* Add Division Modal */}
+      <AddDivisionModal
+        isOpen={showAddDivisionModal}
+        onClose={() => setShowAddDivisionModal(false)}
+        tournamentId={tournamentId}
         onSuccess={() => {
           refetch()
         }}
