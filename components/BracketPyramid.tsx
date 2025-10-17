@@ -167,7 +167,7 @@ export default function BracketPyramid({
 
   return (
     <div className="w-full overflow-x-auto">
-      <div className="flex justify-center min-w-max">
+      <div className="flex justify-start min-w-max">
         <div className="flex items-start space-x-8 py-4">
           {rounds.map((round, roundIdx) => (
             <div key={round.roundIndex} className="flex flex-col items-center relative">
@@ -291,8 +291,12 @@ export default function BracketPyramid({
           const winner = getWinner(finalMatch)
           const { secondPlace, thirdPlace } = getPlacementTeams()
           
+          // Find the final round to match its height
+          const finalRound = rounds.find(r => r.roundName === 'Final')
+          const finalRoundHeight = finalRound ? finalRound.matches.length * 192 + 32 : 256 // 192px per match + 32px header
+          
           return (
-            <div className="ml-8 flex flex-col items-center justify-center space-y-2 bg-gray-100 rounded-lg p-4 h-64">
+            <div className="ml-8 flex flex-col items-center justify-end space-y-2 bg-gray-100 rounded-lg p-4" style={{ height: `${finalRoundHeight}px` }}>
               {/* Champion */}
               {winner && (
                 <div className="flex items-center space-x-1 bg-yellow-50 border border-yellow-200 px-2 py-1 rounded-full">

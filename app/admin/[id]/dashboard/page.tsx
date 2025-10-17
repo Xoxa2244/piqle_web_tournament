@@ -193,26 +193,7 @@ export default function DivisionDashboard() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
               <p className="text-gray-600">{tournament.title}</p>
-              {currentDivision && (
-                <div className="mt-2">
-                  <Badge variant="outline" className="mr-2">
-                    {currentStage.replace(/_/g, ' ')}
-                  </Badge>
-                  <span className="text-sm text-gray-500">
-                    {currentDivision.teams.length} teams
-                  </span>
-                  {(currentStage.endsWith('_COMPLETE') && !currentStage.includes('DIVISION_COMPLETE')) && (
-                    <Button 
-                      size="sm" 
-                      className="ml-2"
-                      onClick={handleTransitionToNextStage}
-                      disabled={transitionToNextStageMutation.isPending}
-                    >
-                      {transitionToNextStageMutation.isPending ? 'Transitioning...' : 'Next Stage'}
-                    </Button>
-                  )}
-                </div>
-              )}
+              {/* Status badges hidden per user request */}
             </div>
             
             {/* Division Switcher */}
