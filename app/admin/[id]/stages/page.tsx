@@ -40,6 +40,7 @@ export default function DivisionStageManagement() {
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
+  const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -150,6 +151,7 @@ export default function DivisionStageManagement() {
       refetchDivision()
       refetchTournament()
       setShowPlayoffSwapModal(false)
+      setShowSemifinalSwapModal(false)
     }
   })
 
@@ -161,6 +163,13 @@ export default function DivisionStageManagement() {
   const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
+  
+  // Determine semifinal matches (2 matches in same round without third place match)
+  const semifinalMatches = eliminationMatches.filter(match => {
+    const roundMatches = eliminationMatches.filter(m => m.roundIndex === match.roundIndex)
+    const hasThirdPlaceMatch = roundMatches.some(m => m.note === 'Third Place Match')
+    return roundMatches.length === 2 && !hasThirdPlaceMatch
+  })
   
   console.log('Matches data:', {
     totalMatches: matches.length,
@@ -352,6 +361,15 @@ export default function DivisionStageManagement() {
   }
 
   const handleSwapPlayoffTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+    if (selectedDivisionId) {
+      swapPlayoffTeamsMutation.mutate({
+        divisionId: selectedDivisionId,
+        swaps
+      })
+    }
+  }
+
+  const handleSwapSemifinalTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
     if (selectedDivisionId) {
       swapPlayoffTeamsMutation.mutate({
         divisionId: selectedDivisionId,
@@ -1136,7 +1154,20 @@ export default function DivisionStageManagement() {
                   
                   return (
                     <div key={roundIndex} className="space-y-4">
-                      <h4 className="font-medium text-lg">{roundName}</h4>
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-lg">{roundName}</h4>
+                        {roundName === 'Semi-Final' && (
+                          <Button
+                            onClick={() => setShowSemifinalSwapModal(true)}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                            <span>Edit Pairs</span>
+                          </Button>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {roundMatches.map((match) => {
                           // Check if this is a third place match
@@ -1233,6 +1264,22 @@ export default function DivisionStageManagement() {
           onClose={() => setShowPlayoffSwapModal(false)}
           onSubmit={handleSwapPlayoffTeams}
           matches={eliminationMatches.map(match => ({
+            id: match.id,
+            teamA: { id: match.teamAId, name: match.teamA.name },
+            teamB: { id: match.teamBId, name: match.teamB.name }
+          }))}
+          teams={teams.map(team => ({ id: team.id, name: team.name }))}
+          isLoading={swapPlayoffTeamsMutation.isPending}
+        />
+      )}
+
+      {/* Semifinal swap modal */}
+      {showSemifinalSwapModal && (
+        <PlayoffSwapModal
+          isOpen={showSemifinalSwapModal}
+          onClose={() => setShowSemifinalSwapModal(false)}
+          onSubmit={handleSwapSemifinalTeams}
+          matches={semifinalMatches.map(match => ({
             id: match.id,
             teamA: { id: match.teamAId, name: match.teamA.name },
             teamB: { id: match.teamBId, name: match.teamB.name }
