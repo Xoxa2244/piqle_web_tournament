@@ -16,7 +16,8 @@ import {
   Trophy,
   Users,
   Target,
-  RefreshCw
+  RefreshCw,
+  Edit3
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
+import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 
 export default function DivisionStageManagement() {
   const router = useRouter()
@@ -37,6 +39,7 @@ export default function DivisionStageManagement() {
   const [showPlayoffMatches, setShowPlayoffMatches] = useState(true)
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
+  const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -139,6 +142,14 @@ export default function DivisionStageManagement() {
     onSuccess: () => {
       refetchDivision()
       refetchTournament()
+    }
+  })
+
+  const swapPlayoffTeamsMutation = trpc.standings.swapPlayoffTeams.useMutation({
+    onSuccess: () => {
+      refetchDivision()
+      refetchTournament()
+      setShowPlayoffSwapModal(false)
     }
   })
 
@@ -337,6 +348,15 @@ export default function DivisionStageManagement() {
   const handleFillRandomResults = () => {
     if (selectedDivisionId) {
       fillRandomResultsMutation.mutate({ divisionId: selectedDivisionId })
+    }
+  }
+
+  const handleSwapPlayoffTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+    if (selectedDivisionId) {
+      swapPlayoffTeamsMutation.mutate({
+        divisionId: selectedDivisionId,
+        swaps
+      })
     }
   }
 
@@ -1055,14 +1075,25 @@ export default function DivisionStageManagement() {
               )}
               
               {eliminationMatches.length > 0 && (
-                <Button
-                  onClick={() => handleRegenerate('playoff')}
-                  variant="outline"
-                  className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  <span>Regenerate Play-Off</span>
-                </Button>
+                <>
+                  <Button
+                    onClick={() => setShowPlayoffSwapModal(true)}
+                    variant="outline"
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit Playoff Pairs</span>
+                  </Button>
+                  
+                  <Button
+                    onClick={() => handleRegenerate('playoff')}
+                    variant="outline"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Regenerate Play-Off</span>
+                  </Button>
+                </>
               )}
             </div>
 
@@ -1192,6 +1223,22 @@ export default function DivisionStageManagement() {
           teamBName={selectedMatch.teamB.name}
           poolName={selectedMatch.teamA.pool?.name}
           isLoading={updateMatchResultMutation.isPending}
+        />
+      )}
+
+      {/* Playoff swap modal */}
+      {showPlayoffSwapModal && (
+        <PlayoffSwapModal
+          isOpen={showPlayoffSwapModal}
+          onClose={() => setShowPlayoffSwapModal(false)}
+          onSubmit={handleSwapPlayoffTeams}
+          matches={eliminationMatches.map(match => ({
+            id: match.id,
+            teamA: { id: match.teamAId, name: match.teamA.name },
+            teamB: { id: match.teamBId, name: match.teamB.name }
+          }))}
+          teams={teams.map(team => ({ id: team.id, name: team.name }))}
+          isLoading={swapPlayoffTeamsMutation.isPending}
         />
       )}
 
