@@ -927,6 +927,57 @@ export const standingsRouter = createTRPCRouter({
         playInWinners: playInWinners.length,
       }
     }),
+
+  swapPlayoffTeams: tdProcedure
+    .input(z.object({
+      divisionId: z.string(),
+      swaps: z.array(z.object({
+        matchId: z.string(),
+        newTeamAId: z.string(),
+        newTeamBId: z.string()
+      }))
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get division to verify it exists and get tournament ID
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          tournament: { select: { id: true } }
+        }
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      // Update each match with new team assignments
+      for (const swap of input.swaps) {
+        await ctx.prisma.match.update({
+          where: { id: swap.matchId },
+          data: {
+            teamAId: swap.newTeamAId,
+            teamBId: swap.newTeamBId
+          }
+        })
+      }
+
+      // Log the swap operation
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: division.tournament.id,
+          action: 'SWAP_PLAYOFF_TEAMS',
+          entityType: 'Division',
+          entityId: input.divisionId,
+          payload: {
+            divisionId: input.divisionId,
+            swaps: input.swaps
+          },
+        },
+      })
+
+      return { success: true, swapsCount: input.swaps.length }
+    }),
 })
 
 // Helper functions
