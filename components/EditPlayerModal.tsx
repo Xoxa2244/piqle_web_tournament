@@ -80,8 +80,8 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
         email: email.trim() || undefined,
         dupr: dupr.trim() || undefined,
         duprRating: duprRating ? parseFloat(duprRating) : undefined,
-        isPaid,
-        isWaitlist,
+        isPaid: isPaid ?? false,
+        isWaitlist: isWaitlist ?? false,
       })
     } catch (error) {
       // Error handling is done in the mutation onError
