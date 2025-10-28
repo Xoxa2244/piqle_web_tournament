@@ -276,6 +276,7 @@ export const divisionStageRouter = createTRPCRouter({
       }
 
       const currentStageMatches = division.matches.filter(m => {
+        if (!division.stage) return false
         if (division.stage.startsWith('RR_')) return m.stage === 'ROUND_ROBIN'
         if (division.stage.startsWith('PLAY_IN_')) return m.stage === 'PLAY_IN'
         if (division.stage.startsWith('PO_') || division.stage.startsWith('FINAL_')) {
