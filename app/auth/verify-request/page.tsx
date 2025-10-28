@@ -24,7 +24,7 @@ export default function VerifyRequestPage() {
               <p className="font-medium">Email sent!</p>
               <p className="mt-1">Click the link in the email to sign in.</p>
               <p className="mt-2 text-blue-600">
-                Check your spam folder if you don't see it.
+                Check your spam folder if you don&apos;t see it.
               </p>
             </div>
           </div>
