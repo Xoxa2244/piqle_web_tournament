@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,44 +8,36 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  role          UserRole  @default(TD)
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // Auth relations (NextAuth)
-  accounts Account[]
-  sessions Session[]
-
-  // Relations
-  tournaments          Tournament[]
+  id                   String                @id @default(uuid())
+  email                String                @unique
+  name                 String?
+  role                 UserRole              @default(TD)
+  isActive             Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  accounts             Account[]
   assistantAssignments AssistantAssignment[]
-  auditLogs           AuditLog[]
+  auditLogs            AuditLog[]
+  sessions             Session[]
+  tournaments          Tournament[]
 
   @@map("users")
 }
 
-// NextAuth required models
 model Account {
   id                String  @id @default(uuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
@@ -66,7 +55,7 @@ model Session {
 
 model VerificationToken {
   identifier String
-  token      String   @unique
+  token      String   @id
   expires    DateTime
 
   @@unique([identifier, token])
@@ -74,8 +63,7 @@ model VerificationToken {
 }
 
 model Tournament {
-  id                   String   @id @default(uuid())
-  userId               String
+  id                   String            @id @default(uuid())
   title                String
   description          String?
   rulesUrl             String?
@@ -83,81 +71,74 @@ model Tournament {
   venueAddress         String?
   startDate            DateTime
   endDate              DateTime
-  entryFee             Decimal? @db.Decimal(10, 2)
-  isPublicBoardEnabled Boolean  @default(false)
-  publicSlug           String?  @unique
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  // Relations
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  divisions   Division[]
-  prizes      Prize[]
-  rrGroups    RoundRobinGroup[]
-  importJobs  ImportJob[]
-  auditLogs   AuditLog[]
-  players     Player[]
+  entryFee             Decimal?          @db.Decimal(10, 2)
+  isPublicBoardEnabled Boolean           @default(false)
+  publicSlug           String?           @unique
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  userId               String
+  auditLogs            AuditLog[]
+  divisions            Division[]
+  importJobs           ImportJob[]
+  players              Player[]
+  prizes               Prize[]
+  rrGroups             RoundRobinGroup[]
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
 
   @@map("tournaments")
 }
 
 model Prize {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   tournamentId String
   divisionId   String?
   place        Int
   label        String
-  amount       Decimal? @db.Decimal(10, 2)
-  kind         PrizeKind @default(CASH)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  division   Division? @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  amount       Decimal?   @db.Decimal(10, 2)
+  kind         PrizeKind  @default(CASH)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  division     Division?  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   @@map("prizes")
 }
 
 model Division {
-  id           String      @id @default(uuid())
-  tournamentId String
-  name         String
-  teamKind     TeamKind
-  pairingMode  PairingMode
-  poolCount    Int         @default(1)  // Number of pools (1 = no pools)
-  maxTeams     Int?
-  stage        DivisionStage @default(RR_IN_PROGRESS)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  // Relations
-  tournament         Tournament           @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  constraints        DivisionConstraints?
+  id                   String                @id @default(uuid())
+  tournamentId         String
+  name                 String
+  teamKind             TeamKind
+  pairingMode          PairingMode
+  maxTeams             Int?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  stage                DivisionStage?        @default(RR_IN_PROGRESS)
+  poolCount            Int                   @default(1)
   assistantAssignments AssistantAssignment[]
-  pools              Pool[]
-  teams              Team[]
-  rrBindings         DivisionRRBinding[]
-  matches            Match[]
-  standings          Standing[]
-  prizes             Prize[]
+  constraints          DivisionConstraints?
+  rrBindings           DivisionRRBinding[]
+  tournament           Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches              Match[]
+  pools                Pool[]
+  prizes               Prize[]
+  standings            Standing[]
+  teams                Team[]
 
   @@map("divisions")
 }
 
 model DivisionConstraints {
-  id         String   @id @default(uuid())
-  divisionId String   @unique
-  minDupr    Decimal? @db.Decimal(4, 2)
-  maxDupr    Decimal? @db.Decimal(4, 2)
+  id         String           @id @default(uuid())
+  divisionId String           @unique
+  minDupr    Decimal?         @db.Decimal(4, 2)
+  maxDupr    Decimal?         @db.Decimal(4, 2)
   minAge     Int?
   maxAge     Int?
   genders    GenderConstraint @default(ANY)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
 
   @@map("division_constraints")
 }
@@ -168,207 +149,185 @@ model AssistantAssignment {
   divisionId String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-
-  // Relations
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, divisionId])
   @@map("assistant_assignments")
 }
 
 model Pool {
-  id         String   @id @default(uuid())
+  id         String     @id @default(uuid())
   divisionId String
   name       String
   order      Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  teams    Team[]
-  matches  Match[]
-  standings Standing[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  matches    Match[]
+  division   Division   @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  standings  Standing[]
+  teams      Team[]
 
   @@map("pools")
 }
 
 model Team {
-  id         String   @id @default(uuid())
-  divisionId String
-  poolId     String?
-  name       String
-  seed       Int?
-  note       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  division     Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool         Pool?        @relation(fields: [poolId], references: [id], onDelete: SetNull)
-  teamPlayers  TeamPlayer[]
-  matchesAsA   Match[]      @relation("TeamA")
-  matchesAsB   Match[]      @relation("TeamB")
-  standings    Standing[]
+  id          String       @id @default(uuid())
+  divisionId  String
+  poolId      String?
+  name        String
+  seed        Int?
+  note        String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  matchesAsA  Match[]      @relation("TeamA")
+  matchesAsB  Match[]      @relation("TeamB")
+  standings   Standing[]
+  teamPlayers TeamPlayer[]
+  division    Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool        Pool?        @relation(fields: [poolId], references: [id])
 
   @@map("teams")
 }
 
 model Player {
-  id          String    @id @default(uuid())
-  tournamentId String   @map("tournament_id") // Link player to specific tournament
-  firstName   String    @map("firstName")
-  lastName    String    @map("lastName")
-  email       String?
-  gender      Gender?
-  dupr        String?   // Changed to String for DUPR ID
-  duprRating  Decimal?  @db.Decimal(4, 3) @map("dupr_rating") // New field for DUPR rating
-  isPaid      Boolean   @default(false)   @map("is_paid")   // New field for payment status
-  isWaitlist  Boolean   @default(false)   @map("is_waitlist")   // New field for waitlist status
-  birthDate   DateTime? @map("birthDate")
-  externalId  String?   @map("externalId")
-  createdAt   DateTime  @default(now()) @map("createdAt")
-  updatedAt   DateTime  @updatedAt @map("updatedAt")
-
-  // Relations
-  tournament  Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  teamPlayers TeamPlayer[]
+  id           String       @id @default(uuid())
+  firstName    String       @map("firstName")
+  lastName     String       @map("lastName")
+  email        String?
+  gender       Gender?
+  birthDate    DateTime?    @map("birthDate")
+  externalId   String?      @map("externalId")
+  createdAt    DateTime     @default(now()) @map("createdAt")
+  updatedAt    DateTime     @updatedAt @map("updatedAt")
+  duprRating   Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
+  isPaid       Boolean?     @default(false) @map("is_paid")
+  isWaitlist   Boolean?     @default(false) @map("is_waitlist")
+  dupr         String?      @db.VarChar
+  tournamentId String?      @map("tournament_id")
+  tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  teamPlayers  TeamPlayer[]
 
   @@map("players")
 }
 
 model TeamPlayer {
-  id       String      @id @default(uuid())
-  teamId   String      @map("teamId")
-  playerId String      @map("playerId")
-  role     PlayerRole  @default(PLAYER)
+  id        String     @id @default(uuid())
+  teamId    String     @map("teamId")
+  playerId  String     @map("playerId")
+  role      PlayerRole @default(PLAYER)
   createdAt DateTime   @default(now()) @map("createdAt")
   updatedAt DateTime   @updatedAt @map("updatedAt")
-
-  // Relations
-  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player    Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, playerId])
   @@map("team_players")
 }
 
 model RoundRobinGroup {
-  id           String   @id @default(uuid())
+  id           String              @id @default(uuid())
   tournamentId String
   name         String
   rrSettingsId String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  tournament Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  rrSettings RRSettings         @relation(fields: [rrSettingsId], references: [id], onDelete: Cascade)
-  bindings    DivisionRRBinding[]
-  matches     Match[]
-  standings   Standing[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  bindings     DivisionRRBinding[]
+  matches      Match[]
+  rrSettings   RRSettings          @relation(fields: [rrSettingsId], references: [id], onDelete: Cascade)
+  tournament   Tournament          @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  standings    Standing[]
 
   @@map("round_robin_groups")
 }
 
 model RRSettings {
-  id            String      @id @default(uuid())
-  targetPoints  Int         @default(11)
-  winBy         Int         @default(2)
-  gamesPerMatch Int         @default(1)
-  bestOfMode    BestOfMode  @default(FIXED_GAMES)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  // Relations
-  rrGroups RoundRobinGroup[]
+  id            String            @id @default(uuid())
+  targetPoints  Int               @default(11)
+  winBy         Int               @default(2)
+  gamesPerMatch Int               @default(1)
+  bestOfMode    BestOfMode        @default(FIXED_GAMES)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  rrGroups      RoundRobinGroup[]
 
   @@map("rr_settings")
 }
 
 model DivisionRRBinding {
-  id         String   @id @default(uuid())
+  id         String          @id @default(uuid())
   divisionId String
   rrGroupId  String
-  status     BindingStatus @default(BOUND)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  division Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  rrGroup  RoundRobinGroup @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  status     BindingStatus   @default(BOUND)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  division   Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  rrGroup    RoundRobinGroup @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
 
   @@unique([divisionId, rrGroupId])
   @@map("division_rr_bindings")
 }
 
 model Match {
-  id            String      @id @default(uuid())
-  rrGroupId     String?
-  divisionId    String?
-  poolId        String?
-  roundIndex    Int
-  stage         MatchStage
-  teamAId       String
-  teamBId       String
-  bestOfMode    BestOfMode
-  gamesCount    Int
-  targetPoints  Int
-  winBy         Int
-  winnerTeamId  String?
-  locked        Boolean     @default(false)
-  note          String?     // Optional note for special matches (e.g., "Third Place Match")
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  // Relations
-  rrGroup  RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
-  division Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool     Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
-  teamA    Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
-  teamB    Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
-  games    Game[]
+  id           String           @id @default(uuid())
+  rrGroupId    String?
+  divisionId   String?
+  poolId       String?
+  roundIndex   Int
+  stage        MatchStage
+  teamAId      String
+  teamBId      String
+  bestOfMode   BestOfMode
+  gamesCount   Int
+  targetPoints Int
+  winBy        Int
+  winnerTeamId String?
+  locked       Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  note         String?          @db.VarChar(255)
+  games        Game[]
+  division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  teamA        Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
+  teamB        Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
 
   @@map("matches")
 }
 
 model Game {
-  id       String    @id @default(uuid())
-  matchId  String
-  index    Int
-  scoreA   Int       @default(0)
-  scoreB   Int       @default(0)
-  winner   GameWinner?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  id        String      @id @default(uuid())
+  matchId   String
+  index     Int
+  scoreA    Int         @default(0)
+  scoreB    Int         @default(0)
+  winner    GameWinner?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  match     Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, index])
   @@map("games")
 }
 
 model Standing {
-  id            String   @id @default(uuid())
+  id            String           @id @default(uuid())
   rrGroupId     String?
   divisionId    String?
   poolId        String?
   teamId        String
-  wins          Int      @default(0)
-  losses        Int      @default(0)
-  pointsFor     Int      @default(0)
-  pointsAgainst Int      @default(0)
-  pointDiff     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  rrGroup  RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
-  division Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool     Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
-  team     Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  wins          Int              @default(0)
+  losses        Int              @default(0)
+  pointsFor     Int              @default(0)
+  pointsAgainst Int              @default(0)
+  pointDiff     Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  division      Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool          Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  rrGroup       RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  team          Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([rrGroupId, teamId])
   @@unique([divisionId, teamId])
@@ -377,39 +336,34 @@ model Standing {
 }
 
 model ImportJob {
-  id           String      @id @default(uuid())
+  id           String       @id @default(uuid())
   tournamentId String
   source       ImportSource @default(PBT_CSV)
   status       ImportStatus @default(PENDING)
   mappingJson  Json?
   rawFileUrl   String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  // Relations
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  tournament   Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   @@map("import_jobs")
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorUserId String
+  id           String     @id @default(uuid())
+  actorUserId  String
   tournamentId String
-  action     String
-  entityType String
-  entityId   String
-  payload    Json?
-  createdAt  DateTime @default(now())
-
-  // Relations
-  actor     User       @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  action       String
+  entityType   String
+  entityId     String
+  payload      Json?
+  createdAt    DateTime   @default(now())
+  actor        User       @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   @@map("audit_logs")
 }
 
-// Enums
 enum UserRole {
   TD
   ASSISTANT
