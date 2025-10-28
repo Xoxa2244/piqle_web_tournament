@@ -86,7 +86,7 @@ interface Division {
   pairingMode: string
   poolCount: number
   maxTeams: number | null
-  stage: string
+  stage: string | null
   teams: Team[]
   pools: Pool[]
   constraints: {
