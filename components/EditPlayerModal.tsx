@@ -32,8 +32,8 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
   const [email, setEmail] = useState('')
   const [dupr, setDupr] = useState('')
   const [duprRating, setDuprRating] = useState('')
-  const [isPaid, setIsPaid] = useState(false)
-  const [isWaitlist, setIsWaitlist] = useState(false)
+  const [isPaid, setIsPaid] = useState<boolean | null>(false)
+  const [isWaitlist, setIsWaitlist] = useState<boolean | null>(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Initialize form data when player changes
