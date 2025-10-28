@@ -14,8 +14,8 @@ interface Player {
   email: string | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
-  isPaid: boolean
-  isWaitlist: boolean
+  isPaid: boolean | null
+  isWaitlist: boolean | null
 }
 
 interface EditPlayerModalProps {
