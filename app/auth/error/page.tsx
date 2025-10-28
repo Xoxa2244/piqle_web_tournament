@@ -3,8 +3,9 @@
 import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
 
@@ -46,3 +47,14 @@ export default function AuthErrorPage() {
   )
 }
 
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    }>
+      <AuthErrorContent />
+    </Suspense>
+  )
+}
