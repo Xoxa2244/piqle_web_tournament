@@ -24,7 +24,7 @@ interface Player {
   dupr: string | null
   duprRating: string | null
   gender: string | null
-  isWaitlist: boolean
+  isWaitlist: boolean | null
   teamId?: string | null
   teamName?: string | null
 }
