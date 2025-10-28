@@ -211,7 +211,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                     <input
                       type="radio"
                       name="payment"
-                      checked={isPaid}
+                      checked={isPaid === true}
                       onChange={() => setIsPaid(true)}
                       disabled={isSubmitting}
                       className="mr-2"
@@ -222,7 +222,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                     <input
                       type="radio"
                       name="payment"
-                      checked={!isPaid}
+                      checked={isPaid === false}
                       onChange={() => setIsPaid(false)}
                       disabled={isSubmitting}
                       className="mr-2"
@@ -241,7 +241,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                     <input
                       type="radio"
                       name="status"
-                      checked={!isWaitlist}
+                      checked={isWaitlist === false}
                       onChange={() => setIsWaitlist(false)}
                       disabled={isSubmitting}
                       className="mr-2"
@@ -252,7 +252,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
                     <input
                       type="radio"
                       name="status"
-                      checked={isWaitlist}
+                      checked={isWaitlist === true}
                       onChange={() => setIsWaitlist(true)}
                       disabled={isSubmitting}
                       className="mr-2"
