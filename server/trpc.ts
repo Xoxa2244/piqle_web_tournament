@@ -18,29 +18,8 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // Get session from NextAuth
-  // In App Router, getServerSession should work without explicit headers
-  // But we'll pass headers explicitly to ensure cookies are available
+  // In App Router, getServerSession uses cookies() internally
   const session = await getServerSession(authOptions)
-  
-  // Debug logging for all tRPC requests
-  if (opts.req.url?.includes('/api/trpc/')) {
-    const url = opts.req.url
-    const hasCookie = opts.req.headers.get('cookie') ? 'PRESENT' : 'MISSING'
-    const sessionExists = !!session
-    const userId = session?.user?.id || 'NO ID'
-    
-    console.log('[tRPC Context] URL:', url)
-    console.log('[tRPC Context] Cookie:', hasCookie)
-    console.log('[tRPC Context] Session exists:', sessionExists)
-    console.log('[tRPC Context] User ID:', userId)
-    
-    // Log cookie names if present
-    if (hasCookie === 'PRESENT') {
-      const cookieHeader = opts.req.headers.get('cookie') || ''
-      const cookies = cookieHeader.split(';').map(c => c.trim().split('=')[0])
-      console.log('[tRPC Context] Cookie names:', cookies.join(', '))
-    }
-  }
 
   return createInnerTRPCContext({
     session,
@@ -55,9 +34,6 @@ export const publicProcedure = t.procedure
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session?.user?.id) {
-    console.log('[tRPC protectedProcedure] UNAUTHORIZED - no session or user.id')
-    console.log('[tRPC protectedProcedure] Session exists:', !!ctx.session)
-    console.log('[tRPC protectedProcedure] Session user:', ctx.session?.user || 'NO USER')
     throw new TRPCError({ code: 'UNAUTHORIZED' })
   }
   return next({
