@@ -22,6 +22,7 @@ model User {
   auditLogs            AuditLog[]
   sessions             Session[]
   tournaments          Tournament[]
+  tournamentAccesses   TournamentAccess[]
 
   @@map("users")
 }
@@ -85,6 +86,7 @@ model Tournament {
   players              Player[]
   prizes               Prize[]
   rrGroups             RoundRobinGroup[]
+  tournamentAccesses   TournamentAccess[]
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
 
   @@map("tournaments")
@@ -126,6 +128,7 @@ model Division {
   prizes               Prize[]
   standings            Standing[]
   teams                Team[]
+  tournamentAccesses   TournamentAccess[]
 
   @@map("divisions")
 }
@@ -366,9 +369,31 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model TournamentAccess {
+  id           String       @id @default(uuid())
+  userId       String
+  tournamentId String
+  divisionId   String?      // null = access to all divisions
+  accessLevel  AccessLevel  @default(SCORE_ONLY)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division   Division?  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tournamentId, divisionId])
+  @@map("tournament_accesses")
+}
+
 enum UserRole {
   TD
   ASSISTANT
+}
+
+enum AccessLevel {
+  ADMIN      // Full access like Tournament Director
+  SCORE_ONLY // Only score input access
 }
 
 enum TeamKind {
