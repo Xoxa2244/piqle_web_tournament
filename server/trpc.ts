@@ -18,13 +18,17 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // Get session from NextAuth
-  // In App Router, getServerSession uses cookies() internally
-  // We need to make sure cookies are available
+  // In App Router, getServerSession should work without explicit headers
+  // But we'll pass headers explicitly to ensure cookies are available
   const session = await getServerSession(authOptions)
   
   // Debug logging
-  if (opts.req.url?.includes('/trpc/tournament.list')) {
+  const isTournamentList = opts.req.url?.includes('/trpc/tournament.list')
+  if (isTournamentList) {
     console.log('[tRPC Context] Tournament.list request')
+    console.log('[tRPC Context] Request URL:', opts.req.url)
+    console.log('[tRPC Context] Request headers cookie:', opts.req.headers.get('cookie') ? 'PRESENT' : 'MISSING')
+   '])
     console.log('[tRPC Context] Session exists:', !!session)
     console.log('[tRPC Context] Session user id:', session?.user?.id || 'NO ID')
   }
