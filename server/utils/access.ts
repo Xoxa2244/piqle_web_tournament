@@ -191,3 +191,60 @@ export async function getUserTournamentIds(
   return Array.from(new Set(allIds)) // Remove duplicates
 }
 
+/**
+ * Get list of division IDs that user has access to in a tournament
+ * Returns empty array if user has no access to any divisions
+ */
+export async function getUserDivisionIds(
+  prisma: PrismaClient,
+  userId: string,
+  tournamentId: string
+): Promise<string[]> {
+  // Check if user is tournament owner
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { userId: true },
+  })
+
+  if (!tournament) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Tournament not found',
+    })
+  }
+
+  // If user is owner, they have access to all divisions
+  if (tournament.userId === userId) {
+    const allDivisions = await prisma.division.findMany({
+      where: { tournamentId },
+      select: { id: true },
+    })
+    return allDivisions.map((d) => d.id)
+  }
+
+  // Get user's access records for this tournament
+  const accesses = await prisma.tournamentAccess.findMany({
+    where: {
+      userId,
+      tournamentId,
+    },
+  })
+
+  // If user has access to all divisions (divisionId === null), return all division IDs
+  const hasAllDivisionsAccess = accesses.some((a) => a.divisionId === null)
+  if (hasAllDivisionsAccess) {
+    const allDivisions = await prisma.division.findMany({
+      where: { tournamentId },
+      select: { id: true },
+    })
+    return allDivisions.map((d) => d.id)
+  }
+
+  // Otherwise, return only specific division IDs
+  const specificDivisionIds = accesses
+    .map((a) => a.divisionId)
+    .filter((id): id is string => id !== null)
+
+  return specificDivisionIds
+}
+

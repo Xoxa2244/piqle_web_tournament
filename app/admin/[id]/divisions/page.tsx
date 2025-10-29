@@ -1243,6 +1243,47 @@ export default function DivisionsPage() {
     return <div>Loading...</div>
   }
 
+  // Check if user has access to any divisions
+  if (tournament.divisions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-4">
+                <Link href={`/admin/${tournamentId}`}>
+                  <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                    <ArrowLeft className="h-4 w-4" />
+                    <span>Back</span>
+                  </Button>
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
+                  <p className="text-sm text-gray-500">{tournament.title}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+          <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+            <p className="text-gray-600 mb-6">
+              You don&apos;t have access to any divisions in this tournament.
+              Please contact the tournament administrator to request access.
+            </p>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Back to Tournament
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}

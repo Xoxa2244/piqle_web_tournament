@@ -26,6 +26,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
+import Link from 'next/link'
 
 export default function DivisionStageManagement() {
   const router = useRouter()
@@ -445,7 +446,39 @@ export default function DivisionStageManagement() {
     playInMatches: playInMatches.length
   })
 
-  if (!tournament || !division) {
+  if (!tournament) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading tournament data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Check if user has access to any divisions
+  if (tournament.divisions.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+          <p className="text-gray-600 mb-6">
+            You don&apos;t have access to any divisions in this tournament.
+            Please contact the tournament administrator to request access.
+          </p>
+          <Link
+            href={`/admin/${tournamentId}`}
+            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          >
+            Back to Tournament
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (!division) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
