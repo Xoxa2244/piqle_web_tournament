@@ -14,6 +14,17 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   debug: true,
   useSecureCookies: process.env.NODE_ENV === 'production',
+  logger: {
+    error(code, metadata) {
+      console.error('[NextAuth Error]', code, metadata)
+    },
+    warn(code) {
+      console.warn('[NextAuth Warn]', code)
+    },
+    debug(code, metadata) {
+      console.log('[NextAuth Debug]', code, metadata)
+    },
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
