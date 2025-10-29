@@ -7,10 +7,10 @@ export async function middleware(req: NextRequest) {
   }
 
   // Проверяем наличие cookie с сессией только для админских маршрутов
-  // В production NextAuth использует _Secure- (одно подчеркивание), а не __Secure-
+  // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
   const sessionToken = req.cookies.get(
     process.env.NODE_ENV === 'production'
-      ? '_Secure-next-auth.session-token'
+      ? '__Secure-next-auth.session-token'
       : 'next-auth.session-token'
   )
 
