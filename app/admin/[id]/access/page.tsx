@@ -129,9 +129,10 @@ export default function AccessManagementPage() {
   const divisions = tournament?.divisions || []
 
   // Group accesses by user
+  type AccessItem = NonNullable<typeof accesses>[0]
   type GroupedAccess = {
     user: { id: string; email: string; name: string | null; image: string | null }
-    accesses: typeof accesses
+    accesses: AccessItem[]
     accessLevel: 'ADMIN' | 'SCORE_ONLY'
   }
   
