@@ -35,7 +35,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === 'google') {
         return true
       }
- מצ return true
+      return true
     },
     async session({ session, user }) {
       if (session?.user && user?.id) {
