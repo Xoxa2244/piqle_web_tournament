@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server'
-import type { PrismaClient, AccessLevel } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
+import { AccessLevel } from '@prisma/client'
 
 export type TournamentAccess = {
   userId: string
