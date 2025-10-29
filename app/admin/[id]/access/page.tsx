@@ -128,6 +128,22 @@ export default function AccessManagementPage() {
 
   const divisions = tournament?.divisions || []
 
+  // Group accesses by user
+  const groupedAccesses = accesses?.reduce((acc, access) => {
+    const userId = access.userId
+    if (!acc[userId]) {
+      acc[userId] = {
+        user: access.user,
+        accesses: [],
+        accessLevel: access.accessLevel, // Assume same access level for all (should be enforced)
+      }
+    }
+    acc[userId].accesses.push(access)
+    return acc
+  }, {} as Record<string, { user: typeof accesses[0]['user']; accesses: typeof accesses; accessLevel: 'ADMIN' | 'SCORE_ONLY' }>) || {}
+
+  const groupedAccessesArray = Object.values(groupedAccesses)
+
   return (
     <div className="container mx-auto py-8">
       <div className="mb-6">
@@ -275,21 +291,23 @@ export default function AccessManagementPage() {
                 </div>
 
                 {divisionMode === 'selected' && (
-                  <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-                    {divisions.map((division) => (
-                      <label
-                        key={division.id}
-                        className="flex items-center space-x-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedDivisionIds.includes(division.id)}
-                          onChange={() => handleToggleDivision(division.id)}
-                          className="w-4 h-4"
-                        />
-                        <span>{division.name}</span>
-                      </label>
-                    ))}
+                  <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
+                    <div className="grid grid-cols-5 gap-2">
+                      {divisions.map((division) => (
+                        <label
+                          key={division.id}
+                          className="flex items-center space-x-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedDivisionIds.includes(division.id)}
+                            onChange={() => handleToggleDivision(division.id)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm">{division.name}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -313,67 +331,73 @@ export default function AccessManagementPage() {
           <CardTitle>Current Access</CardTitle>
         </CardHeader>
         <CardContent>
-          {!accesses || accesses.length === 0 ? (
+          {groupedAccessesArray.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               No access granted yet
             </div>
           ) : (
             <div className="space-y-4">
-              {accesses.map((access) => (
-                <div
-                  key={access.id}
-                  className="border rounded-md p-4 flex items-center justify-between"
-                >
-                  {editingAccessId === access.id ? (
-                    <div className="flex-1 space-y-4">
-                      {/* Edit Mode */}
-                      <div className="flex items-center space-x-3">
-                        {access.user.image && (
-                          <img
-                            src={access.user.image}
-                            alt=""
-                            className="w-10 h-10 rounded-full"
-                          />
-                        )}
-                        <div>
-                          <div className="font-medium">
-                            {access.user.name || 'No name'}
+              {groupedAccessesArray.map((groupedAccess) => {
+                const userAccessIds = groupedAccess.accesses.map(a => a.id)
+                const isEditing = userAccessIds.includes(editingAccessId || '')
+                const allDivisions = groupedAccess.accesses.map(a => a.division).filter(Boolean)
+                const hasAllDivisions = groupedAccess.accesses.some(a => a.divisionId === null)
+                
+                return (
+                  <div
+                    key={groupedAccess.user.id}
+                    className="border rounded-md p-4 flex items-center justify-between"
+                  >
+                    {isEditing ? (
+                      <div className="flex-1 space-y-4">
+                        {/* Edit Mode */}
+                        <div className="flex items-center space-x-3">
+                          {groupedAccess.user.image && (
+                            <img
+                              src={groupedAccess.user.image}
+                              alt=""
+                              className="w-10 h-10 rounded-full"
+                            />
+                          )}
+                          <div>
+                            <div className="font-medium">
+                              {groupedAccess.user.name || 'No name'}
+                            </div>
+                            <div className="text-sm text-gray-500">{groupedAccess.user.email}</div>
                           </div>
-                          <div className="text-sm text-gray-500">{access.user.email}</div>
                         </div>
-                      </div>
 
-                      <div>
-                        <Label>Access Level</Label>
-                        <div className="mt-2 space-y-2">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`edit-accessLevel-${access.id}`}
-                              value="SCORE_ONLY"
-                              checked={accessLevel === 'SCORE_ONLY'}
-                              onChange={(e) =>
-                                setAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
-                              }
-                              className="w-4 h-4"
-                            />
-                            <span>Score Entry Only</span>
-                          </label>
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`edit-accessLevel-${access.id}`}
-                              value="ADMIN"
-                              checked={accessLevel === 'ADMIN'}
-                              onChange={(e) =>
-                                setAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
-                              }
-                              className="w-4 h-4"
-                            />
-                            <span>Administrative</span>
-                          </label>
+                        <div>
+                          <Label>Access Level</Label>
+                          <div className="mt-2 space-y-2">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`edit-accessLevel-${groupedAccess.user.id}`}
+                                value="SCORE_ONLY"
+                                checked={accessLevel === 'SCORE_ONLY'}
+                                onChange={(e) =>
+                                  setAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
+                                }
+                                className="w-4 h-4"
+                              />
+                              <span>Score Entry Only</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`edit-accessLevel-${groupedAccess.user.id}`}
+                                value="ADMIN"
+                                checked={accessLevel === 'ADMIN'}
+                                onChange={(e) =>
+                                  setAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
+                                }
+                                className="w-4 h-4"
+                              />
+                              <span>Administrative</span>
+                            </label>
+                          </div>
                         </div>
-                      </div>
 
                       <div>
                         <Label>Divisions</Label>
@@ -381,7 +405,7 @@ export default function AccessManagementPage() {
                           <label className="flex items-center space-x-2 cursor-pointer">
                             <input
                               type="radio"
-                              name={`edit-divisionMode-${access.id}`}
+                              name={`edit-divisionMode-${groupedAccess.user.id}`}
                               value="all"
                               checked={divisionMode === 'all'}
                               onChange={(e) => {
@@ -395,7 +419,7 @@ export default function AccessManagementPage() {
                           <label className="flex items-center space-x-2 cursor-pointer">
                             <input
                               type="radio"
-                              name={`edit-divisionMode-${access.id}`}
+                              name={`edit-divisionMode-${groupedAccess.user.id}`}
                               value="selected"
                               checked={divisionMode === 'selected'}
                               onChange={(e) => setDivisionMode('selected')}
@@ -406,28 +430,35 @@ export default function AccessManagementPage() {
                         </div>
 
                         {divisionMode === 'selected' && (
-                          <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-                            {divisions.map((division) => (
-                              <label
-                                key={division.id}
-                                className="flex items-center space-x-2 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedDivisionIds.includes(division.id)}
-                                  onChange={() => handleToggleDivision(division.id)}
-                                  className="w-4 h-4"
-                                />
-                                <span>{division.name}</span>
-                              </label>
-                            ))}
+                          <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
+                            <div className="grid grid-cols-5 gap-2">
+                              {divisions.map((division) => (
+                                <label
+                                  key={division.id}
+                                  className="flex items-center space-x-2 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDivisionIds.includes(division.id)}
+                                    onChange={() => handleToggleDivision(division.id)}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-sm">{division.name}</span>
+                                </label>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
 
                       <div className="flex space-x-2">
                         <Button
-                          onClick={() => handleUpdateAccess(access.id)}
+                          onClick={() => {
+                            // Update all accesses for this user
+                            userAccessIds.forEach(accessId => {
+                              handleUpdateAccess(accessId)
+                            })
+                          }}
                           disabled={updateAccessMutation.isLoading || (divisionMode === 'selected' && selectedDivisionIds.length === 0)}
                           size="sm"
                         >
@@ -448,33 +479,52 @@ export default function AccessManagementPage() {
                     <>
                       {/* View Mode */}
                       <div className="flex items-center space-x-3 flex-1">
-                        {access.user.image && (
+                        {groupedAccess.user.image && (
                           <img
-                            src={access.user.image}
+                            src={groupedAccess.user.image}
                             alt=""
                             className="w-10 h-10 rounded-full"
                           />
                         )}
                         <div className="flex-1">
                           <div className="font-medium">
-                            {access.user.name || 'No name'}
+                            {groupedAccess.user.name || 'No name'}
                           </div>
-                          <div className="text-sm text-gray-500">{access.user.email}</div>
-                          <div className="text-sm mt-1">
+                          <div className="text-sm text-gray-500">{groupedAccess.user.email}</div>
+                          <div className="text-sm mt-2">
                             <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs mr-2">
-                              {access.accessLevel === 'ADMIN' ? 'Administrative' : 'Score Only'}
+                              {groupedAccess.accessLevel === 'ADMIN' ? 'Administrative' : 'Score Only'}
                             </span>
-                            <span className="text-gray-600">
-                              {access.division
-                                ? `Division: ${access.division.name}`
-                                : 'All Divisions'}
-                            </span>
+                          </div>
+                          <div className="mt-2">
+                            {hasAllDivisions ? (
+                              <span className="text-sm text-gray-600">All Divisions</span>
+                            ) : (
+                              <div>
+                                <div className="text-xs text-gray-500 mb-1">Divisions ({allDivisions.length}):</div>
+                                <div className="max-h-32 overflow-y-auto border rounded-md p-2 bg-gray-50">
+                                  <div className="flex flex-wrap gap-1">
+                                    {allDivisions.map((division) => (
+                                      <span
+                                        key={division!.id}
+                                        className="inline-block px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700"
+                                      >
+                                        {division!.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
                       <div className="flex space-x-2">
                         <Button
-                          onClick={() => startEditing(access)}
+                          onClick={() => {
+                            // Start editing with first access (they all have same user/tournament)
+                            startEditing(groupedAccess.accesses[0])
+                          }}
                           variant="outline"
                           size="sm"
                         >
@@ -482,7 +532,14 @@ export default function AccessManagementPage() {
                           Edit
                         </Button>
                         <Button
-                          onClick={() => handleRevokeAccess(access.id)}
+                          onClick={() => {
+                            if (confirm('Are you sure you want to revoke all access for this user?')) {
+                              // Revoke all accesses for this user
+                              userAccessIds.forEach(accessId => {
+                                handleRevokeAccess(accessId)
+                              })
+                            }
+                          }}
                           variant="outline"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
