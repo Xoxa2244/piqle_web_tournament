@@ -65,7 +65,7 @@ export const tournamentRouter = createTRPCRouter({
         return []
       }
 
-      return ctx.prisma.tournament.findMany({
+      const tournaments = await ctx.prisma.tournament.findMany({
         where: {
           id: { in: tournamentIds },
         },
@@ -79,6 +79,12 @@ export const tournamentRouter = createTRPCRouter({
           },
         },
       })
+
+      // Add isOwner flag to each tournament
+      return tournaments.map(tournament => ({
+        ...tournament,
+        isOwner: tournament.userId === ctx.session.user.id,
+      }))
     }),
 
   get: protectedProcedure

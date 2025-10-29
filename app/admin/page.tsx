@@ -212,13 +212,15 @@ export default function AdminPage() {
                     View Board
                   </Link>
                 )}
-                <button
-                  onClick={() => handleDeleteClick(tournament.id, tournament.title)}
-                  disabled={deleteConfirmId === tournament.id}
-                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-                >
-                  {deleteConfirmId === tournament.id ? 'Deleting...' : 'Delete'}
-                </button>
+                {tournament.isOwner && (
+                  <button
+                    onClick={() => handleDeleteClick(tournament.id, tournament.title)}
+                    disabled={deleteConfirmId === tournament.id}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                  >
+                    {deleteConfirmId === tournament.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                )}
               </div>
             </div>
           ))}
