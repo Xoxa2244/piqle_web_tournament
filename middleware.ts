@@ -1,23 +1,23 @@
-import { withAuth } from "next-auth/middleware"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
-export default withAuth(
-  function middleware(req) {
-    // Дополнительная логика проверки доступа может быть добавлена здесь
-    return NextResponse.next()
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        // Проверка доступа к конкретному маршруту
-        if (req.nextUrl.pathname.startsWith('/admin')) {
-          return !!token
-        }
-        return true
-      },
-    },
+export async function middleware(req: NextRequest) {
+  // Проверяем наличие cookie с сессией
+  const sessionToken = req.cookies.get(
+    process.env.NODE_ENV === 'production'
+      ? '__Secure-next-auth.session-token'
+      : 'next-auth.session-token'
+  )
+
+  if (req.nextUrl.pathname.startsWith('/admin')) {
+    if (!sessionToken) {
+      const signInUrl = new URL('/auth/signin', req.url)
+      signInUrl.searchParams.set('callbackUrl', req.url)
+      return NextResponse.redirect(signInUrl)
+    }
   }
-)
+
+  return NextResponse.next()
+}
 
 export const config = {
   matcher: ['/admin/:path*', '/api/protected/:path*']
