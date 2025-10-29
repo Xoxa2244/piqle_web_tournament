@@ -94,14 +94,24 @@ export const tournamentRouter = createTRPCRouter({
       // Check if user has access to this tournament
       const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
       
+      console.log('[Tournament.get] User ID:', ctx.session.user.id)
+      console.log('[Tournament.get] Tournament ID:', input.id)
+      console.log('[Tournament.get] Is owner:', isOwner)
+      console.log('[Tournament.get] Has access:', !!access)
+      if (access) {
+        console.log('[Tournament.get] Access details:', { accessLevel: access.accessLevel, divisionId: access.divisionId })
+      }
+      
       // If user is not owner and has no access, throw error
       if (!isOwner && !access) {
+        console.log('[Tournament.get] ACCESS DENIED - throwing FORBIDDEN error')
         throw new TRPCError({
           code: 'FORBIDDEN',
           message: 'You do not have access to this tournament',
         })
       }
 
+      console.log('[Tournament.get] ACCESS GRANTED - returning tournament')
       return ctx.prisma.tournament.findFirst({
         where: { 
           id: input.id,

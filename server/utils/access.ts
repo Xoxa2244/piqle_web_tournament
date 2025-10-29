@@ -46,7 +46,14 @@ export async function checkTournamentAccess(
     },
   })
 
-  return { isOwner: false, access }
+  console.log('[checkTournamentAccess] Tournament userId:', tournament.userId)
+  console.log('[checkTournamentAccess] Requesting userId:', userId)
+  console.log('[checkTournamentAccess] Found access record:', !!access)
+  if (access) {
+    console.log('[checkTournamentAccess] Access record:', { id: access.id, accessLevel: access.accessLevel, divisionId: access.divisionId })
+  }
+
+  return { isOwner: false, access: access as TournamentAccess | null }
 }
 
 /**
