@@ -28,7 +28,6 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
     console.log('[tRPC Context] Tournament.list request')
     console.log('[tRPC Context] Request URL:', opts.req.url)
     console.log('[tRPC Context] Request headers cookie:', opts.req.headers.get('cookie') ? 'PRESENT' : 'MISSING')
-   '])
     console.log('[tRPC Context] Session exists:', !!session)
     console.log('[tRPC Context] Session user id:', session?.user?.id || 'NO ID')
   }
