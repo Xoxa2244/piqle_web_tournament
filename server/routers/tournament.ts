@@ -85,7 +85,15 @@ export const tournamentRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       // Check if user has access to this tournament
-      await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+      const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+      
+      // If user is not owner and has no access, throw error
+      if (!isOwner && !access) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this tournament',
+        })
+      }
 
       return ctx.prisma.tournament.findFirst({
         where: { 
