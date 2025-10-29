@@ -22,14 +22,24 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // But we'll pass headers explicitly to ensure cookies are available
   const session = await getServerSession(authOptions)
   
-  // Debug logging
-  const isTournamentList = opts.req.url?.includes('/trpc/tournament.list')
-  if (isTournamentList) {
-    console.log('[tRPC Context] Tournament.list request')
-    console.log('[tRPC Context] Request URL:', opts.req.url)
-    console.log('[tRPC Context] Request headers cookie:', opts.req.headers.get('cookie') ? 'PRESENT' : 'MISSING')
-    console.log('[tRPC Context] Session exists:', !!session)
-    console.log('[tRPC Context] Session user id:', session?.user?.id || 'NO ID')
+  // Debug logging for all tRPC requests
+  if (opts.req.url?.includes('/api/trpc/')) {
+    const url = opts.req.url
+    const hasCookie = opts.req.headers.get('cookie') ? 'PRESENT' : 'MISSING'
+    const sessionExists = !!session
+    const userId = session?.user?.id || 'NO ID'
+    
+    console.log('[tRPC Context] URL:', url)
+    console.log('[tRPC Context] Cookie:', hasCookie)
+    console.log('[tRPC Context] Session exists:', sessionExists)
+    console.log('[tRPC Context] User ID:', userId)
+    
+    // Log cookie names if present
+    if (hasCookie === 'PRESENT') {
+      const cookieHeader = opts.req.headers.get('cookie') || ''
+      const cookies = cookieHeader.split(';').map(c => c.trim().split('=')[0])
+      console.log('[tRPC Context] Cookie names:', cookies.join(', '))
+    }
   }
 
   return createInnerTRPCContext({
@@ -45,6 +55,9 @@ export const publicProcedure = t.procedure
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.session?.user?.id) {
+    console.log('[tRPC protectedProcedure] UNAUTHORIZED - no session or user.id')
+    console.log('[tRPC protectedProcedure] Session exists:', !!ctx.session)
+    console.log('[tRPC protectedProcedure] Session user:', ctx.session?.user || 'NO USER')
     throw new TRPCError({ code: 'UNAUTHORIZED' })
   }
   return next({
