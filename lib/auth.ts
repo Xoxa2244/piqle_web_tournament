@@ -8,6 +8,7 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   debug: true,
   useSecureCookies: process.env.NODE_ENV === 'production',
+  trustHost: true, // Trust proxy headers on Vercel
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
@@ -33,20 +34,26 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       // Allow all sign-ins - PrismaAdapter will handle user creation
-      if (account?.provider === 'google') {
-        return true
-      }
       return true
     },
     async redirect({ url, baseUrl }) {
       // After successful sign in, redirect properly
+      // Default to /admin if no callbackUrl is provided
+      if (url === baseUrl || url === '/') {
+        return `${baseUrl}/admin`
+      }
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`
       }
-      if (new URL(url).origin === baseUrl) {
-        return url
+      try {
+        if (new URL(url).origin === baseUrl) {
+          return url
+        }
+      } catch {
+        // Invalid URL, redirect to admin
+        return `${baseUrl}/admin`
       }
-      return baseUrl
+      return `${baseUrl}/admin`
     },
     async session({ session, user }) {
       if (session?.user && user?.id) {
@@ -57,6 +64,18 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: "database",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  cookies: {
+    sessionToken: {
+      name: `${process.env.NODE_ENV === 'production' ? '__Secure-' : ''}next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
   },
 }
 
