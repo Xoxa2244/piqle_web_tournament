@@ -21,6 +21,13 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // In App Router, getServerSession uses cookies() internally
   // We need to make sure cookies are available
   const session = await getServerSession(authOptions)
+  
+  // Debug logging
+  if (opts.req.url?.includes('/trpc/tournament.list')) {
+    console.log('[tRPC Context] Tournament.list request')
+    console.log('[tRPC Context] Session exists:', !!session)
+    console.log('[tRPC Context] Session user id:', session?.user?.id || 'NO ID')
+  }
 
   return createInnerTRPCContext({
     session,
