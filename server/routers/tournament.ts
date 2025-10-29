@@ -61,11 +61,14 @@ export const tournamentRouter = createTRPCRouter({
       // Get all tournament IDs user has access to
       const tournamentIds = await getUserTournamentIds(ctx.prisma, ctx.session.user.id)
 
+      console.log('[Tournament.list] User ID:', ctx.session.user.id)
+      console.log('[Tournament.list] Tournament IDs user has access to:', tournamentIds)
+      
       if (tournamentIds.length === 0) {
         return []
       }
 
-      return ctx.prisma.tournament.findMany({
+      const tournaments = await ctx.prisma.tournament.findMany({
         where: {
           id: { in: tournamentIds },
         },
@@ -79,6 +82,10 @@ export const tournamentRouter = createTRPCRouter({
           },
         },
       })
+      
+      console.log('[Tournament.list] Found tournaments:', tournaments.map(t => ({ id: t.id, title: t.title, userId: t.userId })))
+
+      return tournaments
     }),
 
   get: protectedProcedure
