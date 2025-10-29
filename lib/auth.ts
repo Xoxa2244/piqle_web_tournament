@@ -43,21 +43,15 @@ export const authOptions: NextAuthOptions = {
     },
     async redirect({ url, baseUrl }) {
       // After successful sign in, redirect properly
-      // Default to /admin if no callbackUrl is provided
-      if (url === baseUrl || url === '/') {
-        return `${baseUrl}/admin`
-      }
-      if (url.startsWith('/')) {
+      // If callbackUrl is provided and is relative, use it
+      if (url && url.startsWith('/')) {
         return `${baseUrl}${url}`
       }
-      try {
-        if (new URL(url).origin === baseUrl) {
-          return url
-        }
-      } catch {
-        // Invalid URL, redirect to admin
-        return `${baseUrl}/admin`
+      // If callbackUrl is absolute and same origin, use it
+      if (url && url.startsWith(baseUrl)) {
+        return url
       }
+      // Default to /admin
       return `${baseUrl}/admin`
     },
     async session({ session, user }) {
