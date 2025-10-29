@@ -16,7 +16,8 @@ import {
   ArrowLeft,
   Upload,
   Globe,
-  Edit
+  Edit,
+  Shield
 } from 'lucide-react'
 
 export default function TournamentDetailPage() {
@@ -401,6 +402,19 @@ export default function TournamentDetailPage() {
                         </div>
                         <div className="text-center">
                           <div className="font-semibold text-base text-slate-900">Dashboard</div>
+                        </div>
+                      </div>
+                    </Button>
+                  </Link>
+                  
+                  <Link href={`/admin/${tournamentId}/access`}>
+                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
+                      <div className="flex flex-col items-center space-y-2 w-full">
+                        <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                          <Shield className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="text-center">
+                          <div className="font-semibold text-base text-slate-900">Access Control</div>
                         </div>
                       </div>
                     </Button>
