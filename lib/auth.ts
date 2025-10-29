@@ -30,6 +30,13 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Allow all sign-ins - PrismaAdapter will handle user creation
+      if (account?.provider === 'google') {
+        return true
+      }
+ מצ return true
+    },
     async session({ session, user }) {
       if (session?.user && user?.id) {
         session.user.id = user.id
