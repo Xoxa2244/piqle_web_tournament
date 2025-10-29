@@ -46,13 +46,6 @@ export async function checkTournamentAccess(
     },
   })
 
-  console.log('[checkTournamentAccess] Tournament userId:', tournament.userId)
-  console.log('[checkTournamentAccess] Requesting userId:', userId)
-  console.log('[checkTournamentAccess] Found access record:', !!access)
-  if (access) {
-    console.log('[checkTournamentAccess] Access record:', { id: access.id, accessLevel: access.accessLevel, divisionId: access.divisionId })
-  }
-
   return { isOwner: false, access: access as TournamentAccess | null }
 }
 
@@ -183,9 +176,6 @@ export async function getUserTournamentIds(
     select: { id: true },
   })
 
-  console.log('[getUserTournamentIds] User ID:', userId)
-  console.log('[getUserTournamentIds] Owned tournaments:', ownedTournaments.map(t => t.id))
-
   // Get tournaments with access
   const accessedTournaments = await prisma.tournamentAccess.findMany({
     where: { userId },
@@ -193,16 +183,11 @@ export async function getUserTournamentIds(
     distinct: ['tournamentId'],
   })
 
-  console.log('[getUserTournamentIds] Accessed tournaments:', accessedTournaments.map(a => a.tournamentId))
-
   const allIds = [
     ...ownedTournaments.map((t) => t.id),
     ...accessedTournaments.map((a) => a.tournamentId),
   ]
 
-  const uniqueIds = Array.from(new Set(allIds)) // Remove duplicates
-  console.log('[getUserTournamentIds] Final tournament IDs:', uniqueIds)
-
-  return uniqueIds
+  return Array.from(new Set(allIds)) // Remove duplicates
 }
 
