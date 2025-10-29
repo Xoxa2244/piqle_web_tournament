@@ -5,6 +5,7 @@ import {
   assertTournamentAdmin,
   getUserTournamentIds,
   checkTournamentAccess,
+  getUserDivisionIds,
 } from '../utils/access'
 
 export const tournamentRouter = createTRPCRouter({
@@ -100,12 +101,29 @@ export const tournamentRouter = createTRPCRouter({
           message: 'You do not have access to this tournament',
         })
       }
+
+      // Get accessible division IDs for this user
+      const accessibleDivisionIds = await getUserDivisionIds(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.id
+      )
+
       return ctx.prisma.tournament.findFirst({
         where: { 
           id: input.id,
         },
         include: {
           divisions: {
+            where: accessibleDivisionIds.length > 0 ? {
+              id: {
+                in: accessibleDivisionIds,
+              },
+            } : {
+              id: {
+                in: [], // Return empty if no access to any divisions
+              },
+            },
             include: {
               constraints: true,
               teams: {

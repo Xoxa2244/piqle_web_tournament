@@ -20,6 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import Link from 'next/link'
 
 interface TeamStanding {
   teamId: string
@@ -156,7 +157,23 @@ export default function DivisionDashboard() {
   }
 
   if (tournament.divisions.length === 0) {
-    return <div className="flex items-center justify-center min-h-screen">No divisions</div>
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+          <p className="text-gray-600 mb-6">
+            You don&apos;t have access to any divisions in this tournament.
+            Please contact the tournament administrator to request access.
+          </p>
+          <Link
+            href={`/admin/${tournamentId}`}
+            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          >
+            Back to Tournament
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   const standings = standingsData?.standings || []
