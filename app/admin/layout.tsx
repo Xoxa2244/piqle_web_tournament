@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback } from 'react'
-import AuthGuard from '@/components/AuthGuard'
+import { signOut } from 'next-auth/react'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -12,15 +12,12 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const handleLogout = useCallback(() => {
-    sessionStorage.removeItem('isAuthenticated')
-    localStorage.removeItem('isAuthenticated')
-    window.location.href = '/login'
+  const handleLogout = useCallback(async () => {
+    await signOut({ callbackUrl: '/auth/signin' })
   }, [])
 
   return (
-    <AuthGuard>
-      <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
         <nav className="bg-white shadow-sm border-b">
           <div className="container mx-auto px-4">
             <div className="flex justify-between items-center h-16">
@@ -55,6 +52,5 @@ export default function AdminLayout({
           {children}
         </main>
       </div>
-    </AuthGuard>
   )
 }
