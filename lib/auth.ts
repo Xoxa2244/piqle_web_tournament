@@ -7,19 +7,7 @@ import { prisma } from "./prisma"
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   debug: true,
-  cookies: {
-    sessionToken: {
-      name: process.env.NODE_ENV === 'production'
-        ? '__Secure-next-auth.session-token'
-        : 'next-auth.session-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-  },
+  useSecureCookies: process.env.NODE_ENV === 'production',
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
@@ -49,6 +37,16 @@ export const authOptions: NextAuthOptions = {
         return true
       }
       return true
+    },
+    async redirect({ url, baseUrl }) {
+      // After successful sign in, redirect properly
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`
+      }
+      if (new URL(url).origin === baseUrl) {
+        return url
+      }
+      return baseUrl
     },
     async session({ session, user }) {
       if (session?.user && user?.id) {
