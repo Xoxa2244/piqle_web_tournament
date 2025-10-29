@@ -406,83 +406,83 @@ export default function AccessManagementPage() {
                           </div>
                         </div>
 
-                      <div>
-                        <Label>Divisions</Label>
-                        <div className="mt-2 space-y-2">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`edit-divisionMode-${groupedAccess.user.id}`}
-                              value="all"
-                              checked={divisionMode === 'all'}
-                              onChange={(e) => {
-                                setDivisionMode('all')
-                                setSelectedDivisionIds([])
-                              }}
-                              className="w-4 h-4"
-                            />
-                            <span>All Divisions</span>
-                          </label>
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`edit-divisionMode-${groupedAccess.user.id}`}
-                              value="selected"
-                              checked={divisionMode === 'selected'}
-                              onChange={(e) => setDivisionMode('selected')}
-                              className="w-4 h-4"
-                            />
-                            <span>Selected Divisions</span>
-                          </label>
+                        <div>
+                          <Label>Divisions</Label>
+                          <div className="mt-2 space-y-2">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`edit-divisionMode-${groupedAccess.user.id}`}
+                                value="all"
+                                checked={divisionMode === 'all'}
+                                onChange={(e) => {
+                                  setDivisionMode('all')
+                                  setSelectedDivisionIds([])
+                                }}
+                                className="w-4 h-4"
+                              />
+                              <span>All Divisions</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`edit-divisionMode-${groupedAccess.user.id}`}
+                                value="selected"
+                                checked={divisionMode === 'selected'}
+                                onChange={(e) => setDivisionMode('selected')}
+                                className="w-4 h-4"
+                              />
+                              <span>Selected Divisions</span>
+                            </label>
+                          </div>
+
+                          {divisionMode === 'selected' && (
+                            <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
+                              <div className="grid grid-cols-5 gap-2">
+                                {divisions.map((division) => (
+                                  <label
+                                    key={division.id}
+                                    className="flex items-center space-x-2 cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedDivisionIds.includes(division.id)}
+                                      onChange={() => handleToggleDivision(division.id)}
+                                      className="w-4 h-4"
+                                    />
+                                    <span className="text-sm">{division.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        {divisionMode === 'selected' && (
-                          <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
-                            <div className="grid grid-cols-5 gap-2">
-                              {divisions.map((division) => (
-                                <label
-                                  key={division.id}
-                                  className="flex items-center space-x-2 cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedDivisionIds.includes(division.id)}
-                                    onChange={() => handleToggleDivision(division.id)}
-                                    className="w-4 h-4"
-                                  />
-                                  <span className="text-sm">{division.name}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <div className="flex space-x-2">
+                          <Button
+                            onClick={() => {
+                              // Update all accesses for this user
+                              userAccessIds.forEach(accessId => {
+                                handleUpdateAccess(accessId)
+                              })
+                            }}
+                            disabled={updateAccessMutation.isLoading || (divisionMode === 'selected' && selectedDivisionIds.length === 0)}
+                            size="sm"
+                          >
+                            <Check className="mr-2 h-4 w-4" />
+                            Save
+                          </Button>
+                          <Button
+                            onClick={cancelEditing}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
-
-                      <div className="flex space-x-2">
-                        <Button
-                          onClick={() => {
-                            // Update all accesses for this user
-                            userAccessIds.forEach(accessId => {
-                              handleUpdateAccess(accessId)
-                            })
-                          }}
-                          disabled={updateAccessMutation.isLoading || (divisionMode === 'selected' && selectedDivisionIds.length === 0)}
-                          size="sm"
-                        >
-                          <Check className="mr-2 h-4 w-4" />
-                          Save
-                        </Button>
-                        <Button
-                          onClick={cancelEditing}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <X className="mr-2 h-4 w-4" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
+                    ) : (
                     <>
                       {/* View Mode */}
                       <div className="flex items-center space-x-3 flex-1">
@@ -558,7 +558,8 @@ export default function AccessManagementPage() {
                     </>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
