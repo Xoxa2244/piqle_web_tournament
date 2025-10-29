@@ -61,14 +61,11 @@ export const tournamentRouter = createTRPCRouter({
       // Get all tournament IDs user has access to
       const tournamentIds = await getUserTournamentIds(ctx.prisma, ctx.session.user.id)
 
-      console.log('[Tournament.list] User ID:', ctx.session.user.id)
-      console.log('[Tournament.list] Tournament IDs user has access to:', tournamentIds)
-      
       if (tournamentIds.length === 0) {
         return []
       }
 
-      const tournaments = await ctx.prisma.tournament.findMany({
+      return ctx.prisma.tournament.findMany({
         where: {
           id: { in: tournamentIds },
         },
@@ -82,10 +79,6 @@ export const tournamentRouter = createTRPCRouter({
           },
         },
       })
-      
-      console.log('[Tournament.list] Found tournaments:', tournaments.map(t => ({ id: t.id, title: t.title, userId: t.userId })))
-
-      return tournaments
     }),
 
   get: protectedProcedure
@@ -94,24 +87,13 @@ export const tournamentRouter = createTRPCRouter({
       // Check if user has access to this tournament
       const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
       
-      console.log('[Tournament.get] User ID:', ctx.session.user.id)
-      console.log('[Tournament.get] Tournament ID:', input.id)
-      console.log('[Tournament.get] Is owner:', isOwner)
-      console.log('[Tournament.get] Has access:', !!access)
-      if (access) {
-        console.log('[Tournament.get] Access details:', { accessLevel: access.accessLevel, divisionId: access.divisionId })
-      }
-      
       // If user is not owner and has no access, throw error
       if (!isOwner && !access) {
-        console.log('[Tournament.get] ACCESS DENIED - throwing FORBIDDEN error')
         throw new TRPCError({
           code: 'FORBIDDEN',
           message: 'You do not have access to this tournament',
         })
       }
-
-      console.log('[Tournament.get] ACCESS GRANTED - returning tournament')
       return ctx.prisma.tournament.findFirst({
         where: { 
           id: input.id,
