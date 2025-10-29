@@ -30,17 +30,11 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async session({ session, token }) {
-      if (session?.user && token?.sub) {
-        session.user.id = token.sub
+    async session({ session, user }) {
+      if (session?.user && user?.id) {
+        session.user.id = user.id
       }
       return session
-    },
-    async jwt({ user, token }) {
-      if (user) {
-        token.sub = user.id
-      }
-      return token
     },
   },
   session: {
