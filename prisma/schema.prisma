@@ -8,21 +8,22 @@ datasource db {
 }
 
 model User {
-  id                   String                @id @default(uuid())
-  email                String                @unique
-  name                 String?
-  image                String?
-  emailVerified        DateTime?
-  role                 UserRole              @default(TD)
-  isActive             Boolean               @default(true)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  accounts             Account[]
-  assistantAssignments AssistantAssignment[]
-  auditLogs            AuditLog[]
-  sessions             Session[]
-  tournaments          Tournament[]
-  tournamentAccesses   TournamentAccess[]
+  id                       String                    @id @default(uuid())
+  email                    String                    @unique
+  name                     String?
+  image                    String?
+  emailVerified            DateTime?
+  role                     UserRole                  @default(TD)
+  isActive                 Boolean                   @default(true)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  accounts                 Account[]
+  assistantAssignments     AssistantAssignment[]
+  auditLogs                AuditLog[]
+  sessions                 Session[]
+  tournaments              Tournament[]
+  tournamentAccesses       TournamentAccess[]
+  tournamentAccessRequests TournamentAccessRequest[]
 
   @@map("users")
 }
@@ -66,28 +67,29 @@ model VerificationToken {
 }
 
 model Tournament {
-  id                   String            @id @default(uuid())
-  title                String
-  description          String?
-  rulesUrl             String?
-  venueName            String?
-  venueAddress         String?
-  startDate            DateTime
-  endDate              DateTime
-  entryFee             Decimal?          @db.Decimal(10, 2)
-  isPublicBoardEnabled Boolean           @default(false)
-  publicSlug           String?           @unique
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
-  userId               String
-  auditLogs            AuditLog[]
-  divisions            Division[]
-  importJobs           ImportJob[]
-  players              Player[]
-  prizes               Prize[]
-  rrGroups             RoundRobinGroup[]
-  tournamentAccesses   TournamentAccess[]
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
+  id                      String                    @id @default(uuid())
+  title                   String
+  description             String?
+  rulesUrl                String?
+  venueName               String?
+  venueAddress            String?
+  startDate               DateTime
+  endDate                 DateTime
+  entryFee                Decimal?                  @db.Decimal(10, 2)
+  isPublicBoardEnabled    Boolean                   @default(false)
+  publicSlug              String?                   @unique
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  userId                  String
+  auditLogs               AuditLog[]
+  divisions               Division[]
+  importJobs              ImportJob[]
+  players                 Player[]
+  prizes                  Prize[]
+  rrGroups                RoundRobinGroup[]
+  tournamentAccesses      TournamentAccess[]
+  user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
+  TournamentAccessRequest TournamentAccessRequest[]
 
   @@map("tournaments")
 }
@@ -370,13 +372,13 @@ model AuditLog {
 }
 
 model TournamentAccess {
-  id           String       @id @default(uuid())
+  id           String      @id @default(uuid())
   userId       String
   tournamentId String
-  divisionId   String?      // null = access to all divisions
-  accessLevel  AccessLevel  @default(SCORE_ONLY)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  divisionId   String? // null = access to all divisions
+  accessLevel  AccessLevel @default(SCORE_ONLY)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -386,14 +388,36 @@ model TournamentAccess {
   @@map("tournament_accesses")
 }
 
+model TournamentAccessRequest {
+  id           String              @id @default(uuid())
+  userId       String
+  tournamentId String
+  status       AccessRequestStatus @default(PENDING)
+  message      String? // Optional message from requester
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tournamentId]) // One request per user per tournament
+  @@map("tournament_access_requests")
+}
+
 enum UserRole {
   TD
   ASSISTANT
 }
 
 enum AccessLevel {
-  ADMIN      // Full access like Tournament Director
+  ADMIN // Full access like Tournament Director
   SCORE_ONLY // Only score input access
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum TeamKind {
