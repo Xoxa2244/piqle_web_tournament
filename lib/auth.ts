@@ -8,7 +8,6 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   debug: true,
   useSecureCookies: process.env.NODE_ENV === 'production',
-  trustHost: true, // Trust proxy headers on Vercel
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
