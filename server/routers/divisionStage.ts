@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import {
   assertDivisionAdmin,
