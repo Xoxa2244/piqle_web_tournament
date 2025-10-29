@@ -3,9 +3,10 @@ import { type FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { Session } from 'next-auth'
 
 interface CreateContextOptions {
-  session: Awaited<ReturnType<typeof getServerSession>> | null
+  session: Session | null
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
@@ -33,13 +34,13 @@ export const createTRPCRouter = t.router
 export const publicProcedure = t.procedure
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.session?.user) {
+  if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: 'UNAUTHORIZED' })
   }
   return next({
     ctx: {
       ...ctx,
-      session: ctx.session,
+      session: ctx.session as Session & { user: { id: string } },
     },
   })
 })
@@ -56,7 +57,7 @@ export const tdProcedure = t.procedure.use(({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      session: ctx.session,
+      session: ctx.session as Session & { user: { id: string } },
     },
   })
 })
