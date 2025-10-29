@@ -376,5 +376,362 @@ export const tournamentAccessRouter = createTRPCRouter({
 
       return { success: true }
     }),
+
+  // Поиск турниров (только чужие, не те что у пользователя уже есть доступ)
+  searchTournaments: protectedProcedure
+    .input(z.object({
+      query: z.string().min(1),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Получаем все турниры, к которым у пользователя уже есть доступ
+      const userTournamentIds = await ctx.prisma.tournament
+        .findMany({
+          where: { userId: ctx.session.user.id },
+          select: { id: true },
+        })
+        .then(ts => ts.map(t => t.id))
+
+      const userAccessTournamentIds = await ctx.prisma.tournamentAccess
+        .findMany({
+          where: { userId: ctx.session.user.id },
+          select: { tournamentId: true },
+          distinct: ['tournamentId'],
+        })
+        .then(accesses => accesses.map(a => a.tournamentId))
+
+      const excludedIds = [...userTournamentIds, ...userAccessTournamentIds]
+
+      // Ищем турниры по названию или описанию, исключая те, к которым у пользователя уже есть доступ
+      const tournaments = await ctx.prisma.tournament.findMany({
+        where: {
+          AND: [
+            {
+              OR: [
+                { title: { contains: input.query, mode: 'insensitive' } },
+                { description: { contains: input.query, mode: 'insensitive' } },
+              ],
+            },
+            {
+              id: { notIn: excludedIds },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          startDate: true,
+          endDate: true,
+          venueName: true,
+          entryFee: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { startDate: 'desc' },
+        take: 20,
+      })
+
+      return tournaments
+    }),
+
+  // Создание запроса на доступ
+  requestAccess: protectedProcedure
+    .input(z.object({
+      tournamentId: z.string(),
+      message: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Проверяем, что турнир существует
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      // Проверяем, что пользователь не является владельцем
+      if (tournament.userId === ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot request access to your own tournament',
+        })
+      }
+
+      // Проверяем, нет ли уже доступа или запроса
+      const existingAccess = await ctx.prisma.tournamentAccess.findFirst({
+        where: {
+          userId: ctx.session.user.id,
+          tournamentId: input.tournamentId,
+        },
+      })
+
+      if (existingAccess) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'You already have access to this tournament',
+        })
+      }
+
+      const existingRequest = await ctx.prisma.tournamentAccessRequest.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+          },
+        },
+      })
+
+      if (existingRequest) {
+        if (existingRequest.status === 'PENDING') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'You already have a pending request for this tournament',
+          })
+        } else if (existingRequest.status === 'APPROVED') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'You already have access to this tournament',
+          })
+        }
+        // Если запрос был отклонен, можно создать новый
+      }
+
+      // Создаем запрос
+      const request = await ctx.prisma.tournamentAccessRequest.create({
+        data: {
+          userId: ctx.session.user.id,
+          tournamentId: input.tournamentId,
+          message: input.message,
+          status: 'PENDING',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              image: true,
+            },
+          },
+          tournament: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      })
+
+      return request
+    }),
+
+  // Список запросов на доступ для турнира
+  listRequests: tdProcedure
+    .input(z.object({
+      tournamentId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Проверяем, что пользователь является владельцем турнира
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+      })
+
+      if (!tournament || tournament.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tournament owner can view access requests',
+        })
+      }
+
+      const requests = await ctx.prisma.tournamentAccessRequest.findMany({
+        where: {
+          tournamentId: input.tournamentId,
+          status: 'PENDING',
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              image: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      return requests
+    }),
+
+  // Одобрение запроса на доступ
+  approveRequest: tdProcedure
+    .input(z.object({
+      requestId: z.string(),
+      accessLevel: z.enum(['ADMIN', 'SCORE_ONLY']),
+      divisionIds: z.array(z.string()).nullable(), // null = all divisions
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await ctx.prisma.tournamentAccessRequest.findUnique({
+        where: { id: input.requestId },
+        include: {
+          tournament: true,
+        },
+      })
+
+      if (!request) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Request not found',
+        })
+      }
+
+      // Проверяем, что пользователь является владельцем турнира
+      if (request.tournament.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tournament owner can approve requests',
+        })
+      }
+
+      if (request.status !== 'PENDING') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Request is not pending',
+        })
+      }
+
+      // Создаем доступ
+      const divisionsToGrant = input.divisionIds === null ? [null] : input.divisionIds
+
+      if (divisionsToGrant.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Must specify at least one division or null for all divisions',
+        })
+      }
+
+      // Проверяем дивизионы если указаны
+      if (input.divisionIds !== null && input.divisionIds.length > 0) {
+        const divisions = await ctx.prisma.division.findMany({
+          where: {
+            id: { in: input.divisionIds },
+            tournamentId: request.tournamentId,
+          },
+        })
+
+        if (divisions.length !== input.divisionIds.length) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Some divisions do not belong to this tournament',
+          })
+        }
+      }
+
+      // Создаем доступы
+      const accesses = await Promise.all(
+        divisionsToGrant.map((divisionId) =>
+          ctx.prisma.tournamentAccess.create({
+            data: {
+              userId: request.userId,
+              tournamentId: request.tournamentId,
+              divisionId,
+              accessLevel: input.accessLevel,
+            },
+          })
+        )
+      )
+
+      // Обновляем статус запроса
+      await ctx.prisma.tournamentAccessRequest.update({
+        where: { id: input.requestId },
+        data: { status: 'APPROVED' },
+      })
+
+      // Audit log
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: request.tournamentId,
+          action: 'APPROVE_ACCESS_REQUEST',
+          entityType: 'TournamentAccessRequest',
+          entityId: input.requestId,
+          payload: {
+            userId: request.userId,
+            accessLevel: input.accessLevel,
+            divisionIds: input.divisionIds,
+          },
+        },
+      })
+
+      return { success: true }
+    }),
+
+  // Отклонение запроса на доступ
+  rejectRequest: tdProcedure
+    .input(z.object({
+      requestId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await ctx.prisma.tournamentAccessRequest.findUnique({
+        where: { id: input.requestId },
+        include: {
+          tournament: true,
+        },
+      })
+
+      if (!request) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Request not found',
+        })
+      }
+
+      // Проверяем, что пользователь является владельцем турнира
+      if (request.tournament.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tournament owner can reject requests',
+        })
+      }
+
+      if (request.status !== 'PENDING') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Request is not pending',
+        })
+      }
+
+      // Обновляем статус запроса
+      await ctx.prisma.tournamentAccessRequest.update({
+        where: { id: input.requestId },
+        data: { status: 'REJECTED' },
+      })
+
+      // Audit log
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: request.tournamentId,
+          action: 'REJECT_ACCESS_REQUEST',
+          entityType: 'TournamentAccessRequest',
+          entityId: input.requestId,
+          payload: {
+            userId: request.userId,
+          },
+        },
+      })
+
+      return { success: true }
+    }),
 })
 

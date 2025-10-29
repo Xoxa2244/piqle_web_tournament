@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
-import { ArrowLeft, Search, UserPlus, Edit, Trash2, Check, X } from 'lucide-react'
+import { ArrowLeft, Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
 
 export default function AccessManagementPage() {
   const params = useParams()
@@ -25,6 +25,12 @@ export default function AccessManagementPage() {
   const [divisionMode, setDivisionMode] = useState<'all' | 'selected'>('all')
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([])
   const [editingAccessId, setEditingAccessId] = useState<string | null>(null)
+  
+  // State for approving requests
+  const [approvingRequestId, setApprovingRequestId] = useState<string | null>(null)
+  const [requestAccessLevel, setRequestAccessLevel] = useState<'ADMIN' | 'SCORE_ONLY'>('SCORE_ONLY')
+  const [requestDivisionMode, setRequestDivisionMode] = useState<'all' | 'selected'>('all')
+  const [requestSelectedDivisionIds, setRequestSelectedDivisionIds] = useState<string[]>([])
 
   // Get tournament divisions
   const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
@@ -38,6 +44,30 @@ export default function AccessManagementPage() {
   // List all accesses
   const { data: accesses, refetch: refetchAccesses } = trpc.tournamentAccess.list.useQuery({
     tournamentId,
+  })
+
+  // List access requests
+  const { data: accessRequests, refetch: refetchRequests } = trpc.tournamentAccess.listRequests.useQuery({
+    tournamentId,
+  })
+
+  // Approve request mutation
+  const approveRequestMutation = trpc.tournamentAccess.approveRequest.useMutation({
+    onSuccess: () => {
+      refetchRequests()
+      refetchAccesses()
+      setApprovingRequestId(null)
+      setRequestAccessLevel('SCORE_ONLY')
+      setRequestDivisionMode('all')
+      setRequestSelectedDivisionIds([])
+    },
+  })
+
+  // Reject request mutation
+  const rejectRequestMutation = trpc.tournamentAccess.rejectRequest.useMutation({
+    onSuccess: () => {
+      refetchRequests()
+    },
   })
 
   // Grant access mutation
@@ -124,6 +154,44 @@ export default function AccessManagementPage() {
     setAccessLevel('SCORE_ONLY')
     setDivisionMode('all')
     setSelectedDivisionIds([])
+  }
+
+  const handleToggleRequestDivision = (divisionId: string) => {
+    setRequestSelectedDivisionIds((prev) =>
+      prev.includes(divisionId)
+        ? prev.filter((id) => id !== divisionId)
+        : [...prev, divisionId]
+    )
+  }
+
+  const handleApproveRequest = () => {
+    if (!approvingRequestId) return
+    
+    approveRequestMutation.mutate({
+      requestId: approvingRequestId,
+      accessLevel: requestAccessLevel,
+      divisionIds: requestDivisionMode === 'all' ? null : requestSelectedDivisionIds,
+    })
+  }
+
+  const handleRejectRequest = (requestId: string) => {
+    if (confirm('Are you sure you want to reject this access request?')) {
+      rejectRequestMutation.mutate({ requestId })
+    }
+  }
+
+  const startApprovingRequest = (requestId: string) => {
+    setApprovingRequestId(requestId)
+    setRequestAccessLevel('SCORE_ONLY')
+    setRequestDivisionMode('all')
+    setRequestSelectedDivisionIds([])
+  }
+
+  const cancelApprovingRequest = () => {
+    setApprovingRequestId(null)
+    setRequestAccessLevel('SCORE_ONLY')
+    setRequestDivisionMode('all')
+    setRequestSelectedDivisionIds([])
   }
 
   const divisions = tournament?.divisions || []
@@ -327,6 +395,213 @@ export default function AccessManagementPage() {
               >
                 {grantAccessMutation.isLoading ? 'Granting...' : 'Grant Access'}
               </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Access Requests */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Clock className="mr-2 h-5 w-5" />
+            Access Requests
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {accessRequests && accessRequests.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No pending access requests
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {accessRequests?.map((request) => {
+                const isApproving = approvingRequestId === request.id
+                
+                return (
+                  <div
+                    key={request.id}
+                    className="border rounded-md p-4 flex items-center justify-between"
+                  >
+                    {isApproving ? (
+                      <div className="flex-1 space-y-4">
+                        {/* Approve Mode */}
+                        <div className="flex items-center space-x-3">
+                          {request.user.image && (
+                            <img
+                              src={request.user.image}
+                              alt=""
+                              className="w-10 h-10 rounded-full"
+                            />
+                          )}
+                          <div>
+                            <div className="font-medium">
+                              {request.user.name || 'No name'}
+                            </div>
+                            <div className="text-sm text-gray-500">{request.user.email}</div>
+                          </div>
+                        </div>
+
+                        {request.message && (
+                          <div className="p-3 bg-gray-50 rounded-md">
+                            <div className="text-xs text-gray-500 mb-1">Message:</div>
+                            <div className="text-sm text-gray-700">{request.message}</div>
+                          </div>
+                        )}
+
+                        <div>
+                          <Label>Access Level</Label>
+                          <div className="mt-2 space-y-2">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`request-accessLevel-${request.id}`}
+                                value="SCORE_ONLY"
+                                checked={requestAccessLevel === 'SCORE_ONLY'}
+                                onChange={(e) =>
+                                  setRequestAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
+                                }
+                                className="w-4 h-4"
+                              />
+                              <span>Score Entry Only</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`request-accessLevel-${request.id}`}
+                                value="ADMIN"
+                                checked={requestAccessLevel === 'ADMIN'}
+                                onChange={(e) =>
+                                  setRequestAccessLevel(e.target.value as 'ADMIN' | 'SCORE_ONLY')
+                                }
+                                className="w-4 h-4"
+                              />
+                              <span>Administrative</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Divisions</Label>
+                          <div className="mt-2 space-y-2">
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`request-divisionMode-${request.id}`}
+                                value="all"
+                                checked={requestDivisionMode === 'all'}
+                                onChange={(e) => {
+                                  setRequestDivisionMode('all')
+                                  setRequestSelectedDivisionIds([])
+                                }}
+                                className="w-4 h-4"
+                              />
+                              <span>All Divisions</span>
+                            </label>
+                            <label className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`request-divisionMode-${request.id}`}
+                                value="selected"
+                                checked={requestDivisionMode === 'selected'}
+                                onChange={(e) => setRequestDivisionMode('selected')}
+                                className="w-4 h-4"
+                              />
+                              <span>Selected Divisions</span>
+                            </label>
+                          </div>
+
+                          {requestDivisionMode === 'selected' && (
+                            <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
+                              <div className="grid grid-cols-5 gap-2">
+                                {divisions.map((division) => (
+                                  <label
+                                    key={division.id}
+                                    className="flex items-center space-x-2 cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={requestSelectedDivisionIds.includes(division.id)}
+                                      onChange={() => handleToggleRequestDivision(division.id)}
+                                      className="w-4 h-4"
+                                    />
+                                    <span className="text-sm">{division.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <Button
+                            onClick={handleApproveRequest}
+                            disabled={approveRequestMutation.isLoading || (requestDivisionMode === 'selected' && requestSelectedDivisionIds.length === 0)}
+                            size="sm"
+                          >
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            Approve
+                          </Button>
+                          <Button
+                            onClick={cancelApprovingRequest}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* View Mode */}
+                        <div className="flex items-center space-x-3 flex-1">
+                          {request.user.image && (
+                            <img
+                              src={request.user.image}
+                              alt=""
+                              className="w-10 h-10 rounded-full"
+                            />
+                          )}
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              {request.user.name || 'No name'}
+                            </div>
+                            <div className="text-sm text-gray-500">{request.user.email}</div>
+                            {request.message && (
+                              <div className="text-xs text-gray-600 mt-2 italic">
+                                &quot;{request.message}&quot;
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-400 mt-1">
+                              Requested {new Date(request.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button
+                            onClick={() => startApprovingRequest(request.id)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <UserCheck className="mr-2 h-4 w-4" />
+                            Approve
+                          </Button>
+                          <Button
+                            onClick={() => handleRejectRequest(request.id)}
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <UserX className="mr-2 h-4 w-4" />
+                            Reject
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </CardContent>
