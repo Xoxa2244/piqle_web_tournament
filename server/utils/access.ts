@@ -188,6 +188,6 @@ export async function getUserTournamentIds(
     ...accessedTournaments.map((a) => a.tournamentId),
   ]
 
-  return [...new Set(allIds)] // Remove duplicates
+  return Array.from(new Set(allIds)) // Remove duplicates
 }
 
