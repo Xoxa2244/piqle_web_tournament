@@ -19,6 +19,15 @@ export async function middleware(req: NextRequest) {
   const sessionToken = req.cookies.get(correctCookieName)
   const oldCookie = oldCookieName ? req.cookies.get(oldCookieName) : null
 
+  // Debug logging
+  if (req.nextUrl.pathname.startsWith('/admin')) {
+    const allCookies = req.cookies.getAll()
+    console.log('[Middleware] Path:', req.nextUrl.pathname)
+    console.log('[Middleware] Looking for cookie:', correctCookieName)
+    console.log('[Middleware] Found session token:', sessionToken?.value ? 'YES' : 'NO')
+    console.log('[Middleware] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
+  }
+
   // Если есть старая cookie, удаляем её
   const response = NextResponse.next()
   if (oldCookie && oldCookieName) {
@@ -27,6 +36,7 @@ export async function middleware(req: NextRequest) {
 
   if (req.nextUrl.pathname.startsWith('/admin')) {
     if (!sessionToken) {
+      console.log('[Middleware] No session token found, redirecting to signin')
       const signInUrl = new URL('/auth/signin', req.url)
       signInUrl.searchParams.set('callbackUrl', req.url)
       return NextResponse.redirect(signInUrl)
