@@ -129,6 +129,12 @@ export default function AccessManagementPage() {
   const divisions = tournament?.divisions || []
 
   // Group accesses by user
+  type GroupedAccess = {
+    user: { id: string; email: string; name: string | null; image: string | null }
+    accesses: typeof accesses
+    accessLevel: 'ADMIN' | 'SCORE_ONLY'
+  }
+  
   const groupedAccesses = accesses?.reduce((acc, access) => {
     const userId = access.userId
     if (!acc[userId]) {
@@ -140,7 +146,7 @@ export default function AccessManagementPage() {
     }
     acc[userId].accesses.push(access)
     return acc
-  }, {} as Record<string, { user: typeof accesses[0]['user']; accesses: typeof accesses; accessLevel: 'ADMIN' | 'SCORE_ONLY' }>) || {}
+  }, {} as Record<string, GroupedAccess>) || {}
 
   const groupedAccessesArray = Object.values(groupedAccesses)
 
