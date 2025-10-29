@@ -1,5 +1,11 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import {
+  assertTournamentAdmin,
+  getUserTournamentIds,
+  checkTournamentAccess,
+} from '../utils/access'
 
 export const tournamentRouter = createTRPCRouter({
   create: tdProcedure
@@ -52,9 +58,16 @@ export const tournamentRouter = createTRPCRouter({
 
   list: protectedProcedure
     .query(async ({ ctx }) => {
+      // Get all tournament IDs user has access to
+      const tournamentIds = await getUserTournamentIds(ctx.prisma, ctx.session.user.id)
+
+      if (tournamentIds.length === 0) {
+        return []
+      }
+
       return ctx.prisma.tournament.findMany({
         where: {
-          userId: ctx.session.user.id,
+          id: { in: tournamentIds },
         },
         orderBy: { createdAt: 'desc' },
         include: {
@@ -71,10 +84,12 @@ export const tournamentRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Check if user has access to this tournament
+      await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+
       return ctx.prisma.tournament.findFirst({
         where: { 
           id: input.id,
-          userId: ctx.session.user.id,
         },
         include: {
           divisions: {
@@ -121,6 +136,9 @@ export const tournamentRouter = createTRPCRouter({
       publicSlug: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Check admin access
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id)
+
       const { id, ...data } = input
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
@@ -145,6 +163,15 @@ export const tournamentRouter = createTRPCRouter({
   delete: tdProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Only tournament owner can delete
+      const { isOwner } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+      if (!isOwner) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tournament owner can delete tournament',
+        })
+      }
+
       // Log the deletion
       await ctx.prisma.auditLog.create({
         data: {
@@ -164,6 +191,9 @@ export const tournamentRouter = createTRPCRouter({
   startElimination: tdProcedure
     .input(z.object({ tournamentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Check admin access
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+
       // This will be implemented in M5
       // For now, just log the action
       await ctx.prisma.auditLog.create({

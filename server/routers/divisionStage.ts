@@ -1,10 +1,24 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import {
+  assertDivisionAdmin,
+  assertDivisionScoreAccess,
+  checkDivisionAccess,
+} from '../utils/access'
 
 export const divisionStageRouter = createTRPCRouter({
-  getDivisionStage: tdProcedure
+  getDivisionStage: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
+      // Check if user has access to this division
+      const { hasAccess } = await checkDivisionAccess(ctx.prisma, ctx.session.user.id, input.divisionId)
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'No access to this division',
+        })
+      }
+
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         select: {
@@ -52,6 +66,9 @@ export const divisionStageRouter = createTRPCRouter({
   transitionToNextStage: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Check admin access (only admins can transition stages)
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId)
+
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
@@ -215,7 +232,7 @@ export const divisionStageRouter = createTRPCRouter({
       }
     }),
 
-  updateMatchResult: tdProcedure
+  updateMatchResult: protectedProcedure
     .input(z.object({
       matchId: z.string(),
       scoreA: z.number(),
@@ -233,6 +250,11 @@ export const divisionStageRouter = createTRPCRouter({
 
       if (!match) {
         throw new Error('Match not found')
+      }
+
+      // Check score entry access to division
+      if (match.divisionId) {
+        await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, match.divisionId)
       }
 
       // Create or update game
