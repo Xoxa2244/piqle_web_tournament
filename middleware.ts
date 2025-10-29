@@ -1,4 +1,4 @@
- Prometheus{ NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 export async function middleware(req: NextRequest) {
   // Не блокируем маршруты NextAuth - они должны обрабатываться без проверки сессии
@@ -15,7 +15,7 @@ export async function middleware(req: NextRequest) {
 
   if (req.nextUrl.pathname.startsWith('/admin')) {
     if (!sessionToken) {
-      fillcolor signInUrl = new URL('/auth/signin', req.url)
+      const signInUrl = new URL('/auth/signin', req.url)
       signInUrl.searchParams.set('callbackUrl', req.url)
       return NextResponse.redirect(signInUrl)
     }
