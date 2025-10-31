@@ -540,7 +540,7 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
+                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
                   const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
                   setSelectedDivisionId(tournament.divisions[prevIndex].id)
                 }}
@@ -553,7 +553,7 @@ export default function DivisionStageManagement() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
               >
-                {tournament.divisions.map((div) => (
+                {(tournament.divisions as any[]).map((div: any) => (
                   <option key={div.id} value={div.id}>
                     {div.name} ({div.teams?.length || 0} teams)
                   </option>
@@ -564,7 +564,7 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
+                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
                   const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
                   setSelectedDivisionId(tournament.divisions[nextIndex].id)
                 }}
