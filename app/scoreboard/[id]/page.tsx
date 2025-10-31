@@ -60,8 +60,9 @@ export default function PublicCoursePage() {
   )
 
   // Set first division as default
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId) || 
-                         tournament?.divisions[0]
+  const divisions = tournament?.divisions as any[]
+  const currentDivision = divisions?.find((d: any) => d.id === selectedDivisionId) || 
+                         divisions?.[0]
   
   if (currentDivision && !selectedDivisionId) {
     setSelectedDivisionId(currentDivision.id)
