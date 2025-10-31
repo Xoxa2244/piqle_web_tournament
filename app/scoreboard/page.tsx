@@ -108,7 +108,7 @@ export default function PublicTournamentsPage() {
                     <div>
                       <h4 className="text-sm font-medium text-gray-900 mb-2">Divisions:</h4>
                       <div className="flex flex-wrap gap-1">
-                        {tournament.divisions.map((division) => (
+                        {(tournament.divisions as any[]).map((division: any) => (
                           <Badge key={division.id} variant="secondary" className="text-xs">
                             {division.name}
                           </Badge>
