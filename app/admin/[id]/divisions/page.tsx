@@ -31,6 +31,7 @@ import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import MergeDivisionModal from '@/components/MergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import { 
   ChevronDown, 
@@ -52,6 +53,7 @@ import {
   Clock,
   Trophy,
   Target,
+  GitMerge,
   AlertTriangle
 } from 'lucide-react'
 
@@ -374,6 +376,7 @@ function DivisionCard({
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
+  onMergeDivisions,
   onDeleteDivision,
   onTeamMove, 
   onEditTeam, 
@@ -392,6 +395,7 @@ function DivisionCard({
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
+  onMergeDivisions: (division: Division) => void
   onDeleteDivision: (divisionId: string) => void
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
@@ -461,10 +465,24 @@ function DivisionCard({
               onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
+              disabled={division.isMerged}
             >
               <Target className="h-4 w-4 mr-1" />
               Distribute
             </Button>
+            
+            {!division.isMerged && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onMergeDivisions(division)}
+                className="h-8 px-3"
+                title="Merge with another division"
+              >
+                <GitMerge className="h-4 w-4 mr-1" />
+                Merge
+              </Button>
+            )}
             
             <div className="flex items-center space-x-1">
               <Button
@@ -594,6 +612,8 @@ export default function DivisionsPage() {
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
+  const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
+  const [selectedDivisionForMerge, setSelectedDivisionForMerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
@@ -948,9 +968,22 @@ export default function DivisionsPage() {
   const filteredDivisions = useMemo(() => {
     if (!localDivisions) return []
     
-    return localDivisions.filter(division =>
-      division.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    // Filter out divisions that are part of a merged division
+    const mergedDivisionIds = new Set<string>()
+    localDivisions.forEach(div => {
+      if (div.isMerged && div.mergedFromDivisionIds) {
+        const ids = div.mergedFromDivisionIds as string[]
+        ids.forEach(id => mergedDivisionIds.add(id))
+      }
+    })
+    
+    return localDivisions.filter(division => {
+      // Filter by search query
+      const matchesSearch = division.name.toLowerCase().includes(searchQuery.toLowerCase())
+      // Exclude divisions that are part of a merged division
+      const isNotMergedSource = !mergedDivisionIds.has(division.id)
+      return matchesSearch && isNotMergedSource
+    })
   }, [localDivisions, searchQuery])
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -1102,6 +1135,11 @@ export default function DivisionsPage() {
   const handleAddTeam = (division: Division) => {
     setSelectedDivisionForTeam(division)
     setShowAddTeamModal(true)
+  }
+
+  const handleMergeDivisions = (division: Division) => {
+    setSelectedDivisionForMerge(division)
+    setShowMergeDivisionModal(true)
   }
 
   const handleDistributeTeams = (divisionId: string) => {
@@ -1394,6 +1432,7 @@ export default function DivisionsPage() {
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
+                      onMergeDivisions={handleMergeDivisions}
                       onDeleteDivision={handleDeleteDivision}
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
@@ -1470,6 +1509,22 @@ export default function DivisionsPage() {
           refetch()
         }}
       />
+      
+      {selectedDivisionForMerge && (
+        <MergeDivisionModal
+          isOpen={showMergeDivisionModal}
+          onClose={() => {
+            setShowMergeDivisionModal(false)
+            setSelectedDivisionForMerge(null)
+          }}
+          tournamentId={tournamentId}
+          sourceDivision={selectedDivisionForMerge}
+          availableDivisions={localDivisions}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
 
       {/* Edit Team Modal */}
       <EditTeamModal

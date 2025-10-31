@@ -101,6 +101,34 @@ export const divisionStageRouter = createTRPCRouter({
       let nextStage: string
       let matchesToCreate: any[] = []
 
+      // Check if this is a merged division that needs to be unmerged after RR
+      if (division.isMerged && currentStage === 'RR_IN_PROGRESS') {
+        // Check if RR is complete
+        const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
+        const completedRRMatches = rrMatches.filter(m => 
+          m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        )
+
+        if (completedRRMatches.length !== rrMatches.length) {
+          throw new Error('Round Robin is not complete. Please enter all RR results.')
+        }
+
+        // Unmerge the division automatically
+        // Use dynamic import to avoid circular dependency
+        // We'll call the division router's unmergeDivision mutation
+        const { appRouter } = await import('./_app')
+        const caller = appRouter.createCaller(ctx)
+        await caller.division.unmergeDivision({
+          mergedDivisionId: division.id,
+        })
+        
+        return {
+          success: true,
+          message: 'Merged division has been automatically split back into original divisions',
+          stage: 'RR_COMPLETE',
+        }
+      }
+
       // State machine transitions
       switch (currentStage) {
         case 'RR_IN_PROGRESS':
