@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 
 export const divisionRouter = createTRPCRouter({
@@ -484,6 +485,451 @@ export const divisionRouter = createTRPCRouter({
         message: `Distributed ${distribution.length} teams across ${division.pools.length} pools`,
         teamsWithRatings: teamsWithRatingsSorted.length,
         teamsWithoutRatings: teamsWithoutRatings.length
+      }
+    }),
+
+  mergeDivisions: tdProcedure
+    .input(z.object({
+      divisionId1: z.string(),
+      divisionId2: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get both divisions with all related data
+      const [division1, division2] = await Promise.all([
+        ctx.prisma.division.findUnique({
+          where: { id: input.divisionId1 },
+          include: {
+            teams: {
+              include: {
+                teamPlayers: {
+                  include: {
+                    player: true
+                  }
+                }
+              }
+            },
+            pools: {
+              orderBy: { order: 'asc' }
+            },
+            constraints: true,
+            tournament: { select: { id: true } }
+          }
+        }),
+        ctx.prisma.division.findUnique({
+          where: { id: input.divisionId2 },
+          include: {
+            teams: {
+              include: {
+                teamPlayers: {
+                  include: {
+                    player: true
+                  }
+                }
+              }
+            },
+            pools: {
+              orderBy: { order: 'asc' }
+            },
+            constraints: true,
+            tournament: { select: { id: true } }
+          }
+        })
+      ])
+
+      if (!division1 || !division2) {
+        throw new Error('One or both divisions not found')
+      }
+
+      if (division1.tournamentId !== division2.tournamentId) {
+        throw new Error('Cannot merge divisions from different tournaments')
+      }
+
+      if (division1.isMerged || division2.isMerged) {
+        throw new Error('Cannot merge already merged divisions')
+      }
+
+      if (division1.teamKind !== division2.teamKind) {
+        throw new Error('Cannot merge divisions with different team kinds')
+      }
+
+      if (division1.pairingMode !== division2.pairingMode) {
+        throw new Error('Cannot merge divisions with different pairing modes')
+      }
+
+      // Determine merged division settings (use division1 as base)
+      const mergedName = `Merged Division: ${division1.name} + ${division2.name}`
+      const mergedPoolCount = Math.max(division1.poolCount, division2.poolCount)
+      const mergedMaxTeams = division1.maxTeams && division2.maxTeams 
+        ? division1.maxTeams + division2.maxTeams 
+        : division1.maxTeams || division2.maxTeams || null
+
+      // Create merged division
+      const mergedDivision = await ctx.prisma.division.create({
+        data: {
+          tournamentId: division1.tournamentId,
+          name: mergedName,
+          teamKind: division1.teamKind,
+          pairingMode: division1.pairingMode,
+          maxTeams: mergedMaxTeams,
+          poolCount: mergedPoolCount,
+          stage: 'RR_IN_PROGRESS',
+          isMerged: true,
+          mergedFromDivisionIds: [division1.id, division2.id],
+          // Copy constraints from division1 (or merge if needed)
+          constraints: division1.constraints ? {
+            create: {
+              minDupr: division1.constraints.minDupr,
+              maxDupr: division1.constraints.maxDupr,
+              minAge: division1.constraints.minAge,
+              maxAge: division1.constraints.maxAge,
+              genders: division1.constraints.genders,
+            }
+          } : undefined,
+          // Create pools
+          pools: {
+            create: Array.from({ length: mergedPoolCount }, (_, i) => ({
+              name: mergedPoolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
+              order: i + 1,
+            }))
+          }
+        },
+        include: {
+          pools: true
+        }
+      })
+
+      // Get all pools from both divisions
+      const allPools = [
+        ...division1.pools.map(p => ({ ...p, sourceDivisionId: division1.id })),
+        ...division2.pools.map(p => ({ ...p, sourceDivisionId: division2.id }))
+      ]
+
+      // Collect all teams from both divisions with source tracking
+      // Store source division ID in team note field for tracking
+      const allTeams = [
+        ...division1.teams.map(t => ({ ...t, sourceDivisionId: division1.id, sourceDivisionName: division1.name })),
+        ...division2.teams.map(t => ({ ...t, sourceDivisionId: division2.id, sourceDivisionName: division2.name }))
+      ]
+
+      // Map teams to new pools (distribute evenly)
+      const teamsPerPool = Math.ceil(allTeams.length / mergedDivision.pools.length)
+      const mergedPools = mergedDivision.pools.sort((a, b) => a.order - b.order)
+
+      // Move teams to merged division
+      for (let i = 0; i < allTeams.length; i++) {
+        const team = allTeams[i]
+        const targetPoolIndex = Math.floor(i / teamsPerPool)
+        const targetPool = mergedPools[targetPoolIndex] || mergedPools[0]
+
+        // Store source division info in note field (append to existing note if any)
+        const sourceInfo = `[MERGED_FROM:${team.sourceDivisionId}]`
+        const updatedNote = team.note 
+          ? `${team.note} ${sourceInfo}`
+          : sourceInfo
+
+        // Update team's division and pool
+        await ctx.prisma.team.update({
+          where: { id: team.id },
+          data: {
+            divisionId: mergedDivision.id,
+            poolId: targetPool.id,
+            note: updatedNote,
+          }
+        })
+      }
+
+      // Log the merge
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: division1.tournamentId,
+          action: 'MERGE_DIVISIONS',
+          entityType: 'Division',
+          entityId: mergedDivision.id,
+          payload: {
+            mergedFrom: [division1.id, division2.id],
+            mergedDivisionId: mergedDivision.id,
+            teamsCount: allTeams.length,
+          },
+        },
+      })
+
+      return {
+        success: true,
+        mergedDivision,
+        message: `Successfully merged ${division1.name} and ${division2.name}`,
+      }
+    }),
+
+  unmergeDivision: tdProcedure
+    .input(z.object({
+      mergedDivisionId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get merged division with all related data
+      const mergedDivision = await ctx.prisma.division.findUnique({
+        where: { id: input.mergedDivisionId },
+        include: {
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true
+                }
+              },
+              standings: true,
+            }
+          },
+          pools: {
+            orderBy: { order: 'asc' }
+          },
+          constraints: true,
+          matches: {
+            include: {
+              games: true,
+            }
+          },
+          standings: true,
+          tournament: { select: { id: true } }
+        }
+      })
+
+      if (!mergedDivision) {
+        throw new Error('Merged division not found')
+      }
+
+      if (!mergedDivision.isMerged || !mergedDivision.mergedFromDivisionIds) {
+        throw new Error('Division is not a merged division')
+      }
+
+      const originalDivisionIds = mergedDivision.mergedFromDivisionIds as string[]
+      if (originalDivisionIds.length !== 2) {
+        throw new Error('Invalid merged division: must have exactly 2 original divisions')
+      }
+
+      // Get original divisions data from audit logs or recreate from merged data
+      // For now, we'll need to store original division metadata or recreate divisions
+      // Since we can't fully restore, we'll create new divisions with original names
+      // In production, you might want to soft-delete original divisions instead
+
+      // For this implementation, we'll need to track original division names
+      // Let's assume we can extract names from the merged division name
+      const nameMatch = mergedDivision.name.match(/^Merged Division: (.+) \+ (.+)$/)
+      if (!nameMatch) {
+        throw new Error('Cannot extract original division names from merged division name')
+      }
+
+      const [, name1, name2] = nameMatch
+
+      // Split teams back to original divisions based on source division tracking
+      // Teams have source division ID stored in their note field as [MERGED_FROM:divisionId]
+      const teams1: typeof mergedDivision.teams = []
+      const teams2: typeof mergedDivision.teams = []
+      
+      mergedDivision.teams.forEach(team => {
+        // Extract source division ID from note field
+        const sourceMatch = team.note?.match(/\[MERGED_FROM:([^\]]+)\]/)
+        const sourceDivisionId = sourceMatch ? sourceMatch[1] : null
+        
+        // Remove the merge tracking info from note
+        const cleanedNote = team.note?.replace(/\[MERGED_FROM:[^\]]+\]\s?/, '').trim() || null
+        
+        if (sourceDivisionId === originalDivisionIds[0]) {
+          teams1.push({ ...team, note: cleanedNote })
+        } else if (sourceDivisionId === originalDivisionIds[1]) {
+          teams2.push({ ...team, note: cleanedNote })
+        } else {
+          // If we can't determine source, split evenly (fallback)
+          if (teams1.length <= teams2.length) {
+            teams1.push({ ...team, note: cleanedNote })
+          } else {
+            teams2.push({ ...team, note: cleanedNote })
+          }
+        }
+      })
+
+      // Recreate original divisions
+      const [division1, division2] = await Promise.all([
+        ctx.prisma.division.create({
+          data: {
+            tournamentId: mergedDivision.tournamentId,
+            name: name1.trim(),
+            teamKind: mergedDivision.teamKind,
+            pairingMode: mergedDivision.pairingMode,
+            maxTeams: mergedDivision.maxTeams ? Math.ceil(mergedDivision.maxTeams / 2) : null,
+            poolCount: mergedDivision.poolCount,
+            stage: 'RR_COMPLETE', // RR already completed in merged division
+            isMerged: false,
+            mergedFromDivisionIds: Prisma.JsonNull,
+            constraints: mergedDivision.constraints ? {
+              create: {
+                minDupr: mergedDivision.constraints.minDupr,
+                maxDupr: mergedDivision.constraints.maxDupr,
+                minAge: mergedDivision.constraints.minAge,
+                maxAge: mergedDivision.constraints.maxAge,
+                genders: mergedDivision.constraints.genders,
+              }
+            } : undefined,
+            pools: {
+              create: Array.from({ length: mergedDivision.poolCount }, (_, i) => ({
+                name: mergedDivision.poolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
+                order: i + 1,
+              }))
+            }
+          },
+          include: {
+            pools: true
+          }
+        }),
+        ctx.prisma.division.create({
+          data: {
+            tournamentId: mergedDivision.tournamentId,
+            name: name2.trim(),
+            teamKind: mergedDivision.teamKind,
+            pairingMode: mergedDivision.pairingMode,
+            maxTeams: mergedDivision.maxTeams ? Math.floor(mergedDivision.maxTeams / 2) : null,
+            poolCount: mergedDivision.poolCount,
+            stage: 'RR_COMPLETE',
+            isMerged: false,
+            mergedFromDivisionIds: Prisma.JsonNull,
+            constraints: mergedDivision.constraints ? {
+              create: {
+                minDupr: mergedDivision.constraints.minDupr,
+                maxDupr: mergedDivision.constraints.maxDupr,
+                minAge: mergedDivision.constraints.minAge,
+                maxAge: mergedDivision.constraints.maxAge,
+                genders: mergedDivision.constraints.genders,
+              }
+            } : undefined,
+            pools: {
+              create: Array.from({ length: mergedDivision.poolCount }, (_, i) => ({
+                name: mergedDivision.poolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
+                order: i + 1,
+              }))
+            }
+          },
+          include: {
+            pools: true
+          }
+        })
+      ])
+
+      // Move teams back to original divisions
+      const division1Pools = division1.pools.sort((a, b) => a.order - b.order)
+      const division2Pools = division2.pools.sort((a, b) => a.order - b.order)
+
+      // Distribute teams1 to division1 pools
+      for (let i = 0; i < teams1.length; i++) {
+        const team = teams1[i]
+        const targetPool = division1Pools[i % division1Pools.length]
+
+        await ctx.prisma.team.update({
+          where: { id: team.id },
+          data: {
+            divisionId: division1.id,
+            poolId: targetPool.id,
+            note: team.note, // Restore cleaned note
+          }
+        })
+
+        // Copy standings if they exist
+        const standing = team.standings.find(s => s.divisionId === mergedDivision.id)
+        if (standing) {
+          await ctx.prisma.standing.upsert({
+            where: {
+              divisionId_teamId: {
+                divisionId: division1.id,
+                teamId: team.id,
+              }
+            },
+            create: {
+              divisionId: division1.id,
+              teamId: team.id,
+              wins: standing.wins,
+              losses: standing.losses,
+              pointsFor: standing.pointsFor,
+              pointsAgainst: standing.pointsAgainst,
+              pointDiff: standing.pointDiff,
+            },
+            update: {
+              wins: standing.wins,
+              losses: standing.losses,
+              pointsFor: standing.pointsFor,
+              pointsAgainst: standing.pointsAgainst,
+              pointDiff: standing.pointDiff,
+            }
+          })
+        }
+      }
+
+      // Distribute teams2 to division2 pools
+      for (let i = 0; i < teams2.length; i++) {
+        const team = teams2[i]
+        const targetPool = division2Pools[i % division2Pools.length]
+
+        await ctx.prisma.team.update({
+          where: { id: team.id },
+          data: {
+            divisionId: division2.id,
+            poolId: targetPool.id,
+            note: team.note, // Restore cleaned note
+          }
+        })
+
+        // Copy standings if they exist
+        const standing = team.standings.find(s => s.divisionId === mergedDivision.id)
+        if (standing) {
+          await ctx.prisma.standing.upsert({
+            where: {
+              divisionId_teamId: {
+                divisionId: division2.id,
+                teamId: team.id,
+              }
+            },
+            create: {
+              divisionId: division2.id,
+              teamId: team.id,
+              wins: standing.wins,
+              losses: standing.losses,
+              pointsFor: standing.pointsFor,
+              pointsAgainst: standing.pointsAgainst,
+              pointDiff: standing.pointDiff,
+            },
+            update: {
+              wins: standing.wins,
+              losses: standing.losses,
+              pointsFor: standing.pointsFor,
+              pointsAgainst: standing.pointsAgainst,
+              pointDiff: standing.pointDiff,
+            }
+          })
+        }
+      }
+
+      // Delete merged division
+      await ctx.prisma.division.delete({
+        where: { id: input.mergedDivisionId }
+      })
+
+      // Log the unmerge
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: mergedDivision.tournamentId,
+          action: 'UNMERGE_DIVISIONS',
+          entityType: 'Division',
+          entityId: division1.id,
+          payload: {
+            mergedDivisionId: input.mergedDivisionId,
+            unmergedTo: [division1.id, division2.id],
+          },
+        },
+      })
+
+      return {
+        success: true,
+        divisions: [division1, division2],
+        message: `Successfully unmerged division back to ${division1.name} and ${division2.name}`,
       }
     }),
 })

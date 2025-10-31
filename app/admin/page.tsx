@@ -168,7 +168,7 @@ export default function AdminPage() {
 
       {tournaments && tournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {tournaments.map((tournament) => (
+          {(tournaments as any[]).map((tournament: any) => (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-xl font-semibold mb-2">{tournament.title}</h3>
               {tournament.description && (

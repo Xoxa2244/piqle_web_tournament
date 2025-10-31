@@ -60,8 +60,9 @@ export default function PublicCoursePage() {
   )
 
   // Set first division as default
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId) || 
-                         tournament?.divisions[0]
+  const divisions = tournament?.divisions as any[]
+  const currentDivision = divisions?.find((d: any) => d.id === selectedDivisionId) || 
+                         divisions?.[0]
   
   if (currentDivision && !selectedDivisionId) {
     setSelectedDivisionId(currentDivision.id)
@@ -143,9 +144,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divs.length - 1
+                  setSelectedDivisionId(divs[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -156,7 +158,7 @@ export default function PublicCoursePage() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -166,9 +168,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divs.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divs[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -201,9 +204,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divs.length - 1
+                  setSelectedDivisionId(divs[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -214,7 +218,7 @@ export default function PublicCoursePage() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center min-w-0 flex-1"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -224,9 +228,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divs.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divs[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
