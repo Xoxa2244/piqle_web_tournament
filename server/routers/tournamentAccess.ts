@@ -11,9 +11,17 @@ export const tournamentAccessRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const users = await ctx.prisma.user.findMany({
         where: {
-          OR: [
-            { email: { contains: input.query, mode: 'insensitive' } },
-            { name: { contains: input.query, mode: 'insensitive' } },
+          AND: [
+            {
+              OR: [
+                { email: { contains: input.query, mode: 'insensitive' } },
+                { name: { contains: input.query, mode: 'insensitive' } },
+              ],
+            },
+            // Исключаем текущего пользователя из результатов поиска
+            {
+              id: { not: ctx.session.user.id },
+            },
           ],
         },
         select: {
