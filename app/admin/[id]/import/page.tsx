@@ -237,7 +237,7 @@ export default function ImportPage() {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {tournament.divisions.reduce((sum, div) => sum + div.teams.length, 0)}
+                {((tournament.divisions as any[]).reduce((sum: number, div: any) => sum + (div.teams?.length || 0), 0))}
               </div>
               <div className="text-sm text-gray-600">Teams</div>
             </div>
