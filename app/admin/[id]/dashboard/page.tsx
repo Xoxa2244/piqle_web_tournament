@@ -203,7 +203,12 @@ export default function DivisionDashboard() {
       // Helper function to escape CSV values
       const escapeCSV = (value: string | number | null | undefined) => {
         if (value === null || value === undefined || value === '') return ''
-        return String(value)
+        const str = String(value)
+        // Only quote if contains comma, quotes, or newline
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
       }
 
       // Helper function to format player name
@@ -279,9 +284,18 @@ export default function DivisionDashboard() {
       // Add header row (line 10) - first 3 columns must be empty
       csvLines.push(',,,matchType,event,date,playerA1,playerA1DuprId,playerA1ExternalId,playerA2,playerA2DuprId,playerA2ExternalId,playerB1,playerB1DuprId,playerB1ExternalId,playerB2,playerB2DuprId,playerB2ExternalId,,teamAGame1,teamBGame1,teamAGame2,teamBGame2,teamAGame3,teamBGame3,teamAGame4,teamBGame4,teamAGame5,teamBGame5')
       
-      // Add match rows
+      // Add match rows - ensure proper CSV formatting
       matchRows.forEach((row: any[]) => {
-        csvLines.push(row.map((cell: any) => escapeCSV(cell)).join(','))
+        const formattedRow = row.map((cell: any) => {
+          if (cell === null || cell === undefined || cell === '') return ''
+          const str = String(cell)
+          // Quote values containing commas, quotes, or newlines
+          if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+            return `"${str.replace(/"/g, '""')}"`
+          }
+          return str
+        }).join(',')
+        csvLines.push(formattedRow)
       })
 
       const csvContent = csvLines.join('\n')
