@@ -971,8 +971,9 @@ export default function DivisionsPage() {
     // Filter out divisions that are part of a merged division
     const mergedDivisionIds = new Set<string>()
     localDivisions.forEach(div => {
-      if (div.isMerged && div.mergedFromDivisionIds) {
-        const ids = div.mergedFromDivisionIds as string[]
+      const divAny = div as any
+      if (divAny.isMerged && divAny.mergedFromDivisionIds) {
+        const ids = divAny.mergedFromDivisionIds as string[]
         ids.forEach(id => mergedDivisionIds.add(id))
       }
     })
