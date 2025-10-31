@@ -1217,17 +1217,6 @@ export default function DivisionStageManagement() {
                     <div key={roundIndex} className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-lg">{roundName}</h4>
-                        {roundName === 'Semi-Final' && (
-                          <Button
-                            onClick={() => setShowSemifinalSwapModal(true)}
-                            variant="outline"
-                            size="sm"
-                            className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            <span>Edit Pairs</span>
-                          </Button>
-                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {roundMatches.map((match) => {
