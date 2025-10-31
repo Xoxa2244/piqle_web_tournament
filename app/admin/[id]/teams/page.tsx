@@ -373,7 +373,7 @@ export default function TeamsPage() {
                             No participants in team
                           </div>
                         ) : (
-                          team.teamPlayers.map((teamPlayer) => (
+                          (team.teamPlayers || []).map((teamPlayer: any) => (
                             <div
                               key={teamPlayer.id}
                               className="flex items-center justify-between p-2 bg-gray-50 rounded"
