@@ -596,10 +596,10 @@ export default function DivisionStageManagement() {
                   Total matches: {rrMatches.length} • Matches per team: {(() => {
                     // Calculate matches per team within pools
                     if (currentDivision?.pools && currentDivision.pools.length > 0) {
-                      const maxMatchesPerTeam = Math.max(...currentDivision.pools.map(pool => {
-                        const poolTeams = teams.filter(team => team.poolId === pool.id)
+                      const maxMatchesPerTeam = Math.max(...((currentDivision.pools as any[]).map((pool: any) => {
+                        const poolTeams = teams.filter((team: any) => team.poolId === pool.id)
                         return poolTeams.length - 1
-                      }))
+                      })))
                       return maxMatchesPerTeam
                     }
                     return Math.max(0, teamCount - 1)
