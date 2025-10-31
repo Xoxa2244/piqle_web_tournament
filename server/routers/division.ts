@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 
 export const divisionRouter = createTRPCRouter({
@@ -704,7 +705,7 @@ export const divisionRouter = createTRPCRouter({
             poolCount: mergedDivision.poolCount,
             stage: 'RR_COMPLETE', // RR already completed in merged division
             isMerged: false,
-            mergedFromDivisionIds: null,
+            mergedFromDivisionIds: Prisma.JsonNull,
             constraints: mergedDivision.constraints ? {
               create: {
                 minDupr: mergedDivision.constraints.minDupr,
