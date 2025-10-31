@@ -64,6 +64,9 @@ export default function PlayersPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Check if user has admin access (owner or ADMIN access level)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
 
   // Get all players (participants)
   const { data: players, refetch: refetchPlayers } = trpc.player.list.useQuery(
@@ -262,10 +265,12 @@ export default function PlayersPage() {
               </Button>
             </div>
 
-            <Button onClick={handleAddPlayer} size="sm">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Player
-            </Button>
+            {isAdmin && (
+              <Button onClick={handleAddPlayer} size="sm">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Player
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -338,23 +343,25 @@ export default function PlayersPage() {
                         </Badge>
                       </td>
                       <td className="p-3">
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPlayer(player)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeletePlayer(player.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {isAdmin && (
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditPlayer(player)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeletePlayer(player.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))
