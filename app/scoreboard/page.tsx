@@ -41,7 +41,7 @@ export default function PublicTournamentsPage() {
   }
 
   // Filter tournaments that have public board enabled
-  const publicTournaments = tournaments?.filter(tournament => tournament.isPublicBoardEnabled) || []
+  const publicTournaments = (tournaments as any[])?.filter((tournament: any) => tournament.isPublicBoardEnabled) || []
 
   return (
     <div className="min-h-screen bg-gray-50">
