@@ -161,7 +161,7 @@ export default function MergeDivisionModal({
                         <div className="flex-1">
                           <div className="font-medium text-gray-900">{division.name}</div>
                           <div className="text-sm text-gray-500 mt-1">
-                            {division.teamKind} • {division.pairingMode} • {division.teams?.length || 0} teams
+                            {division.teamKind} • {division.pairingMode} • {(division as any).teams?.length || 0} teams
                           </div>
                           {!isCompatible && (
                             <div className="text-xs text-red-500 mt-1 flex items-center">
