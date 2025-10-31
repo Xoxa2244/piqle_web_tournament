@@ -276,8 +276,8 @@ export default function DivisionDashboard() {
       csvLines.push(',,,,"Do NOT delete blank columns (A, B, C, S)",,,,,,,,,,,,,,,,,,,,,,,,')
       csvLines.push(',,,,,,,,,,,,,,,,,,,,,,,,,,,,')
       
-      // Add header row (line 10)
-      csvLines.push('<leave empty>,<leave empty>,<leave empty>,matchType,event,date,playerA1,playerA1DuprId,playerA1ExternalId,playerA2,playerA2DuprId,playerA2ExternalId,playerB1,playerB1DuprId,playerB1ExternalId,playerB2,playerB2DuprId,playerB2ExternalId,<leave empty>,teamAGame1,teamBGame1,teamAGame2,teamBGame2,teamAGame3,teamBGame3,teamAGame4,teamBGame4,teamAGame5,teamBGame5')
+      // Add header row (line 10) - first 3 columns must be empty
+      csvLines.push(',,,matchType,event,date,playerA1,playerA1DuprId,playerA1ExternalId,playerA2,playerA2DuprId,playerA2ExternalId,playerB1,playerB1DuprId,playerB1ExternalId,playerB2,playerB2DuprId,playerB2ExternalId,,teamAGame1,teamBGame1,teamAGame2,teamBGame2,teamAGame3,teamBGame3,teamAGame4,teamBGame4,teamAGame5,teamBGame5')
       
       // Add match rows
       matchRows.forEach((row: any[]) => {
