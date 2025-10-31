@@ -86,7 +86,7 @@ export default function PlayersPage() {
   const divisions = tournament?.divisions || []
   
   // Get all teams from all divisions for filter
-  const teams = divisions.flatMap(division => division.teams || [])
+  const teams = (divisions as any[]).flatMap((division: any) => division.teams || [])
 
   // Filter players based on all criteria
   const filteredPlayers = useMemo(() => {
