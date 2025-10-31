@@ -262,7 +262,7 @@ export default function DivisionDashboard() {
           playerB2 ? formatPlayerName(playerB2.firstName, playerB2.lastName) : '', // playerB2
           playerB2?.dupr || '', // playerB2DuprId
           playerB2?.externalId || '', // playerB2ExternalId
-          '', // Empty column
+          '', // Empty column S
           ...gameScores, // teamAGame1, teamBGame1, ..., teamAGame5, teamBGame5
         ]
       })
