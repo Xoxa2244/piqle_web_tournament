@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -62,6 +62,8 @@ export default function DivisionDashboard() {
     teamAName: string
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+
+  const utils = trpc.useUtils()
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -147,6 +149,163 @@ export default function DivisionDashboard() {
       divisionId: currentDivision.id,
     })
   }
+
+  const handleExportCSV = useCallback(async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
+    if (!currentDivision?.id) {
+      alert('Please select a division')
+      return
+    }
+    
+    if (!tournament) {
+      alert('Tournament data not available')
+      return
+    }
+
+    if (!utils) {
+      alert('tRPC utils not available')
+      return
+    }
+
+    try {
+      
+      // Use utils.fetch method
+      const exportData = await utils.divisionStage.getMatchesForExport.fetch({
+        divisionId: currentDivision.id,
+      })
+
+      if (!exportData) {
+        alert('Failed to fetch match data')
+        return
+      }
+      
+      if (!exportData.matches || exportData.matches.length === 0) {
+        alert('No matches found to export')
+        return
+      }
+
+      // Determine match type based on teamKind
+      const matchType = exportData.teamKind === 'SINGLES_1v1' ? 'S' : 'D'
+      
+      // Format tournament name with division
+      const eventName = `${tournament.title} - ${exportData.name}`
+      
+      // Format date (use tournament start date or match date)
+      const formatDate = (date: Date | string) => {
+        const d = typeof date === 'string' ? new Date(date) : date
+        return d.toISOString().split('T')[0] // YYYY-MM-DD
+      }
+
+      // Helper function to escape CSV values
+      const escapeCSV = (value: string | number | null | undefined) => {
+        if (value === null || value === undefined || value === '') return ''
+        return String(value)
+      }
+
+      // Helper function to format player name
+      const formatPlayerName = (firstName: string, lastName: string) => {
+        return `${firstName} ${lastName}`.trim()
+      }
+
+      // Create CSV rows for matches
+      const matchRows = exportData.matches.map((match: any) => {
+        const teamAPlayers = match.teamA.teamPlayers || []
+        const teamBPlayers = match.teamB.teamPlayers || []
+        
+        // Get players for team A
+        const playerA1 = teamAPlayers[0]?.player
+        const playerA2 = teamAPlayers[1]?.player
+        const playerB1 = teamBPlayers[0]?.player
+        const playerB2 = teamBPlayers[1]?.player
+
+        // Format games scores (up to 5 games)
+        const games = match.games || []
+        const gameScores: (string | number)[] = []
+        for (let i = 0; i < 5; i++) {
+          if (games[i]) {
+            gameScores.push(games[i].scoreA)
+            gameScores.push(games[i].scoreB)
+          } else {
+            gameScores.push('')
+            gameScores.push('')
+          }
+        }
+
+        // Match date - use match createdAt or tournament startDate
+        const matchDate = match.createdAt || exportData.tournament.startDate
+        
+        return [
+          '', // Empty column A
+          '', // Empty column B
+          '', // Empty column C
+          matchType, // matchType
+          eventName, // event
+          formatDate(matchDate), // date
+          playerA1 ? formatPlayerName(playerA1.firstName, playerA1.lastName) : '', // playerA1
+          playerA1?.dupr || '', // playerA1DuprId
+          playerA1?.externalId || '', // playerA1ExternalId
+          playerA2 ? formatPlayerName(playerA2.firstName, playerA2.lastName) : '', // playerA2
+          playerA2?.dupr || '', // playerA2DuprId
+          playerA2?.externalId || '', // playerA2ExternalId
+          playerB1 ? formatPlayerName(playerB1.firstName, playerB1.lastName) : '', // playerB1
+          playerB1?.dupr || '', // playerB1DuprId
+          playerB1?.externalId || '', // playerB1ExternalId
+          playerB2 ? formatPlayerName(playerB2.firstName, playerB2.lastName) : '', // playerB2
+          playerB2?.dupr || '', // playerB2DuprId
+          playerB2?.externalId || '', // playerB2ExternalId
+          '', // Empty column
+          ...gameScores, // teamAGame1, teamBGame1, ..., teamAGame5, teamBGame5
+        ]
+      })
+
+      // Create CSV content following DUPR template format
+      const csvLines: string[] = []
+
+      // Add instruction rows (lines 1-9 from template)
+      csvLines.push(',,,Notes:,"Remove the rows that do not have match data (rows 1-10), including the header row, prior to import",,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,"Specify match type as ""S"" for singles or ""D"" for doubles",,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,Include your event name with division and any other details you\'d like to include,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,Date format should be YYYY-MM-DD,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,Player DUPR IDs must be an exact match. The DUPR ID can be copy/pasted from a player\'s profile.,,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,Player names do not need to be an exact match. Only the DUPR ID is used to validate a player.,,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,Leave the External ID column blank,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,"Do NOT delete blank columns (A, B, C, S)",,,,,,,,,,,,,,,,,,,,,,,,')
+      csvLines.push(',,,,,,,,,,,,,,,,,,,,,,,,,,,,')
+      
+      // Add header row (line 10)
+      csvLines.push('<leave empty>,<leave empty>,<leave empty>,matchType,event,date,playerA1,playerA1DuprId,playerA1ExternalId,playerA2,playerA2DuprId,playerA2ExternalId,playerB1,playerB1DuprId,playerB1ExternalId,playerB2,playerB2DuprId,playerB2ExternalId,<leave empty>,teamAGame1,teamBGame1,teamAGame2,teamBGame2,teamAGame3,teamBGame3,teamAGame4,teamBGame4,teamAGame5,teamBGame5')
+      
+      // Add match rows
+      matchRows.forEach((row: any[]) => {
+        csvLines.push(row.map((cell: any) => escapeCSV(cell)).join(','))
+      })
+
+      const csvContent = csvLines.join('\n')
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      
+      link.setAttribute('href', url)
+      link.setAttribute('download', `${exportData.name}_matches_${new Date().toISOString().split('T')[0]}.csv`)
+      link.style.visibility = 'hidden'
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Error exporting CSV: ${errorMessage}`)
+    }
+  }, [currentDivision, tournament, utils])
 
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
@@ -326,7 +485,11 @@ export default function DivisionDashboard() {
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>Standings</CardTitle>
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleExportCSV}
+                        >
                           <Download className="h-4 w-4 mr-2" />
                           Export CSV
                         </Button>

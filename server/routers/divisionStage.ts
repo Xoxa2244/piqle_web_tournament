@@ -64,6 +64,107 @@ export const divisionStageRouter = createTRPCRouter({
       return division
     }),
 
+  getMatchesForExport: protectedProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Check if user has access to this division
+      const { hasAccess } = await checkDivisionAccess(ctx.prisma, ctx.session.user.id, input.divisionId)
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'No access to this division',
+        })
+      }
+
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        select: {
+          id: true,
+          name: true,
+          teamKind: true,
+          tournament: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+            }
+          },
+          matches: {
+            where: {
+              stage: 'ROUND_ROBIN', // Only export Round Robin matches for DUPR
+            },
+            select: {
+              id: true,
+              createdAt: true,
+              teamA: {
+                select: {
+                  id: true,
+                  name: true,
+                  teamPlayers: {
+                    select: {
+                      player: {
+                        select: {
+                          id: true,
+                          firstName: true,
+                          lastName: true,
+                          dupr: true,
+                          externalId: true,
+                        }
+                      }
+                    },
+                    orderBy: {
+                      createdAt: 'asc', // Maintain order
+                    }
+                  }
+                }
+              },
+              teamB: {
+                select: {
+                  id: true,
+                  name: true,
+                  teamPlayers: {
+                    select: {
+                      player: {
+                        select: {
+                          id: true,
+                          firstName: true,
+                          lastName: true,
+                          dupr: true,
+                          externalId: true,
+                        }
+                      }
+                    },
+                    orderBy: {
+                      createdAt: 'asc', // Maintain order
+                    }
+                  }
+                }
+              },
+              games: {
+                select: {
+                  index: true,
+                  scoreA: true,
+                  scoreB: true,
+                },
+                orderBy: {
+                  index: 'asc',
+                }
+              }
+            },
+            orderBy: {
+              createdAt: 'asc',
+            }
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      return division
+    }),
+
   transitionToNextStage: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
