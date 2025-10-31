@@ -208,7 +208,7 @@ export default function DivisionStageManagement() {
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId)
+  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
