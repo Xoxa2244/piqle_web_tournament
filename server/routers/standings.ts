@@ -788,6 +788,14 @@ export const standingsRouter = createTRPCRouter({
         throw new Error('Division not found')
       }
 
+      // Delete existing Play-Off matches before regenerating
+      await ctx.prisma.match.deleteMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: 'ELIMINATION'
+        }
+      })
+
       // Check if all play-in matches are completed
       const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
       const completedPlayInMatches = playInMatches.filter(match => 
