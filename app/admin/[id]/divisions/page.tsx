@@ -1519,8 +1519,8 @@ export default function DivisionsPage() {
             setSelectedDivisionForMerge(null)
           }}
           tournamentId={tournamentId}
-          sourceDivision={selectedDivisionForMerge}
-          availableDivisions={localDivisions}
+          sourceDivision={selectedDivisionForMerge as any}
+          availableDivisions={localDivisions as any}
           onSuccess={() => {
             refetch()
           }}
