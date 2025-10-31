@@ -48,6 +48,9 @@ export default function TournamentDetailPage() {
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
   
+  // Check if user has admin access (owner or ADMIN access level)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
@@ -207,13 +210,15 @@ export default function TournamentDetailPage() {
             </div>
             
             <div className="flex items-center space-x-3">
-              <Link
-                href={`/admin/${tournamentId}/import`}
-                className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                <span className="font-medium">CSV Import</span>
-              </Link>
+              {isAdmin && (
+                <Link
+                  href={`/admin/${tournamentId}/import`}
+                  className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  <span className="font-medium">CSV Import</span>
+                </Link>
+              )}
               
               <button
                 onClick={handlePublicScoreboardClick}
@@ -223,13 +228,15 @@ export default function TournamentDetailPage() {
                 <span className="font-medium">Public Scoreboard</span>
               </button>
               
-              <button
-                onClick={handleEditTournamentClick}
-                className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                <span className="font-medium">Edit Tournament</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleEditTournamentClick}
+                  className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  <span className="font-medium">Edit Tournament</span>
+                </button>
+              )}
               
               <Link
                 href="/admin"
@@ -355,18 +362,20 @@ export default function TournamentDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <Link href={`/admin/${tournamentId}/divisions`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:border-blue-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <Settings className="h-4 w-4 text-white" />
+                  {isAdmin && (
+                    <Link href={`/admin/${tournamentId}/divisions`}>
+                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:border-blue-200 transition-all duration-200 group">
+                        <div className="flex flex-col items-center space-y-2 w-full">
+                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                            <Settings className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="text-center">
+                            <div className="font-semibold text-base text-slate-900">Divisions</div>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Divisions</div>
-                        </div>
-                      </div>
-                    </Button>
-                  </Link>
+                      </Button>
+                    </Link>
+                  )}
                   
                   <Link href={`/admin/${tournamentId}/players`}>
                     <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-green-50 hover:border-emerald-200 transition-all duration-200 group">
@@ -407,18 +416,20 @@ export default function TournamentDetailPage() {
                     </Button>
                   </Link>
                   
-                  <Link href={`/admin/${tournamentId}/access`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <Shield className="h-4 w-4 text-white" />
+                  {isAdmin && (
+                    <Link href={`/admin/${tournamentId}/access`}>
+                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
+                        <div className="flex flex-col items-center space-y-2 w-full">
+                          <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                            <Shield className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="text-center">
+                            <div className="font-semibold text-base text-slate-900">Access Control</div>
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Access Control</div>
-                        </div>
-                      </div>
-                    </Button>
-                  </Link>
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               </CardContent>
             </Card>
