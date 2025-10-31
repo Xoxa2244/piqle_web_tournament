@@ -714,9 +714,9 @@ export default function DivisionStageManagement() {
                     {/* Group matches by pools */}
                     {(() => {
                       // Get all pools from matches, sort by order
-                      const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
-                        .map(poolId => {
-                          const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                      const pools = Array.from(new Set(rrMatches.map((m: any) => m.poolId).filter(Boolean)))
+                        .map((poolId: any) => {
+                          const pool = ((currentDivision?.pools as any[]) || []).find((p: any) => p.id === poolId)
                           return { id: poolId, order: pool?.order || 0 }
                         })
                         .sort((a, b) => a.order - b.order)
