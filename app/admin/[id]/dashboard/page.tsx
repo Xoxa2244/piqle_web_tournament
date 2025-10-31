@@ -251,17 +251,17 @@ export default function DivisionDashboard() {
           eventName, // event
           formatDate(matchDate), // date
           playerA1 ? formatPlayerName(playerA1.firstName, playerA1.lastName) : '', // playerA1
-          playerA1?.dupr || '', // playerA1DuprId
-          playerA1?.externalId || '', // playerA1ExternalId
+          '', // playerA1DuprId - leave empty for manual entry in DUPR
+          '', // playerA1ExternalId
           playerA2 ? formatPlayerName(playerA2.firstName, playerA2.lastName) : '', // playerA2
-          playerA2?.dupr || '', // playerA2DuprId
-          playerA2?.externalId || '', // playerA2ExternalId
+          '', // playerA2DuprId - leave empty for manual entry in DUPR
+          '', // playerA2ExternalId
           playerB1 ? formatPlayerName(playerB1.firstName, playerB1.lastName) : '', // playerB1
-          playerB1?.dupr || '', // playerB1DuprId
-          playerB1?.externalId || '', // playerB1ExternalId
+          '', // playerB1DuprId - leave empty for manual entry in DUPR
+          '', // playerB1ExternalId
           playerB2 ? formatPlayerName(playerB2.firstName, playerB2.lastName) : '', // playerB2
-          playerB2?.dupr || '', // playerB2DuprId
-          playerB2?.externalId || '', // playerB2ExternalId
+          '', // playerB2DuprId - leave empty for manual entry in DUPR
+          '', // playerB2ExternalId
           '', // Empty column S
           ...gameScores, // teamAGame1, teamBGame1, ..., teamAGame5, teamBGame5
         ]
