@@ -368,7 +368,7 @@ export default function AccessManagementPage() {
                 {divisionMode === 'selected' && (
                   <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                     <div className="grid grid-cols-5 gap-2">
-                      {divisions.map((division) => (
+                      {(divisions as any[]).map((division: any) => (
                         <label
                           key={division.id}
                           className="flex items-center space-x-2 cursor-pointer"
@@ -514,7 +514,7 @@ export default function AccessManagementPage() {
                           {requestDivisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {divisions.map((division) => (
+                                {(divisions as any[]).map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -714,7 +714,7 @@ export default function AccessManagementPage() {
                           {divisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {divisions.map((division) => (
+                                {(divisions as any[]).map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
