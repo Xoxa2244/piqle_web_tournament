@@ -220,8 +220,9 @@ export default function DivisionDashboard() {
                 size="sm"
                 onClick={() => {
                   const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
+                  setSelectedDivisionId(divisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -232,7 +233,7 @@ export default function DivisionDashboard() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -244,8 +245,9 @@ export default function DivisionDashboard() {
                 size="sm"
                 onClick={() => {
                   const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
