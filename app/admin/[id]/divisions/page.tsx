@@ -465,13 +465,13 @@ function DivisionCard({
               onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
-              disabled={division.isMerged}
+              disabled={(division as any).isMerged}
             >
               <Target className="h-4 w-4 mr-1" />
               Distribute
             </Button>
             
-            {!division.isMerged && (
+            {!(division as any).isMerged && (
               <Button
                 variant="outline"
                 size="sm"
