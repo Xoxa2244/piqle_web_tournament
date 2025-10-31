@@ -661,7 +661,7 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('rr')}
-                    className="flex items-center space-x-2 text-orange-600 border-orange-600 hover:bg-orange-50"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
                     <RotateCcw className="h-4 w-4" />
                     <span>Regenerate RR</span>
@@ -950,7 +950,7 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('playin')}
-                    className="flex items-center space-x-2"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
                     <RotateCcw className="h-4 w-4" />
                     <span>Regenerate Play-In</span>
