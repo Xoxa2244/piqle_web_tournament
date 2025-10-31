@@ -109,7 +109,7 @@ export const tournamentRouter = createTRPCRouter({
         input.id
       )
 
-      return ctx.prisma.tournament.findFirst({
+      const tournament = await ctx.prisma.tournament.findFirst({
         where: { 
           id: input.id,
         },
@@ -150,6 +150,22 @@ export const tournamentRouter = createTRPCRouter({
           prizes: true,
         },
       })
+      
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      // Add access information to the response
+      return {
+        ...tournament,
+        userAccessInfo: {
+          isOwner,
+          accessLevel: isOwner ? 'ADMIN' : (access?.accessLevel || null),
+        },
+      }
     }),
 
   update: tdProcedure
