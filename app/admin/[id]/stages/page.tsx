@@ -52,7 +52,8 @@ export default function DivisionStageManagement() {
   // Automatically select first division if not selected
   useEffect(() => {
     if (tournament && tournament.divisions.length > 0 && !selectedDivisionId) {
-      setSelectedDivisionId(tournament.divisions[0].id)
+      const divisions = tournament.divisions as any[]
+      setSelectedDivisionId(divisions[0]?.id || '')
     }
   }, [tournament, selectedDivisionId])
 
@@ -540,9 +541,10 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
+                  setSelectedDivisionId(divisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -564,9 +566,10 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
