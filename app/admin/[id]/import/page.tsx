@@ -251,7 +251,7 @@ export default function ImportPage() {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {tournament.divisions.reduce((sum, div) => sum + (div.matches?.length || 0), 0)}
+                {((tournament.divisions as any[]).reduce((sum: number, div: any) => sum + (div.matches?.length || 0), 0))}
               </div>
               <div className="text-sm text-gray-600">Matches</div>
             </div>
