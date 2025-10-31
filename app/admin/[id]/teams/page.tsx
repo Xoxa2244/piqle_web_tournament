@@ -120,8 +120,8 @@ export default function TeamsPage() {
   const divisions = tournament?.divisions || []
   
   // Get all teams from all divisions and add division reference
-  const teams = divisions.flatMap(division => 
-    (division.teams || []).map(team => ({
+  const teams = (divisions as any[]).flatMap((division: any) => 
+    ((division.teams || []) as any[]).map((team: any) => ({
       ...team,
       division: {
         id: division.id,
