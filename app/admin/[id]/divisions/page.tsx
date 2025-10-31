@@ -609,6 +609,9 @@ export default function DivisionsPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Check if user has admin access
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -1244,6 +1247,52 @@ export default function DivisionsPage() {
   }
 
   // Check if user has access to any divisions
+  // Check if user has admin access to manage divisions
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-4">
+                <Link href={`/admin/${tournamentId}`}>
+                  <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                    <ArrowLeft className="h-4 w-4" />
+                    <span>Back</span>
+                  </Button>
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
+                  <p className="text-sm text-gray-500">{tournament?.title}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+          <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">У вас недостаточно прав</h2>
+            <p className="text-gray-600 mb-6">
+              Управление дивизионами доступно только администраторам турнира.
+              Пожалуйста, обратитесь к владельцу турнира для получения административных прав.
+            </p>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Назад к турниру
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (tournament.divisions.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50">
