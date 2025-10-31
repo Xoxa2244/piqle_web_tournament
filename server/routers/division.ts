@@ -736,7 +736,7 @@ export const divisionRouter = createTRPCRouter({
             poolCount: mergedDivision.poolCount,
             stage: 'RR_COMPLETE',
             isMerged: false,
-            mergedFromDivisionIds: null,
+            mergedFromDivisionIds: Prisma.JsonNull,
             constraints: mergedDivision.constraints ? {
               create: {
                 minDupr: mergedDivision.constraints.minDupr,
