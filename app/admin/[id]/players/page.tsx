@@ -89,7 +89,7 @@ export default function PlayersPage() {
   const divisions = tournament?.divisions || []
   
   // Get all teams from all divisions for filter
-  const teams = divisions.flatMap(division => division.teams || [])
+  const teams = (divisions as any[]).flatMap((division: any) => division.teams || [])
 
   // Filter players based on all criteria
   const filteredPlayers = useMemo(() => {
@@ -219,7 +219,7 @@ export default function PlayersPage() {
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">All divisions</option>
-              {divisions.map((division) => (
+              {(divisions as any[]).map((division: any) => (
                 <option key={division.id} value={division.id}>
                   {division.name}
                 </option>

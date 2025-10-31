@@ -54,7 +54,8 @@ export default function DivisionStageManagement() {
   // Automatically select first division if not selected
   useEffect(() => {
     if (tournament && tournament.divisions.length > 0 && !selectedDivisionId) {
-      setSelectedDivisionId(tournament.divisions[0].id)
+      const divisions = tournament.divisions as any[]
+      setSelectedDivisionId(divisions[0]?.id || '')
     }
   }, [tournament, selectedDivisionId])
 
@@ -210,7 +211,7 @@ export default function DivisionStageManagement() {
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId)
+  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
@@ -542,9 +543,10 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
+                  setSelectedDivisionId(divisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -555,7 +557,7 @@ export default function DivisionStageManagement() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
               >
-                {tournament.divisions.map((div) => (
+                {(tournament.divisions as any[]).map((div: any) => (
                   <option key={div.id} value={div.id}>
                     {div.name} ({div.teams?.length || 0} teams)
                   </option>
@@ -566,9 +568,10 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divisions = tournament.divisions as any[]
+                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -595,10 +598,10 @@ export default function DivisionStageManagement() {
                   Total matches: {rrMatches.length} • Matches per team: {(() => {
                     // Calculate matches per team within pools
                     if (currentDivision?.pools && currentDivision.pools.length > 0) {
-                      const maxMatchesPerTeam = Math.max(...currentDivision.pools.map(pool => {
-                        const poolTeams = teams.filter(team => team.poolId === pool.id)
+                      const maxMatchesPerTeam = Math.max(...((currentDivision.pools as any[]).map((pool: any) => {
+                        const poolTeams = teams.filter((team: any) => team.poolId === pool.id)
                         return poolTeams.length - 1
-                      }))
+                      })))
                       return maxMatchesPerTeam
                     }
                     return Math.max(0, teamCount - 1)
@@ -726,9 +729,9 @@ export default function DivisionStageManagement() {
                     {/* Group matches by pools */}
                     {(() => {
                       // Get all pools from matches, sort by order
-                      const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
-                        .map(poolId => {
-                          const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                      const pools = Array.from(new Set(rrMatches.map((m: any) => m.poolId).filter(Boolean)))
+                        .map((poolId: any) => {
+                          const pool = ((currentDivision?.pools as any[]) || []).find((p: any) => p.id === poolId)
                           return { id: poolId, order: pool?.order || 0 }
                         })
                         .sort((a, b) => a.order - b.order)
@@ -739,9 +742,9 @@ export default function DivisionStageManagement() {
                       return (
                         <>
                           {/* Pool matches */}
-                          {pools.map(poolId => {
-                            const poolMatches = rrMatches.filter(m => m.poolId === poolId)
-                            const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                          {pools.map((poolId: any) => {
+                            const poolMatches = rrMatches.filter((m: any) => m.poolId === poolId)
+                            const pool = ((currentDivision?.pools as any[]) || []).find((p: any) => p.id === poolId)
                             const poolName = pool?.name?.startsWith('Pool ') ? pool.name : `Pool ${pool?.name || poolId}`
                             
                             // Group pool matches by rounds and sort
