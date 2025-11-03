@@ -32,6 +32,7 @@ import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
+import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import { 
   ChevronDown, 
@@ -54,6 +55,7 @@ import {
   Trophy,
   Target,
   GitMerge,
+  GitBranch,
   AlertTriangle
 } from 'lucide-react'
 
@@ -377,6 +379,7 @@ function DivisionCard({
   onAddTeam, 
   onDistributeTeams,
   onMergeDivisions,
+  onUnmergeDivisions,
   onDeleteDivision,
   onTeamMove, 
   onEditTeam, 
@@ -396,6 +399,7 @@ function DivisionCard({
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
   onMergeDivisions: (division: Division) => void
+  onUnmergeDivisions?: (division: Division) => void
   onDeleteDivision: (divisionId: string) => void
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
@@ -471,7 +475,18 @@ function DivisionCard({
               Distribute
             </Button>
             
-            {!(division as any).isMerged && (
+            {(division as any).isMerged ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onUnmergeDivisions?.(division)}
+                className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
+                title="Unmerge division back to original divisions"
+              >
+                <GitBranch className="h-4 w-4 mr-1" />
+                Unmerge
+              </Button>
+            ) : (
               <Button
                 variant="outline"
                 size="sm"
@@ -614,6 +629,8 @@ export default function DivisionsPage() {
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
   const [selectedDivisionForMerge, setSelectedDivisionForMerge] = useState<Division | null>(null)
+  const [showUnmergeDivisionModal, setShowUnmergeDivisionModal] = useState(false)
+  const [selectedDivisionForUnmerge, setSelectedDivisionForUnmerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
@@ -1146,6 +1163,11 @@ export default function DivisionsPage() {
     setShowMergeDivisionModal(true)
   }
 
+  const handleUnmergeDivisions = (division: Division) => {
+    setSelectedDivisionForUnmerge(division)
+    setShowUnmergeDivisionModal(true)
+  }
+
   const handleDistributeTeams = (divisionId: string) => {
     if (window.confirm('Are you sure you want to redistribute teams by DUPR rating? This will move all teams from their current pools.')) {
       distributeTeamsMutation.mutate({ divisionId })
@@ -1483,6 +1505,7 @@ export default function DivisionsPage() {
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
                       onMergeDivisions={handleMergeDivisions}
+                    onUnmergeDivisions={handleUnmergeDivisions}
                       onDeleteDivision={handleDeleteDivision}
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
@@ -1570,6 +1593,20 @@ export default function DivisionsPage() {
           tournamentId={tournamentId}
           sourceDivision={selectedDivisionForMerge as any}
           availableDivisions={localDivisions as any}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
+
+      {selectedDivisionForUnmerge && (
+        <UnmergeDivisionModal
+          isOpen={showUnmergeDivisionModal}
+          onClose={() => {
+            setShowUnmergeDivisionModal(false)
+            setSelectedDivisionForUnmerge(null)
+          }}
+          mergedDivision={selectedDivisionForUnmerge as any}
           onSuccess={() => {
             refetch()
           }}
