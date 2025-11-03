@@ -69,8 +69,8 @@ export default function MergeDivisionModal({
 
     if (window.confirm(
       `Are you sure you want to merge "${sourceDivision.name}" with "${targetDivision.name}"?\n\n` +
-      `Both divisions will be combined into one merged division. After the Round Robin stage completes, ` +
-      `the merged division will automatically split back into the original two divisions.`
+      `Both divisions will be combined into one merged division. Round Robin will be played among all merged teams. ` +
+      `You can manually unmerge the division after Round Robin completes.`
     )) {
       mergeMutation.mutate({
         divisionId1: sourceDivision.id,
@@ -186,8 +186,8 @@ export default function MergeDivisionModal({
                         <li>Both divisions will be combined into one merged division</li>
                         <li>All teams from both divisions will be moved to the merged division</li>
                         <li>Round Robin stage will be played among all merged teams</li>
-                        <li>After Round Robin completes, the division will automatically split back</li>
-                        <li>Teams and scores will be distributed back to the original divisions</li>
+                        <li>After Round Robin completes, you can manually unmerge the division</li>
+                        <li>Teams will be distributed back to the original divisions when unmerged</li>
                       </ul>
                     </div>
                   </div>

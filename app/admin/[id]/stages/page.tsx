@@ -17,7 +17,8 @@ import {
   Users,
   Target,
   RefreshCw,
-  Edit3
+  Edit3,
+  GitBranch
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
+import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import Link from 'next/link'
 
 export default function DivisionStageManagement() {
@@ -42,6 +44,7 @@ export default function DivisionStageManagement() {
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
   const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
+  const [showUnmergeModal, setShowUnmergeModal] = useState(false)
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -899,6 +902,34 @@ export default function DivisionStageManagement() {
           </Card>
         )}
 
+        {/* Unmerge Button - show for merged divisions after RR completion */}
+        {currentDivision && (currentDivision as any).isMerged && 
+         completedRRMatches.length === rrMatches.length && 
+         rrMatches.length > 0 && (
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                    Unmerge Division
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Round Robin is complete. You can now split this merged division back into the original two divisions.
+                    Each division will have separate Play-In and Play-Off brackets.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setShowUnmergeModal(true)}
+                  className="ml-4 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
+                >
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  Unmerge Division
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Play-In Block - show only if B < N < 2B */}
         {needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
@@ -1322,6 +1353,20 @@ export default function DivisionStageManagement() {
           }))}
           teams={teams.map(team => ({ id: team.id, name: team.name }))}
           isLoading={swapPlayoffTeamsMutation.isPending}
+        />
+      )}
+
+      {/* Unmerge Division Modal */}
+      {showUnmergeModal && currentDivision && (
+        <UnmergeDivisionModal
+          isOpen={showUnmergeModal}
+          onClose={() => setShowUnmergeModal(false)}
+          mergedDivision={currentDivision as any}
+          onSuccess={() => {
+            refetchTournament()
+            // Redirect to divisions page after unmerge
+            router.push(`/admin/${tournamentId}/divisions`)
+          }}
         />
       )}
 
