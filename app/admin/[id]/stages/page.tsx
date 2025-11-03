@@ -28,6 +28,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
+import BracketModal from '@/components/BracketModal'
 import Link from 'next/link'
 
 export default function DivisionStageManagement() {
@@ -45,6 +46,7 @@ export default function DivisionStageManagement() {
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
   const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
   const [showUnmergeModal, setShowUnmergeModal] = useState(false)
+  const [showBracketModal, setShowBracketModal] = useState(false)
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -884,6 +886,20 @@ export default function DivisionStageManagement() {
                 </AlertDescription>
               </Alert>
             )}
+
+            {/* Show Bracket Button */}
+            {completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setShowBracketModal(true)}
+                  variant="outline"
+                  className="flex items-center space-x-2"
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Show Bracket</span>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1367,6 +1383,15 @@ export default function DivisionStageManagement() {
             // Redirect to divisions page after unmerge
             router.push(`/admin/${tournamentId}/divisions`)
           }}
+        />
+      )}
+
+      {/* Bracket Modal */}
+      {showBracketModal && selectedDivisionId && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={selectedDivisionId}
         />
       )}
 

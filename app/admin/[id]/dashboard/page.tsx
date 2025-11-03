@@ -20,6 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import BracketModal from '@/components/BracketModal'
 import Link from 'next/link'
 
 interface TeamStanding {
@@ -56,6 +57,7 @@ export default function DivisionDashboard() {
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
+  const [showBracketModal, setShowBracketModal] = useState(false)
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
@@ -207,12 +209,24 @@ export default function DivisionDashboard() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
               <p className="text-gray-600">{tournament.title}</p>
               {/* Status badges hidden per user request */}
             </div>
             
+            {/* Show Bracket Button */}
+            {isRRComplete && currentDivision && (
+              <Button
+                onClick={() => setShowBracketModal(true)}
+                variant="outline"
+                className="flex items-center space-x-2 mr-4"
+              >
+                <Trophy className="h-4 w-4" />
+                <span>Show Bracket</span>
+              </Button>
+            )}
+
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
               <Button
@@ -603,10 +617,27 @@ export default function DivisionDashboard() {
           </>
         ) : (
           <div className="text-center py-8">
+            {/* Bracket Modal */}
+            {showBracketModal && currentDivision && (
+              <BracketModal
+                isOpen={showBracketModal}
+                onClose={() => setShowBracketModal(false)}
+                divisionId={currentDivision.id}
+              />
+            )}
             <p className="text-gray-500">Select division</p>
           </div>
         )}
       </div>
+
+      {/* Bracket Modal */}
+      {showBracketModal && currentDivision && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={currentDivision.id}
+        />
+      )}
     </div>
   )
 }

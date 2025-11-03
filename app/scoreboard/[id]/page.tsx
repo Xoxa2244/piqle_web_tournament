@@ -17,6 +17,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import BracketModal from '@/components/BracketModal'
 
 interface TeamStanding {
   teamId: string
@@ -52,6 +53,7 @@ export default function PublicCoursePage() {
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
+  const [showBracketModal, setShowBracketModal] = useState(false)
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
@@ -139,6 +141,17 @@ export default function PublicCoursePage() {
               </h1>
             </div>
             
+            {/* Show Bracket Button */}
+            {isRRComplete && currentDivision && (
+              <button
+                onClick={() => setShowBracketModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors mr-4"
+              >
+                <Trophy className="h-4 w-4" />
+                <span>Show Bracket</span>
+              </button>
+            )}
+
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
               <button
@@ -677,6 +690,16 @@ export default function PublicCoursePage() {
           </div>
         )}
       </div>
+
+      {/* Bracket Modal */}
+      {showBracketModal && currentDivision && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={currentDivision.id}
+          isPublic={true}
+        />
+      )}
     </div>
   )
 }
