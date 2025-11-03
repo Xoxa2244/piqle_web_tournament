@@ -10,6 +10,7 @@ interface BracketModalProps {
   isOpen: boolean
   onClose: () => void
   divisionId: string
+  isPublic?: boolean
 }
 
 interface MatchNode {
