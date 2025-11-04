@@ -1063,8 +1063,8 @@ export const standingsRouter = createTRPCRouter({
                 const prevMatch1 = previousRoundMatches[prevMatchIndex1]
                 const prevMatch2 = previousRoundMatches[prevMatchIndex2]
                 
-                let teamA = { id: '', name: 'TBD', seed: undefined }
-                let teamB = { id: '', name: 'TBD', seed: undefined }
+                let teamA: { id: string; name: string; seed: number | undefined } = { id: '', name: 'TBD', seed: undefined }
+                let teamB: { id: string; name: string; seed: number | undefined } = { id: '', name: 'TBD', seed: undefined }
                 
                 if (prevMatch1?.winner) {
                   teamA = {
