@@ -663,12 +663,36 @@ export default function DivisionsPage() {
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
   const [availablePlayers, setAvailablePlayers] = useState<any[]>([])
   
-  // Sync local divisions with fetched data
+  // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
+  const visibleDivisions = useMemo(() => {
+    if (!tournament?.divisions) return []
+    const divisions = tournament.divisions as any[]
+    const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisions.filter((div: any) => {
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      const wasMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      return !wasMerged
+    })
+  }, [tournament?.divisions])
+
+  // Sync local divisions with fetched data (filtered)
   useEffect(() => {
-    if (tournament?.divisions) {
+    if (visibleDivisions.length > 0) {
+      setLocalDivisions(visibleDivisions as Division[])
+    } else if (tournament?.divisions) {
       setLocalDivisions(tournament.divisions)
     }
-  }, [tournament?.divisions])
+  }, [visibleDivisions, tournament?.divisions])
   
   // Sync local availablePlayers with fetched data
   useEffect(() => {
@@ -990,20 +1014,26 @@ export default function DivisionsPage() {
     
     // Filter out divisions that are part of a merged division
     const mergedDivisionIds = new Set<string>()
-    localDivisions.forEach(div => {
-      const divAny = div as any
-      if (divAny.isMerged && divAny.mergedFromDivisionIds) {
-        const ids = divAny.mergedFromDivisionIds as string[]
-        ids.forEach(id => mergedDivisionIds.add(id))
-      }
+    const mergedDivisions = localDivisions.filter((div: any) => div.isMerged && div.mergedFromDivisionIds)
+    
+    mergedDivisions.forEach((div: any) => {
+      const mergedFromIds = Array.isArray(div.mergedFromDivisionIds) 
+        ? div.mergedFromDivisionIds 
+        : []
+      mergedFromIds.forEach((id: string) => mergedDivisionIds.add(id))
     })
     
-    return localDivisions.filter(division => {
+    return localDivisions.filter((div: any) => {
       // Filter by search query
-      const matchesSearch = division.name.toLowerCase().includes(searchQuery.toLowerCase())
-      // Exclude divisions that are part of a merged division
-      const isNotMergedSource = !mergedDivisionIds.has(division.id)
-      return matchesSearch && isNotMergedSource
+      const matchesSearch = div.name.toLowerCase().includes(searchQuery.toLowerCase())
+      if (!matchesSearch) return false
+      
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      return !mergedDivisionIds.has(div.id)
     })
   }, [localDivisions, searchQuery])
 
