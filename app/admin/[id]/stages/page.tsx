@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
@@ -54,13 +54,34 @@ export default function DivisionStageManagement() {
     { enabled: !!tournamentId }
   )
 
+  // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
+  const visibleDivisions = useMemo(() => {
+    if (!tournament?.divisions) return []
+    const divisions = tournament.divisions as any[]
+    const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisions.filter((div: any) => {
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      const wasMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      return !wasMerged
+    })
+  }, [tournament?.divisions])
+
   // Automatically select first division if not selected
   useEffect(() => {
-    if (tournament && tournament.divisions.length > 0 && !selectedDivisionId) {
-      const divisions = tournament.divisions as any[]
-      setSelectedDivisionId(divisions[0]?.id || '')
+    if (visibleDivisions.length > 0 && !selectedDivisionId) {
+      setSelectedDivisionId(visibleDivisions[0]?.id || '')
     }
-  }, [tournament, selectedDivisionId])
+  }, [visibleDivisions, selectedDivisionId])
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -546,10 +567,9 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const divisions = tournament.divisions as any[]
-                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
-                  setSelectedDivisionId(divisions[prevIndex].id)
+                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
+                  setSelectedDivisionId(visibleDivisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -560,7 +580,7 @@ export default function DivisionStageManagement() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
               >
-                {(tournament.divisions as any[]).map((div: any) => (
+                {visibleDivisions.map((div: any) => (
                   <option key={div.id} value={div.id}>
                     {div.name} ({div.teams?.length || 0} teams)
                   </option>
@@ -571,10 +591,9 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const divisions = tournament.divisions as any[]
-                  const currentIndex = divisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(divisions[nextIndex].id)
+                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(visibleDivisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
