@@ -666,6 +666,18 @@ export const divisionRouter = createTRPCRouter({
 
       const [, name1, name2] = nameMatch
 
+      // Check if original divisions still exist
+      const [existingDivision1, existingDivision2] = await Promise.all([
+        ctx.prisma.division.findUnique({
+          where: { id: originalDivisionIds[0] },
+          include: { pools: { orderBy: { order: 'asc' } } }
+        }),
+        ctx.prisma.division.findUnique({
+          where: { id: originalDivisionIds[1] },
+          include: { pools: { orderBy: { order: 'asc' } } }
+        })
+      ])
+
       // Split teams back to original divisions based on source division tracking
       // Teams have source division ID stored in their note field as [MERGED_FROM:divisionId]
       const teams1: typeof mergedDivision.teams = []
@@ -693,9 +705,37 @@ export const divisionRouter = createTRPCRouter({
         }
       })
 
-      // Recreate original divisions
-      const [division1, division2] = await Promise.all([
-        ctx.prisma.division.create({
+      // Restore or recreate original divisions
+      let division1, division2
+
+      if (existingDivision1) {
+        // Restore existing division1
+        division1 = await ctx.prisma.division.update({
+          where: { id: existingDivision1.id },
+          data: {
+            stage: 'RR_COMPLETE',
+            isMerged: false,
+            mergedFromDivisionIds: Prisma.JsonNull,
+          },
+          include: { pools: { orderBy: { order: 'asc' } } }
+        })
+        // Ensure pools exist
+        if (division1.pools.length === 0) {
+          await ctx.prisma.pool.createMany({
+            data: Array.from({ length: mergedDivision.poolCount }, (_, i) => ({
+              divisionId: division1.id,
+              name: mergedDivision.poolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
+              order: i + 1,
+            }))
+          })
+          division1 = await ctx.prisma.division.findUnique({
+            where: { id: division1.id },
+            include: { pools: { orderBy: { order: 'asc' } } }
+          })!
+        }
+      } else {
+        // Create new division1
+        division1 = await ctx.prisma.division.create({
           data: {
             tournamentId: mergedDivision.tournamentId,
             name: name1.trim(),
@@ -703,7 +743,7 @@ export const divisionRouter = createTRPCRouter({
             pairingMode: mergedDivision.pairingMode,
             maxTeams: mergedDivision.maxTeams ? Math.ceil(mergedDivision.maxTeams / 2) : null,
             poolCount: mergedDivision.poolCount,
-            stage: 'RR_COMPLETE', // RR already completed in merged division
+            stage: 'RR_COMPLETE',
             isMerged: false,
             mergedFromDivisionIds: Prisma.JsonNull,
             constraints: mergedDivision.constraints ? {
@@ -723,10 +763,39 @@ export const divisionRouter = createTRPCRouter({
             }
           },
           include: {
-            pools: true
+            pools: { orderBy: { order: 'asc' } }
           }
-        }),
-        ctx.prisma.division.create({
+        })
+      }
+
+      if (existingDivision2) {
+        // Restore existing division2
+        division2 = await ctx.prisma.division.update({
+          where: { id: existingDivision2.id },
+          data: {
+            stage: 'RR_COMPLETE',
+            isMerged: false,
+            mergedFromDivisionIds: Prisma.JsonNull,
+          },
+          include: { pools: { orderBy: { order: 'asc' } } }
+        })
+        // Ensure pools exist
+        if (division2.pools.length === 0) {
+          await ctx.prisma.pool.createMany({
+            data: Array.from({ length: mergedDivision.poolCount }, (_, i) => ({
+              divisionId: division2.id,
+              name: mergedDivision.poolCount === 1 ? 'Pool 1' : `Pool ${i + 1}`,
+              order: i + 1,
+            }))
+          })
+          division2 = await ctx.prisma.division.findUnique({
+            where: { id: division2.id },
+            include: { pools: { orderBy: { order: 'asc' } } }
+          })!
+        }
+      } else {
+        // Create new division2
+        division2 = await ctx.prisma.division.create({
           data: {
             tournamentId: mergedDivision.tournamentId,
             name: name2.trim(),
@@ -754,10 +823,10 @@ export const divisionRouter = createTRPCRouter({
             }
           },
           include: {
-            pools: true
+            pools: { orderBy: { order: 'asc' } }
           }
         })
-      ])
+      }
 
       // Move teams back to original divisions
       const division1Pools = division1.pools.sort((a, b) => a.order - b.order)
