@@ -240,7 +240,7 @@ export default function BracketModal({
                     console.log('Match clicked:', matchId)
                   }}
                 />
-              ) : allMatches !== null && allMatches.length === 0 && isRRComplete ? (
+              ) : allMatches !== null && allMatches.length === 0 && bracketData?.isRRComplete ? (
                 <div className="text-center py-12 text-gray-500">
                   <p className="mb-2">Bracket structure is being generated...</p>
                   <p className="text-sm text-gray-400">Please generate Play-In or Play-Off matches to view the bracket.</p>
