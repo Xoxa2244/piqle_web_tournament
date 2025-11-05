@@ -894,12 +894,22 @@ export const standingsRouter = createTRPCRouter({
       const autoQualifiedTeamIds = standings.slice(0, N - 2 * E).map(s => s.teamId)
       const autoQualified = division.teams.filter(team => autoQualifiedTeamIds.includes(team.id))
 
-      // Generate playoff matches with correct participants
-      // Convert teams to the format expected by generateSingleEliminationMatches
-      const playoffTeams = [...autoQualified, ...playInWinners].map(team => ({
-        teamId: team.id
-      }))
-      const playoffMatches = generateSingleEliminationMatches(playoffTeams, 0)
+      // Get IDs of all playoff participants (auto-qualified + play-in winners)
+      const playInWinnerIds = playInWinners.map(w => w.id)
+      const allPlayoffParticipantIds = [...autoQualifiedTeamIds, ...playInWinnerIds]
+
+      // Sort ALL playoff participants by their standings from Round Robin
+      // №1 plays with last by points (excluding those who lost in play-in)
+      // №2 plays with second-to-last, etc.
+      const playoffTeamsSorted = standings
+        .filter(s => allPlayoffParticipantIds.includes(s.teamId))
+        .map(s => ({
+          teamId: s.teamId,
+          wins: s.wins,
+          pointDiff: s.pointDiff
+        }))
+
+      const playoffMatches = generateSingleEliminationMatches(playoffTeamsSorted, 0)
 
       // Create playoff matches in database
       const createdMatches = await Promise.all(
