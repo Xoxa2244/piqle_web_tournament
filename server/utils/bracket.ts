@@ -424,7 +424,20 @@ export function buildCompleteBracket(
   allMatches.push(...round1Matches)
   
   // Build subsequent rounds
+  // Validate bracketSize to prevent infinite loops
+  if (bracketSize <= 0 || !Number.isFinite(bracketSize)) {
+    console.error('Invalid bracketSize:', bracketSize)
+    return allMatches // Return what we have so far
+  }
+  
   const totalRounds = Math.ceil(Math.log2(bracketSize))
+  
+  // Safety check: limit to reasonable number of rounds
+  if (totalRounds > 10 || !Number.isFinite(totalRounds)) {
+    console.error('Invalid totalRounds calculated:', totalRounds, 'for bracketSize:', bracketSize)
+    return allMatches // Return what we have so far
+  }
+  
   let previousRound = round1Matches
   
   for (let round = 2; round <= totalRounds; round++) {
