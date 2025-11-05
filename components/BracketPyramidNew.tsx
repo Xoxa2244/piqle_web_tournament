@@ -135,50 +135,79 @@ export default function BracketPyramidNew({
     )
   }
 
-  // Calculate match height for connecting lines
-  const matchHeight = 128 // 32px * 4 (match card + spacing)
-  const matchSpacing = 24
+  // Calculate match height for connecting lines (fixed grid)
+  const matchHeight = 128 // Fixed height per match card
+  const matchSpacing = 24 // Spacing between matches
+  const roundSpacing = 64 // Horizontal spacing between rounds
 
   return (
     <div className="w-full overflow-x-auto">
       <div className="flex justify-start min-w-max">
-        <div className="flex items-start space-x-8 py-4">
-          {rounds.map((round, roundIdx) => (
-            <div key={round.round} className="flex flex-col items-center relative">
-              {/* Round Header */}
-              <div className="mb-4 text-center">
-                <h3 className="font-semibold text-gray-900">{round.roundName}</h3>
-              </div>
+        <div className="flex items-start py-4" style={{ gap: `${roundSpacing}px` }}>
+          {rounds.map((round, roundIdx) => {
+            // Calculate vertical offsets for connecting lines
+            const matchCount = round.matches.length
+            const totalHeight = matchCount * (matchHeight + matchSpacing) - matchSpacing
+            
+            return (
+              <div key={round.round} className="flex flex-col items-center relative">
+                {/* Round Header */}
+                <div className="mb-4 text-center">
+                  <h3 className="font-semibold text-gray-900">{round.roundName}</h3>
+                </div>
 
-              {/* Matches */}
-              <div className="space-y-6">
-                {round.matches.map((match, matchIdx) => {
-                  const scores = getScores(match)
-                  const isHovered = hoveredMatch === match.id
-                  const leftDisplay = getSlotDisplay(match.left, match, true)
-                  const rightDisplay = getSlotDisplay(match.right, match, false)
-                  const isFinal = round.round === maxRound && round.round > 0
-                  
-                  return (
-                    <div
-                      key={match.id}
-                      className={`relative transition-all duration-200 flex items-center ${
-                        isHovered ? 'scale-105 z-10' : ''
-                      }`}
-                      style={{ height: `${matchHeight}px` }}
-                      onMouseEnter={() => setHoveredMatch(match.id)}
-                      onMouseLeave={() => setHoveredMatch(null)}
-                    >
-                      {/* Connecting Lines FROM previous round */}
-                      {showConnectingLines && roundIdx > 0 && (
-                        <>
-                          {/* Left slot line */}
-                          <div className="absolute left-0 top-1/2 -translate-x-8 w-8 h-0.5 bg-gray-300" />
-                          <div className="absolute left-0 top-1/2 -translate-x-8 -translate-y-1/2 w-0.5 h-full bg-gray-300" style={{ height: `${matchHeight * 2 + matchSpacing}px` }} />
-                          {/* Right slot line */}
-                          <div className="absolute right-0 top-1/2 translate-x-8 w-8 h-0.5 bg-gray-300" />
-                        </>
-                      )}
+                {/* Matches */}
+                <div className="relative" style={{ minHeight: `${totalHeight}px` }}>
+                  {round.matches.map((match, matchIdx) => {
+                    const scores = getScores(match)
+                    const isHovered = hoveredMatch === match.id
+                    const leftDisplay = getSlotDisplay(match.left, match, true)
+                    const rightDisplay = getSlotDisplay(match.right, match, false)
+                    const isFinal = round.round === maxRound && round.round > 0
+                    
+                    // Calculate vertical position in grid
+                    const topOffset = matchIdx * (matchHeight + matchSpacing)
+                    
+                    return (
+                      <div
+                        key={match.id}
+                        className={`absolute left-0 right-0 transition-all duration-200 flex items-center ${
+                          isHovered ? 'scale-105 z-10' : ''
+                        }`}
+                        style={{ 
+                          top: `${topOffset}px`,
+                          height: `${matchHeight}px`
+                        }}
+                        onMouseEnter={() => setHoveredMatch(match.id)}
+                        onMouseLeave={() => setHoveredMatch(null)}
+                      >
+                        {/* Connecting Lines FROM previous round */}
+                        {showConnectingLines && roundIdx > 0 && (
+                          <>
+                            {/* Horizontal line from previous round */}
+                            <div 
+                              className="absolute left-0 top-1/2 bg-gray-300"
+                              style={{ 
+                                width: `${roundSpacing / 2}px`,
+                                height: '2px',
+                                transform: 'translateX(-100%)'
+                              }}
+                            />
+                            
+                            {/* Vertical connector line (connects to previous round's matches) */}
+                            {roundIdx > 0 && (
+                              <div 
+                                className="absolute left-0 top-1/2 bg-gray-300"
+                                style={{ 
+                                  width: '2px',
+                                  height: `${matchHeight * 2 + matchSpacing}px`,
+                                  transform: 'translate(-100%, -50%)',
+                                  top: '50%'
+                                }}
+                              />
+                            )}
+                          </>
+                        )}
 
                       {/* Match Card */}
                       <Card 
@@ -282,16 +311,24 @@ export default function BracketPyramidNew({
                         </CardContent>
                       </Card>
 
-                      {/* Connecting Lines TO next round */}
-                      {showConnectingLines && roundIdx < rounds.length - 1 && match.nextMatchId && (
-                        <div className="absolute right-0 top-1/2 translate-x-8 w-8 h-0.5 bg-gray-300" />
-                      )}
-                    </div>
-                  )
-                })}
+                        {/* Connecting Lines TO next round */}
+                        {showConnectingLines && roundIdx < rounds.length - 1 && (
+                          <div 
+                            className="absolute right-0 top-1/2 bg-gray-300"
+                            style={{ 
+                              width: `${roundSpacing / 2}px`,
+                              height: '2px',
+                              transform: 'translateX(100%)'
+                            }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
