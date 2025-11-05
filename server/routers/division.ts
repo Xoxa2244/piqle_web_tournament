@@ -973,7 +973,59 @@ export const divisionRouter = createTRPCRouter({
         }
       }
 
-      // Delete merged division
+      // Move Round Robin matches back to original divisions based on team composition
+      // Matches where both teams belong to division1 go to division1
+      // Matches where both teams belong to division2 go to division2
+      // Matches with teams from both divisions should be split (but this shouldn't happen in RR)
+      const rrMatches = mergedDivision.matches.filter(m => m.stage === 'ROUND_ROBIN')
+      
+      for (const match of rrMatches) {
+        // Determine which division this match belongs to based on teams
+        const team1InDivision1 = teams1.some(t => t.id === match.teamAId)
+        const team1InDivision2 = teams2.some(t => t.id === match.teamAId)
+        const team2InDivision1 = teams1.some(t => t.id === match.teamBId)
+        const team2InDivision2 = teams2.some(t => t.id === match.teamBId)
+        
+        let targetDivisionId: string | null = null
+        
+        // If both teams are in division1, match goes to division1
+        if (team1InDivision1 && team2InDivision1) {
+          targetDivisionId = division1.id
+        }
+        // If both teams are in division2, match goes to division2
+        else if (team1InDivision2 && team2InDivision2) {
+          targetDivisionId = division2.id
+        }
+        // If teams are from different divisions (shouldn't happen in RR after merge)
+        // Put match in division1 by default (fallback)
+        else {
+          // Try to determine based on teamA
+          if (team1InDivision1) {
+            targetDivisionId = division1.id
+          } else if (team1InDivision2) {
+            targetDivisionId = division2.id
+          } else {
+            // Fallback: put in division1
+            targetDivisionId = division1.id
+          }
+        }
+        
+        if (targetDivisionId) {
+          // Update match to point to target division
+          // Also need to update poolId if match was pool-based
+          // For now, we'll set poolId to null (matches can be regenerated with proper pool assignment if needed)
+          await ctx.prisma.match.update({
+            where: { id: match.id },
+            data: {
+              divisionId: targetDivisionId,
+              poolId: null, // Reset poolId - matches will be reassigned to pools if needed
+            }
+          })
+        }
+      }
+
+      // Delete merged division (this will cascade delete any remaining matches if there are any)
+      // But we've already moved all RR matches, so this should only delete the division itself
       await ctx.prisma.division.delete({
         where: { id: input.mergedDivisionId }
       })
