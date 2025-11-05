@@ -49,11 +49,19 @@ export default function BracketModal({
   const bracketQuery = isPublic
     ? (trpc as any).public.getBracketPublic.useQuery(
         { divisionId },
-        { enabled: isOpen && !!divisionId }
+        { 
+          enabled: isOpen && !!divisionId,
+          retry: 1,
+          refetchOnWindowFocus: false,
+        }
       )
     : trpc.standings.getBracket.useQuery(
         { divisionId },
-        { enabled: isOpen && !!divisionId }
+        { 
+          enabled: isOpen && !!divisionId,
+          retry: 1,
+          refetchOnWindowFocus: false,
+        }
       )
   
   const { data: bracketData, refetch, isLoading, isError, error } = bracketQuery
