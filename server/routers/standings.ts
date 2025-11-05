@@ -765,36 +765,32 @@ export const standingsRouter = createTRPCRouter({
   getBracket: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Get division with teams, matches, and standings
-      const division = await ctx.prisma.division.findUnique({
-        where: { id: input.divisionId },
-        include: {
-          teams: true,
-          matches: {
-            include: {
-              teamA: true,
-              teamB: true,
-              games: {
-                orderBy: { index: 'asc' }
+      try {
+        // Get division with teams, matches, and standings
+        const division = await ctx.prisma.division.findUnique({
+          where: { id: input.divisionId },
+          include: {
+            teams: true,
+            matches: {
+              include: {
+                teamA: true,
+                teamB: true,
+                games: {
+                  orderBy: { index: 'asc' }
+                },
+              },
+            },
+            standings: {
+              include: {
+                team: true,
               },
             },
           },
-          standings: {
-            include: {
-              team: true,
-            },
-            orderBy: [
-              { wins: 'desc' },
-              { pointDiff: 'desc' },
-              { pointsFor: 'desc' },
-            ],
-          },
-        },
-      })
+        })
 
-      if (!division) {
-        throw new Error('Division not found')
-      }
+        if (!division) {
+          throw new Error('Division not found')
+        }
 
       // Calculate standings if not available or recalculate from RR matches
       const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
@@ -818,10 +814,14 @@ export const standingsRouter = createTRPCRouter({
         const teamAStats = teamStats.get(match.teamAId)
         const teamBStats = teamStats.get(match.teamBId)
         
-        if (!teamAStats || !teamBStats) return
+        if (!teamAStats || !teamBStats) {
+          console.warn(`Team stats not found for match ${match.id}: teamA=${match.teamAId}, teamB=${match.teamBId}`)
+          return
+        }
 
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        // Safely calculate scores - handle cases where games array might be empty
+        const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+        const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
 
         teamAStats.pointDiff += totalScoreA - totalScoreB
         teamBStats.pointDiff += totalScoreB - totalScoreA
@@ -847,7 +847,7 @@ export const standingsRouter = createTRPCRouter({
 
       // Check if RR is complete
       const completedRRMatches = rrMatches.filter(m => 
-        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        (m.games || []).length > 0 && (m.games || []).some(g => (g.scoreA || 0) > 0 || (g.scoreB || 0) > 0)
       )
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
 
@@ -870,8 +870,8 @@ export const standingsRouter = createTRPCRouter({
           } else {
             // Prepare play-in match data
             const playInMatchData = playInMatches.map(match => {
-              const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-              const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+              const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+              const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
               const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
               
               return {
@@ -889,7 +889,7 @@ export const standingsRouter = createTRPCRouter({
               teamAId: match.teamAId,
               teamBId: match.teamBId,
               winnerId: match.winnerTeamId || undefined,
-              games: match.games.map(g => ({ scoreA: g.scoreA, scoreB: g.scoreB })),
+              games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
             }))
             
             // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
@@ -929,6 +929,15 @@ export const standingsRouter = createTRPCRouter({
         bracketSize: B,
         // New structure: all matches in one array
         allMatches: allBracketMatches,
+      }
+      } catch (error) {
+        console.error('Error in getBracket:', error)
+        console.error('Error details:', {
+          divisionId: input.divisionId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+        })
+        throw error
       }
     }),
 
