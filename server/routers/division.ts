@@ -583,6 +583,46 @@ export const divisionRouter = createTRPCRouter({
         })
       }
 
+      // Move all Round Robin matches from source divisions to merged division
+      // This preserves all match results (games) that were already entered
+      const [matches1, matches2] = await Promise.all([
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: division1.id,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        }),
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: division2.id,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        })
+      ])
+
+      const allRRMatches = [...matches1, ...matches2]
+
+      // Update divisionId for all Round Robin matches to point to merged division
+      // This preserves all games (results) that were already entered
+      for (const match of allRRMatches) {
+        await ctx.prisma.match.update({
+          where: { id: match.id },
+          data: {
+            divisionId: mergedDivision.id,
+            // Keep poolId if it exists, otherwise set to null (matches might be pool-based)
+            // If match was pool-based, we need to map it to the new pool structure
+            // For now, we'll keep the original poolId if it exists, or set to null
+            poolId: match.poolId || null,
+          }
+        })
+      }
+
       // Log the merge
       await ctx.prisma.auditLog.create({
         data: {
