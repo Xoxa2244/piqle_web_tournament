@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
+import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
 
 interface TeamStats {
   teamId: string
@@ -855,260 +856,46 @@ export const standingsRouter = createTRPCRouter({
       const B = division.maxTeams || Math.min(16, N)
       const needsPlayIn = B < N && N < 2 * B
 
-      // Build play-in bracket if needed
-      let playInBracket: any[] = []
-      if (needsPlayIn && isRRComplete) {
-        const E = N - B
-        const playInTeams = standings.slice(N - 2 * E)
-        
-        // If play-in matches exist, use them; otherwise create preview pairs
-        if (playInMatches.length > 0) {
-          playInBracket = playInMatches.map((match, index) => {
-            const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
-            const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
-            const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
-
-            return {
-              matchId: match.id,
-              roundIndex: match.roundIndex,
-              teamA: {
-                id: match.teamAId,
-                name: match.teamA.name,
-                seed: playInTeams[index * 2]?.seed,
-              },
-              teamB: {
-                id: match.teamBId,
-                name: match.teamB.name,
-                seed: playInTeams[index * 2 + 1]?.seed,
-              },
-              isCompleted,
-              winner: winner ? { id: winner.id, name: winner.name } : null,
-            }
-          })
-        } else {
-          // Preview pairs based on seeds
-          for (let i = 0; i < E; i++) {
-            playInBracket.push({
-              matchId: null,
-              roundIndex: 0,
-              teamA: {
-                id: playInTeams[i].teamId,
-                name: playInTeams[i].teamName,
-                seed: playInTeams[i].seed,
-              },
-              teamB: {
-                id: playInTeams[playInTeams.length - 1 - i].teamId,
-                name: playInTeams[playInTeams.length - 1 - i].teamName,
-                seed: playInTeams[playInTeams.length - 1 - i].seed,
-              },
-              isCompleted: false,
-              winner: null,
-            })
-          }
-        }
-      }
-
-      // Build playoff bracket
-      const playoffBracket: any[] = []
+      // Build complete bracket using new structure (includes both play-in and playoff)
+      let allBracketMatches: BracketMatch[] = []
       if (isRRComplete) {
-        // Get auto-qualified teams
-        const autoQualified = needsPlayIn ? standings.slice(0, N - 2 * (N - B)) : standings
-        const playInWinners: any[] = []
-
-        // Get play-in winners if play-in is complete
-        if (playInMatches.length > 0) {
-          const completedPlayIn = playInMatches.filter(m => {
-            const totalScoreA = m.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = m.games.reduce((sum, game) => sum + game.scoreB, 0)
-            return m.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
-          })
-          const allPlayInComplete = completedPlayIn.length === playInMatches.length
-
-          if (allPlayInComplete) {
-            playInMatches.forEach(match => {
-              const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-              const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
-              if (totalScoreA > totalScoreB) {
-                playInWinners.push({ id: match.teamAId, name: match.teamA.name })
-              } else {
-                playInWinners.push({ id: match.teamBId, name: match.teamB.name })
-              }
-            })
-          }
-        }
-
-        // Combine teams for playoff bracket
-        const playoffTeams = needsPlayIn 
-          ? [...autoQualified.map(s => ({ id: s.teamId, name: s.teamName, seed: s.seed })), ...playInWinners.map((w, i) => ({ id: w.id, name: w.name, seed: N - 2 * (N - B) + i + 1 }))]
-          : standings.map(s => ({ id: s.teamId, name: s.teamName, seed: s.seed }))
-
-        // Always generate full bracket structure based on bracket size B
-        const rounds: Map<number, any[]> = new Map()
-        const numRounds = Math.ceil(Math.log2(B))
-        
-        // Build a map of existing matches by round (sorted by team seeds for consistent ordering)
-        const existingMatchesByRound: Map<number, any[]> = new Map()
-        playoffMatches.forEach(match => {
-          const round = match.roundIndex || 0
-          if (!existingMatchesByRound.has(round)) {
-            existingMatchesByRound.set(round, [])
-          }
+        // Prepare play-in match data
+        const playInMatchData = playInMatches.map(match => {
           const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
           const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
-          const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
-          const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
+          const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
           
-          const teamASeed = playoffTeams.find(t => t.id === match.teamAId)?.seed || 999
-          const teamBSeed = playoffTeams.find(t => t.id === match.teamBId)?.seed || 999
-          
-          const matchData = {
-            matchId: match.id,
-            roundIndex: round,
-            teamA: {
-              id: match.teamAId,
-              name: match.teamA.name,
-              seed: teamASeed,
-            },
-            teamB: {
-              id: match.teamBId,
-              name: match.teamB.name,
-              seed: teamBSeed,
-            },
-            isCompleted,
-            winner: winner ? { id: winner.id, name: winner.name } : null,
-            // Store for sorting
-            minSeed: Math.min(teamASeed, teamBSeed),
+          return {
+            id: match.id,
+            winnerTeamId: winnerId,
+            teamAId: match.teamAId,
+            teamBId: match.teamBId,
           }
-          existingMatchesByRound.get(round)!.push(matchData)
         })
         
-        // Sort matches within each round by min seed for consistent ordering
-        existingMatchesByRound.forEach((matches, round) => {
-          matches.sort((a, b) => a.minSeed - b.minSeed)
-        })
+        // Prepare playoff match data
+        const playoffMatchData = playoffMatches.map(match => ({
+          id: match.id,
+          roundIndex: match.roundIndex || 0,
+          teamAId: match.teamAId,
+          teamBId: match.teamBId,
+          winnerId: match.winnerTeamId || undefined,
+          games: match.games.map(g => ({ scoreA: g.scoreA, scoreB: g.scoreB })),
+        }))
         
-        // Generate full bracket structure for all rounds
-        for (let roundIndex = 0; roundIndex < numRounds; roundIndex++) {
-          const matchesInRound = Math.pow(2, numRounds - roundIndex - 1)
-          const roundMatches: any[] = []
-          
-          if (roundIndex === 0) {
-            // First round: use actual teams or existing matches
-            const existingRound0 = existingMatchesByRound.get(0) || []
-            
-            for (let matchIndex = 0; matchIndex < matchesInRound; matchIndex++) {
-              const existingMatch = existingRound0[matchIndex]
-              
-              if (existingMatch) {
-                // Remove minSeed before adding
-                const { minSeed, ...matchWithoutSeed } = existingMatch
-                roundMatches.push(matchWithoutSeed)
-              } else if (playoffTeams.length > 0) {
-                // Preview: pair teams based on standard bracket seeding
-                const teamAIndex = matchIndex * 2
-                const teamBIndex = (matchIndex * 2 + 1) < playoffTeams.length 
-                  ? (matchIndex * 2 + 1) 
-                  : null
-                
-                if (teamBIndex !== null && teamBIndex < playoffTeams.length) {
-                  roundMatches.push({
-                    matchId: null,
-                    roundIndex: 0,
-                    teamA: playoffTeams[teamAIndex],
-                    teamB: playoffTeams[teamBIndex],
-                    isCompleted: false,
-                    winner: null,
-                  })
-                } else {
-                  // Empty slot if not enough teams
-                  roundMatches.push({
-                    matchId: null,
-                    roundIndex: 0,
-                    teamA: { id: '', name: 'TBD', seed: undefined },
-                    teamB: { id: '', name: 'TBD', seed: undefined },
-                    isCompleted: false,
-                    winner: null,
-                  })
-                }
-              } else {
-                // Empty slot
-                roundMatches.push({
-                  matchId: null,
-                  roundIndex: 0,
-                  teamA: { id: '', name: 'TBD', seed: undefined },
-                  teamB: { id: '', name: 'TBD', seed: undefined },
-                  isCompleted: false,
-                  winner: null,
-                })
-              }
-            }
-          } else {
-            // Subsequent rounds: use winners from previous round or empty slots
-            const previousRoundMatches = rounds.get(roundIndex - 1) || []
-            const existingRound = existingMatchesByRound.get(roundIndex) || []
-            
-            for (let matchIndex = 0; matchIndex < matchesInRound; matchIndex++) {
-              const existingMatch = existingRound[matchIndex]
-              
-              if (existingMatch) {
-                // Remove minSeed before adding
-                const { minSeed, ...matchWithoutSeed } = existingMatch
-                roundMatches.push(matchWithoutSeed)
-              } else {
-                // Determine teams from previous round winners
-                const prevMatchIndex1 = matchIndex * 2
-                const prevMatchIndex2 = matchIndex * 2 + 1
-                
-                const prevMatch1 = previousRoundMatches[prevMatchIndex1]
-                const prevMatch2 = previousRoundMatches[prevMatchIndex2]
-                
-                let teamA: { id: string; name: string; seed: number | undefined } = { id: '', name: 'TBD', seed: undefined }
-                let teamB: { id: string; name: string; seed: number | undefined } = { id: '', name: 'TBD', seed: undefined }
-                
-                if (prevMatch1?.winner) {
-                  teamA = {
-                    id: prevMatch1.winner.id,
-                    name: prevMatch1.winner.name,
-                    seed: playoffTeams.find(t => t.id === prevMatch1.winner.id)?.seed,
-                  }
-                } else if (prevMatch1?.teamA?.id && prevMatch1?.teamB?.id) {
-                  // Match exists but not completed - show placeholder
-                  teamA = { id: '', name: 'Winner of Match ' + (prevMatchIndex1 + 1), seed: undefined }
-                }
-                
-                if (prevMatch2?.winner) {
-                  teamB = {
-                    id: prevMatch2.winner.id,
-                    name: prevMatch2.winner.name,
-                    seed: playoffTeams.find(t => t.id === prevMatch2.winner.id)?.seed,
-                  }
-                } else if (prevMatch2?.teamA?.id && prevMatch2?.teamB?.id) {
-                  // Match exists but not completed - show placeholder
-                  teamB = { id: '', name: 'Winner of Match ' + (prevMatchIndex2 + 1), seed: undefined }
-                }
-                
-                roundMatches.push({
-                  matchId: null,
-                  roundIndex,
-                  teamA,
-                  teamB,
-                  isCompleted: false,
-                  winner: null,
-                })
-              }
-            }
-          }
-          
-          rounds.set(roundIndex, roundMatches)
-        }
-
-        // Convert rounds map to array
-        const sortedRounds = Array.from(rounds.entries()).sort((a, b) => a[0] - b[0])
-        sortedRounds.forEach(([roundIndex, matches]) => {
-          playoffBracket.push(...matches)
-        })
+        // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
+        allBracketMatches = buildCompleteBracket(
+          N,
+          B,
+          standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
+          playInMatchData.length > 0 ? playInMatchData : undefined,
+          playoffMatchData.length > 0 ? playoffMatchData : undefined
+        )
       }
+
+      // Separate play-in and playoff matches for backward compatibility
+      const playInBracket = allBracketMatches.filter(m => m.round === 0)
+      const playoffBracket = allBracketMatches.filter(m => m.round > 0)
 
       return {
         divisionName: division.name,
@@ -1118,6 +905,8 @@ export const standingsRouter = createTRPCRouter({
         playInBracket,
         playoffBracket,
         bracketSize: B,
+        // New structure: all matches in one array
+        allMatches: allBracketMatches,
       }
     }),
 
