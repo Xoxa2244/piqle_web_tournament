@@ -869,28 +869,34 @@ export const standingsRouter = createTRPCRouter({
             allBracketMatches = []
           } else {
             // Prepare play-in match data
-            const playInMatchData = playInMatches.map(match => {
-              const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
-              const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
-              const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
-              
-              return {
-                id: match.id,
-                winnerTeamId: winnerId,
-                teamAId: match.teamAId,
-                teamBId: match.teamBId,
-              }
-            })
+            // Filter out matches with missing teams
+            const playInMatchData = playInMatches
+              .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+              .map(match => {
+                const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+                const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+                const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                
+                return {
+                  id: match.id,
+                  winnerTeamId: winnerId,
+                  teamAId: match.teamAId!,
+                  teamBId: match.teamBId!,
+                }
+              })
             
             // Prepare playoff match data
-            const playoffMatchData = playoffMatches.map(match => ({
-              id: match.id,
-              roundIndex: match.roundIndex || 0,
-              teamAId: match.teamAId,
-              teamBId: match.teamBId,
-              winnerId: match.winnerTeamId || undefined,
-              games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
-            }))
+            // Filter out matches with missing teams
+            const playoffMatchData = playoffMatches
+              .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+              .map(match => ({
+                id: match.id,
+                roundIndex: match.roundIndex || 0,
+                teamAId: match.teamAId!,
+                teamBId: match.teamBId!,
+                winnerId: match.winnerTeamId || undefined,
+                games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
+              }))
             
             // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
             allBracketMatches = buildCompleteBracket(

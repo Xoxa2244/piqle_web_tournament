@@ -311,6 +311,22 @@ export function buildCompleteBracket(
   playInMatches?: Array<{ id: string; winnerTeamId?: string; teamAId: string; teamBId: string }>,
   existingPlayoffMatches?: Array<{ id: string; roundIndex: number; teamAId: string; teamBId: string; winnerId?: string; games: Array<{ scoreA: number; scoreB: number }> }>
 ): BracketMatch[] {
+  // Validate inputs
+  if (!Number.isFinite(totalTeams) || totalTeams <= 0) {
+    console.error('Invalid totalTeams:', totalTeams)
+    return []
+  }
+  
+  if (!Number.isFinite(bracketSize) || bracketSize <= 0) {
+    console.error('Invalid bracketSize:', bracketSize)
+    return []
+  }
+  
+  if (!Array.isArray(standings) || standings.length === 0) {
+    console.error('Invalid standings:', standings)
+    return []
+  }
+  
   const allMatches: BracketMatch[] = []
   const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
   const needsPlayIn = playInSpots > 0
