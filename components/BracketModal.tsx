@@ -56,7 +56,7 @@ export default function BracketModal({
         { enabled: isOpen && !!divisionId }
       )
   
-  const { data: bracketData, refetch, isLoading } = bracketQuery
+  const { data: bracketData, refetch, isLoading, isError, error } = bracketQuery
 
   // Use new structure if available, otherwise fall back to old structure
   const allMatches: BracketMatch[] | null = useMemo(() => {
@@ -206,6 +206,22 @@ export default function BracketModal({
                 <p className="text-gray-600">Loading bracket...</p>
               </div>
             </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <p className="text-red-600 mb-2">Error loading bracket</p>
+                <p className="text-sm text-gray-500">{error?.message || 'Unknown error occurred'}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetch()}
+                  className="mt-4"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+            </div>
           ) : !bracketData?.isRRComplete ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -224,6 +240,11 @@ export default function BracketModal({
                     console.log('Match clicked:', matchId)
                   }}
                 />
+              ) : allMatches !== null && allMatches.length === 0 && isRRComplete ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="mb-2">Bracket structure is being generated...</p>
+                  <p className="text-sm text-gray-400">Please generate Play-In or Play-Off matches to view the bracket.</p>
+                </div>
               ) : (
                 <>
                   {/* Fallback to old structure display */}
