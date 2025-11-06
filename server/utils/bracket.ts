@@ -421,45 +421,49 @@ export function buildCompleteBracket(
     })
   }
   
-  // Build Round 1 matches
-  const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, playInSpots)
-  
-  // Update with existing playoff match data
-  // Note: roundIndex in DB: Round 1 = 0, Round 2 = 1, etc.
-  // In our structure: Round 1 = 1, Round 2 = 2, etc.
-  if (existingPlayoffMatches) {
-    round1Matches.forEach(match => {
-      const dbMatch = existingPlayoffMatches.find(m => m.roundIndex === 0 && 
-        ((m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
-         (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId))
-      )
-      if (dbMatch) {
-        match.matchId = dbMatch.id
-        if (dbMatch.games && dbMatch.games.length > 0) {
-          match.games = dbMatch.games
-          const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
-          const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
-          if (totalScoreA > 0 || totalScoreB > 0) {
-            match.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
-            if (match.status === 'finished') {
-              match.winnerTeamId = totalScoreA > totalScoreB ? dbMatch.teamAId : dbMatch.teamBId
-              match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-              match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
+    // Build Round 1 matches
+    console.log('[buildCompleteBracket] Building Round 1 matches...')
+    const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, playInSpots)
+    console.log('[buildCompleteBracket] Round 1 matches built:', round1Matches.length)
+    
+      // Update with existing playoff match data
+    // Note: roundIndex in DB: Round 1 = 0, Round 2 = 1, etc.
+    // In our structure: Round 1 = 1, Round 2 = 2, etc.
+    console.log('[buildCompleteBracket] Updating Round 1 matches with existing data...')
+    if (existingPlayoffMatches) {
+      round1Matches.forEach(match => {
+        const dbMatch = existingPlayoffMatches.find(m => m.roundIndex === 0 && 
+          ((m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
+           (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId))
+        )
+        if (dbMatch) {
+          match.matchId = dbMatch.id
+          if (dbMatch.games && dbMatch.games.length > 0) {
+            match.games = dbMatch.games
+            const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
+            const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
+            if (totalScoreA > 0 || totalScoreB > 0) {
+              match.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
+              if (match.status === 'finished') {
+                match.winnerTeamId = totalScoreA > totalScoreB ? dbMatch.teamAId : dbMatch.teamBId
+                match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
+                match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
+              }
             }
           }
+          // Also check winnerId if available
+          if (dbMatch.winnerId) {
+            match.winnerTeamId = dbMatch.winnerId
+            match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
+            match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
+            match.status = 'finished'
+          }
         }
-        // Also check winnerId if available
-        if (dbMatch.winnerId) {
-          match.winnerTeamId = dbMatch.winnerId
-          match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-          match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
-          match.status = 'finished'
-        }
-      }
-    })
-  }
-  
-  allMatches.push(...round1Matches)
+      })
+    }
+    
+    allMatches.push(...round1Matches)
+    console.log('[buildCompleteBracket] Round 1 matches added to allMatches')
   
     // Build subsequent rounds
     console.log('[buildCompleteBracket] Building subsequent rounds...')
