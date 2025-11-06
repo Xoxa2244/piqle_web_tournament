@@ -367,8 +367,8 @@ export default function BracketPyramidNew({
               )
             })}
             
-            {/* Winner Circle after Final */}
-            {finalWinner && (
+            {/* Winner Circle after Final - always show if final exists, even if not finished */}
+            {finalMatch && (
               <div className="flex flex-col items-center relative">
                 <div className="mb-4 text-center">
                   <h3 className="font-semibold text-gray-900 text-sm">Winner</h3>
@@ -387,14 +387,20 @@ export default function BracketPyramidNew({
                   
                   {/* Winner Circle */}
                   <div
-                    className="flex items-center justify-center rounded-full border-2 bg-yellow-100 border-yellow-500 cursor-pointer"
+                    className={`flex items-center justify-center rounded-full border-2 transition-all ${
+                      finalWinner ? 'bg-yellow-100 border-yellow-500' : 'bg-white border-gray-300 opacity-50'
+                    }`}
                     style={{
                       width: `${circleSize}px`,
                       height: `${circleSize}px`,
                     }}
-                    title={finalWinner.teamName}
+                    title={finalWinner ? finalWinner.teamName : 'Winner not determined yet'}
                   >
-                    <span className="text-sm font-bold text-gray-900">{finalWinner.seed}</span>
+                    {finalWinner ? (
+                      <span className="text-sm font-bold text-gray-900">{finalWinner.seed}</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">?</span>
+                    )}
                   </div>
                 </div>
               </div>
