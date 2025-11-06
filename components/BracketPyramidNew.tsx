@@ -437,17 +437,25 @@ export default function BracketPyramidNew({
                               />
                               {/* Vertical line from horizontal line end to next match center */}
                               {/* This line should connect the horizontal line to the center of the next match */}
-                              {connectorY !== nextMatchCenter && (
-                                <div
-                                  className="absolute bg-gray-400 z-10"
-                                  style={{
-                                    left: `${matchBoxWidth / 2 + roundSpacing}px`,
-                                    top: `${Math.min(connectorY, nextMatchCenter)}px`,
-                                    width: '2px',
-                                    height: `${Math.abs(nextMatchCenter - connectorY)}px`,
-                                  }}
-                                />
-                              )}
+                              {(() => {
+                                const verticalLineStartY = Math.min(connectorY, nextMatchCenter)
+                                const verticalLineHeight = Math.abs(nextMatchCenter - connectorY)
+                                
+                                // Only render if there's a meaningful vertical distance
+                                if (verticalLineHeight < 1) return null
+                                
+                                return (
+                                  <div
+                                    className="absolute bg-gray-400 z-10"
+                                    style={{
+                                      left: `${matchBoxWidth / 2 + roundSpacing}px`,
+                                      top: `${verticalLineStartY}px`,
+                                      width: '2px',
+                                      height: `${verticalLineHeight}px`,
+                                    }}
+                                  />
+                                )
+                              })()}
                             </div>
                           )
                         })}
