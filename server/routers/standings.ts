@@ -881,9 +881,11 @@ export const standingsRouter = createTRPCRouter({
         totalRRMatches: rrMatches.length,
       })
 
-      // Determine bracket size
+      // Determine bracket size - use next power of 2
       const N = division.teams.length
-      const B = division.maxTeams || Math.min(16, N)
+      // Calculate bracket size as next power of 2, but cap at maxTeams if set
+      const nextPowerOf2 = N <= 1 ? 1 : Math.pow(2, Math.ceil(Math.log2(N)))
+      const B = division.maxTeams ? Math.min(division.maxTeams, nextPowerOf2) : nextPowerOf2
       const needsPlayIn = B < N && N < 2 * B
       
       console.log('[getBracket] Bracket parameters:', { N, B, needsPlayIn })
