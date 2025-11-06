@@ -557,9 +557,10 @@ export function buildCompleteBracket(
   
   // Build Play-In matches if needed OR if play-in matches exist in DB
   // This ensures Round 0 is always displayed if Play-In matches were created
+  let playInBracketMatches: BracketMatch[] = []
+  let actualPlayInSpots = playInSpots // Track actual play-in spots needed
+  
   if ((needsPlayIn && lowerSeeds.length > 0) || (playInMatches && playInMatches.length > 0)) {
-    let playInBracketMatches: BracketMatch[] = []
-    
     // If we have lower seeds and need play-in, generate matches
     if (needsPlayIn && lowerSeeds.length > 0) {
       playInBracketMatches = buildPlayInMatches(lowerSeeds, bracketSize)
@@ -595,6 +596,10 @@ export function buildCompleteBracket(
           })
         }
       })
+      
+      // Recalculate playInSpots based on actual Play-In matches in DB
+      actualPlayInSpots = playInBracketMatches.length
+      console.log('[buildCompleteBracket] Recalculated playInSpots from DB matches:', actualPlayInSpots)
     }
     
     // Update with actual play-in match data if available
@@ -621,9 +626,22 @@ export function buildCompleteBracket(
     allMatches.push(...playInBracketMatches)
   }
   
-  // Get play-in winners
+  // Get play-in winners - always check if play-in matches exist, regardless of needsPlayIn
+  // This ensures winners are extracted even if Play-In matches were created from DB
   const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-  if (needsPlayIn && playInMatches) {
+  if (playInBracketMatches && playInBracketMatches.length > 0) {
+    // Extract winners from playInBracketMatches (which already has updated data from DB)
+    playInBracketMatches.forEach(match => {
+      if (match.winnerTeamId && match.status === 'finished') {
+        playInWinners.push({
+          seed: match.winnerSeed || match.left.seed || match.right.seed || 0,
+          teamId: match.winnerTeamId,
+          teamName: match.winnerTeamName || match.left.teamName || match.right.teamName,
+        })
+      }
+    })
+  } else if (playInMatches && playInMatches.length > 0) {
+    // Fallback: extract winners directly from DB matches if playInBracketMatches not available
     playInMatches.forEach(match => {
       if (match.winnerTeamId) {
         const winnerStanding = standings.find(t => t.teamId === match.winnerTeamId)
@@ -638,9 +656,17 @@ export function buildCompleteBracket(
     })
   }
   
+  console.log('[buildCompleteBracket] Play-In winners extracted:', playInWinners.length)
+  
     // Build Round 1 matches
-    console.log('[buildCompleteBracket] Building Round 1 matches...')
-    const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, playInSpots)
+    // Use actualPlayInSpots (recalculated from DB if needed) instead of playInSpots
+    console.log('[buildCompleteBracket] Building Round 1 matches...', {
+      upperSeedsCount: upperSeeds.length,
+      playInWinnersCount: playInWinners.length,
+      bracketSize,
+      playInSpots: actualPlayInSpots,
+    })
+    const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, actualPlayInSpots)
     console.log('[buildCompleteBracket] Round 1 matches built:', round1Matches.length)
     
       // Update with existing playoff match data
