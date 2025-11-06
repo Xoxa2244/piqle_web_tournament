@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
 import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
 
@@ -765,8 +766,10 @@ export const standingsRouter = createTRPCRouter({
   getBracket: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
+      console.log('[getBracket] Starting with divisionId:', input.divisionId)
       try {
         // Get division with teams, matches, and standings
+        console.log('[getBracket] Fetching division from database...')
         const division = await ctx.prisma.division.findUnique({
           where: { id: input.divisionId },
           include: {
@@ -789,15 +792,31 @@ export const standingsRouter = createTRPCRouter({
         })
 
         if (!division) {
-          throw new Error('Division not found')
+          console.error('[getBracket] Division not found:', input.divisionId)
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Division not found' })
         }
 
+        console.log('[getBracket] Division found:', {
+          id: division.id,
+          name: division.name,
+          teamsCount: division.teams.length,
+          matchesCount: division.matches.length,
+        })
+
       // Calculate standings if not available or recalculate from RR matches
+      console.log('[getBracket] Filtering matches by stage...')
       const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
       const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
       const playoffMatches = division.matches.filter(m => m.stage === 'ELIMINATION')
+      
+      console.log('[getBracket] Match counts:', {
+        rr: rrMatches.length,
+        playIn: playInMatches.length,
+        playoff: playoffMatches.length,
+      })
 
       // Calculate standings from RR matches
+      console.log('[getBracket] Calculating standings from RR matches...')
       const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointDiff: number }> = new Map()
       
       division.teams.forEach(team => {
@@ -809,6 +828,8 @@ export const standingsRouter = createTRPCRouter({
           pointDiff: 0,
         })
       })
+      
+      console.log('[getBracket] Team stats initialized:', teamStats.size)
 
       rrMatches.forEach(match => {
         const teamAStats = teamStats.get(match.teamAId)
@@ -835,6 +856,7 @@ export const standingsRouter = createTRPCRouter({
         }
       })
 
+      console.log('[getBracket] Processing RR matches...')
       const standings = Array.from(teamStats.values())
         .sort((a, b) => {
           if (a.wins !== b.wins) return b.wins - a.wins
@@ -845,29 +867,41 @@ export const standingsRouter = createTRPCRouter({
           seed: index + 1,
         }))
 
+      console.log('[getBracket] Standings calculated:', standings.length)
+
       // Check if RR is complete
       const completedRRMatches = rrMatches.filter(m => 
         (m.games || []).length > 0 && (m.games || []).some(g => (g.scoreA || 0) > 0 || (g.scoreB || 0) > 0)
       )
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
+      
+      console.log('[getBracket] RR completion status:', {
+        isRRComplete,
+        completedMatches: completedRRMatches.length,
+        totalRRMatches: rrMatches.length,
+      })
 
       // Determine bracket size
       const N = division.teams.length
       const B = division.maxTeams || Math.min(16, N)
       const needsPlayIn = B < N && N < 2 * B
+      
+      console.log('[getBracket] Bracket parameters:', { N, B, needsPlayIn })
 
       // Build complete bracket using new structure (includes both play-in and playoff)
+      console.log('[getBracket] Building bracket structure...')
       let allBracketMatches: BracketMatch[] = []
       if (isRRComplete) {
         try {
           // Validate inputs before building bracket
           if (N === 0) {
-            console.warn('No teams in division, cannot build bracket')
+            console.warn('[getBracket] No teams in division, cannot build bracket')
             allBracketMatches = []
           } else if (B <= 0 || B < N / 2) {
-            console.warn(`Invalid bracket size ${B} for ${N} teams`)
+            console.warn(`[getBracket] Invalid bracket size ${B} for ${N} teams`)
             allBracketMatches = []
           } else {
+            console.log('[getBracket] Preparing match data...')
             // Prepare play-in match data
             // Filter out matches with missing teams
             const playInMatchData = playInMatches
@@ -899,6 +933,7 @@ export const standingsRouter = createTRPCRouter({
               }))
             
             // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
+            console.log('[getBracket] Calling buildCompleteBracket...')
             allBracketMatches = buildCompleteBracket(
               N,
               B,
@@ -906,26 +941,33 @@ export const standingsRouter = createTRPCRouter({
               playInMatchData.length > 0 ? playInMatchData : undefined,
               playoffMatchData.length > 0 ? playoffMatchData : undefined
             )
+            console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
           }
         } catch (error) {
-          console.error('Error building complete bracket:', error)
-          console.error('Error details:', {
+          console.error('[getBracket] Error building complete bracket:', error)
+          console.error('[getBracket] Error details:', {
             totalTeams: N,
             bracketSize: B,
             standingsCount: standings.length,
             playInMatchesCount: playInMatches.length,
             playoffMatchesCount: playoffMatches.length,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined,
           })
           // If bracket building fails, return empty array - frontend will handle gracefully
           allBracketMatches = []
         }
+      } else {
+        console.log('[getBracket] RR not complete, skipping bracket building')
       }
 
       // Separate play-in and playoff matches for backward compatibility
+      console.log('[getBracket] Separating matches for backward compatibility...')
       const playInBracket = allBracketMatches.filter(m => m.round === 0)
       const playoffBracket = allBracketMatches.filter(m => m.round > 0)
 
-      return {
+      console.log('[getBracket] Preparing response...')
+      const response = {
         divisionName: division.name,
         isRRComplete,
         needsPlayIn,
@@ -936,14 +978,34 @@ export const standingsRouter = createTRPCRouter({
         // New structure: all matches in one array
         allMatches: allBracketMatches,
       }
+      
+      console.log('[getBracket] Response prepared successfully:', {
+        divisionName: response.divisionName,
+        isRRComplete: response.isRRComplete,
+        standingsCount: response.standings.length,
+        allMatchesCount: response.allMatches.length,
+      })
+      
+      return response
       } catch (error) {
-        console.error('Error in getBracket:', error)
-        console.error('Error details:', {
+        console.error('[getBracket] Fatal error:', error)
+        console.error('[getBracket] Error details:', {
           divisionId: input.divisionId,
           errorMessage: error instanceof Error ? error.message : String(error),
           errorStack: error instanceof Error ? error.stack : undefined,
+          errorName: error instanceof Error ? error.name : typeof error,
         })
-        throw error
+        
+        // Return TRPCError for proper error handling
+        if (error instanceof TRPCError) {
+          throw error
+        }
+        
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to get bracket',
+          cause: error,
+        })
       }
     }),
 
