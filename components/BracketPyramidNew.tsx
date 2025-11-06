@@ -59,12 +59,6 @@ export default function BracketPyramidNew({
       // Determine round name
       if (round === 0) {
         roundName = 'Play-In'
-      } else if (round === 1) {
-        roundName = 'Round 1'
-      } else if (round === 2) {
-        roundName = 'Round 2'
-      } else if (round === 3) {
-        roundName = 'Round 3'
       } else if (round === maxRound) {
         roundName = 'Final'
       } else {
@@ -133,8 +127,8 @@ export default function BracketPyramidNew({
   const circleSize = 40 // Size of seed circle
   const circleSpacing = 60 // Vertical spacing between circles
   const roundSpacing = 120 // Horizontal spacing between rounds
-  const matchBoxHeight = 80 // Height of match box (connects two circles)
-  const matchBoxWidth = 100 // Width of match box
+  const matchBoxHeight = 60 // Height of match box (connects two circles)
+  const matchBoxWidth = 80 // Width of match box
 
   return (
     <div className="w-full overflow-x-auto">
@@ -195,7 +189,7 @@ export default function BracketPyramidNew({
                                 : leftSeed !== null
                                 ? 'bg-blue-50 border-blue-300'
                                 : 'bg-white border-gray-300'
-                            } ${isHovered ? 'scale-110 shadow-lg' : 'shadow-sm'} cursor-pointer`}
+                            } ${isHovered ? 'scale-110' : ''} cursor-pointer`}
                             style={{
                               width: `${circleSize}px`,
                               height: `${circleSize}px`,
@@ -213,20 +207,13 @@ export default function BracketPyramidNew({
                           </div>
                         </div>
 
-                        {/* Match Box (connects left and right circles) */}
+                        {/* Match Box (connects left and right circles) - just a vertical line */}
                         <div
-                          className={`relative mb-2 rounded border-2 transition-all ${
-                            isFinal
-                              ? 'bg-blue-50 border-blue-300'
-                              : match.round === 0
-                              ? 'bg-orange-50 border-orange-300'
-                              : 'bg-gray-50 border-gray-300'
-                          } ${isHovered ? 'scale-105 shadow-md' : 'shadow-sm'} cursor-pointer`}
+                          className="relative mb-2"
                           style={{
                             width: `${matchBoxWidth}px`,
                             height: `${matchBoxHeight}px`,
                           }}
-                          onClick={() => onMatchClick?.(match.matchId || match.id)}
                         >
                           {/* Vertical line connecting left and right circles */}
                           <div 
@@ -261,7 +248,7 @@ export default function BracketPyramidNew({
                                 : rightSeed !== null
                                 ? 'bg-blue-50 border-blue-300'
                                 : 'bg-white border-gray-300'
-                            } ${isHovered ? 'scale-110 shadow-lg' : 'shadow-sm'} cursor-pointer`}
+                            } ${isHovered ? 'scale-110' : ''} cursor-pointer`}
                             style={{
                               width: `${circleSize}px`,
                               height: `${circleSize}px`,
@@ -279,13 +266,13 @@ export default function BracketPyramidNew({
                           </div>
                         </div>
 
-                        {/* Connecting line TO next round */}
+                        {/* Connecting line TO next round - horizontal line from match center */}
                         {showConnectingLines && roundIdx < rounds.length - 1 && (
                           <div 
                             className="absolute left-1/2 top-full bg-gray-400"
                             style={{ 
-                              width: '2px',
-                              height: `${circleSpacing / 2}px`,
+                              width: `${roundSpacing / 2}px`,
+                              height: '2px',
                               transform: 'translateX(-50%)',
                             }}
                           />
@@ -300,17 +287,18 @@ export default function BracketPyramidNew({
                       {round.matches.map((match, matchIdx) => {
                         if (matchIdx % 2 === 0 && matchIdx + 1 < round.matches.length) {
                           // Connect pairs of matches to next round
-                          const topOffset1 = matchIdx * circleSpacing + circleSize + matchBoxHeight + circleSize
-                          const topOffset2 = (matchIdx + 1) * circleSpacing + circleSize + matchBoxHeight + circleSize
-                          const connectorTop = topOffset1
-                          const connectorHeight = topOffset2 - topOffset1
+                          // Calculate position: center between two matches
+                          const match1Top = matchIdx * circleSpacing + circleSize + matchBoxHeight + circleSize / 2
+                          const match2Top = (matchIdx + 1) * circleSpacing + circleSize + matchBoxHeight + circleSize / 2
+                          const connectorTop = match1Top
+                          const connectorHeight = match2Top - match1Top
                           
                           return (
                             <div
                               key={`connector-${match.id}`}
                               className="absolute bg-gray-400"
                               style={{
-                                left: `${matchBoxWidth / 2}px`,
+                                left: `${matchBoxWidth / 2 + roundSpacing / 2}px`,
                                 top: `${connectorTop}px`,
                                 width: '2px',
                                 height: `${connectorHeight}px`,
