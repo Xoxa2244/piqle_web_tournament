@@ -345,6 +345,11 @@ export default function BracketPyramidNew({
                               ? targetMatchTopOffset + circleSize / 2
                               : targetMatchTopOffset + circleSize + matchBoxHeight + circleSize / 2
                             
+                            // Calculate connection points
+                            const horizontalLineY = playInMatchCenter
+                            const verticalLineStartY = Math.min(horizontalLineY, targetCircleCenter)
+                            const verticalLineHeight = Math.abs(targetCircleCenter - horizontalLineY)
+                            
                             return (
                               <div key={`playin-connector-${match.id}`}>
                                 {/* Horizontal line from Play-In match center */}
@@ -352,22 +357,24 @@ export default function BracketPyramidNew({
                                   className="absolute bg-gray-400 z-10"
                                   style={{
                                     left: `${matchBoxWidth / 2}px`,
-                                    top: `${playInMatchCenter}px`,
+                                    top: `${horizontalLineY}px`,
                                     width: `${roundSpacing}px`,
                                     height: '2px',
                                     transform: 'translateY(-50%)',
                                   }}
                                 />
-                                {/* Vertical line from horizontal line to target circle center */}
-                                <div
-                                  className="absolute bg-gray-400 z-10"
-                                  style={{
-                                    left: `${matchBoxWidth / 2 + roundSpacing}px`,
-                                    top: `${Math.min(playInMatchCenter, targetCircleCenter)}px`,
-                                    width: '2px',
-                                    height: `${Math.abs(targetCircleCenter - playInMatchCenter)}px`,
-                                  }}
-                                />
+                                {/* Vertical line from horizontal line end to target circle center */}
+                                {verticalLineHeight > 0 && (
+                                  <div
+                                    className="absolute bg-gray-400 z-10"
+                                    style={{
+                                      left: `${matchBoxWidth / 2 + roundSpacing}px`,
+                                      top: `${verticalLineStartY}px`,
+                                      width: '2px',
+                                      height: `${verticalLineHeight}px`,
+                                    }}
+                                  />
+                                )}
                               </div>
                             )
                           }
@@ -401,9 +408,13 @@ export default function BracketPyramidNew({
                           const connectorHeight = Math.abs(match2Center - match1Center)
                           const connectorTop = Math.min(match1Center, match2Center)
                           
+                          // Calculate the exact connection point
+                          // We need to connect from the center of the pair to the center of the next match
+                          // The connection should be: vertical line from pair center, horizontal line, then vertical to next match
+                          
                           return (
                             <div key={`connector-${match.id}`}>
-                              {/* Vertical line connecting two matches in current round */}
+                              {/* Vertical line connecting two matches in current round (from match1 center to match2 center) */}
                               <div
                                 className="absolute bg-gray-400 z-10"
                                 style={{
@@ -413,7 +424,7 @@ export default function BracketPyramidNew({
                                   height: `${connectorHeight}px`,
                                 }}
                               />
-                              {/* Horizontal line from connector to next round */}
+                              {/* Horizontal line from connector center to next round */}
                               <div
                                 className="absolute bg-gray-400 z-10"
                                 style={{
@@ -424,16 +435,19 @@ export default function BracketPyramidNew({
                                   transform: 'translateY(-50%)',
                                 }}
                               />
-                              {/* Vertical line from horizontal line to next match center */}
-                              <div
-                                className="absolute bg-gray-400 z-10"
-                                style={{
-                                  left: `${matchBoxWidth / 2 + roundSpacing}px`,
-                                  top: `${Math.min(connectorY, nextMatchCenter)}px`,
-                                  width: '2px',
-                                  height: `${Math.abs(nextMatchCenter - connectorY)}px`,
-                                }}
-                              />
+                              {/* Vertical line from horizontal line end to next match center */}
+                              {/* This line should connect the horizontal line to the center of the next match */}
+                              {connectorY !== nextMatchCenter && (
+                                <div
+                                  className="absolute bg-gray-400 z-10"
+                                  style={{
+                                    left: `${matchBoxWidth / 2 + roundSpacing}px`,
+                                    top: `${Math.min(connectorY, nextMatchCenter)}px`,
+                                    width: '2px',
+                                    height: `${Math.abs(nextMatchCenter - connectorY)}px`,
+                                  }}
+                                />
+                              )}
                             </div>
                           )
                         })}
@@ -445,43 +459,60 @@ export default function BracketPyramidNew({
             })}
             
             {/* Winner Circle after Final - always show if final exists, even if not finished */}
-            {finalMatch && (
-              <div className="flex flex-col items-center relative">
-                <div className="mb-4 text-center">
-                  <h3 className="font-semibold text-gray-900 text-sm">Winner</h3>
-                </div>
-                <div className="relative mt-4">
-                  {/* Connecting line FROM Final */}
-                  {showConnectingLines && (
-                    <div 
-                      className="absolute right-full top-1/2 bg-gray-400 z-10"
-                      style={{ 
-                        width: `${roundSpacing / 2}px`,
-                        height: '2px',
-                      }}
-                    />
-                  )}
-                  
-                  {/* Winner Circle */}
-                  <div
-                    className={`flex items-center justify-center rounded-full border-2 transition-all ${
-                      finalWinner ? 'bg-yellow-100 border-yellow-500' : 'bg-white border-gray-300 opacity-50'
-                    }`}
-                    style={{
-                      width: `${circleSize}px`,
-                      height: `${circleSize}px`,
-                    }}
-                    title={finalWinner ? finalWinner.teamName : 'Winner not determined yet'}
-                  >
-                    {finalWinner ? (
-                      <span className="text-sm font-bold text-gray-900">{finalWinner.seed}</span>
-                    ) : (
-                      <span className="text-xs text-gray-400">?</span>
+            {finalMatch && (() => {
+              // Find the Final round to get its position
+              const finalRound = rounds.find(r => r.roundName === 'Final')
+              if (!finalRound) return null
+              
+              const finalRoundHeight = getRoundHeight(finalRound.matches.length)
+              const finalRoundTopOffset = (maxHeight - finalRoundHeight) / 2
+              const finalMatchIdx = finalRound.matches.indexOf(finalMatch)
+              const finalMatchTopOffset = finalRoundTopOffset + finalMatchIdx * circleSpacing * 2
+              const finalMatchCenter = finalMatchTopOffset + circleSize + matchBoxHeight / 2
+              
+              // Winner circle should be centered at the same height as the final match center
+              const winnerCircleTop = (maxHeight - circleSize) / 2
+              
+              return (
+                <div className="flex flex-col items-center relative" style={{ minHeight: `${maxHeight}px` }}>
+                  <div className="mb-4 text-center">
+                    <h3 className="font-semibold text-gray-900 text-sm">Winner</h3>
+                  </div>
+                  <div className="relative" style={{ marginTop: `${winnerCircleTop}px` }}>
+                    {/* Connecting line FROM Final */}
+                    {showConnectingLines && (
+                      <div 
+                        className="absolute right-full top-1/2 bg-gray-400 z-10"
+                        style={{ 
+                          width: `${roundSpacing / 2}px`,
+                          height: '2px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                        }}
+                      />
                     )}
+                    
+                    {/* Winner Circle */}
+                    <div
+                      className={`flex items-center justify-center rounded-full border-2 transition-all ${
+                        finalWinner ? 'bg-yellow-100 border-yellow-500' : 'bg-white border-gray-300 opacity-50'
+                      }`}
+                      style={{
+                        width: `${circleSize}px`,
+                        height: `${circleSize}px`,
+                      }}
+                      title={finalWinner ? finalWinner.teamName : 'Winner not determined yet'}
+                    >
+                      {finalWinner ? (
+                        <span className="text-sm font-bold text-gray-900">{finalWinner.seed}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">?</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         </div>
       </div>
