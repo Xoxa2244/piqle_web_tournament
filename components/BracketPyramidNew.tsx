@@ -166,17 +166,20 @@ export default function BracketPyramidNew({
     )
   }
 
-  // Calculate dimensions - compact spacing
+  // Calculate dimensions - proper spacing to prevent circles from sticking together
   const circleSize = 32 // Size of seed circle
-  const circleSpacing = 50 // Vertical spacing between circles
-  const roundSpacing = 100 // Horizontal spacing between rounds
-  const matchBoxHeight = 30 // Height of match box (connects two circles)
+  const circleSpacing = 60 // Vertical spacing between circles within a match
+  const matchSpacing = 80 // Vertical spacing between different matches (pairs)
+  const roundSpacing = 120 // Horizontal spacing between rounds
+  const matchBoxHeight = 40 // Height of match box (connects two circles)
   const matchBoxWidth = 50 // Width of match box
 
   // Calculate height for a round based on number of matches
   const getRoundHeight = (matchCount: number): number => {
     if (matchCount === 0) return 0
-    return (matchCount - 1) * circleSpacing * 2 + circleSize * 2 + matchBoxHeight
+    // Each match takes: circleSize + matchBoxHeight + circleSize + spacing to next match
+    // Last match doesn't need spacing after it
+    return (matchCount - 1) * (circleSize * 2 + matchBoxHeight + matchSpacing) + circleSize * 2 + matchBoxHeight
   }
 
   // Find maximum height among all rounds (for centering)
@@ -210,7 +213,8 @@ export default function BracketPyramidNew({
                       const isFinal = round.round === maxRound && round.round > 0
                       
                       // Calculate vertical position - centered round + match position within round
-                      const matchTopOffset = roundTopOffset + matchIdx * circleSpacing * 2
+                      // Each match takes: circleSize + matchBoxHeight + circleSize + matchSpacing
+                      const matchTopOffset = roundTopOffset + matchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
                       
                       // Calculate match center (for connecting lines)
                       const matchCenter = matchTopOffset + circleSize + matchBoxHeight / 2
@@ -227,7 +231,7 @@ export default function BracketPyramidNew({
                           onMouseLeave={() => setHoveredMatch(null)}
                         >
                           {/* Left Seed Circle */}
-                          <div className="relative mb-1">
+                          <div className="relative" style={{ marginBottom: `${circleSpacing}px` }}>
                             
                             {/* Circle */}
                             <div
@@ -257,7 +261,7 @@ export default function BracketPyramidNew({
 
                           {/* Match Box (connects left and right circles) - just a vertical line */}
                           <div
-                            className="relative mb-1"
+                            className="relative"
                             style={{
                               width: `${matchBoxWidth}px`,
                               height: `${matchBoxHeight}px`,
@@ -331,12 +335,12 @@ export default function BracketPyramidNew({
                             const targetMatchIdx = nextRound.matches.indexOf(targetRound1Match)
                             
                             // Calculate positions
-                            const playInMatchTopOffset = roundTopOffset + matchIdx * circleSpacing * 2
+                            const playInMatchTopOffset = roundTopOffset + matchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
                             const playInMatchCenter = playInMatchTopOffset + circleSize + matchBoxHeight / 2
                             
                             const nextRoundHeight = getRoundHeight(nextRound.matches.length)
                             const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
-                            const targetMatchTopOffset = nextRoundTopOffset + targetMatchIdx * circleSpacing * 2
+                            const targetMatchTopOffset = nextRoundTopOffset + targetMatchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
                             const targetMatchCenter = targetMatchTopOffset + circleSize + matchBoxHeight / 2
                             
                             // Determine which side of the target match (left or right)
@@ -392,15 +396,15 @@ export default function BracketPyramidNew({
                           if (!nextMatch) return null
                           
                           // Calculate positions in current round
-                          const match1TopOffset = roundTopOffset + matchIdx * circleSpacing * 2
-                          const match2TopOffset = roundTopOffset + (matchIdx + 1) * circleSpacing * 2
+                          const match1TopOffset = roundTopOffset + matchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
+                          const match2TopOffset = roundTopOffset + (matchIdx + 1) * (circleSize * 2 + matchBoxHeight + matchSpacing)
                           const match1Center = match1TopOffset + circleSize + matchBoxHeight / 2
                           const match2Center = match2TopOffset + circleSize + matchBoxHeight / 2
                           
                           // Calculate positions in next round
                           const nextRoundHeight = getRoundHeight(nextRound.matches.length)
                           const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
-                          const nextMatchTopOffset = nextRoundTopOffset + nextMatchIdx * circleSpacing * 2
+                          const nextMatchTopOffset = nextRoundTopOffset + nextMatchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
                           const nextMatchCenter = nextMatchTopOffset + circleSize + matchBoxHeight / 2
                           
                           // Calculate connector positions
@@ -475,11 +479,11 @@ export default function BracketPyramidNew({
               const finalRoundHeight = getRoundHeight(finalRound.matches.length)
               const finalRoundTopOffset = (maxHeight - finalRoundHeight) / 2
               const finalMatchIdx = finalRound.matches.indexOf(finalMatch)
-              const finalMatchTopOffset = finalRoundTopOffset + finalMatchIdx * circleSpacing * 2
+              const finalMatchTopOffset = finalRoundTopOffset + finalMatchIdx * (circleSize * 2 + matchBoxHeight + matchSpacing)
               const finalMatchCenter = finalMatchTopOffset + circleSize + matchBoxHeight / 2
               
               // Winner circle should be centered at the same height as the final match center
-              const winnerCircleTop = (maxHeight - circleSize) / 2
+              const winnerCircleTop = finalMatchCenter - circleSize / 2
               
               return (
                 <div className="flex flex-col items-center relative" style={{ minHeight: `${maxHeight}px` }}>
