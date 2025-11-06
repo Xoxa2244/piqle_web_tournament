@@ -486,7 +486,7 @@ export function buildCompleteBracket(
   bracketSize: number,
   standings: Array<{ teamId: string; teamName: string; seed: number }>,
   playInMatches?: Array<{ id: string; winnerTeamId?: string; teamAId: string; teamBId: string }>,
-  existingPlayoffMatches?: Array<{ id: string; roundIndex: number; teamAId: string; teamBId: string; winnerId?: string; games: Array<{ scoreA: number; scoreB: number }> }>
+  existingPlayoffMatches?: Array<{ id: string; roundIndex: number; teamAId: string; teamBId: string; winnerId?: string; games?: Array<{ scoreA: number; scoreB: number }>; note?: string }>
 ): BracketMatch[] {
   console.log('[buildCompleteBracket] Starting with:', {
     totalTeams,
@@ -516,63 +516,22 @@ export function buildCompleteBracket(
     console.log('[buildCompleteBracket] Inputs validated')
     
     const allMatches: BracketMatch[] = []
-    console.log('[buildCompleteBracket] Calculating play-in spots...')
-    const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
-    const needsPlayIn = playInSpots > 0
     
-    console.log('[buildCompleteBracket] Play-in calculation:', { playInSpots, needsPlayIn })
-  
-    // Separate teams into upper and lower seeds
-    // Logic: If play-in is needed, E = N - B
-    // Bottom 2E teams go to play-in
-    // Top (N - 2E) teams directly qualify
-    console.log('[buildCompleteBracket] Separating teams into upper and lower seeds...')
-    const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-    const lowerSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-    
-    if (needsPlayIn) {
-      console.log('[buildCompleteBracket] Play-in needed, calculating team distribution...')
-      const E = totalTeams - bracketSize  // Number of play-in matches
-      const playInTeamCount = 2 * E  // Bottom 2E teams
-      
-      standings.forEach((team) => {
-        if (team.seed <= totalTeams - playInTeamCount) {
-          upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-        } else {
-          lowerSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-        }
-      })
-    } else {
-      // All teams directly qualify
-      console.log('[buildCompleteBracket] No play-in needed, all teams qualify directly')
-      standings.forEach((team) => {
-        upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-      })
-    }
-    
-    console.log('[buildCompleteBracket] Team separation complete:', {
-      upperSeedsCount: upperSeeds.length,
-      lowerSeedsCount: lowerSeeds.length,
+    // Create a map for quick team lookup by ID
+    const teamMap = new Map<string, { teamId: string; teamName: string; seed: number }>()
+    standings.forEach(team => {
+      teamMap.set(team.teamId, team)
     })
-  
-  // Build Play-In matches if needed OR if play-in matches exist in DB
-  // This ensures Round 0 is always displayed if Play-In matches were created
-  let playInBracketMatches: BracketMatch[] = []
-  let actualPlayInSpots = playInSpots // Track actual play-in spots needed
-  
-  if ((needsPlayIn && lowerSeeds.length > 0) || (playInMatches && playInMatches.length > 0)) {
-    // If we have lower seeds and need play-in, generate matches
-    if (needsPlayIn && lowerSeeds.length > 0) {
-      playInBracketMatches = buildPlayInMatches(lowerSeeds, bracketSize)
-    } else if (playInMatches && playInMatches.length > 0) {
-      // If play-in matches exist in DB but needsPlayIn is false, create matches from DB data
-      // We need to find the teams from standings
+    
+    // Build Round 0 (Play-In) matches from DB
+    if (playInMatches && playInMatches.length > 0) {
+      console.log('[buildCompleteBracket] Building Round 0 (Play-In) from DB matches...')
       playInMatches.forEach((dbMatch, index) => {
-        const teamA = standings.find(t => t.teamId === dbMatch.teamAId)
-        const teamB = standings.find(t => t.teamId === dbMatch.teamBId)
+        const teamA = teamMap.get(dbMatch.teamAId)
+        const teamB = teamMap.get(dbMatch.teamBId)
         
         if (teamA && teamB) {
-          playInBracketMatches.push({
+          const match: BracketMatch = {
             id: dbMatch.id || `playin-${index}`,
             round: 0,
             position: index,
@@ -589,191 +548,111 @@ export function buildCompleteBracket(
               isBye: false,
             },
             status: dbMatch.winnerTeamId ? 'finished' : 'scheduled',
-            winnerTeamId: dbMatch.winnerTeamId,
-            winnerSeed: dbMatch.winnerTeamId ? (dbMatch.winnerTeamId === teamA.teamId ? teamA.seed : teamB.seed) : undefined,
-            winnerTeamName: dbMatch.winnerTeamId ? (dbMatch.winnerTeamId === teamA.teamId ? teamA.teamName : teamB.teamName) : undefined,
             matchId: dbMatch.id,
-          })
+          }
+          
+          if (dbMatch.winnerTeamId) {
+            match.winnerTeamId = dbMatch.winnerTeamId
+            match.winnerSeed = dbMatch.winnerTeamId === teamA.teamId ? teamA.seed : teamB.seed
+            match.winnerTeamName = dbMatch.winnerTeamId === teamA.teamId ? teamA.teamName : teamB.teamName
+          }
+          
+          allMatches.push(match)
         }
+      })
+      console.log('[buildCompleteBracket] Round 0 (Play-In) matches added:', allMatches.length)
+    }
+    
+    // Build playoff matches (Round 1+) from DB - exclude third place matches
+    if (existingPlayoffMatches && existingPlayoffMatches.length > 0) {
+      console.log('[buildCompleteBracket] Building playoff matches from DB...')
+      
+      // Filter out third place matches (note: 'Third Place Match')
+      const playoffMatches = existingPlayoffMatches.filter(m => !m.note || m.note !== 'Third Place Match')
+      console.log('[buildCompleteBracket] Filtered out third place matches:', existingPlayoffMatches.length - playoffMatches.length)
+      
+      // Group matches by roundIndex (DB: Round 1 = 0, Round 2 = 1, etc.)
+      // Our structure: Round 1 = 1, Round 2 = 2, etc.
+      const matchesByRound = new Map<number, typeof playoffMatches>()
+      playoffMatches.forEach(match => {
+        const round = (match.roundIndex || 0) + 1 // Convert DB roundIndex to our round
+        if (!matchesByRound.has(round)) {
+          matchesByRound.set(round, [])
+        }
+        matchesByRound.get(round)!.push(match)
       })
       
-      // Recalculate playInSpots based on actual Play-In matches in DB
-      actualPlayInSpots = playInBracketMatches.length
-      console.log('[buildCompleteBracket] Recalculated playInSpots from DB matches:', actualPlayInSpots)
-    }
-    
-    // Update with actual play-in match data if available
-    if (playInMatches && playInBracketMatches.length > 0) {
-      playInBracketMatches.forEach((match) => {
-        const dbMatch = playInMatches.find(m => 
-          (m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
-          (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId) ||
-          m.id === match.matchId
-        )
-        if (dbMatch) {
-          match.matchId = dbMatch.id
-          if (dbMatch.winnerTeamId) {
-            match.status = 'finished'
-            match.winnerTeamId = dbMatch.winnerTeamId
-            match.winnerSeed = dbMatch.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-            match.winnerTeamName = dbMatch.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
+      // Process each round
+      const sortedRounds = Array.from(matchesByRound.keys()).sort((a, b) => a - b)
+      console.log('[buildCompleteBracket] Rounds found in DB:', sortedRounds)
+      
+      sortedRounds.forEach(round => {
+        const roundMatches = matchesByRound.get(round)!
+        console.log(`[buildCompleteBracket] Processing Round ${round} with ${roundMatches.length} matches`)
+        
+        roundMatches.forEach((dbMatch, index) => {
+          const teamA = teamMap.get(dbMatch.teamAId)
+          const teamB = teamMap.get(dbMatch.teamBId)
+          
+          if (teamA && teamB) {
+            const match: BracketMatch = {
+              id: dbMatch.id || `round${round}-${index}`,
+              round: round,
+              position: index,
+              left: {
+                seed: teamA.seed,
+                teamId: teamA.teamId,
+                teamName: teamA.teamName,
+                isBye: false,
+              },
+              right: {
+                seed: teamB.seed,
+                teamId: teamB.teamId,
+                teamName: teamB.teamName,
+                isBye: false,
+              },
+              status: 'scheduled',
+              matchId: dbMatch.id,
+            }
+            
+            // Determine winner from games or winnerId
+            if (dbMatch.winnerId) {
+              match.winnerTeamId = dbMatch.winnerId
+              match.winnerSeed = dbMatch.winnerId === teamA.teamId ? teamA.seed : teamB.seed
+              match.winnerTeamName = dbMatch.winnerId === teamA.teamId ? teamA.teamName : teamB.teamName
+              match.status = 'finished'
+            } else if (dbMatch.games && dbMatch.games.length > 0) {
+              match.games = dbMatch.games
+              const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
+              const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
+              
+              if (totalScoreA > 0 || totalScoreB > 0) {
+                match.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
+                if (match.status === 'finished') {
+                  match.winnerTeamId = totalScoreA > totalScoreB ? dbMatch.teamAId : dbMatch.teamBId
+                  match.winnerSeed = match.winnerTeamId === teamA.teamId ? teamA.seed : teamB.seed
+                  match.winnerTeamName = match.winnerTeamId === teamA.teamId ? teamA.teamName : teamB.teamName
+                }
+              }
+            }
+            
+            allMatches.push(match)
           }
-        }
-      })
-    }
-    
-    console.log('[buildCompleteBracket] Play-In matches to add:', playInBracketMatches.length)
-    allMatches.push(...playInBracketMatches)
-  }
-  
-  // Get play-in winners - always check if play-in matches exist, regardless of needsPlayIn
-  // This ensures winners are extracted even if Play-In matches were created from DB
-  const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-  if (playInBracketMatches && playInBracketMatches.length > 0) {
-    // Extract winners from playInBracketMatches (which already has updated data from DB)
-    playInBracketMatches.forEach(match => {
-      if (match.winnerTeamId && match.status === 'finished') {
-        playInWinners.push({
-          seed: match.winnerSeed || match.left.seed || match.right.seed || 0,
-          teamId: match.winnerTeamId,
-          teamName: match.winnerTeamName || match.left.teamName || match.right.teamName,
         })
-      }
-    })
-  } else if (playInMatches && playInMatches.length > 0) {
-    // Fallback: extract winners directly from DB matches if playInBracketMatches not available
-    playInMatches.forEach(match => {
-      if (match.winnerTeamId) {
-        const winnerStanding = standings.find(t => t.teamId === match.winnerTeamId)
-        if (winnerStanding) {
-          playInWinners.push({
-            seed: winnerStanding.seed,
-            teamId: winnerStanding.teamId,
-            teamName: winnerStanding.teamName,
-          })
-        }
-      }
-    })
-  }
-  
-  console.log('[buildCompleteBracket] Play-In winners extracted:', playInWinners.length)
-  
-    // Build Round 1 matches
-    // Use actualPlayInSpots (recalculated from DB if needed) instead of playInSpots
-    console.log('[buildCompleteBracket] Building Round 1 matches...', {
-      upperSeedsCount: upperSeeds.length,
-      playInWinnersCount: playInWinners.length,
-      bracketSize,
-      playInSpots: actualPlayInSpots,
-    })
-    const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, actualPlayInSpots)
-    console.log('[buildCompleteBracket] Round 1 matches built:', round1Matches.length)
-    
-      // Update with existing playoff match data
-    // Note: roundIndex in DB: Round 1 = 0, Round 2 = 1, etc.
-    // In our structure: Round 1 = 1, Round 2 = 2, etc.
-    console.log('[buildCompleteBracket] Updating Round 1 matches with existing data...')
-    if (existingPlayoffMatches) {
-      round1Matches.forEach(match => {
-        const dbMatch = existingPlayoffMatches.find(m => m.roundIndex === 0 && 
-          ((m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
-           (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId))
-        )
-        if (dbMatch) {
-          match.matchId = dbMatch.id
-          if (dbMatch.games && dbMatch.games.length > 0) {
-            match.games = dbMatch.games
-            const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
-            const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
-            if (totalScoreA > 0 || totalScoreB > 0) {
-              match.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
-              if (match.status === 'finished') {
-                match.winnerTeamId = totalScoreA > totalScoreB ? dbMatch.teamAId : dbMatch.teamBId
-                match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-                match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
-              }
-            }
-          }
-          // Also check winnerId if available
-          if (dbMatch.winnerId) {
-            match.winnerTeamId = dbMatch.winnerId
-            match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-            match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
-            match.status = 'finished'
-          }
-        }
       })
+      
+      console.log('[buildCompleteBracket] All playoff matches added:', allMatches.length)
     }
     
-    allMatches.push(...round1Matches)
-    console.log('[buildCompleteBracket] Round 1 matches added to allMatches')
-  
-    // Build subsequent rounds
-    console.log('[buildCompleteBracket] Building subsequent rounds...')
-    // Validate bracketSize to prevent infinite loops
-    if (bracketSize <= 0 || !Number.isFinite(bracketSize)) {
-      console.error('[buildCompleteBracket] Invalid bracketSize:', bracketSize)
-      return allMatches // Return what we have so far
-    }
+    // Sort matches by round and position
+    allMatches.sort((a, b) => {
+      if (a.round !== b.round) return a.round - b.round
+      return a.position - b.position
+    })
     
-    const totalRounds = Math.ceil(Math.log2(bracketSize))
-    console.log('[buildCompleteBracket] Total rounds calculated:', totalRounds)
-    
-    // Safety check: limit to reasonable number of rounds
-    if (totalRounds > 10 || !Number.isFinite(totalRounds)) {
-      console.error('[buildCompleteBracket] Invalid totalRounds calculated:', totalRounds, 'for bracketSize:', bracketSize)
-      return allMatches // Return what we have so far
-    }
-    
-    let previousRound = round1Matches
-    
-    for (let round = 2; round <= totalRounds; round++) {
-      console.log('[buildCompleteBracket] Building round', round, 'of', totalRounds)
-      const nextRoundMatches = buildSubsequentRounds(previousRound, round, totalRounds)
-    
-    // Update with existing match data
-    // Note: roundIndex in DB: Round 1 = 0, Round 2 = 1, etc.
-    // In our structure: Round 1 = 1, Round 2 = 2, etc.
-    if (existingPlayoffMatches) {
-      nextRoundMatches.forEach(match => {
-        const dbMatch = existingPlayoffMatches.find(m => m.roundIndex === round - 1 &&
-          ((m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
-           (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId))
-        )
-        if (dbMatch) {
-          match.matchId = dbMatch.id
-          if (dbMatch.games && dbMatch.games.length > 0) {
-            match.games = dbMatch.games
-            const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
-            const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
-            if (totalScoreA > 0 || totalScoreB > 0) {
-              match.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
-              if (match.status === 'finished') {
-                match.winnerTeamId = totalScoreA > totalScoreB ? dbMatch.teamAId : dbMatch.teamBId
-                match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-                match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
-              }
-            }
-          }
-          // Also check winnerId if available
-          if (dbMatch.winnerId) {
-            match.winnerTeamId = dbMatch.winnerId
-            match.winnerSeed = match.winnerTeamId === match.left.teamId ? match.left.seed : match.right.seed
-            match.winnerTeamName = match.winnerTeamId === match.left.teamId ? match.left.teamName : match.right.teamName
-            match.status = 'finished'
-          }
-        }
-      })
-    }
-    
-      allMatches.push(...nextRoundMatches)
-      previousRound = nextRoundMatches
-      console.log('[buildCompleteBracket] Round', round, 'complete:', nextRoundMatches.length, 'matches')
-    }
-    
-    console.log('[buildCompleteBracket] All rounds built successfully. Total matches:', allMatches.length)
+    console.log('[buildCompleteBracket] Complete bracket built:', allMatches.length, 'matches')
     return allMatches
-  } catch (error) {
+} catch (error) {
     console.error('[buildCompleteBracket] Error occurred:', error)
     console.error('[buildCompleteBracket] Error details:', {
       totalTeams,
@@ -785,4 +664,3 @@ export function buildCompleteBracket(
     throw error
   }
 }
-
