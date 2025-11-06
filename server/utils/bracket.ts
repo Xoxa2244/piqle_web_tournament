@@ -275,12 +275,105 @@ export function buildSubsequentRounds(
   roundNumber: number,
   totalRounds: number
 ): BracketMatch[] {
+  console.log('[buildSubsequentRounds] Starting with:', {
+    previousRoundMatchesCount: previousRoundMatches.length,
+    roundNumber,
+    totalRounds,
+  })
+  
   const matches: BracketMatch[] = []
-  const matchesInRound = previousRoundMatches.length / 2
+  const matchesInRound = Math.floor(previousRoundMatches.length / 2)
+  
+  console.log('[buildSubsequentRounds] Matches in round:', matchesInRound)
   
   for (let i = 0; i < matchesInRound; i++) {
     const prevMatch1 = previousRoundMatches[i * 2]
     const prevMatch2 = previousRoundMatches[i * 2 + 1]
+    
+    // Check if both matches exist
+    if (!prevMatch1 || !prevMatch2) {
+      console.warn(`[buildSubsequentRounds] Missing match for round ${roundNumber}, position ${i}:`, {
+        prevMatch1: !!prevMatch1,
+        prevMatch2: !!prevMatch2,
+      })
+      // Create a BYE match if one is missing
+      if (prevMatch1 && !prevMatch2) {
+        // Only prevMatch1 exists - create BYE for right side
+        const matchId = `round${roundNumber}-${i}`
+        let left: SeedSlot = { seed: 0, isBye: false }
+        
+        if (prevMatch1.winnerTeamId) {
+          left = {
+            seed: prevMatch1.winnerSeed || 0,
+            teamId: prevMatch1.winnerTeamId,
+            teamName: prevMatch1.winnerTeamName,
+            isBye: false,
+          }
+        } else if (prevMatch1.status === 'finished' && prevMatch1.left.isBye) {
+          left = prevMatch1.left
+        } else {
+          left = {
+            seed: prevMatch1.left?.seed || prevMatch1.right?.seed || 0,
+            isBye: false,
+          }
+        }
+        
+        prevMatch1.nextMatchId = matchId
+        prevMatch1.nextSlot = 'left'
+        
+        matches.push({
+          id: matchId,
+          round: roundNumber,
+          position: i,
+          left,
+          right: { seed: 0, isBye: true },
+          status: 'finished',
+          winnerTeamId: left.teamId,
+          winnerTeamName: left.teamName,
+          winnerSeed: left.seed,
+        })
+        continue
+      } else if (!prevMatch1 && prevMatch2) {
+        // Only prevMatch2 exists - create BYE for left side
+        const matchId = `round${roundNumber}-${i}`
+        let right: SeedSlot = { seed: 0, isBye: false }
+        
+        if (prevMatch2.winnerTeamId) {
+          right = {
+            seed: prevMatch2.winnerSeed || 0,
+            teamId: prevMatch2.winnerTeamId,
+            teamName: prevMatch2.winnerTeamName,
+            isBye: false,
+          }
+        } else if (prevMatch2.status === 'finished' && prevMatch2.right.isBye) {
+          right = prevMatch2.right
+        } else {
+          right = {
+            seed: prevMatch2.left?.seed || prevMatch2.right?.seed || 0,
+            isBye: false,
+          }
+        }
+        
+        prevMatch2.nextMatchId = matchId
+        prevMatch2.nextSlot = 'right'
+        
+        matches.push({
+          id: matchId,
+          round: roundNumber,
+          position: i,
+          left: { seed: 0, isBye: true },
+          right,
+          status: 'finished',
+          winnerTeamId: right.teamId,
+          winnerTeamName: right.teamName,
+          winnerSeed: right.seed,
+        })
+        continue
+      } else {
+        // Both missing - skip this match
+        continue
+      }
+    }
     
     const matchId = `round${roundNumber}-${i}`
     
@@ -295,12 +388,12 @@ export function buildSubsequentRounds(
         teamName: prevMatch1.winnerTeamName,
         isBye: false,
       }
-    } else if (prevMatch1.status === 'finished' && prevMatch1.left.isBye) {
+    } else if (prevMatch1.status === 'finished' && prevMatch1.left?.isBye) {
       // BYE case - should not happen in subsequent rounds, but handle it
       left = prevMatch1.left
     } else {
       left = {
-        seed: prevMatch1.left.seed || prevMatch1.right.seed || 0,
+        seed: prevMatch1.left?.seed || prevMatch1.right?.seed || 0,
         isBye: false,
       }
     }
@@ -312,11 +405,11 @@ export function buildSubsequentRounds(
         teamName: prevMatch2.winnerTeamName,
         isBye: false,
       }
-    } else if (prevMatch2.status === 'finished' && prevMatch2.right.isBye) {
+    } else if (prevMatch2.status === 'finished' && prevMatch2.right?.isBye) {
       right = prevMatch2.right
     } else {
       right = {
-        seed: prevMatch2.left.seed || prevMatch2.right.seed || 0,
+        seed: prevMatch2.left?.seed || prevMatch2.right?.seed || 0,
         isBye: false,
       }
     }
@@ -337,6 +430,7 @@ export function buildSubsequentRounds(
     })
   }
   
+  console.log('[buildSubsequentRounds] Generated', matches.length, 'matches')
   return matches
 }
 
