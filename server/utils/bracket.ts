@@ -206,50 +206,92 @@ export function buildRound1Matches(
     
     // Generate matches based on bracket pairs
     console.log('[buildRound1Matches] Generating matches from pairs...')
+    let matchPosition = 0
     for (let i = 0; i < pairs.length; i++) {
       const [seedA, seedB] = pairs[i]
-      const teamA = seedMap.get(seedA)
-      const teamB = seedMap.get(seedB)
       
-      if (!teamA || !teamB) {
-        console.warn(`[buildRound1Matches] Missing team for pair [${seedA}, ${seedB}]`)
+      // Skip pairs where both seeds exceed bracketSize (these are for the expanded bracket)
+      if (seedA > bracketSize && seedB > bracketSize) {
+        console.log(`[buildRound1Matches] Skipping pair [${seedA}, ${seedB}] - both seeds exceed bracketSize ${bracketSize}`)
         continue
       }
       
-      // If one is BYE, the other automatically advances
-      if (teamA.isBye) {
+      const teamA = seedA <= bracketSize ? seedMap.get(seedA) : undefined
+      const teamB = seedB <= bracketSize ? seedMap.get(seedB) : undefined
+      
+      // If both teams are missing (both seeds > bracketSize), skip
+      if (!teamA && !teamB) {
+        console.log(`[buildRound1Matches] Skipping pair [${seedA}, ${seedB}] - both seeds exceed bracketSize`)
+        continue
+      }
+      
+      // If one team is missing, create BYE match
+      if (!teamA && teamB) {
+        // teamA is BYE
         matches.push({
-          id: `round1-${i}`,
+          id: `round1-${matchPosition}`,
           round: 1,
-          position: i,
+          position: matchPosition,
           left: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
           right: { seed: seedA, isBye: true },
-          status: 'finished', // BYE is automatically finished
+          status: 'finished',
           winnerSeed: seedB,
           winnerTeamId: teamB.teamId,
           winnerTeamName: teamB.teamName,
         })
-      } else if (teamB.isBye) {
+        matchPosition++
+      } else if (teamA && !teamB) {
+        // teamB is BYE
         matches.push({
-          id: `round1-${i}`,
+          id: `round1-${matchPosition}`,
           round: 1,
-          position: i,
+          position: matchPosition,
           left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
           right: { seed: seedB, isBye: true },
-          status: 'finished', // BYE is automatically finished
+          status: 'finished',
           winnerSeed: seedA,
           winnerTeamId: teamA.teamId,
           winnerTeamName: teamA.teamName,
         })
-      } else {
-        matches.push({
-          id: `round1-${i}`,
-          round: 1,
-          position: i,
-          left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
-          right: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
-          status: teamA.teamId && teamB.teamId ? 'scheduled' : 'scheduled',
-        })
+        matchPosition++
+      } else if (teamA && teamB) {
+        // Both teams exist
+        // If one is BYE, the other automatically advances
+        if (teamA.isBye) {
+          matches.push({
+            id: `round1-${matchPosition}`,
+            round: 1,
+            position: matchPosition,
+            left: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
+            right: { seed: seedA, isBye: true },
+            status: 'finished', // BYE is automatically finished
+            winnerSeed: seedB,
+            winnerTeamId: teamB.teamId,
+            winnerTeamName: teamB.teamName,
+          })
+        } else if (teamB.isBye) {
+          matches.push({
+            id: `round1-${matchPosition}`,
+            round: 1,
+            position: matchPosition,
+            left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
+            right: { seed: seedB, isBye: true },
+            status: 'finished', // BYE is automatically finished
+            winnerSeed: seedA,
+            winnerTeamId: teamA.teamId,
+            winnerTeamName: teamA.teamName,
+          })
+        } else {
+          matches.push({
+            id: `round1-${matchPosition}`,
+            round: 1,
+            position: matchPosition,
+            left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
+            right: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
+            status: teamA.teamId && teamB.teamId ? 'scheduled' : 'scheduled',
+          })
+        }
+        matchPosition++
       }
     }
     
