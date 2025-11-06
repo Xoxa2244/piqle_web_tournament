@@ -233,7 +233,10 @@ export function buildRound1Matches(
       // CRITICAL: If seed > totalTeams, it's a BYE
       // Upper B seeds (1, 2, ..., missing) get BYE when their opponent seed > totalTeams
       // This ensures upper seeds autopass when paired with non-existent seeds
-      if (!leftTeam && rightTeam) {
+      const leftIsBye = !leftTeam && leftSeed > totalTeams
+      const rightIsBye = !rightTeam && rightSeed > totalTeams
+      
+      if (leftIsBye && rightTeam) {
         // Left team is BYE - right team autopasses
         matches.push({
           id: `round1-${matchPosition}`,
