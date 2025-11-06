@@ -705,65 +705,88 @@ export function buildCompleteBracket(
       const pairs = bracketPairs(bracketSize)
       const round1Matches: BracketMatch[] = []
       
+      // Create seed map for quick lookup
+      const seedMap = new Map<number, { seed: number; teamId?: string; teamName?: string }>()
+      upperSeeds.forEach(team => {
+        if (team.seed <= bracketSize) {
+          seedMap.set(team.seed, team)
+        }
+      })
+      playInWinners.forEach(winner => {
+        if (winner.seed <= bracketSize && !seedMap.has(winner.seed)) {
+          seedMap.set(winner.seed, winner)
+        }
+      })
+      
+      // Calculate total qualified teams and missing (BYE slots)
+      const totalQualified = upperSeeds.length + playInWinners.length
+      const missing = bracketSize - totalQualified
+      
       pairs.forEach(([seedA, seedB], index) => {
-        // Find teams for these seeds
-        const teamA = upperSeeds.find(t => t.seed === seedA) || playInWinners.find(t => t.seed === seedA)
-        const teamB = upperSeeds.find(t => t.seed === seedB) || playInWinners.find(t => t.seed === seedB)
+        // Determine left/right based on seed order (lower seed on left)
+        const leftSeed = Math.min(seedA, seedB)
+        const rightSeed = Math.max(seedA, seedB)
+        const leftTeam = seedMap.get(leftSeed)
+        const rightTeam = seedMap.get(rightSeed)
         
-        // Only create match if both teams are known (auto-qualified or play-in winner)
-        // If one team is unknown (play-in not finished), show empty circle
-        if (teamA && teamB) {
-          // Both teams known - create match
-          round1Matches.push({
-            id: `round1-${index}`,
-            round: 1,
-            position: index,
-            left: {
-              seed: teamA.seed,
-              teamId: teamA.teamId,
-              teamName: teamA.teamName,
-              isBye: false,
-            },
-            right: {
-              seed: teamB.seed,
-              teamId: teamB.teamId,
-              teamName: teamB.teamName,
-              isBye: false,
-            },
-            status: 'scheduled',
-          })
-        } else if (teamA || teamB) {
-          // One team known, one unknown (play-in not finished) - show match with empty circle
-          const knownTeam = teamA || teamB!
-          const knownSeed = teamA ? seedA : seedB
-          const unknownSeed = teamA ? seedB : seedA
+        // If seed > totalQualified, it's a BYE (upper seeds get BYE)
+        const leftIsBye = leftSeed > totalQualified || (leftSeed <= missing && !leftTeam)
+        const rightIsBye = rightSeed > totalQualified || (rightSeed <= missing && !rightTeam)
+        
+        // Only create match if at least one team is known or it's a BYE match
+        if (leftTeam || rightTeam || leftIsBye || rightIsBye) {
+          const left: SeedSlot = leftTeam ? {
+            seed: leftSeed,
+            teamId: leftTeam.teamId,
+            teamName: leftTeam.teamName,
+            isBye: false,
+          } : {
+            seed: leftSeed,
+            isBye: leftIsBye,
+          }
+          
+          const right: SeedSlot = rightTeam ? {
+            seed: rightSeed,
+            teamId: rightTeam.teamId,
+            teamName: rightTeam.teamName,
+            isBye: false,
+          } : {
+            seed: rightSeed,
+            isBye: rightIsBye,
+          }
+          
+          // Determine winner if one side is BYE
+          let winnerSeed: number | undefined
+          let winnerTeamId: string | undefined
+          let winnerTeamName: string | undefined
+          let status: MatchStatus = 'scheduled'
+          
+          if (leftIsBye && rightTeam) {
+            // Left is BYE, right autopasses
+            winnerSeed = rightSeed
+            winnerTeamId = rightTeam.teamId
+            winnerTeamName = rightTeam.teamName
+            status = 'finished'
+          } else if (rightIsBye && leftTeam) {
+            // Right is BYE, left autopasses
+            winnerSeed = leftSeed
+            winnerTeamId = leftTeam.teamId
+            winnerTeamName = leftTeam.teamName
+            status = 'finished'
+          }
           
           round1Matches.push({
             id: `round1-${index}`,
             round: 1,
             position: index,
-            left: teamA ? {
-              seed: knownTeam.seed,
-              teamId: knownTeam.teamId,
-              teamName: knownTeam.teamName,
-              isBye: false,
-            } : {
-              seed: unknownSeed,
-              isBye: false,
-            },
-            right: teamB ? {
-              seed: knownTeam.seed,
-              teamId: knownTeam.teamId,
-              teamName: knownTeam.teamName,
-              isBye: false,
-            } : {
-              seed: unknownSeed,
-              isBye: false,
-            },
-            status: 'scheduled',
+            left,
+            right,
+            status,
+            winnerSeed,
+            winnerTeamId,
+            winnerTeamName,
           })
         }
-        // If both teams unknown, don't create match yet (will be created when play-in finishes)
       })
       
       allMatches.push(...round1Matches)
