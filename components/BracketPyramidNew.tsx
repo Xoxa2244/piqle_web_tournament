@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
+import ELK from 'elkjs/lib/elk.bundled.js'
+import { buildElkBracketGraph, type BracketMatch as ElkBracketMatch } from './elk-bracket-client'
 
 // Import types from bracket utils
 type MatchStatus = 'scheduled' | 'in_progress' | 'finished'
@@ -32,6 +34,8 @@ interface BracketPyramidNewProps {
   matches: BracketMatch[]
   showConnectingLines?: boolean
   onMatchClick?: (matchId: string) => void
+  totalTeams?: number
+  bracketSize?: number
 }
 
 interface BracketRound {
@@ -43,8 +47,46 @@ interface BracketRound {
 export default function BracketPyramidNew({ 
   matches, 
   showConnectingLines = true, 
-  onMatchClick 
+  onMatchClick,
+  totalTeams,
+  bracketSize
 }: BracketPyramidNewProps) {
+  // Calculate totalTeams and bracketSize if not provided
+  const calculatedTotalTeams = totalTeams || matches.reduce((max, m) => {
+    return Math.max(max, m.left.seed || 0, m.right.seed || 0)
+  }, 0)
+  
+  const calculatedBracketSize = bracketSize || (() => {
+    const n = calculatedTotalTeams
+    if (n <= 1) return 1
+    return Math.pow(2, Math.ceil(Math.log2(n)))
+  })()
+  
+  // Initialize ELK
+  const [elk] = useState(() => new ELK())
+  
+  // Build ELK graph and calculate layout
+  const [layoutedGraph, setLayoutedGraph] = useState<any>(null)
+  
+  useEffect(() => {
+    if (matches.length === 0) {
+      setLayoutedGraph(null)
+      return
+    }
+    
+    // Build ELK graph
+    const graph = buildElkBracketGraph(matches, calculatedTotalTeams, calculatedBracketSize)
+    
+    // Calculate layout
+    elk.layout(graph)
+      .then((layouted) => {
+        setLayoutedGraph(layouted)
+      })
+      .catch((error) => {
+        console.error('[BracketPyramidNew] ELK layout error:', error)
+        setLayoutedGraph(null)
+      })
+  }, [matches, calculatedTotalTeams, calculatedBracketSize, elk])
   // Group matches by round
   const rounds: BracketRound[] = useMemo(() => {
     const roundsMap = new Map<number, BracketMatch[]>()
