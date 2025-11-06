@@ -691,18 +691,134 @@ export function buildCompleteBracket(
         playInSpots,
       })
       
-      // Build Round 1 matches
-      const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, playInSpots)
+      // Build Round 1 matches - only show matches where both teams are known
+      // Use bracketPairs to determine which seeds play each other
+      const pairs = bracketPairs(bracketSize)
+      const round1Matches: BracketMatch[] = []
+      
+      pairs.forEach(([seedA, seedB], index) => {
+        // Find teams for these seeds
+        const teamA = upperSeeds.find(t => t.seed === seedA) || playInWinners.find(t => t.seed === seedA)
+        const teamB = upperSeeds.find(t => t.seed === seedB) || playInWinners.find(t => t.seed === seedB)
+        
+        // Only create match if both teams are known (auto-qualified or play-in winner)
+        // If one team is unknown (play-in not finished), show empty circle
+        if (teamA && teamB) {
+          // Both teams known - create match
+          round1Matches.push({
+            id: `round1-${index}`,
+            round: 1,
+            position: index,
+            left: {
+              seed: teamA.seed,
+              teamId: teamA.teamId,
+              teamName: teamA.teamName,
+              isBye: false,
+            },
+            right: {
+              seed: teamB.seed,
+              teamId: teamB.teamId,
+              teamName: teamB.teamName,
+              isBye: false,
+            },
+            status: 'scheduled',
+          })
+        } else if (teamA || teamB) {
+          // One team known, one unknown (play-in not finished) - show match with empty circle
+          const knownTeam = teamA || teamB!
+          const knownSeed = teamA ? seedA : seedB
+          const unknownSeed = teamA ? seedB : seedA
+          
+          round1Matches.push({
+            id: `round1-${index}`,
+            round: 1,
+            position: index,
+            left: teamA ? {
+              seed: knownTeam.seed,
+              teamId: knownTeam.teamId,
+              teamName: knownTeam.teamName,
+              isBye: false,
+            } : {
+              seed: unknownSeed,
+              isBye: false,
+            },
+            right: teamB ? {
+              seed: knownTeam.seed,
+              teamId: knownTeam.teamId,
+              teamName: knownTeam.teamName,
+              isBye: false,
+            } : {
+              seed: unknownSeed,
+              isBye: false,
+            },
+            status: 'scheduled',
+          })
+        }
+        // If both teams unknown, don't create match yet (will be created when play-in finishes)
+      })
+      
       allMatches.push(...round1Matches)
       console.log('[buildCompleteBracket] Round 1 matches generated:', round1Matches.length)
       
-      // Build subsequent rounds
+      // Build subsequent rounds - only show empty structure (no seeds) until matches are played
       const totalRounds = Math.ceil(Math.log2(bracketSize))
       let previousRound = round1Matches
       
       for (let round = 2; round <= totalRounds; round++) {
         console.log(`[buildCompleteBracket] Generating round ${round} of ${totalRounds}`)
-        const nextRoundMatches = buildSubsequentRounds(previousRound, round, totalRounds)
+        const matchesInRound = Math.floor(previousRound.length / 2)
+        const nextRoundMatches: BracketMatch[] = []
+        
+        for (let i = 0; i < matchesInRound; i++) {
+          const prevMatch1 = previousRound[i * 2]
+          const prevMatch2 = previousRound[i * 2 + 1]
+          
+          if (prevMatch1 && prevMatch2) {
+            // Only show seeds if both previous matches have winners
+            let left: SeedSlot = { seed: 0, isBye: false }
+            let right: SeedSlot = { seed: 0, isBye: false }
+            
+            if (prevMatch1.winnerTeamId) {
+              left = {
+                seed: prevMatch1.winnerSeed || 0,
+                teamId: prevMatch1.winnerTeamId,
+                teamName: prevMatch1.winnerTeamName,
+                isBye: false,
+              }
+            } else {
+              // No winner yet - show empty circle
+              left = { seed: 0, isBye: false }
+            }
+            
+            if (prevMatch2.winnerTeamId) {
+              right = {
+                seed: prevMatch2.winnerSeed || 0,
+                teamId: prevMatch2.winnerTeamId,
+                teamName: prevMatch2.winnerTeamName,
+                isBye: false,
+              }
+            } else {
+              // No winner yet - show empty circle
+              right = { seed: 0, isBye: false }
+            }
+            
+            // Link previous matches
+            prevMatch1.nextMatchId = `round${round}-${i}`
+            prevMatch1.nextSlot = 'left'
+            prevMatch2.nextMatchId = `round${round}-${i}`
+            prevMatch2.nextSlot = 'right'
+            
+            nextRoundMatches.push({
+              id: `round${round}-${i}`,
+              round: round,
+              position: i,
+              left,
+              right,
+              status: left.teamId && right.teamId ? 'scheduled' : 'scheduled',
+            })
+          }
+        }
+        
         allMatches.push(...nextRoundMatches)
         previousRound = nextRoundMatches
         console.log(`[buildCompleteBracket] Round ${round} generated:`, nextRoundMatches.length, 'matches')
