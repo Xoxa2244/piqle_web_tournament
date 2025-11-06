@@ -1,8 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import ReactFlow, { Node, Edge, Background, Controls, MiniMap, Position } from 'reactflow'
-import 'reactflow/dist/style.css'
 
 // Import types from bracket utils
 type MatchStatus = 'scheduled' | 'in_progress' | 'finished'
@@ -36,116 +34,10 @@ interface BracketPyramidNewProps {
   onMatchClick?: (matchId: string) => void
 }
 
-// Custom node component for bracket matches
-function MatchNode({ data }: { data: { match: BracketMatch; onMatchClick?: (matchId: string) => void } }) {
-  const { match, onMatchClick } = data
-  const circleSize = 32
-  const circleSpacing = 40
-  
-  const getSeedDisplay = (slot: SeedSlot): number | null => {
-    if (slot.isBye) return null
-    if (slot.seed > 0) return slot.seed
-    return null
-  }
-  
-  const leftSeed = getSeedDisplay(match.left)
-  const rightSeed = getSeedDisplay(match.right)
-  
-  return (
-    <div className="flex flex-col items-center p-2">
-      {/* Left Seed Circle */}
-      <div
-        className={`flex items-center justify-center rounded-full border-2 transition-all cursor-pointer ${
-          match.status === 'finished' && match.winnerTeamId === match.left.teamId
-            ? 'bg-green-100 border-green-500'
-            : match.left.isBye
-            ? 'bg-white border-gray-300 opacity-50'
-            : leftSeed !== null
-            ? 'bg-blue-50 border-blue-300'
-            : 'bg-white border-gray-300'
-        }`}
-        style={{
-          width: `${circleSize}px`,
-          height: `${circleSize}px`,
-          marginBottom: `${circleSpacing}px`,
-        }}
-        onClick={() => onMatchClick?.(match.matchId || match.id)}
-        title={match.left.teamName || (match.left.isBye ? 'BYE' : `Seed ${match.left.seed}`)}
-      >
-        {leftSeed !== null ? (
-          <span className="text-sm font-bold text-gray-900">{leftSeed}</span>
-        ) : (
-          <span className="text-xs text-gray-400">?</span>
-        )}
-      </div>
-      
-      {/* Vertical line connecting circles */}
-      <div 
-        className="bg-gray-400"
-        style={{ 
-          width: '2px',
-          height: '30px',
-        }}
-      />
-      
-      {/* Right Seed Circle */}
-      <div
-        className={`flex items-center justify-center rounded-full border-2 transition-all cursor-pointer ${
-          match.status === 'finished' && match.winnerTeamId === match.right.teamId
-            ? 'bg-green-100 border-green-500'
-            : match.right.isBye
-            ? 'bg-white border-gray-300 opacity-50'
-            : rightSeed !== null
-            ? 'bg-blue-50 border-blue-300'
-            : 'bg-white border-gray-300'
-        }`}
-        style={{
-          width: `${circleSize}px`,
-          height: `${circleSize}px`,
-        }}
-        onClick={() => onMatchClick?.(match.matchId || match.id)}
-        title={match.right.teamName || (match.right.isBye ? 'BYE' : `Seed ${match.right.seed}`)}
-      >
-        {rightSeed !== null ? (
-          <span className="text-sm font-bold text-gray-900">{rightSeed}</span>
-        ) : (
-          <span className="text-xs text-gray-400">?</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Winner node component
-function WinnerNode({ data }: { data: { winner?: { seed: number; teamName: string } } }) {
-  const { winner } = data
-  const circleSize = 32
-  
-  return (
-    <div className="flex flex-col items-center p-2">
-      <div
-        className={`flex items-center justify-center rounded-full border-2 ${
-          winner ? 'bg-yellow-100 border-yellow-500' : 'bg-white border-gray-300 opacity-50'
-        }`}
-        style={{
-          width: `${circleSize}px`,
-          height: `${circleSize}px`,
-        }}
-        title={winner ? winner.teamName : 'Winner not determined yet'}
-      >
-        {winner ? (
-          <span className="text-sm font-bold text-gray-900">{winner.seed}</span>
-        ) : (
-          <span className="text-xs text-gray-400">?</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-const nodeTypes = {
-  match: MatchNode,
-  winner: WinnerNode,
+interface BracketRound {
+  round: number
+  roundName: string
+  matches: BracketMatch[]
 }
 
 export default function BracketPyramidNew({ 
@@ -154,7 +46,7 @@ export default function BracketPyramidNew({
   onMatchClick 
 }: BracketPyramidNewProps) {
   // Group matches by round
-  const rounds = useMemo(() => {
+  const rounds: BracketRound[] = useMemo(() => {
     const roundsMap = new Map<number, BracketMatch[]>()
     const maxRound = matches.length > 0 ? Math.max(...matches.map(m => m.round)) : 0
     
@@ -163,143 +55,39 @@ export default function BracketPyramidNew({
         .filter(m => m.round === round)
         .sort((a, b) => a.position - b.position)
       if (roundMatches.length > 0) {
+        let roundName = ''
+        if (round === 0) {
+          roundName = 'Play-In'
+        } else if (round === maxRound) {
+          roundName = 'Final'
+        } else {
+          const roundsFromEnd = maxRound - round
+          if (roundsFromEnd === 1) {
+            roundName = 'Semi-Finals'
+          } else if (roundsFromEnd === 2) {
+            roundName = 'Quarter-Finals'
+          } else {
+            roundName = `Round ${round}`
+          }
+        }
         roundsMap.set(round, roundMatches)
       }
     }
     
-    return roundsMap
+    return Array.from(roundsMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([round, matches]) => ({
+        round,
+        roundName: round === 0 ? 'Play-In' : 
+                   round === maxRound ? 'Final' :
+                   maxRound - round === 1 ? 'Semi-Finals' :
+                   maxRound - round === 2 ? 'Quarter-Finals' :
+                   `Round ${round}`,
+        matches
+      }))
   }, [matches])
   
-  // Build nodes and edges for React Flow
-  const { nodes, edges } = useMemo(() => {
-    const nodes: Node[] = []
-    const edges: Edge[] = []
-    
-    const maxRound = matches.length > 0 ? Math.max(...matches.map(m => m.round)) : 0
-    const roundSpacing = 250 // Horizontal spacing between rounds
-    const matchSpacing = 100 // Vertical spacing between matches
-    const nodeHeight = 120 // Height of each match node (circleSize * 2 + circleSpacing + matchBoxHeight)
-    
-    // Calculate max height for centering
-    const maxMatches = Math.max(...Array.from(rounds.values()).map(matches => matches.length))
-    const maxHeight = (maxMatches - 1) * matchSpacing + nodeHeight
-    
-    // Calculate positions for each round
-    rounds.forEach((roundMatches, round) => {
-      const roundX = round * roundSpacing + 150
-      const matchCount = roundMatches.length
-      const roundHeight = (matchCount - 1) * matchSpacing + nodeHeight
-      const startY = (maxHeight - roundHeight) / 2 + 50 // Center vertically
-      
-      roundMatches.forEach((match, matchIdx) => {
-        const y = startY + matchIdx * matchSpacing
-        
-        nodes.push({
-          id: match.id,
-          type: 'match',
-          position: { x: roundX, y },
-          data: { match, onMatchClick },
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
-        })
-      })
-    })
-    
-    // Build edges between rounds
-    if (showConnectingLines) {
-      rounds.forEach((roundMatches, round) => {
-        if (round === maxRound) {
-          // Connect final to winner
-          const finalMatch = roundMatches[0]
-          if (finalMatch) {
-            const winnerId = 'winner'
-            const winnerX = (maxRound + 1) * roundSpacing + 100
-            
-            // Add winner node if not exists
-            if (!nodes.find(n => n.id === winnerId)) {
-              const finalWinner = finalMatch.status === 'finished' || finalMatch.winnerTeamId ? {
-                seed: finalMatch.winnerSeed || finalMatch.left.seed || finalMatch.right.seed || 0,
-                teamName: finalMatch.winnerTeamName || finalMatch.left.teamName || finalMatch.right.teamName || '?'
-              } : undefined
-              
-              // Position winner at the same height as final match
-              const finalMatchNode = nodes.find(n => n.id === finalMatch.id)
-              const winnerY = finalMatchNode ? finalMatchNode.position.y + 60 : 100 // Center of match node
-              
-              nodes.push({
-                id: winnerId,
-                type: 'winner',
-                position: { x: winnerX, y: winnerY },
-                data: { winner: finalWinner },
-                sourcePosition: Position.Right,
-                targetPosition: Position.Left,
-              })
-            }
-            
-            edges.push({
-              id: `${finalMatch.id}-winner`,
-              source: finalMatch.id,
-              target: winnerId,
-              type: 'smoothstep',
-              style: { stroke: '#9ca3af', strokeWidth: 2 },
-            })
-          }
-        } else {
-          // Connect pairs of matches to next round
-          const nextRound = rounds.get(round + 1)
-          if (nextRound) {
-            roundMatches.forEach((match, matchIdx) => {
-              // For Round 0 (Play-In), connect directly to target match in Round 1
-              if (round === 0) {
-                const playInWinner = match.winnerTeamId || match.left.teamId || match.right.teamId
-                const targetMatch = nextRound.find(m => 
-                  m.left.teamId === playInWinner || m.right.teamId === playInWinner
-                )
-                if (targetMatch) {
-                  edges.push({
-                    id: `${match.id}-${targetMatch.id}`,
-                    source: match.id,
-                    target: targetMatch.id,
-                    type: 'smoothstep',
-                    style: { stroke: '#9ca3af', strokeWidth: 2 },
-                  })
-                }
-              } else {
-                // For other rounds, connect pairs to next round
-                if (matchIdx % 2 === 0 && matchIdx + 1 < roundMatches.length) {
-                  const match2 = roundMatches[matchIdx + 1]
-                  const nextMatchIdx = Math.floor(matchIdx / 2)
-                  const nextMatch = nextRound[nextMatchIdx]
-                  
-                  if (nextMatch) {
-                    // Connect both matches to next match
-                    edges.push({
-                      id: `${match.id}-${nextMatch.id}`,
-                      source: match.id,
-                      target: nextMatch.id,
-                      type: 'smoothstep',
-                      style: { stroke: '#9ca3af', strokeWidth: 2 },
-                    })
-                    edges.push({
-                      id: `${match2.id}-${nextMatch.id}`,
-                      source: match2.id,
-                      target: nextMatch.id,
-                      type: 'smoothstep',
-                      style: { stroke: '#9ca3af', strokeWidth: 2 },
-                    })
-                  }
-                }
-              }
-            })
-          }
-        }
-      })
-    }
-    
-    return { nodes, edges }
-  }, [matches, rounds, showConnectingLines, onMatchClick])
-  
-  // Build legend
+  // Build legend: seed number -> team name mapping
   const legend = useMemo(() => {
     const seedMap = new Map<number, string>()
     
@@ -334,6 +122,13 @@ export default function BracketPyramidNew({
       .map(([seed, name]) => ({ seed, name }))
   }, [matches])
   
+  // Get seed display for a slot
+  const getSeedDisplay = (slot: SeedSlot): number | null => {
+    if (slot.isBye) return null
+    if (slot.seed > 0) return slot.seed
+    return null
+  }
+  
   if (matches.length === 0) {
     return (
       <div className="text-center py-8">
@@ -343,28 +138,348 @@ export default function BracketPyramidNew({
     )
   }
   
+  // Calculate deterministic layout dimensions
+  const circleSize = 36
+  const matchSpacing = 60 // Vertical spacing between matches
+  const roundSpacing = 180 // Horizontal spacing between rounds
+  const matchHeight = 80 // Height of a match (circle + line + circle)
+  
+  // Calculate max height for centering
+  const maxMatches = Math.max(...rounds.map(r => r.matches.length))
+  const maxHeight = maxMatches > 0 ? (maxMatches - 1) * matchSpacing + matchHeight : matchHeight
+  
   return (
-    <div className="w-full h-[600px]">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnDrag={true}
-        zoomOnScroll={true}
-        preventScrolling={false}
-      >
-        <Background />
-        <Controls />
-      </ReactFlow>
+    <div className="w-full">
+      <div className="overflow-x-auto">
+        <div className="flex justify-start min-w-max py-4">
+          {rounds.map((round, roundIdx) => {
+            const roundHeight = round.matches.length > 0 
+              ? (round.matches.length - 1) * matchSpacing + matchHeight 
+              : matchHeight
+            const roundTopOffset = (maxHeight - roundHeight) / 2
+            
+            return (
+              <div 
+                key={round.round} 
+                className="flex flex-col items-center relative"
+                style={{ 
+                  minHeight: `${maxHeight}px`,
+                  width: `${roundSpacing}px`,
+                  marginRight: roundIdx < rounds.length - 1 ? '0' : '0'
+                }}
+              >
+                {/* Round Header */}
+                <div className="mb-3 text-center">
+                  <h3 className="font-semibold text-gray-900 text-sm">{round.roundName}</h3>
+                </div>
+                
+                {/* Matches */}
+                <div 
+                  className="relative"
+                  style={{ 
+                    minHeight: `${maxHeight}px`,
+                    width: '100%'
+                  }}
+                >
+                  {round.matches.map((match, matchIdx) => {
+                    const leftSeed = getSeedDisplay(match.left)
+                    const rightSeed = getSeedDisplay(match.right)
+                    const y = roundTopOffset + matchIdx * matchSpacing
+                    const matchCenterY = y + matchHeight / 2
+                    
+                    return (
+                      <div key={match.id}>
+                        {/* Match container */}
+                        <div
+                          className="absolute flex flex-col items-center"
+                          style={{
+                            top: `${y}px`,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: `${circleSize * 2}px`,
+                          }}
+                        >
+                          {/* Top circle (left slot) */}
+                          <div
+                            className={`flex items-center justify-center rounded-full border-2 transition-all ${
+                              match.status === 'finished' && match.winnerTeamId === match.left.teamId
+                                ? 'bg-green-100 border-green-500'
+                                : match.left.isBye
+                                ? 'bg-white border-gray-300 opacity-50'
+                                : leftSeed !== null
+                                ? 'bg-blue-50 border-blue-300'
+                                : 'bg-white border-gray-300'
+                            } cursor-pointer`}
+                            style={{
+                              width: `${circleSize}px`,
+                              height: `${circleSize}px`,
+                            }}
+                            onClick={() => onMatchClick?.(match.matchId || match.id)}
+                            title={match.left.teamName || (match.left.isBye ? 'BYE' : `Seed ${match.left.seed}`)}
+                          >
+                            {leftSeed !== null ? (
+                              <span className="text-sm font-bold text-gray-900">{leftSeed}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">?</span>
+                            )}
+                          </div>
+                          
+                          {/* Vertical line connecting circles */}
+                          <div 
+                            className="bg-gray-400"
+                            style={{ 
+                              width: '2px',
+                              height: `${matchHeight - circleSize * 2}px`,
+                              margin: '4px 0',
+                            }}
+                          />
+                          
+                          {/* Bottom circle (right slot) */}
+                          <div
+                            className={`flex items-center justify-center rounded-full border-2 transition-all ${
+                              match.status === 'finished' && match.winnerTeamId === match.right.teamId
+                                ? 'bg-green-100 border-green-500'
+                                : match.right.isBye
+                                ? 'bg-white border-gray-300 opacity-50'
+                                : rightSeed !== null
+                                ? 'bg-blue-50 border-blue-300'
+                                : 'bg-white border-gray-300'
+                            } cursor-pointer`}
+                            style={{
+                              width: `${circleSize}px`,
+                              height: `${circleSize}px`,
+                            }}
+                            onClick={() => onMatchClick?.(match.matchId || match.id)}
+                            title={match.right.teamName || (match.right.isBye ? 'BYE' : `Seed ${match.right.seed}`)}
+                          >
+                            {rightSeed !== null ? (
+                              <span className="text-sm font-bold text-gray-900">{rightSeed}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">?</span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Connecting lines to next round */}
+                        {showConnectingLines && roundIdx < rounds.length - 1 && (() => {
+                          const nextRound = rounds[roundIdx + 1]
+                          if (!nextRound || nextRound.matches.length === 0) return null
+                          
+                          // For Round 0 (Play-In), connect to specific match in Round 1
+                          if (round.round === 0) {
+                            const playInWinner = match.winnerTeamId || match.left.teamId || match.right.teamId
+                            const targetMatch = nextRound.matches.find(m => 
+                              m.left.teamId === playInWinner || m.right.teamId === playInWinner
+                            )
+                            
+                            if (!targetMatch) return null
+                            
+                            const targetMatchIdx = nextRound.matches.indexOf(targetMatch)
+                            const nextRoundHeight = (nextRound.matches.length - 1) * matchSpacing + matchHeight
+                            const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
+                            const targetY = nextRoundTopOffset + targetMatchIdx * matchSpacing
+                            const targetCenterY = targetY + matchHeight / 2
+                            
+                            // Determine which side of target match
+                            const isLeft = targetMatch.left.teamId === playInWinner
+                            const targetCircleY = isLeft 
+                              ? targetY + circleSize / 2
+                              : targetY + matchHeight - circleSize / 2
+                            
+                            // Calculate connection points
+                            const sourceY = matchCenterY
+                            const horizontalX = roundSpacing / 2
+                            
+                            return (
+                              <svg
+                                className="absolute pointer-events-none"
+                                style={{
+                                  left: '50%',
+                                  top: 0,
+                                  width: `${roundSpacing}px`,
+                                  height: `${maxHeight}px`,
+                                  transform: 'translateX(-50%)',
+                                  zIndex: 0,
+                                }}
+                              >
+                                {/* Horizontal line from match center */}
+                                <line
+                                  x1={circleSize}
+                                  y1={sourceY}
+                                  x2={horizontalX}
+                                  y2={sourceY}
+                                  stroke="#9ca3af"
+                                  strokeWidth="2"
+                                />
+                                {/* Vertical line to target circle */}
+                                <line
+                                  x1={horizontalX}
+                                  y1={Math.min(sourceY, targetCircleY)}
+                                  x2={horizontalX}
+                                  y2={Math.max(sourceY, targetCircleY)}
+                                  stroke="#9ca3af"
+                                  strokeWidth="2"
+                                />
+                                {/* Horizontal line to target circle */}
+                                <line
+                                  x1={horizontalX}
+                                  y1={targetCircleY}
+                                  x2={roundSpacing - circleSize}
+                                  y2={targetCircleY}
+                                  stroke="#9ca3af"
+                                  strokeWidth="2"
+                                />
+                              </svg>
+                            )
+                          }
+                          
+                          // For other rounds, connect pairs to next round
+                          // Each match in next round comes from 2 matches in current round
+                          if (matchIdx % 2 === 0 && matchIdx + 1 < round.matches.length) {
+                            const match2 = round.matches[matchIdx + 1]
+                            const nextMatchIdx = Math.floor(matchIdx / 2)
+                            const nextMatch = nextRound.matches[nextMatchIdx]
+                            
+                            if (!nextMatch) return null
+                            
+                            const match1Y = roundTopOffset + matchIdx * matchSpacing
+                            const match2Y = roundTopOffset + (matchIdx + 1) * matchSpacing
+                            const match1CenterY = match1Y + matchHeight / 2
+                            const match2CenterY = match2Y + matchHeight / 2
+                            const connectorY = (match1CenterY + match2CenterY) / 2
+                            
+                            const nextRoundHeight = (nextRound.matches.length - 1) * matchSpacing + matchHeight
+                            const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
+                            const nextMatchY = nextRoundTopOffset + nextMatchIdx * matchSpacing
+                            const nextMatchCenterY = nextMatchY + matchHeight / 2
+                            
+                            return (
+                              <svg
+                                className="absolute pointer-events-none"
+                                style={{
+                                  left: '50%',
+                                  top: 0,
+                                  width: `${roundSpacing}px`,
+                                  height: `${maxHeight}px`,
+                                  transform: 'translateX(-50%)',
+                                  zIndex: 0,
+                                }}
+                              >
+                                {/* Vertical line connecting two matches */}
+                                <line
+                                  x1={circleSize}
+                                  y1={Math.min(match1CenterY, match2CenterY)}
+                                  x2={circleSize}
+                                  y2={Math.max(match1CenterY, match2CenterY)}
+                                  stroke="#9ca3af"
+                                  strokeWidth="2"
+                                />
+                                {/* Horizontal line from connector to next round */}
+                                <line
+                                  x1={circleSize}
+                                  y1={connectorY}
+                                  x2={roundSpacing - circleSize}
+                                  y2={connectorY}
+                                  stroke="#9ca3af"
+                                  strokeWidth="2"
+                                />
+                                {/* Vertical line to next match center */}
+                                {connectorY !== nextMatchCenterY && (
+                                  <line
+                                    x1={roundSpacing - circleSize}
+                                    y1={Math.min(connectorY, nextMatchCenterY)}
+                                    x2={roundSpacing - circleSize}
+                                    y2={Math.max(connectorY, nextMatchCenterY)}
+                                    stroke="#9ca3af"
+                                    strokeWidth="2"
+                                  />
+                                )}
+                              </svg>
+                            )
+                          }
+                          
+                          return null
+                        })()}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+          
+          {/* Winner Circle after Final */}
+          {(() => {
+            const finalRound = rounds.find(r => r.roundName === 'Final')
+            if (!finalRound || finalRound.matches.length === 0) return null
+            
+            const finalMatch = finalRound.matches[0]
+            const finalWinner = finalMatch.status === 'finished' || finalMatch.winnerTeamId ? {
+              seed: finalMatch.winnerSeed || finalMatch.left.seed || finalMatch.right.seed || 0,
+              teamName: finalMatch.winnerTeamName || finalMatch.left.teamName || finalMatch.right.teamName || '?'
+            } : null
+            
+            const finalRoundHeight = (finalRound.matches.length - 1) * matchSpacing + matchHeight
+            const finalRoundTopOffset = (maxHeight - finalRoundHeight) / 2
+            const finalMatchY = finalRoundTopOffset
+            const finalMatchCenterY = finalMatchY + matchHeight / 2
+            const winnerY = finalMatchCenterY - circleSize / 2
+            
+            return (
+              <div 
+                className="flex flex-col items-center relative"
+                style={{ 
+                  minHeight: `${maxHeight}px`,
+                  width: `${roundSpacing}px`,
+                }}
+              >
+                <div className="mb-3 text-center">
+                  <h3 className="font-semibold text-gray-900 text-sm">Winner</h3>
+                </div>
+                <div 
+                  className="relative"
+                  style={{ marginTop: `${winnerY}px` }}
+                >
+                  {/* Connecting line from Final */}
+                  {showConnectingLines && (
+                    <div 
+                      className="absolute right-full top-1/2 bg-gray-400"
+                      style={{ 
+                        width: `${roundSpacing / 2}px`,
+                        height: '2px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                      }}
+                    />
+                  )}
+                  
+                  {/* Winner Circle */}
+                  <div
+                    className={`flex items-center justify-center rounded-full border-2 ${
+                      finalWinner ? 'bg-yellow-100 border-yellow-500' : 'bg-white border-gray-300 opacity-50'
+                    }`}
+                    style={{
+                      width: `${circleSize}px`,
+                      height: `${circleSize}px`,
+                    }}
+                    title={finalWinner ? finalWinner.teamName : 'Winner not determined yet'}
+                  >
+                    {finalWinner ? (
+                      <span className="text-sm font-bold text-gray-900">{finalWinner.seed}</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">?</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      </div>
       
-      {/* Legend */}
+      {/* Legend - transparent table format */}
       {legend.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="mt-8 pt-4 border-t border-gray-200">
           <h4 className="text-sm font-semibold text-gray-700 mb-3">Legend</h4>
           <div className="inline-block bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg p-4 shadow-sm">
             <table className="w-auto">
