@@ -166,57 +166,61 @@ export default function BracketPyramidNew({
     )
   }
 
-  // Calculate dimensions - increased spacing to prevent overlap
-  const circleSize = 40 // Size of seed circle
-  const circleSpacing = 80 // Vertical spacing between circles (increased from 60)
-  const roundSpacing = 150 // Horizontal spacing between rounds (increased from 120)
-  const matchBoxHeight = 40 // Height of match box (connects two circles)
-  const matchBoxWidth = 60 // Width of match box
+  // Calculate dimensions - compact spacing
+  const circleSize = 32 // Size of seed circle
+  const circleSpacing = 50 // Vertical spacing between circles
+  const roundSpacing = 100 // Horizontal spacing between rounds
+  const matchBoxHeight = 30 // Height of match box (connects two circles)
+  const matchBoxWidth = 50 // Width of match box
 
-  // Calculate positions for each match in each round
-  const getMatchPosition = (roundIdx: number, matchIdx: number, totalMatches: number): number => {
-    // For bracket structure, matches should be positioned to form a pyramid
-    // Each round has half the matches of the previous round
-    // Position matches evenly distributed
-    return matchIdx * circleSpacing * 2 // Each match takes 2 circleSpacing units (top circle + bottom circle + spacing)
+  // Calculate height for a round based on number of matches
+  const getRoundHeight = (matchCount: number): number => {
+    if (matchCount === 0) return 0
+    return (matchCount - 1) * circleSpacing * 2 + circleSize * 2 + matchBoxHeight
   }
+
+  // Find maximum height among all rounds (for centering)
+  const maxHeight = Math.max(...rounds.map(round => getRoundHeight(round.matches.length)))
 
   return (
     <div className="w-full">
       <div className="overflow-x-auto">
         <div className="flex justify-start min-w-max">
-          <div className="flex items-start py-4" style={{ gap: `${roundSpacing}px` }}>
+          <div className="flex items-start py-4" style={{ gap: `${roundSpacing}px`, minHeight: `${maxHeight}px` }}>
             {rounds.map((round, roundIdx) => {
               const matchCount = round.matches.length
-              // Calculate total height needed: each match needs 2 circles + match box + spacing
-              const totalHeight = matchCount > 0 
-                ? (matchCount - 1) * circleSpacing * 2 + circleSize * 2 + matchBoxHeight
-                : 0
+              const roundHeight = getRoundHeight(matchCount)
+              
+              // Center this round vertically relative to max height
+              const roundTopOffset = (maxHeight - roundHeight) / 2
               
               return (
-                <div key={round.round} className="flex flex-col items-center relative">
+                <div key={round.round} className="flex flex-col items-center relative" style={{ minHeight: `${maxHeight}px` }}>
                   {/* Round Header */}
                   <div className="mb-4 text-center">
                     <h3 className="font-semibold text-gray-900 text-sm">{round.roundName}</h3>
                   </div>
 
                   {/* Matches */}
-                  <div className="relative" style={{ minHeight: `${totalHeight}px`, width: `${matchBoxWidth + roundSpacing}px` }}>
+                  <div className="relative" style={{ minHeight: `${maxHeight}px`, width: `${matchBoxWidth + roundSpacing}px` }}>
                     {round.matches.map((match, matchIdx) => {
                       const isHovered = hoveredMatch === match.id
                       const leftSeed = getSeedDisplay(match.left, match, true)
                       const rightSeed = getSeedDisplay(match.right, match, false)
                       const isFinal = round.round === maxRound && round.round > 0
                       
-                      // Calculate vertical position - each match is spaced by circleSpacing * 2
-                      const topOffset = matchIdx * circleSpacing * 2
+                      // Calculate vertical position - centered round + match position within round
+                      const matchTopOffset = roundTopOffset + matchIdx * circleSpacing * 2
+                      
+                      // Calculate match center (for connecting lines)
+                      const matchCenter = matchTopOffset + circleSize + matchBoxHeight / 2
                       
                       return (
                         <div
                           key={match.id}
                           className="absolute left-0 flex flex-col items-center"
                           style={{ 
-                            top: `${topOffset}px`,
+                            top: `${matchTopOffset}px`,
                             width: `${matchBoxWidth}px`,
                           }}
                           onMouseEnter={() => setHoveredMatch(match.id)}
@@ -224,16 +228,6 @@ export default function BracketPyramidNew({
                         >
                           {/* Left Seed Circle */}
                           <div className="relative mb-1">
-                            {/* Connecting line FROM previous round (left side) */}
-                            {showConnectingLines && roundIdx > 0 && (
-                              <div 
-                                className="absolute right-full top-1/2 bg-gray-400 z-10"
-                                style={{ 
-                                  width: `${roundSpacing / 2}px`,
-                                  height: '2px',
-                                }}
-                              />
-                            )}
                             
                             {/* Circle */}
                             <div
@@ -281,16 +275,6 @@ export default function BracketPyramidNew({
 
                           {/* Right Seed Circle */}
                           <div className="relative">
-                            {/* Connecting line FROM previous round (right side) */}
-                            {showConnectingLines && roundIdx > 0 && (
-                              <div 
-                                className="absolute left-full top-1/2 bg-gray-400 z-10"
-                                style={{ 
-                                  width: `${roundSpacing / 2}px`,
-                                  height: '2px',
-                                }}
-                              />
-                            )}
                             
                             {/* Circle */}
                             <div
@@ -318,47 +302,81 @@ export default function BracketPyramidNew({
                             </div>
                           </div>
 
-                          {/* Connecting line TO next round - horizontal line from match center */}
-                          {showConnectingLines && roundIdx < rounds.length - 1 && (
-                            <div 
-                              className="absolute left-1/2 top-full bg-gray-400 z-10"
-                              style={{ 
-                                width: `${roundSpacing / 2}px`,
-                                height: '2px',
-                                transform: 'translateX(-50%)',
-                                top: `${circleSize + matchBoxHeight + circleSize}px`,
-                              }}
-                            />
-                          )}
                         </div>
                       )
                     })}
                     
-                    {/* Vertical connector lines between rounds - connect pairs of matches */}
-                    {showConnectingLines && roundIdx < rounds.length - 1 && round.matches.length > 1 && (
+                    {/* Connecting lines between rounds */}
+                    {showConnectingLines && roundIdx < rounds.length - 1 && round.matches.length > 0 && (
                       <>
                         {round.matches.map((match, matchIdx) => {
-                          if (matchIdx % 2 === 0 && matchIdx + 1 < round.matches.length) {
-                            // Connect pairs of matches to next round
-                            const match1Center = matchIdx * circleSpacing * 2 + circleSize + matchBoxHeight + circleSize / 2
-                            const match2Center = (matchIdx + 1) * circleSpacing * 2 + circleSize + matchBoxHeight + circleSize / 2
-                            const connectorTop = match1Center
-                            const connectorHeight = match2Center - match1Center
-                            
-                            return (
+                          // Find corresponding matches in next round
+                          const nextRound = rounds[roundIdx + 1]
+                          if (!nextRound || nextRound.matches.length === 0) return null
+                          
+                          // Each match in current round feeds into one match in next round
+                          // But each match in next round comes from 2 matches in current round
+                          // So we need to connect pairs of matches in current round to one match in next round
+                          
+                          // Only process even-indexed matches (they are the first of a pair)
+                          if (matchIdx % 2 === 1) return null
+                          
+                          const nextMatchIdx = Math.floor(matchIdx / 2)
+                          const nextMatch = nextRound.matches[nextMatchIdx]
+                          if (!nextMatch) return null
+                          
+                          // Calculate positions in current round
+                          const match1TopOffset = roundTopOffset + matchIdx * circleSpacing * 2
+                          const match2TopOffset = roundTopOffset + (matchIdx + 1) * circleSpacing * 2
+                          const match1Center = match1TopOffset + circleSize + matchBoxHeight / 2
+                          const match2Center = match2TopOffset + circleSize + matchBoxHeight / 2
+                          
+                          // Calculate positions in next round
+                          const nextRoundHeight = getRoundHeight(nextRound.matches.length)
+                          const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
+                          const nextMatchTopOffset = nextRoundTopOffset + nextMatchIdx * circleSpacing * 2
+                          const nextMatchCenter = nextMatchTopOffset + circleSize + matchBoxHeight / 2
+                          
+                          // Calculate connector positions
+                          const connectorY = (match1Center + match2Center) / 2
+                          const connectorHeight = Math.abs(match2Center - match1Center)
+                          const connectorTop = Math.min(match1Center, match2Center)
+                          
+                          return (
+                            <div key={`connector-${match.id}`}>
+                              {/* Vertical line connecting two matches in current round */}
                               <div
-                                key={`connector-${match.id}`}
                                 className="absolute bg-gray-400 z-10"
                                 style={{
-                                  left: `${matchBoxWidth / 2 + roundSpacing / 2}px`,
+                                  left: `${matchBoxWidth / 2}px`,
                                   top: `${connectorTop}px`,
                                   width: '2px',
                                   height: `${connectorHeight}px`,
                                 }}
                               />
-                            )
-                          }
-                          return null
+                              {/* Horizontal line from connector to next round */}
+                              <div
+                                className="absolute bg-gray-400 z-10"
+                                style={{
+                                  left: `${matchBoxWidth / 2}px`,
+                                  top: `${connectorY}px`,
+                                  width: `${roundSpacing}px`,
+                                  height: '2px',
+                                  transform: 'translateY(-50%)',
+                                }}
+                              />
+                              {/* Vertical line from horizontal line to next match center */}
+                              <div
+                                className="absolute bg-gray-400 z-10"
+                                style={{
+                                  left: `${matchBoxWidth / 2 + roundSpacing}px`,
+                                  top: `${Math.min(connectorY, nextMatchCenter)}px`,
+                                  width: '2px',
+                                  height: `${Math.abs(nextMatchCenter - connectorY)}px`,
+                                }}
+                              />
+                            </div>
+                          )
                         })}
                       </>
                     )}
