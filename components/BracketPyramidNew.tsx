@@ -166,12 +166,12 @@ export default function BracketPyramidNew({
     )
   }
 
-  // Calculate dimensions - proper spacing to prevent circles from sticking together
+  // Calculate dimensions - compact spacing
   const circleSize = 32 // Size of seed circle
-  const circleSpacing = 60 // Vertical spacing between circles within a match
-  const matchSpacing = 80 // Vertical spacing between different matches (pairs)
+  const circleSpacing = 40 // Vertical spacing between circles within a match (reduced)
+  const matchSpacing = 30 // Vertical spacing between different matches (pairs) - reduced significantly
   const roundSpacing = 120 // Horizontal spacing between rounds
-  const matchBoxHeight = 40 // Height of match box (connects two circles)
+  const matchBoxHeight = 30 // Height of match box (connects two circles) - reduced
   const matchBoxWidth = 50 // Width of match box
 
   // Calculate height for a round based on number of matches
@@ -358,7 +358,7 @@ export default function BracketPyramidNew({
                               <div key={`playin-connector-${match.id}`}>
                                 {/* Horizontal line from Play-In match center */}
                                 <div
-                                  className="absolute bg-gray-400 z-10"
+                                  className="absolute bg-gray-400 z-0"
                                   style={{
                                     left: `${matchBoxWidth / 2}px`,
                                     top: `${horizontalLineY}px`,
@@ -368,9 +368,9 @@ export default function BracketPyramidNew({
                                   }}
                                 />
                                 {/* Vertical line from horizontal line end to target circle center */}
-                                {verticalLineHeight > 0 && (
+                                {verticalLineHeight > 0.5 && (
                                   <div
-                                    className="absolute bg-gray-400 z-10"
+                                    className="absolute bg-gray-400 z-0"
                                     style={{
                                       left: `${matchBoxWidth / 2 + roundSpacing}px`,
                                       top: `${verticalLineStartY}px`,
@@ -420,7 +420,7 @@ export default function BracketPyramidNew({
                             <div key={`connector-${match.id}`}>
                               {/* Vertical line connecting two matches in current round (from match1 center to match2 center) */}
                               <div
-                                className="absolute bg-gray-400 z-10"
+                                className="absolute bg-gray-400 z-0"
                                 style={{
                                   left: `${matchBoxWidth / 2}px`,
                                   top: `${connectorTop}px`,
@@ -430,7 +430,7 @@ export default function BracketPyramidNew({
                               />
                               {/* Horizontal line from connector center to next round */}
                               <div
-                                className="absolute bg-gray-400 z-10"
+                                className="absolute bg-gray-400 z-0"
                                 style={{
                                   left: `${matchBoxWidth / 2}px`,
                                   top: `${connectorY}px`,
@@ -445,12 +445,12 @@ export default function BracketPyramidNew({
                                 const verticalLineStartY = Math.min(connectorY, nextMatchCenter)
                                 const verticalLineHeight = Math.abs(nextMatchCenter - connectorY)
                                 
-                                // Only render if there's a meaningful vertical distance
-                                if (verticalLineHeight < 1) return null
+                                // Always render vertical connector line, even if small
+                                if (verticalLineHeight < 0.5) return null
                                 
                                 return (
                                   <div
-                                    className="absolute bg-gray-400 z-10"
+                                    className="absolute bg-gray-400 z-0"
                                     style={{
                                       left: `${matchBoxWidth / 2 + roundSpacing}px`,
                                       top: `${verticalLineStartY}px`,
