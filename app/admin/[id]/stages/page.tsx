@@ -190,6 +190,14 @@ export default function DivisionStageManagement() {
     m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
   )
 
+  const completedPlayoffMatches = eliminationMatches.filter(m => 
+    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+  )
+
+  const hasRRResults = completedRRMatches.length > 0
+  const hasPlayInResults = completedPlayInMatches.length > 0
+  const hasPlayoffResults = completedPlayoffMatches.length > 0
+
   const teamCount = teams.length
   // Determine target bracket size based on team count
   const getTargetBracketSize = (teamCount: number) => {
@@ -671,7 +679,8 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={() => setShowEditRRPairsModal(true)}
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    disabled={hasRRResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
                     <span>Edit RR Pairs</span>
@@ -971,7 +980,8 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={() => setShowEditPlayInPairsModal(true)}
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    disabled={hasPlayInResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
                     <span>Edit Play-In Pairs</span>
@@ -1162,7 +1172,8 @@ export default function DivisionStageManagement() {
                   <Button
                     onClick={() => setShowPlayoffSwapModal(true)}
                     variant="outline"
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    disabled={hasPlayoffResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
                     <span>Edit Play-off Pairs</span>
