@@ -160,15 +160,10 @@ export function buildRound1Matches(
       allRound1Teams.push({ ...winner, isBye: false })
     })
     
-    // Create BYE slots for missing teams (if bracketSize > totalTeams)
+    // CRITICAL: Do NOT create BYE slots here
+    // BYE are determined dynamically when processing bracket pairs:
+    // if seed > totalTeams, it's a BYE (upper seeds get BYE when paired with non-existent seeds)
     const totalTeams = allRound1Teams.length
-    if (bracketSize > totalTeams) {
-      const missing = bracketSize - totalTeams
-      for (let i = 0; i < missing; i++) {
-        const byeSeed = totalTeams + i + 1
-        allRound1Teams.push({ seed: byeSeed, isBye: true })
-      }
-    }
     
     // Create a seed map for quick lookup
     // For bracket pairs, we need to map bracket positions to actual teams
@@ -252,7 +247,7 @@ export function buildRound1Matches(
           winnerTeamName: rightTeam.teamName,
         })
         matchPosition++
-      } else if (leftTeam && !rightTeam) {
+      } else if (leftTeam && rightIsBye) {
         // Right team is BYE - left team autopasses
         matches.push({
           id: `round1-${matchPosition}`,
