@@ -77,9 +77,9 @@ export default function BracketPyramidNew({
     // Build ELK graph
     const graph = buildElkBracketGraph(matches, calculatedTotalTeams, calculatedBracketSize)
     
-    // Calculate layout
-    elk.layout(graph)
-      .then((layouted) => {
+    // Calculate layout - ELK expects the graph structure directly
+    elk.layout(graph as any)
+      .then((layouted: any) => {
         setLayoutedGraph(layouted)
       })
       .catch((error) => {
