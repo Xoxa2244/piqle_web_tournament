@@ -205,7 +205,7 @@ export default function BracketPyramidNew({
                   </div>
 
                   {/* Matches */}
-                  <div className="relative" style={{ minHeight: `${maxHeight}px`, width: `${matchBoxWidth + roundSpacing}px` }}>
+                  <div className="relative" style={{ minHeight: `${maxHeight}px`, width: `${matchBoxWidth + roundSpacing}px`, overflow: 'visible' }}>
                     {round.matches.map((match, matchIdx) => {
                       const isHovered = hoveredMatch === match.id
                       const leftSeed = getSeedDisplay(match.left, match, true)
