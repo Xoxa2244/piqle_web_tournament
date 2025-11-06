@@ -220,24 +220,24 @@ export function buildRound1Matches(
         continue
       }
       
-      const teamA = seedA <= bracketSize ? seedMap.get(seedA) : undefined
-      const teamB = seedB <= bracketSize ? seedMap.get(seedB) : undefined
-      
-      // If both teams are missing (both seeds > bracketSize), skip
-      if (!teamA && !teamB) {
-        console.log(`[buildRound1Matches] Skipping pair [${seedA}, ${seedB}] - both seeds exceed bracketSize`)
-        continue
-      }
-      
       // Determine which team should be on left/right based on bracket pair order
       // In bracket pairs, lower seed is typically on left
       const leftSeed = Math.min(seedA, seedB)
       const rightSeed = Math.max(seedA, seedB)
-      const leftTeam = leftSeed === seedA ? teamA : teamB
-      const rightTeam = rightSeed === seedB ? teamB : teamA
       
-      // If one team is missing (seed > totalTeams), it's a BYE
-      // Upper B seeds (1, 2, ..., missing) should get BYE and autopass
+      // Get teams for these seeds (if they exist)
+      const leftTeam = leftSeed <= bracketSize ? seedMap.get(leftSeed) : undefined
+      const rightTeam = rightSeed <= bracketSize ? seedMap.get(rightSeed) : undefined
+      
+      // If both teams are missing (both seeds > bracketSize), skip
+      if (!leftTeam && !rightTeam) {
+        console.log(`[buildRound1Matches] Skipping pair [${seedA}, ${seedB}] - both seeds exceed bracketSize`)
+        continue
+      }
+      
+      // CRITICAL: If seed > totalTeams, it's a BYE
+      // Upper B seeds (1, 2, ..., missing) get BYE when their opponent seed > totalTeams
+      // This ensures upper seeds autopass when paired with non-existent seeds
       if (!leftTeam && rightTeam) {
         // Left team is BYE - right team autopasses
         matches.push({
