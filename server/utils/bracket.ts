@@ -251,9 +251,21 @@ export function buildRound1Matches(
         status: teamA.teamId && teamB.teamId ? 'scheduled' : 'scheduled',
       })
     }
+    
+    console.log('[buildRound1Matches] Generated', matches.length, 'matches')
+    return matches
+  } catch (error) {
+    console.error('[buildRound1Matches] Error occurred:', error)
+    console.error('[buildRound1Matches] Error details:', {
+      upperSeedsCount: upperSeeds.length,
+      playInWinnersCount: playInWinners.length,
+      bracketSize,
+      playInSpots,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    })
+    throw error
   }
-  
-  return matches
 }
 
 // Build subsequent rounds recursively
