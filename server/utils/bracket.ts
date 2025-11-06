@@ -311,50 +311,72 @@ export function buildCompleteBracket(
   playInMatches?: Array<{ id: string; winnerTeamId?: string; teamAId: string; teamBId: string }>,
   existingPlayoffMatches?: Array<{ id: string; roundIndex: number; teamAId: string; teamBId: string; winnerId?: string; games: Array<{ scoreA: number; scoreB: number }> }>
 ): BracketMatch[] {
-  // Validate inputs
-  if (!Number.isFinite(totalTeams) || totalTeams <= 0) {
-    console.error('Invalid totalTeams:', totalTeams)
-    return []
-  }
+  console.log('[buildCompleteBracket] Starting with:', {
+    totalTeams,
+    bracketSize,
+    standingsCount: standings.length,
+    playInMatchesCount: playInMatches?.length || 0,
+    existingPlayoffMatchesCount: existingPlayoffMatches?.length || 0,
+  })
   
-  if (!Number.isFinite(bracketSize) || bracketSize <= 0) {
-    console.error('Invalid bracketSize:', bracketSize)
-    return []
-  }
-  
-  if (!Array.isArray(standings) || standings.length === 0) {
-    console.error('Invalid standings:', standings)
-    return []
-  }
-  
-  const allMatches: BracketMatch[] = []
-  const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
-  const needsPlayIn = playInSpots > 0
-  
-  // Separate teams into upper and lower seeds
-  // Logic: If play-in is needed, E = N - B
-  // Bottom 2E teams go to play-in
-  // Top (N - 2E) teams directly qualify
-  const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-  const lowerSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-  
-  if (needsPlayIn) {
-    const E = totalTeams - bracketSize  // Number of play-in matches
-    const playInTeamCount = 2 * E  // Bottom 2E teams
+  try {
+    // Validate inputs
+    if (!Number.isFinite(totalTeams) || totalTeams <= 0) {
+      console.error('[buildCompleteBracket] Invalid totalTeams:', totalTeams)
+      return []
+    }
     
-    standings.forEach((team) => {
-      if (team.seed <= totalTeams - playInTeamCount) {
+    if (!Number.isFinite(bracketSize) || bracketSize <= 0) {
+      console.error('[buildCompleteBracket] Invalid bracketSize:', bracketSize)
+      return []
+    }
+    
+    if (!Array.isArray(standings) || standings.length === 0) {
+      console.error('[buildCompleteBracket] Invalid standings:', standings)
+      return []
+    }
+    
+    console.log('[buildCompleteBracket] Inputs validated')
+    
+    const allMatches: BracketMatch[] = []
+    console.log('[buildCompleteBracket] Calculating play-in spots...')
+    const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
+    const needsPlayIn = playInSpots > 0
+    
+    console.log('[buildCompleteBracket] Play-in calculation:', { playInSpots, needsPlayIn })
+  
+    // Separate teams into upper and lower seeds
+    // Logic: If play-in is needed, E = N - B
+    // Bottom 2E teams go to play-in
+    // Top (N - 2E) teams directly qualify
+    console.log('[buildCompleteBracket] Separating teams into upper and lower seeds...')
+    const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
+    const lowerSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
+    
+    if (needsPlayIn) {
+      console.log('[buildCompleteBracket] Play-in needed, calculating team distribution...')
+      const E = totalTeams - bracketSize  // Number of play-in matches
+      const playInTeamCount = 2 * E  // Bottom 2E teams
+      
+      standings.forEach((team) => {
+        if (team.seed <= totalTeams - playInTeamCount) {
+          upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
+        } else {
+          lowerSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
+        }
+      })
+    } else {
+      // All teams directly qualify
+      console.log('[buildCompleteBracket] No play-in needed, all teams qualify directly')
+      standings.forEach((team) => {
         upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-      } else {
-        lowerSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-      }
+      })
+    }
+    
+    console.log('[buildCompleteBracket] Team separation complete:', {
+      upperSeedsCount: upperSeeds.length,
+      lowerSeedsCount: lowerSeeds.length,
     })
-  } else {
-    // All teams directly qualify
-    standings.forEach((team) => {
-      upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
-    })
-  }
   
   // Build Play-In matches if needed
   if (needsPlayIn && lowerSeeds.length > 0) {
@@ -439,25 +461,28 @@ export function buildCompleteBracket(
   
   allMatches.push(...round1Matches)
   
-  // Build subsequent rounds
-  // Validate bracketSize to prevent infinite loops
-  if (bracketSize <= 0 || !Number.isFinite(bracketSize)) {
-    console.error('Invalid bracketSize:', bracketSize)
-    return allMatches // Return what we have so far
-  }
-  
-  const totalRounds = Math.ceil(Math.log2(bracketSize))
-  
-  // Safety check: limit to reasonable number of rounds
-  if (totalRounds > 10 || !Number.isFinite(totalRounds)) {
-    console.error('Invalid totalRounds calculated:', totalRounds, 'for bracketSize:', bracketSize)
-    return allMatches // Return what we have so far
-  }
-  
-  let previousRound = round1Matches
-  
-  for (let round = 2; round <= totalRounds; round++) {
-    const nextRoundMatches = buildSubsequentRounds(previousRound, round, totalRounds)
+    // Build subsequent rounds
+    console.log('[buildCompleteBracket] Building subsequent rounds...')
+    // Validate bracketSize to prevent infinite loops
+    if (bracketSize <= 0 || !Number.isFinite(bracketSize)) {
+      console.error('[buildCompleteBracket] Invalid bracketSize:', bracketSize)
+      return allMatches // Return what we have so far
+    }
+    
+    const totalRounds = Math.ceil(Math.log2(bracketSize))
+    console.log('[buildCompleteBracket] Total rounds calculated:', totalRounds)
+    
+    // Safety check: limit to reasonable number of rounds
+    if (totalRounds > 10 || !Number.isFinite(totalRounds)) {
+      console.error('[buildCompleteBracket] Invalid totalRounds calculated:', totalRounds, 'for bracketSize:', bracketSize)
+      return allMatches // Return what we have so far
+    }
+    
+    let previousRound = round1Matches
+    
+    for (let round = 2; round <= totalRounds; round++) {
+      console.log('[buildCompleteBracket] Building round', round, 'of', totalRounds)
+      const nextRoundMatches = buildSubsequentRounds(previousRound, round, totalRounds)
     
     // Update with existing match data
     // Note: roundIndex in DB: Round 1 = 0, Round 2 = 1, etc.
@@ -494,10 +519,23 @@ export function buildCompleteBracket(
       })
     }
     
-    allMatches.push(...nextRoundMatches)
-    previousRound = nextRoundMatches
+      allMatches.push(...nextRoundMatches)
+      previousRound = nextRoundMatches
+      console.log('[buildCompleteBracket] Round', round, 'complete:', nextRoundMatches.length, 'matches')
+    }
+    
+    console.log('[buildCompleteBracket] All rounds built successfully. Total matches:', allMatches.length)
+    return allMatches
+  } catch (error) {
+    console.error('[buildCompleteBracket] Error occurred:', error)
+    console.error('[buildCompleteBracket] Error details:', {
+      totalTeams,
+      bracketSize,
+      standingsCount: standings.length,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    })
+    throw error
   }
-  
-  return allMatches
 }
 
