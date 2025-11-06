@@ -239,6 +239,8 @@ export default function BracketModal({
                   onMatchClick={(matchId) => {
                     console.log('Match clicked:', matchId)
                   }}
+                  totalTeams={(bracketData as any)?.standings?.length}
+                  bracketSize={(bracketData as any)?.bracketSize}
                 />
               ) : allMatches !== null && allMatches.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
