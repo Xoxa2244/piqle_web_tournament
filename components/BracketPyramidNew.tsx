@@ -51,8 +51,14 @@ export default function BracketPyramidNew({
   const rounds: BracketRound[] = []
   const maxRound = matches.length > 0 ? Math.max(...matches.map(m => m.round)) : 0
   
+  // Debug: log matches to see if Round 0 exists
+  console.log('[BracketPyramidNew] Total matches:', matches.length)
+  console.log('[BracketPyramidNew] Rounds found:', matches.map(m => m.round).sort((a, b) => a - b))
+  console.log('[BracketPyramidNew] Max round:', maxRound)
+  
   for (let round = 0; round <= maxRound; round++) {
     const roundMatches = matches.filter(m => m.round === round).sort((a, b) => a.position - b.position)
+    console.log(`[BracketPyramidNew] Round ${round} matches:`, roundMatches.length)
     if (roundMatches.length > 0) {
       let roundName = ''
       
@@ -126,8 +132,10 @@ export default function BracketPyramidNew({
   }, [matches])
 
   // Get seed number to display for a slot - always show the actual seed from slot
+  // For BYE, we don't show anything (empty circle), but the team with BYE automatically advances
   const getSeedDisplay = (slot: SeedSlot, match: BracketMatch, isLeft: boolean): number | null => {
-    // If this is a BYE, don't show seed
+    // If this is a BYE, return null (will show empty circle or "?")
+    // The team with BYE automatically advances, so we don't show seed for BYE slot
     if (slot.isBye) {
       return null
     }
@@ -224,7 +232,7 @@ export default function BracketPyramidNew({
                                 match.status === 'finished' && match.winnerTeamId === match.left.teamId
                                   ? 'bg-green-100 border-green-500'
                                   : match.left.isBye
-                                  ? 'bg-gray-100 border-gray-300'
+                                  ? 'bg-white border-gray-300 opacity-50'
                                   : leftSeed !== null
                                   ? 'bg-blue-50 border-blue-300'
                                   : 'bg-white border-gray-300'
@@ -236,13 +244,11 @@ export default function BracketPyramidNew({
                               onClick={() => onMatchClick?.(match.matchId || match.id)}
                               title={match.left.teamName || (match.left.isBye ? 'BYE' : `Seed ${match.left.seed}`)}
                             >
-                              {match.left.isBye ? (
-                                <span className="text-xs font-semibold text-gray-500">BYE</span>
-                              ) : leftSeed !== null ? (
-                                <span className="text-sm font-bold text-gray-900">{leftSeed}</span>
-                              ) : (
-                                <span className="text-xs text-gray-400">?</span>
-                              )}
+                            {leftSeed !== null ? (
+                              <span className="text-sm font-bold text-gray-900">{leftSeed}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">?</span>
+                            )}
                             </div>
                           </div>
 
@@ -283,7 +289,7 @@ export default function BracketPyramidNew({
                                 match.status === 'finished' && match.winnerTeamId === match.right.teamId
                                   ? 'bg-green-100 border-green-500'
                                   : match.right.isBye
-                                  ? 'bg-gray-100 border-gray-300'
+                                  ? 'bg-white border-gray-300 opacity-50'
                                   : rightSeed !== null
                                   ? 'bg-blue-50 border-blue-300'
                                   : 'bg-white border-gray-300'
@@ -295,13 +301,11 @@ export default function BracketPyramidNew({
                               onClick={() => onMatchClick?.(match.matchId || match.id)}
                               title={match.right.teamName || (match.right.isBye ? 'BYE' : `Seed ${match.right.seed}`)}
                             >
-                              {match.right.isBye ? (
-                                <span className="text-xs font-semibold text-gray-500">BYE</span>
-                              ) : rightSeed !== null ? (
-                                <span className="text-sm font-bold text-gray-900">{rightSeed}</span>
-                              ) : (
-                                <span className="text-xs text-gray-400">?</span>
-                              )}
+                            {rightSeed !== null ? (
+                              <span className="text-sm font-bold text-gray-900">{rightSeed}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">?</span>
+                            )}
                             </div>
                           </div>
 
@@ -390,18 +394,25 @@ export default function BracketPyramidNew({
         </div>
       </div>
       
-      {/* Legend */}
+      {/* Legend - transparent table format */}
       {legend.length > 0 && (
         <div className="mt-8 pt-4 border-t border-gray-200">
           <h4 className="text-sm font-semibold text-gray-700 mb-3">Legend</h4>
-          <div className="flex flex-wrap gap-4">
-            {legend.map(({ seed, name }) => (
-              <div key={seed} className="text-sm text-gray-600">
-                <span className="font-medium">#{seed}</span>
-                {' - '}
-                <span>{name}</span>
-              </div>
-            ))}
+          <div className="inline-block bg-white/80 backdrop-blur-sm border border-gray-200 rounded-lg p-4 shadow-sm">
+            <table className="w-auto">
+              <tbody>
+                {legend.map(({ seed, name }) => (
+                  <tr key={seed} className="border-b border-gray-100 last:border-b-0">
+                    <td className="text-sm font-medium text-gray-700 text-right pr-4 py-1">
+                      #{seed}
+                    </td>
+                    <td className="text-sm text-gray-600 py-1">
+                      {name}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
