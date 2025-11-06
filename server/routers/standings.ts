@@ -904,8 +904,9 @@ export const standingsRouter = createTRPCRouter({
           allBracketMatches = []
         } else {
           console.log('[getBracket] Preparing match data...')
-          // Prepare play-in match data (only if RR is complete and matches exist)
-          const playInMatchData = isRRComplete && playInMatches.length > 0
+          // Prepare play-in match data - always include if matches exist in DB
+          // This ensures Round 0 is displayed even if needsPlayIn calculation says it's not needed
+          const playInMatchData = playInMatches.length > 0
             ? playInMatches
                 .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
                 .map(match => {
@@ -921,6 +922,11 @@ export const standingsRouter = createTRPCRouter({
                   }
                 })
             : undefined
+          
+          console.log('[getBracket] Play-In match data prepared:', {
+            playInMatchesCount: playInMatches.length,
+            playInMatchDataCount: playInMatchData?.length || 0,
+          })
           
           // Prepare playoff match data (only if RR is complete and matches exist)
           const playoffMatchData = isRRComplete && playoffMatches.length > 0

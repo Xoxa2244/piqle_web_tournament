@@ -39,9 +39,13 @@ export const nextPow2 = (n: number): number => {
 // Direct qualified: top (N - 2E) teams
 export const calculatePlayInSpots = (totalTeams: number, bracketSize: number): number => {
   if (totalTeams === bracketSize) return 0
+  // Play-in is needed when: bracketSize < totalTeams < 2 * bracketSize
+  // This means we have more teams than bracket size, but not enough for a full double bracket
   if (bracketSize < totalTeams && totalTeams < 2 * bracketSize) {
     return 2 * (totalTeams - bracketSize)  // 2E teams go to play-in
   }
+  // If totalTeams < bracketSize, no play-in needed (teams get BYEs)
+  // If totalTeams >= 2 * bracketSize, no play-in needed (different bracket structure)
   return 0
 }
 
@@ -551,16 +555,55 @@ export function buildCompleteBracket(
       lowerSeedsCount: lowerSeeds.length,
     })
   
-  // Build Play-In matches if needed
-  if (needsPlayIn && lowerSeeds.length > 0) {
-    const playInBracketMatches = buildPlayInMatches(lowerSeeds, bracketSize)
+  // Build Play-In matches if needed OR if play-in matches exist in DB
+  // This ensures Round 0 is always displayed if Play-In matches were created
+  if ((needsPlayIn && lowerSeeds.length > 0) || (playInMatches && playInMatches.length > 0)) {
+    let playInBracketMatches: BracketMatch[] = []
+    
+    // If we have lower seeds and need play-in, generate matches
+    if (needsPlayIn && lowerSeeds.length > 0) {
+      playInBracketMatches = buildPlayInMatches(lowerSeeds, bracketSize)
+    } else if (playInMatches && playInMatches.length > 0) {
+      // If play-in matches exist in DB but needsPlayIn is false, create matches from DB data
+      // We need to find the teams from standings
+      playInMatches.forEach((dbMatch, index) => {
+        const teamA = standings.find(t => t.teamId === dbMatch.teamAId)
+        const teamB = standings.find(t => t.teamId === dbMatch.teamBId)
+        
+        if (teamA && teamB) {
+          playInBracketMatches.push({
+            id: dbMatch.id || `playin-${index}`,
+            round: 0,
+            position: index,
+            left: {
+              seed: teamA.seed,
+              teamId: teamA.teamId,
+              teamName: teamA.teamName,
+              isBye: false,
+            },
+            right: {
+              seed: teamB.seed,
+              teamId: teamB.teamId,
+              teamName: teamB.teamName,
+              isBye: false,
+            },
+            status: dbMatch.winnerTeamId ? 'finished' : 'scheduled',
+            winnerTeamId: dbMatch.winnerTeamId,
+            winnerSeed: dbMatch.winnerTeamId ? (dbMatch.winnerTeamId === teamA.teamId ? teamA.seed : teamB.seed) : undefined,
+            winnerTeamName: dbMatch.winnerTeamId ? (dbMatch.winnerTeamId === teamA.teamId ? teamA.teamName : teamB.teamName) : undefined,
+            matchId: dbMatch.id,
+          })
+        }
+      })
+    }
     
     // Update with actual play-in match data if available
-    if (playInMatches) {
-      playInBracketMatches.forEach((match, index) => {
+    if (playInMatches && playInBracketMatches.length > 0) {
+      playInBracketMatches.forEach((match) => {
         const dbMatch = playInMatches.find(m => 
           (m.teamAId === match.left.teamId && m.teamBId === match.right.teamId) ||
-          (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId)
+          (m.teamAId === match.right.teamId && m.teamBId === match.left.teamId) ||
+          m.id === match.matchId
         )
         if (dbMatch) {
           match.matchId = dbMatch.id
@@ -574,6 +617,7 @@ export function buildCompleteBracket(
       })
     }
     
+    console.log('[buildCompleteBracket] Play-In matches to add:', playInBracketMatches.length)
     allMatches.push(...playInBracketMatches)
   }
   

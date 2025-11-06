@@ -86,12 +86,21 @@ export default function BracketPyramidNew({
     }
   }
 
-  // Get final winner if final is finished
+  // Get final winner - check if final exists and has a winner
   const finalMatch = rounds.find(r => r.roundName === 'Final')?.matches[0]
-  const finalWinner = finalMatch?.status === 'finished' ? {
-    seed: finalMatch.winnerSeed || 0,
-    teamName: finalMatch.winnerTeamName || '?'
+  const finalWinner = finalMatch && (finalMatch.status === 'finished' || finalMatch.winnerTeamId) ? {
+    seed: finalMatch.winnerSeed || finalMatch.left.seed || finalMatch.right.seed || 0,
+    teamName: finalMatch.winnerTeamName || finalMatch.left.teamName || finalMatch.right.teamName || '?'
   } : null
+  
+  console.log('[BracketPyramidNew] Final match:', finalMatch ? {
+    id: finalMatch.id,
+    status: finalMatch.status,
+    winnerTeamId: finalMatch.winnerTeamId,
+    winnerSeed: finalMatch.winnerSeed,
+    winnerTeamName: finalMatch.winnerTeamName
+  } : 'not found')
+  console.log('[BracketPyramidNew] Final winner:', finalWinner)
 
   // Build legend: seed number -> team name mapping
   const legend = useMemo(() => {
