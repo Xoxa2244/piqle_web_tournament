@@ -161,10 +161,6 @@ export default function BracketModal({
       }))
   }, [bracketData, allMatches])
 
-  const handleRefresh = () => {
-    refetch()
-  }
-
   if (!isOpen) return null
 
   return (
@@ -188,7 +184,10 @@ export default function BracketModal({
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleRefresh}
+              onClick={() => {
+                console.log('[BracketModal] Refresh button clicked')
+                refetch()
+              }}
               disabled={isLoading}
               className="h-8 px-3"
             >
@@ -230,13 +229,6 @@ export default function BracketModal({
                 </Button>
               </div>
             </div>
-          ) : !bracketData?.isRRComplete ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <p className="text-gray-600 mb-2">Round Robin is not complete yet.</p>
-                <p className="text-sm text-gray-500">Complete all Round Robin matches to view the bracket.</p>
-              </div>
-            </div>
           ) : (
             <div className="space-y-8">
               {/* Use new bracket component if new structure is available */}
@@ -248,7 +240,7 @@ export default function BracketModal({
                     console.log('Match clicked:', matchId)
                   }}
                 />
-              ) : allMatches !== null && allMatches.length === 0 && bracketData?.isRRComplete ? (
+              ) : allMatches !== null && allMatches.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <p className="mb-2">Bracket structure is being generated...</p>
                   <p className="text-sm text-gray-400">Please generate Play-In or Play-Off matches to view the bracket.</p>

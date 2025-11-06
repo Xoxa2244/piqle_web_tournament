@@ -889,76 +889,77 @@ export const standingsRouter = createTRPCRouter({
       console.log('[getBracket] Bracket parameters:', { N, B, needsPlayIn })
 
       // Build complete bracket using new structure (includes both play-in and playoff)
+      // Always generate bracket, even if RR is not complete - show seed numbers only
       console.log('[getBracket] Building bracket structure...')
       let allBracketMatches: BracketMatch[] = []
-      if (isRRComplete) {
-        try {
-          // Validate inputs before building bracket
-          if (N === 0) {
-            console.warn('[getBracket] No teams in division, cannot build bracket')
-            allBracketMatches = []
-          } else if (B <= 0 || B < N / 2) {
-            console.warn(`[getBracket] Invalid bracket size ${B} for ${N} teams`)
-            allBracketMatches = []
-          } else {
-            console.log('[getBracket] Preparing match data...')
-            // Prepare play-in match data
-            // Filter out matches with missing teams
-            const playInMatchData = playInMatches
-              .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
-              .map(match => {
-                const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
-                const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
-                const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
-                
-                return {
+      try {
+        // Validate inputs before building bracket
+        if (N === 0) {
+          console.warn('[getBracket] No teams in division, cannot build bracket')
+          allBracketMatches = []
+        } else if (B <= 0 || B < N / 2) {
+          console.warn(`[getBracket] Invalid bracket size ${B} for ${N} teams`)
+          allBracketMatches = []
+        } else {
+          console.log('[getBracket] Preparing match data...')
+          // Prepare play-in match data (only if RR is complete and matches exist)
+          const playInMatchData = isRRComplete && playInMatches.length > 0
+            ? playInMatches
+                .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+                .map(match => {
+                  const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+                  const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+                  const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                  
+                  return {
+                    id: match.id,
+                    winnerTeamId: winnerId,
+                    teamAId: match.teamAId!,
+                    teamBId: match.teamBId!,
+                  }
+                })
+            : undefined
+          
+          // Prepare playoff match data (only if RR is complete and matches exist)
+          const playoffMatchData = isRRComplete && playoffMatches.length > 0
+            ? playoffMatches
+                .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+                .map(match => ({
                   id: match.id,
-                  winnerTeamId: winnerId,
+                  roundIndex: match.roundIndex || 0,
                   teamAId: match.teamAId!,
                   teamBId: match.teamBId!,
-                }
-              })
-            
-            // Prepare playoff match data
-            // Filter out matches with missing teams
-            const playoffMatchData = playoffMatches
-              .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
-              .map(match => ({
-                id: match.id,
-                roundIndex: match.roundIndex || 0,
-                teamAId: match.teamAId!,
-                teamBId: match.teamBId!,
-                winnerId: match.winnerTeamId || undefined,
-                games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
-              }))
-            
-            // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
-            console.log('[getBracket] Calling buildCompleteBracket...')
-            allBracketMatches = buildCompleteBracket(
-              N,
-              B,
-              standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
-              playInMatchData.length > 0 ? playInMatchData : undefined,
-              playoffMatchData.length > 0 ? playoffMatchData : undefined
-            )
-            console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
-          }
-        } catch (error) {
-          console.error('[getBracket] Error building complete bracket:', error)
-          console.error('[getBracket] Error details:', {
-            totalTeams: N,
-            bracketSize: B,
-            standingsCount: standings.length,
-            playInMatchesCount: playInMatches.length,
-            playoffMatchesCount: playoffMatches.length,
-            errorMessage: error instanceof Error ? error.message : String(error),
-            errorStack: error instanceof Error ? error.stack : undefined,
-          })
-          // If bracket building fails, return empty array - frontend will handle gracefully
-          allBracketMatches = []
+                  winnerId: match.winnerTeamId || undefined,
+                  games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
+                }))
+            : undefined
+          
+          // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
+          // Always generate bracket structure, even if RR is not complete
+          // If RR is not complete, standings will be based on current state (or just seed numbers)
+          console.log('[getBracket] Calling buildCompleteBracket...', { isRRComplete })
+          allBracketMatches = buildCompleteBracket(
+            N,
+            B,
+            standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
+            playInMatchData,
+            playoffMatchData
+          )
+          console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
         }
-      } else {
-        console.log('[getBracket] RR not complete, skipping bracket building')
+      } catch (error) {
+        console.error('[getBracket] Error building complete bracket:', error)
+        console.error('[getBracket] Error details:', {
+          totalTeams: N,
+          bracketSize: B,
+          standingsCount: standings.length,
+          playInMatchesCount: playInMatches.length,
+          playoffMatchesCount: playoffMatches.length,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+        })
+        // If bracket building fails, return empty array - frontend will handle gracefully
+        allBracketMatches = []
       }
 
       // Separate play-in and playoff matches for backward compatibility
