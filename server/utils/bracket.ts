@@ -47,13 +47,17 @@ export const calculatePlayInSpots = (totalTeams: number, bracketSize: number): n
 
 // Generate bracket pairs using standard seeding order
 // Returns ordered pairs of seeds for Round 1 (classic bracket order: 1 vs N, 4 vs N-3, etc.)
+// Works with any size, not just powers of 2
 export function bracketPairs(size: number): [number, number][] {
   if (size <= 1) return []
   if (size === 2) return [[1, 2]]
   
+  // Round up to nearest power of 2 for bracket structure
+  const bracketPower = nextPow2(size)
+  
   // Recursively expand bracket order
   function expand(arr: number[]): number[] {
-    if (arr.length * 2 === size) return arr
+    if (arr.length * 2 === bracketPower) return arr
     const next: number[] = []
     const s = arr.length * 2
     for (const a of arr) {
@@ -63,12 +67,18 @@ export function bracketPairs(size: number): [number, number][] {
   }
   
   const list = expand([1])
-  const mirrored = list.map(x => size + 1 - x)
+  const mirrored = list.map(x => bracketPower + 1 - x)
   const slots = list.flatMap((x, i) => [x, mirrored[i]])
   
+  // Filter out pairs where both seeds are greater than actual size
   const pairs: [number, number][] = []
   for (let i = 0; i < slots.length; i += 2) {
-    pairs.push([slots[i], slots[i + 1]])
+    const seedA = slots[i]
+    const seedB = slots[i + 1]
+    // Only include pairs where at least one seed is within the actual size
+    if (seedA <= size || seedB <= size) {
+      pairs.push([seedA, seedB])
+    }
   }
   
   return pairs
@@ -117,8 +127,18 @@ export function buildRound1Matches(
   bracketSize: number,
   playInSpots: number
 ): BracketMatch[] {
-  const matches: BracketMatch[] = []
-  const pairs = bracketPairs(bracketSize)
+  console.log('[buildRound1Matches] Starting with:', {
+    upperSeedsCount: upperSeeds.length,
+    playInWinnersCount: playInWinners.length,
+    bracketSize,
+    playInSpots,
+  })
+  
+  try {
+    const matches: BracketMatch[] = []
+    console.log('[buildRound1Matches] Calling bracketPairs with bracketSize:', bracketSize)
+    const pairs = bracketPairs(bracketSize)
+    console.log('[buildRound1Matches] bracketPairs returned:', pairs.length, 'pairs')
   
   // Combine all teams for Round 1: upper seeds + play-in winners
   // The order matters: upper seeds keep their seeds, play-in winners get assigned positions
@@ -184,13 +204,17 @@ export function buildRound1Matches(
     }
   }
   
-  // Generate matches based on bracket pairs
-  for (let i = 0; i < pairs.length; i++) {
-    const [seedA, seedB] = pairs[i]
-    const teamA = seedMap.get(seedA)
-    const teamB = seedMap.get(seedB)
-    
-    if (!teamA || !teamB) continue
+    // Generate matches based on bracket pairs
+    console.log('[buildRound1Matches] Generating matches from pairs...')
+    for (let i = 0; i < pairs.length; i++) {
+      const [seedA, seedB] = pairs[i]
+      const teamA = seedMap.get(seedA)
+      const teamB = seedMap.get(seedB)
+      
+      if (!teamA || !teamB) {
+        console.warn(`[buildRound1Matches] Missing team for pair [${seedA}, ${seedB}]`)
+        continue
+      }
     
     // If one is BYE, the other automatically advances
     if (teamA.isBye) {
