@@ -139,71 +139,71 @@ export function buildRound1Matches(
     console.log('[buildRound1Matches] Calling bracketPairs with bracketSize:', bracketSize)
     const pairs = bracketPairs(bracketSize)
     console.log('[buildRound1Matches] bracketPairs returned:', pairs.length, 'pairs')
-  
-  // Combine all teams for Round 1: upper seeds + play-in winners
-  // The order matters: upper seeds keep their seeds, play-in winners get assigned positions
-  const allRound1Teams: Array<{ seed: number; teamId?: string; teamName?: string; isBye?: boolean }> = []
-  
-  // Add upper seeds (direct qualifiers) - they keep their original seeds
-  upperSeeds.forEach(team => {
-    allRound1Teams.push({ ...team, isBye: false })
-  })
-  
-  // Add play-in winners - they get assigned positions after upper seeds
-  // Play-in winners should be placed at positions that match bracket pairs
-  // For example, if bracketSize=16, play-in winners go to specific positions
-  playInWinners.forEach((winner) => {
-    allRound1Teams.push({ ...winner, isBye: false })
-  })
-  
-  // Create BYE slots for missing teams (if bracketSize > totalTeams)
-  const totalTeams = allRound1Teams.length
-  if (bracketSize > totalTeams) {
-    const missing = bracketSize - totalTeams
-    for (let i = 0; i < missing; i++) {
-      const byeSeed = totalTeams + i + 1
-      allRound1Teams.push({ seed: byeSeed, isBye: true })
-    }
-  }
-  
-  // Create a seed map for quick lookup
-  // For bracket pairs, we need to map bracket positions to actual teams
-  // The bracket pairs define the seed positions, and we need to fill them with actual teams
-  const seedMap = new Map<number, { seed: number; teamId?: string; teamName?: string; isBye?: boolean }>()
-  
-  // For a bracket of size B, we need to assign teams to bracket positions
-  // The bracketPairs function returns pairs like [1,16], [8,9], [4,13], etc.
-  // We assign teams based on their seeds: seed 1 goes to position 1, seed 2 to position 2, etc.
-  // But we need to handle the case where play-in winners don't have direct seeds
-  
-  // Simple approach: assign teams by their seed order
-  // If a team has seed N, it goes to bracket position N (if within bracket size)
-  allRound1Teams.forEach(team => {
-    if (team.seed <= bracketSize) {
-      seedMap.set(team.seed, team)
-    }
-  })
-  
-  // For play-in winners without explicit seeds matching bracket positions,
-  // assign them to the remaining positions
-  let positionIndex = 0
-  for (let seed = 1; seed <= bracketSize; seed++) {
-    if (!seedMap.has(seed)) {
-      // Find next available team (play-in winner or BYE)
-      while (positionIndex < allRound1Teams.length && seedMap.has(allRound1Teams[positionIndex].seed)) {
-        positionIndex++
-      }
-      if (positionIndex < allRound1Teams.length) {
-        const team = allRound1Teams[positionIndex]
-        seedMap.set(seed, { ...team, seed: seed }) // Assign to bracket position
-        positionIndex++
-      } else {
-        // Create BYE
-        seedMap.set(seed, { seed: seed, isBye: true })
+    
+    // Combine all teams for Round 1: upper seeds + play-in winners
+    // The order matters: upper seeds keep their seeds, play-in winners get assigned positions
+    const allRound1Teams: Array<{ seed: number; teamId?: string; teamName?: string; isBye?: boolean }> = []
+    
+    // Add upper seeds (direct qualifiers) - they keep their original seeds
+    upperSeeds.forEach(team => {
+      allRound1Teams.push({ ...team, isBye: false })
+    })
+    
+    // Add play-in winners - they get assigned positions after upper seeds
+    // Play-in winners should be placed at positions that match bracket pairs
+    // For example, if bracketSize=16, play-in winners go to specific positions
+    playInWinners.forEach((winner) => {
+      allRound1Teams.push({ ...winner, isBye: false })
+    })
+    
+    // Create BYE slots for missing teams (if bracketSize > totalTeams)
+    const totalTeams = allRound1Teams.length
+    if (bracketSize > totalTeams) {
+      const missing = bracketSize - totalTeams
+      for (let i = 0; i < missing; i++) {
+        const byeSeed = totalTeams + i + 1
+        allRound1Teams.push({ seed: byeSeed, isBye: true })
       }
     }
-  }
-  
+    
+    // Create a seed map for quick lookup
+    // For bracket pairs, we need to map bracket positions to actual teams
+    // The bracket pairs define the seed positions, and we need to fill them with actual teams
+    const seedMap = new Map<number, { seed: number; teamId?: string; teamName?: string; isBye?: boolean }>()
+    
+    // For a bracket of size B, we need to assign teams to bracket positions
+    // The bracketPairs function returns pairs like [1,16], [8,9], [4,13], etc.
+    // We assign teams based on their seeds: seed 1 goes to position 1, seed 2 to position 2, etc.
+    // But we need to handle the case where play-in winners don't have direct seeds
+    
+    // Simple approach: assign teams by their seed order
+    // If a team has seed N, it goes to bracket position N (if within bracket size)
+    allRound1Teams.forEach(team => {
+      if (team.seed <= bracketSize) {
+        seedMap.set(team.seed, team)
+      }
+    })
+    
+    // For play-in winners without explicit seeds matching bracket positions,
+    // assign them to the remaining positions
+    let positionIndex = 0
+    for (let seed = 1; seed <= bracketSize; seed++) {
+      if (!seedMap.has(seed)) {
+        // Find next available team (play-in winner or BYE)
+        while (positionIndex < allRound1Teams.length && seedMap.has(allRound1Teams[positionIndex].seed)) {
+          positionIndex++
+        }
+        if (positionIndex < allRound1Teams.length) {
+          const team = allRound1Teams[positionIndex]
+          seedMap.set(seed, { ...team, seed: seed }) // Assign to bracket position
+          positionIndex++
+        } else {
+          // Create BYE
+          seedMap.set(seed, { seed: seed, isBye: true })
+        }
+      }
+    }
+    
     // Generate matches based on bracket pairs
     console.log('[buildRound1Matches] Generating matches from pairs...')
     for (let i = 0; i < pairs.length; i++) {
@@ -215,41 +215,42 @@ export function buildRound1Matches(
         console.warn(`[buildRound1Matches] Missing team for pair [${seedA}, ${seedB}]`)
         continue
       }
-    
-    // If one is BYE, the other automatically advances
-    if (teamA.isBye) {
-      matches.push({
-        id: `round1-${i}`,
-        round: 1,
-        position: i,
-        left: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
-        right: { seed: seedA, isBye: true },
-        status: 'finished', // BYE is automatically finished
-        winnerSeed: seedB,
-        winnerTeamId: teamB.teamId,
-        winnerTeamName: teamB.teamName,
-      })
-    } else if (teamB.isBye) {
-      matches.push({
-        id: `round1-${i}`,
-        round: 1,
-        position: i,
-        left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
-        right: { seed: seedB, isBye: true },
-        status: 'finished', // BYE is automatically finished
-        winnerSeed: seedA,
-        winnerTeamId: teamA.teamId,
-        winnerTeamName: teamA.teamName,
-      })
-    } else {
-      matches.push({
-        id: `round1-${i}`,
-        round: 1,
-        position: i,
-        left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
-        right: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
-        status: teamA.teamId && teamB.teamId ? 'scheduled' : 'scheduled',
-      })
+      
+      // If one is BYE, the other automatically advances
+      if (teamA.isBye) {
+        matches.push({
+          id: `round1-${i}`,
+          round: 1,
+          position: i,
+          left: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
+          right: { seed: seedA, isBye: true },
+          status: 'finished', // BYE is automatically finished
+          winnerSeed: seedB,
+          winnerTeamId: teamB.teamId,
+          winnerTeamName: teamB.teamName,
+        })
+      } else if (teamB.isBye) {
+        matches.push({
+          id: `round1-${i}`,
+          round: 1,
+          position: i,
+          left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
+          right: { seed: seedB, isBye: true },
+          status: 'finished', // BYE is automatically finished
+          winnerSeed: seedA,
+          winnerTeamId: teamA.teamId,
+          winnerTeamName: teamA.teamName,
+        })
+      } else {
+        matches.push({
+          id: `round1-${i}`,
+          round: 1,
+          position: i,
+          left: { seed: seedA, teamId: teamA.teamId, teamName: teamA.teamName, isBye: false },
+          right: { seed: seedB, teamId: teamB.teamId, teamName: teamB.teamName, isBye: false },
+          status: teamA.teamId && teamB.teamId ? 'scheduled' : 'scheduled',
+        })
+      }
     }
     
     console.log('[buildRound1Matches] Generated', matches.length, 'matches')
