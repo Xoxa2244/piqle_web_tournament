@@ -642,6 +642,71 @@ export function buildCompleteBracket(
       })
       
       console.log('[buildCompleteBracket] All playoff matches added:', allMatches.length)
+    } else {
+      // No playoff matches in DB - generate bracket structure based on standings and play-in winners
+      console.log('[buildCompleteBracket] No playoff matches in DB - generating bracket structure...')
+      
+      // Calculate play-in spots and determine if play-in is needed
+      const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
+      const needsPlayIn = playInSpots > 0
+      
+      // Extract play-in winners from Play-In matches
+      const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
+      if (playInMatches && playInMatches.length > 0) {
+        playInMatches.forEach(match => {
+          if (match.winnerTeamId) {
+            const winnerTeam = teamMap.get(match.winnerTeamId)
+            if (winnerTeam) {
+              playInWinners.push({
+                seed: winnerTeam.seed,
+                teamId: winnerTeam.teamId,
+                teamName: winnerTeam.teamName,
+              })
+            }
+          }
+        })
+      }
+      
+      // Determine auto-qualified teams (upper seeds)
+      const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
+      if (needsPlayIn) {
+        const E = totalTeams - bracketSize
+        const playInTeamCount = 2 * E
+        standings.forEach(team => {
+          if (team.seed <= totalTeams - playInTeamCount) {
+            upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
+          }
+        })
+      } else {
+        // All teams directly qualify
+        standings.forEach(team => {
+          upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
+        })
+      }
+      
+      console.log('[buildCompleteBracket] Generating bracket structure:', {
+        upperSeedsCount: upperSeeds.length,
+        playInWinnersCount: playInWinners.length,
+        bracketSize,
+        playInSpots,
+      })
+      
+      // Build Round 1 matches
+      const round1Matches = buildRound1Matches(upperSeeds, playInWinners, bracketSize, playInSpots)
+      allMatches.push(...round1Matches)
+      console.log('[buildCompleteBracket] Round 1 matches generated:', round1Matches.length)
+      
+      // Build subsequent rounds
+      const totalRounds = Math.ceil(Math.log2(bracketSize))
+      let previousRound = round1Matches
+      
+      for (let round = 2; round <= totalRounds; round++) {
+        console.log(`[buildCompleteBracket] Generating round ${round} of ${totalRounds}`)
+        const nextRoundMatches = buildSubsequentRounds(previousRound, round, totalRounds)
+        allMatches.push(...nextRoundMatches)
+        previousRound = nextRoundMatches
+        console.log(`[buildCompleteBracket] Round ${round} generated:`, nextRoundMatches.length, 'matches')
+      }
     }
     
     // Sort matches by round and position
