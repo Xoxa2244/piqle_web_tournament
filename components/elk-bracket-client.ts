@@ -283,7 +283,7 @@ export function buildElkBracketGraph(
       leftRound1Match = round1Matches.find(m => 
         (m.left.seed === seedA1 && m.right.seed === seedB1) ||
         (m.left.seed === seedB1 && m.right.seed === seedA1)
-      )
+      ) || null
       if (leftRound1Match && leftRound1Match.winnerTeamId) {
         leftSeed = leftRound1Match.winnerSeed || seedA1
         leftTeam = {
@@ -312,7 +312,7 @@ export function buildElkBracketGraph(
       rightRound1Match = round1Matches.find(m => 
         (m.left.seed === seedA2 && m.right.seed === seedB2) ||
         (m.left.seed === seedB2 && m.right.seed === seedA2)
-      )
+      ) || null
       if (rightRound1Match && rightRound1Match.winnerTeamId) {
         rightSeed = rightRound1Match.winnerSeed || seedA2
         rightTeam = {
