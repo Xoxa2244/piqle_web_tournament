@@ -314,12 +314,71 @@ export default function BracketPyramidNew({
                           const nextRound = rounds[roundIdx + 1]
                           if (!nextRound || nextRound.matches.length === 0) return null
                           
-                          // Each match in current round feeds into one match in next round
-                          // But each match in next round comes from 2 matches in current round
-                          // So we need to connect pairs of matches in current round to one match in next round
+                          // Special handling for Round 0 (Play-In) - each match connects to a specific match in Round 1
+                          if (round.round === 0) {
+                            // Play-In matches connect directly to Round 1 matches
+                            // The winner of Play-In match goes to a specific position in Round 1
+                            // We need to find which Round 1 match contains the Play-In winner
+                            const playInWinner = match.winnerTeamId || match.left.teamId || match.right.teamId
+                            
+                            // Find the Round 1 match that contains this winner
+                            const targetRound1Match = nextRound.matches.find(m => 
+                              m.left.teamId === playInWinner || m.right.teamId === playInWinner
+                            )
+                            
+                            if (!targetRound1Match) return null
+                            
+                            const targetMatchIdx = nextRound.matches.indexOf(targetRound1Match)
+                            
+                            // Calculate positions
+                            const playInMatchTopOffset = roundTopOffset + matchIdx * circleSpacing * 2
+                            const playInMatchCenter = playInMatchTopOffset + circleSize + matchBoxHeight / 2
+                            
+                            const nextRoundHeight = getRoundHeight(nextRound.matches.length)
+                            const nextRoundTopOffset = (maxHeight - nextRoundHeight) / 2
+                            const targetMatchTopOffset = nextRoundTopOffset + targetMatchIdx * circleSpacing * 2
+                            const targetMatchCenter = targetMatchTopOffset + circleSize + matchBoxHeight / 2
+                            
+                            // Determine which side of the target match (left or right)
+                            const isLeft = targetRound1Match.left.teamId === playInWinner
+                            const targetCircleCenter = isLeft 
+                              ? targetMatchTopOffset + circleSize / 2
+                              : targetMatchTopOffset + circleSize + matchBoxHeight + circleSize / 2
+                            
+                            return (
+                              <div key={`playin-connector-${match.id}`}>
+                                {/* Horizontal line from Play-In match center */}
+                                <div
+                                  className="absolute bg-gray-400 z-10"
+                                  style={{
+                                    left: `${matchBoxWidth / 2}px`,
+                                    top: `${playInMatchCenter}px`,
+                                    width: `${roundSpacing}px`,
+                                    height: '2px',
+                                    transform: 'translateY(-50%)',
+                                  }}
+                                />
+                                {/* Vertical line from horizontal line to target circle center */}
+                                <div
+                                  className="absolute bg-gray-400 z-10"
+                                  style={{
+                                    left: `${matchBoxWidth / 2 + roundSpacing}px`,
+                                    top: `${Math.min(playInMatchCenter, targetCircleCenter)}px`,
+                                    width: '2px',
+                                    height: `${Math.abs(targetCircleCenter - playInMatchCenter)}px`,
+                                  }}
+                                />
+                              </div>
+                            )
+                          }
                           
+                          // For other rounds: connect pairs of matches to one match in next round
                           // Only process even-indexed matches (they are the first of a pair)
                           if (matchIdx % 2 === 1) return null
+                          
+                          // Check if we have a second match in the pair
+                          const match2 = round.matches[matchIdx + 1]
+                          if (!match2) return null
                           
                           const nextMatchIdx = Math.floor(matchIdx / 2)
                           const nextMatch = nextRound.matches[nextMatchIdx]
