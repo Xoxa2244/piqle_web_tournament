@@ -928,8 +928,9 @@ export const standingsRouter = createTRPCRouter({
             playInMatchDataCount: playInMatchData?.length || 0,
           })
           
-          // Prepare playoff match data (only if RR is complete and matches exist)
-          const playoffMatchData = isRRComplete && playoffMatches.length > 0
+          // Prepare playoff match data - always include if matches exist in DB
+          // This ensures bracket is built from actual DB matches, not generated structure
+          const playoffMatchData = playoffMatches.length > 0
             ? playoffMatches
                 .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
                 .map(match => ({
@@ -939,6 +940,7 @@ export const standingsRouter = createTRPCRouter({
                   teamBId: match.teamBId!,
                   winnerId: match.winnerTeamId || undefined,
                   games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
+                  note: match.note || undefined, // Include note to filter out third place matches
                 }))
             : undefined
           
