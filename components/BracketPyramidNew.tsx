@@ -258,9 +258,10 @@ const mapMatchesToBracket = (
 
     currentRound.forEach((match, index) => {
       const targetMatch = nextRound[Math.floor(index / 2)]
-      if (targetMatch && !match.nextMatchId) {
-        match.nextMatchId = targetMatch.id
-      }
+      if (!targetMatch) return
+
+      match.nextMatchId = targetMatch.id
+      match.nextSlot = index % 2 === 0 ? 'left' : 'right'
     })
   }
 
