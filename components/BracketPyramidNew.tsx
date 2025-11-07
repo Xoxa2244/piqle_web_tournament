@@ -131,8 +131,6 @@ const buildParticipant = (
 
   if (slot.isBye) {
     participant.status = MATCH_STATES.WALK_OVER
-  } else if (isUnknown) {
-    participant.status = MATCH_STATES.NO_PARTY
   } else if (match.status === 'finished') {
     participant.status = MATCH_STATES.PLAYED
   }
