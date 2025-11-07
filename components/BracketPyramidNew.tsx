@@ -148,8 +148,35 @@ const buildParticipant = (
   return participant
 }
 
+const getEffectiveBracketSize = (
+  matches: BracketMatch[],
+  totalTeams?: number,
+  bracketSizeProp?: number
+) => {
+  if (bracketSizeProp && bracketSizeProp > 1) {
+    const normalized = Math.pow(2, Math.ceil(Math.log2(bracketSizeProp)))
+    return normalized
+  }
+
+  const seeds = new Set<number>()
+  matches.forEach(match => {
+    if (match.left.seed > 0) seeds.add(match.left.seed)
+    if (match.right.seed > 0) seeds.add(match.right.seed)
+  })
+
+  const inferred = Math.max(
+    seeds.size > 0 ? Math.max(...Array.from(seeds)) : 1,
+    totalTeams ?? 1,
+    2
+  )
+
+  return Math.pow(2, Math.ceil(Math.log2(inferred)))
+}
+
 const mapMatchesToBracket = (
-  matches: BracketMatch[]
+  matches: BracketMatch[],
+  totalTeams?: number,
+  bracketSizeProp?: number
 ): { converted: MatchType[]; originalMap: Map<string, BracketMatch>; roundLabels: Map<number, string> } => {
   const originalMap = new Map<string, BracketMatch>()
   matches.forEach(match => originalMap.set(match.id, match))
@@ -158,25 +185,89 @@ const mapMatchesToBracket = (
     return { converted: [], originalMap, roundLabels: new Map() }
   }
 
-  const maxRound = Math.max(...matches.map(match => match.round))
   const hasPlayIn = matches.some(match => match.round === 0)
-
-  const roundLabels = new Map<number, string>()
-  for (let round = hasPlayIn ? 0 : 1; round <= maxRound; round++) {
-    roundLabels.set(round, getRoundName(round, maxRound, hasPlayIn))
-  }
+  const effectiveBracketSize = getEffectiveBracketSize(matches, totalTeams, bracketSizeProp)
+  const mainRounds = Math.max(1, Math.round(Math.log2(effectiveBracketSize)))
 
   const matchesByRound = new Map<number, BracketMatch[]>()
   matches.forEach(match => {
     if (!matchesByRound.has(match.round)) {
       matchesByRound.set(match.round, [])
     }
-    matchesByRound.get(match.round)!.push(match)
+    matchesByRound.get(match.round)!.push({
+      ...match,
+      left: { ...match.left },
+      right: { ...match.right },
+    })
   })
 
   matchesByRound.forEach(roundMatches => roundMatches.sort((a, b) => a.position - b.position))
 
-  const converted = matches.map(match => {
+  for (let round = 1; round <= mainRounds; round++) {
+    const expectedMatches = Math.max(1, Math.round(effectiveBracketSize / Math.pow(2, round)))
+    const existing = matchesByRound.get(round) ?? []
+    const normalizedRound: BracketMatch[] = new Array(expectedMatches)
+
+    existing.forEach(match => {
+      let targetIndex = Math.min(
+        expectedMatches - 1,
+        Math.max(0, Math.round(match.position ?? 0))
+      )
+      while (normalizedRound[targetIndex]) {
+        targetIndex = (targetIndex + 1) % expectedMatches
+      }
+      normalizedRound[targetIndex] = {
+        ...match,
+        position: targetIndex,
+      }
+    })
+
+    for (let i = 0; i < expectedMatches; i++) {
+      if (!normalizedRound[i]) {
+        normalizedRound[i] = {
+          id: `placeholder-${round}-${i}`,
+          round,
+          position: i,
+          left: { seed: 0, isBye: false },
+          right: { seed: 0, isBye: false },
+          status: 'scheduled',
+        }
+      }
+    }
+
+    matchesByRound.set(round, normalizedRound)
+  }
+
+  const allRoundIndices = Array.from(matchesByRound.keys())
+  const maxRound = allRoundIndices.length > 0 ? Math.max(...allRoundIndices) : mainRounds
+
+  for (let round = 1; round < maxRound; round++) {
+    const currentRound = matchesByRound.get(round)
+    const nextRound = matchesByRound.get(round + 1)
+    if (!currentRound || !nextRound) continue
+
+    currentRound.forEach((match, index) => {
+      const targetMatch = nextRound[Math.floor(index / 2)]
+      if (targetMatch && !match.nextMatchId) {
+        match.nextMatchId = targetMatch.id
+      }
+    })
+  }
+
+  const sortedRounds = Array.from(matchesByRound.entries()).sort((a, b) => a[0] - b[0])
+  const normalizedMatches: BracketMatch[] = []
+  sortedRounds.forEach(([_, roundMatches]) => {
+    roundMatches.forEach(match => {
+      normalizedMatches.push(match)
+    })
+  })
+
+  const roundLabels = new Map<number, string>()
+  sortedRounds.forEach(([round]) => {
+    roundLabels.set(round, getRoundName(round, maxRound, hasPlayIn))
+  })
+
+  const converted = normalizedMatches.map(match => {
     const nextMatchId = (() => {
       if (match.nextMatchId) return match.nextMatchId
       const nextRoundMatches = matchesByRound.get(match.round + 1)
@@ -280,8 +371,13 @@ export default function BracketPyramidNew({
   matches,
   showConnectingLines = true,
   onMatchClick,
+  totalTeams,
+  bracketSize,
 }: BracketPyramidNewProps) {
-  const { converted: bracketMatches, originalMap, roundLabels } = useMemo(() => mapMatchesToBracket(matches), [matches])
+  const { converted: bracketMatches, originalMap, roundLabels } = useMemo(
+    () => mapMatchesToBracket(matches, totalTeams, bracketSize),
+    [matches, totalTeams, bracketSize]
+  )
 
   if (matches.length === 0) {
     return (
