@@ -330,7 +330,7 @@ export default function BracketPyramidNew({
 
   return (
     <div className="w-full">
-      <div className="overflow-auto">
+      <div className="overflow-auto max-h-[75vh]">
         <SingleEliminationBracket
           matches={bracketMatches}
           matchComponent={(props) => (
@@ -370,7 +370,7 @@ export default function BracketPyramidNew({
           svgWrapper={({ children, ...svgProps }) => (
             <SVGViewer
               width={Math.max(960, svgProps.bracketWidth + 160)}
-              height={Math.max(520, svgProps.bracketHeight + 160)}
+              height={Math.max(640, svgProps.bracketHeight + 200)}
               {...svgProps}
             >
               {children}
@@ -382,15 +382,17 @@ export default function BracketPyramidNew({
       {legend.length > 0 && (
         <div className="mt-6">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
-          <div className="border border-gray-200 rounded-lg p-4 bg-white">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-y-2 gap-x-6">
-              {legend.map(({ seed, name }) => (
-                <div key={seed} className="flex justify-between text-sm text-gray-700">
-                  <span className="font-medium text-gray-900">#{seed}</span>
-                  <span className="truncate text-right text-gray-600">{name}</span>
-                </div>
-              ))}
-            </div>
+          <div className="border border-gray-200 rounded-lg p-4 bg-white inline-block">
+            <table className="min-w-[220px]">
+              <tbody>
+                {legend.map(({ seed, name }) => (
+                  <tr key={seed} className="border-b last:border-b-0">
+                    <td className="py-1 pr-6 text-right font-semibold text-gray-900">#{seed}</td>
+                    <td className="py-1 text-left text-gray-600">{name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
