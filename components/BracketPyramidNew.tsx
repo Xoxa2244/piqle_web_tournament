@@ -283,37 +283,6 @@ export default function BracketPyramidNew({
 }: BracketPyramidNewProps) {
   const { converted: bracketMatches, originalMap, roundLabels } = useMemo(() => mapMatchesToBracket(matches), [matches])
 
-  const legend = useMemo(() => {
-    const seedMap = new Map<number, string>()
-
-    matches.forEach(match => {
-      const maybeStore = (slot: SeedSlot) => {
-        if (slot.seed > 0 && !slot.isBye) {
-          if (slot.teamName) {
-            seedMap.set(slot.seed, slot.teamName)
-          } else if (!seedMap.has(slot.seed)) {
-            seedMap.set(slot.seed, '?')
-          }
-        }
-      }
-
-      maybeStore(match.left)
-      maybeStore(match.right)
-
-      if (match.status === 'finished' && match.winnerSeed) {
-        if (match.winnerTeamName) {
-          seedMap.set(match.winnerSeed, match.winnerTeamName)
-        } else if (!seedMap.has(match.winnerSeed)) {
-          seedMap.set(match.winnerSeed, '?')
-        }
-      }
-    })
-
-    return Array.from(seedMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([seed, name]) => ({ seed, name }))
-  }, [matches])
-
   if (matches.length === 0) {
     return (
       <div className="text-center py-8">
@@ -362,24 +331,6 @@ export default function BracketPyramidNew({
           theme={bracketTheme}
         />
       </div>
-
-      {legend.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
-          <div className="border border-gray-200 rounded-lg p-4 bg-white inline-block">
-            <table className="min-w-[220px]">
-              <tbody>
-                {legend.map(({ seed, name }) => (
-                  <tr key={seed} className="border-b last:border-b-0">
-                    <td className="py-1 pr-6 text-right font-semibold text-gray-900">#{seed}</td>
-                    <td className="py-1 text-left text-gray-600">{name}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
