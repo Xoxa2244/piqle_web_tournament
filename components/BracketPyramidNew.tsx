@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import {
   SingleEliminationBracket,
+  SVGViewer,
   MATCH_STATES,
   createTheme,
   type MatchType,
@@ -177,12 +178,24 @@ const mapMatchesToBracket = (
   matches: BracketMatch[],
   totalTeams?: number,
   bracketSizeProp?: number
-): { converted: MatchType[]; originalMap: Map<string, BracketMatch>; roundLabels: Map<number, string> } => {
+): {
+  converted: MatchType[]
+  originalMap: Map<string, BracketMatch>
+  roundLabels: Map<number, string>
+  roundStats: Array<{ round: number; matchCount: number }>
+  hasPlayIn: boolean
+} => {
   const originalMap = new Map<string, BracketMatch>()
   matches.forEach(match => originalMap.set(match.id, match))
 
   if (matches.length === 0) {
-    return { converted: [], originalMap, roundLabels: new Map() }
+    return {
+      converted: [],
+      originalMap,
+      roundLabels: new Map(),
+      roundStats: [],
+      hasPlayIn: false,
+    }
   }
 
   const hasPlayIn = matches.some(match => match.round === 0)
@@ -256,7 +269,9 @@ const mapMatchesToBracket = (
 
   const sortedRounds = Array.from(matchesByRound.entries()).sort((a, b) => a[0] - b[0])
   const normalizedMatches: BracketMatch[] = []
-  sortedRounds.forEach(([_, roundMatches]) => {
+  const roundStats: Array<{ round: number; matchCount: number }> = []
+  sortedRounds.forEach(([roundIndex, roundMatches]) => {
+    roundStats.push({ round: roundIndex, matchCount: roundMatches.length })
     roundMatches.forEach(match => {
       normalizedMatches.push(match)
     })
@@ -297,7 +312,7 @@ const mapMatchesToBracket = (
     }
   })
 
-  return { converted, originalMap, roundLabels }
+  return { converted, originalMap, roundLabels, roundStats, hasPlayIn }
 }
 
 const SeedMatch = ({
@@ -374,10 +389,21 @@ export default function BracketPyramidNew({
   totalTeams,
   bracketSize,
 }: BracketPyramidNewProps) {
-  const { converted: bracketMatches, originalMap, roundLabels } = useMemo(
+  const {
+    converted: bracketMatches,
+    originalMap,
+    roundLabels,
+    roundStats,
+    hasPlayIn,
+  } = useMemo(
     () => mapMatchesToBracket(matches, totalTeams, bracketSize),
     [matches, totalTeams, bracketSize]
   )
+
+  const totalRounds = roundStats.length
+  const maxMatchesPerRound = roundStats.length > 0 ? Math.max(...roundStats.map(r => r.matchCount)) : 1
+  const viewerWidth = Math.max(960, (totalRounds || 1) * 260)
+  const viewerHeight = Math.max(640, maxMatchesPerRound * 140 + (hasPlayIn ? 120 : 0))
 
   if (matches.length === 0) {
     return (
@@ -394,38 +420,46 @@ export default function BracketPyramidNew({
 
   return (
     <div className="w-full">
-      <div className="overflow-auto max-h-[75vh]">
-        <SingleEliminationBracket
-          matches={bracketMatches}
-          matchComponent={(props) => (
-            <SeedMatch
-              {...props}
-              originalMatch={originalMap.get(String(props.match.id))}
-              externalOnMatchClick={handleExternalMatchClick}
-            />
-          )}
-          options={{
-            style: {
-              connectorColor: showConnectingLines ? '#CBD5F5' : 'transparent',
-              connectorColorHighlight: '#60A5FA',
-              spaceBetweenColumns: 120,
-              spaceBetweenRows: 32,
-              roundHeader: {
-                isShown: true,
-                height: 36,
-                marginBottom: 16,
-                fontSize: 14,
-                fontColor: '#111827',
-                backgroundColor: 'transparent',
-                roundTextGenerator: (currentRoundNumber: number) => {
-                  const label = Array.from(roundLabels.values())[currentRoundNumber - 1]
-                  return label ?? `Round ${currentRoundNumber}`
+      <div className="h-[75vh] w-full overflow-auto">
+        <SVGViewer
+          width={viewerWidth}
+          height={viewerHeight}
+          bracketWidth={viewerWidth}
+          bracketHeight={viewerHeight}
+          background="transparent"
+        >
+          <SingleEliminationBracket
+            matches={bracketMatches}
+            matchComponent={(props) => (
+              <SeedMatch
+                {...props}
+                originalMatch={originalMap.get(String(props.match.id))}
+                externalOnMatchClick={handleExternalMatchClick}
+              />
+            )}
+            options={{
+              style: {
+                connectorColor: showConnectingLines ? '#CBD5F5' : 'transparent',
+                connectorColorHighlight: '#60A5FA',
+                spaceBetweenColumns: 120,
+                spaceBetweenRows: 32,
+                roundHeader: {
+                  isShown: true,
+                  height: 36,
+                  marginBottom: 16,
+                  fontSize: 14,
+                  fontColor: '#111827',
+                  backgroundColor: 'transparent',
+                  roundTextGenerator: (currentRoundNumber: number) => {
+                    const label = Array.from(roundLabels.values())[currentRoundNumber - 1]
+                    return label ?? `Round ${currentRoundNumber}`
+                  },
                 },
               },
-            },
-          }}
-          theme={bracketTheme}
-        />
+            }}
+            theme={bracketTheme}
+          />
+        </SVGViewer>
       </div>
     </div>
   )
