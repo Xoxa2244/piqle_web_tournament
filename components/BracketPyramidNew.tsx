@@ -3,7 +3,6 @@
 import { useMemo } from 'react'
 import {
   SingleEliminationBracket,
-  SVGViewer,
   MATCH_STATES,
   createTheme,
   type MatchType,
@@ -340,12 +339,6 @@ export default function BracketPyramidNew({
               externalOnMatchClick={handleExternalMatchClick}
             />
           )}
-          onMatchClick={({ match }) => {
-            const original = originalMap.get(String(match.id))
-            if (original) {
-              handleExternalMatchClick(original)
-            }
-          }}
           options={{
             style: {
               connectorColor: showConnectingLines ? '#CBD5F5' : 'transparent',
@@ -367,15 +360,6 @@ export default function BracketPyramidNew({
             },
           }}
           theme={bracketTheme}
-          svgWrapper={({ children, ...svgProps }) => (
-            <SVGViewer
-              width={Math.max(960, svgProps.bracketWidth + 160)}
-              height={Math.max(640, svgProps.bracketHeight + 200)}
-              {...svgProps}
-            >
-              {children}
-            </SVGViewer>
-          )}
         />
       </div>
 
