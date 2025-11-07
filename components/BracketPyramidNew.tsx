@@ -3,7 +3,6 @@
 import { useMemo } from 'react'
 import {
   SingleEliminationBracket,
-  SVGViewer,
   MATCH_STATES,
   createTheme,
   type MatchType,
@@ -421,12 +420,9 @@ export default function BracketPyramidNew({
   return (
     <div className="w-full">
       <div className="h-[75vh] w-full overflow-auto">
-        <SVGViewer
-          width={viewerWidth}
-          height={viewerHeight}
-          bracketWidth={viewerWidth}
-          bracketHeight={viewerHeight}
-          background="transparent"
+        <div
+          className="flex justify-center"
+          style={{ minWidth: `${viewerWidth}px`, minHeight: `${viewerHeight}px` }}
         >
           <SingleEliminationBracket
             matches={bracketMatches}
@@ -459,7 +455,7 @@ export default function BracketPyramidNew({
             }}
             theme={bracketTheme}
           />
-        </SVGViewer>
+        </div>
       </div>
     </div>
   )
