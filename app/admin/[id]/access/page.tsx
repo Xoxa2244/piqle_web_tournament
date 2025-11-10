@@ -2,12 +2,13 @@
 
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import Link from 'next/link'
 import { ArrowLeft, Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
 
 export default function AccessManagementPage() {
@@ -309,7 +310,14 @@ export default function AccessManagementPage() {
                       className="w-full text-left p-3 hover:bg-gray-50 flex items-center space-x-3"
                     >
                       {user.image && (
-                        <img src={user.image} alt="" className="w-8 h-8 rounded-full" />
+                        <Image
+                          src={user.image}
+                          alt={user.name || 'User avatar'}
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 rounded-full object-cover"
+                          unoptimized
+                        />
                       )}
                       <div>
                         <div className="font-medium">{user.name || 'No name'}</div>
@@ -328,7 +336,14 @@ export default function AccessManagementPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {selectedUser.image && (
-                    <img src={selectedUser.image} alt="" className="w-10 h-10 rounded-full" />
+                    <Image
+                      src={selectedUser.image}
+                      alt={selectedUser.name || 'User avatar'}
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full object-cover"
+                      unoptimized
+                    />
                   )}
                   <div>
                     <div className="font-medium">{selectedUser.name || 'No name'}</div>
@@ -467,10 +482,13 @@ export default function AccessManagementPage() {
                         {/* Approve Mode */}
                         <div className="flex items-center space-x-3">
                           {request.user.image && (
-                            <img
+                            <Image
                               src={request.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={request.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div>
@@ -596,10 +614,13 @@ export default function AccessManagementPage() {
                         {/* View Mode */}
                         <div className="flex items-center space-x-3 flex-1">
                           {request.user.image && (
-                            <img
+                            <Image
                               src={request.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={request.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div className="flex-1">
@@ -674,10 +695,13 @@ export default function AccessManagementPage() {
                         {/* Edit Mode */}
                         <div className="flex items-center space-x-3">
                           {groupedAccess.user.image && (
-                            <img
+                            <Image
                               src={groupedAccess.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={groupedAccess.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div>
@@ -801,10 +825,13 @@ export default function AccessManagementPage() {
                       {/* View Mode */}
                       <div className="flex items-center space-x-3 flex-1">
                         {groupedAccess.user.image && (
-                          <img
+                          <Image
                             src={groupedAccess.user.image}
-                            alt=""
-                            className="w-10 h-10 rounded-full"
+                            alt={groupedAccess.user.name || 'User avatar'}
+                            width={40}
+                            height={40}
+                            className="w-10 h-10 rounded-full object-cover"
+                            unoptimized
                           />
                         )}
                         <div className="flex-1">
