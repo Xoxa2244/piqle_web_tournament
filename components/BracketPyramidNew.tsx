@@ -182,10 +182,16 @@ const mapMatchesToBracket = (
   roundStats: Array<{ round: number; matchCount: number }>
   hasPlayIn: boolean
 } => {
-  const originalMap = new Map<string, BracketMatch>()
-  matches.forEach(match => originalMap.set(match.id, match))
+  const workingMatches = matches.map(match => ({
+    ...match,
+    left: { ...match.left },
+    right: { ...match.right },
+  }))
 
-  if (matches.length === 0) {
+  const originalMap = new Map<string, BracketMatch>()
+  workingMatches.forEach(match => originalMap.set(match.id, match))
+
+  if (workingMatches.length === 0) {
     return {
       converted: [],
       originalMap,
@@ -195,23 +201,89 @@ const mapMatchesToBracket = (
     }
   }
 
-  const hasPlayIn = matches.some(match => match.round === 0)
-  const effectiveBracketSize = getEffectiveBracketSize(matches, totalTeams, bracketSizeProp)
+  const hasPlayIn = workingMatches.some(match => match.round === 0)
+  const effectiveBracketSize = getEffectiveBracketSize(workingMatches, totalTeams, bracketSizeProp)
   const mainRounds = Math.max(1, Math.round(Math.log2(effectiveBracketSize)))
 
   const matchesByRound = new Map<number, BracketMatch[]>()
-  matches.forEach(match => {
+  workingMatches.forEach(match => {
     if (!matchesByRound.has(match.round)) {
       matchesByRound.set(match.round, [])
     }
-    matchesByRound.get(match.round)!.push({
-      ...match,
-      left: { ...match.left },
-      right: { ...match.right },
-    })
+    matchesByRound.get(match.round)!.push(match)
   })
 
   matchesByRound.forEach(roundMatches => roundMatches.sort((a, b) => a.position - b.position))
+
+  // Link play-in matches (round 0) to their target round 1 slots when available
+  const playInMatches = matchesByRound.get(0) ?? []
+  if (playInMatches.length > 0) {
+    const round1Matches = matchesByRound.get(1) ?? []
+    if (round1Matches.length > 0) {
+      const seedTargetMap = new Map<number, { match: BracketMatch; slot: 'left' | 'right' }>()
+
+      const registerSeedTarget = (seed: number | undefined, match: BracketMatch, slot: 'left' | 'right') => {
+        if (typeof seed !== 'number' || !Number.isFinite(seed) || seed <= 0) return
+        if (!seedTargetMap.has(seed)) {
+          seedTargetMap.set(seed, { match, slot })
+        }
+      }
+
+      round1Matches.forEach(match => {
+        registerSeedTarget(match.left?.seed, match, 'left')
+        registerSeedTarget(match.right?.seed, match, 'right')
+      })
+
+      const findSeedTarget = (seeds: number[]): { match: BracketMatch; slot: 'left' | 'right' } | undefined => {
+        for (const seed of seeds) {
+          const target = seedTargetMap.get(seed)
+          if (target) return target
+        }
+        if (seeds.length === 0) return undefined
+        const minSeed = Math.min(...seeds)
+        return seedTargetMap.get(minSeed)
+      }
+
+      playInMatches.forEach(match => {
+        const candidateSeeds = [match.left?.seed, match.right?.seed]
+          .filter((seed): seed is number => Number.isFinite(seed) && seed > 0)
+        const target = findSeedTarget(candidateSeeds)
+        if (!target) {
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.warn('[BracketPyramidNew] Unable to link play-in match to round 1 slot', {
+              matchId: match.id,
+              seeds: candidateSeeds,
+            })
+          }
+          return
+        }
+
+        match.nextMatchId = target.match.id
+        match.nextSlot = target.slot
+
+        // If the round 1 match was marked as finished because of a BYE, reset it to scheduled.
+        if (target.match.status === 'finished' && (!target.match.games || target.match.games.length === 0)) {
+          target.match.status = 'scheduled'
+          target.match.winnerSeed = undefined
+          target.match.winnerTeamId = undefined
+          target.match.winnerTeamName = undefined
+        }
+
+        if (target.slot === 'left') {
+          target.match.left = {
+            ...target.match.left,
+            isBye: false,
+          }
+        } else {
+          target.match.right = {
+            ...target.match.right,
+            isBye: false,
+          }
+        }
+      })
+    }
+  }
 
   for (let round = 1; round <= mainRounds; round++) {
     const expectedMatches = Math.max(1, Math.round(effectiveBracketSize / Math.pow(2, round)))
@@ -226,10 +298,8 @@ const mapMatchesToBracket = (
       while (normalizedRound[targetIndex]) {
         targetIndex = (targetIndex + 1) % expectedMatches
       }
-      normalizedRound[targetIndex] = {
-        ...match,
-        position: targetIndex,
-      }
+      match.position = targetIndex
+      normalizedRound[targetIndex] = match
     })
 
     for (let i = 0; i < expectedMatches; i++) {
@@ -251,7 +321,7 @@ const mapMatchesToBracket = (
   const allRoundIndices = Array.from(matchesByRound.keys())
   const maxRound = allRoundIndices.length > 0 ? Math.max(...allRoundIndices) : mainRounds
 
-  for (let round = 1; round < maxRound; round++) {
+  for (let round = 0; round < maxRound; round++) {
     const currentRound = matchesByRound.get(round)
     const nextRound = matchesByRound.get(round + 1)
     if (!currentRound || !nextRound) continue
@@ -260,8 +330,10 @@ const mapMatchesToBracket = (
       const targetMatch = nextRound[Math.floor(index / 2)]
       if (!targetMatch) return
 
-      match.nextMatchId = targetMatch.id
-      match.nextSlot = index % 2 === 0 ? 'left' : 'right'
+      if (!match.nextMatchId) {
+        match.nextMatchId = targetMatch.id
+        match.nextSlot = index % 2 === 0 ? 'left' : 'right'
+      }
     })
   }
 
@@ -309,6 +381,25 @@ const mapMatchesToBracket = (
       originalMatchId: match.id,
     }
   })
+
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const normalizedDebug = normalizedMatches.map(match => ({
+        id: match.id,
+        round: match.round,
+        position: match.position,
+        nextMatchId: match.nextMatchId ?? null,
+        nextExists: normalizedMatches.some(candidate => candidate.id === match.nextMatchId),
+        leftSeed: match.left.seed,
+        rightSeed: match.right.seed,
+      }))
+      // eslint-disable-next-line no-console
+      console.table(normalizedDebug)
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[BracketPyramidNew] Failed to log normalized matches', error)
+    }
+  }
 
   return { converted, originalMap, roundLabels, roundStats, hasPlayIn }
 }
