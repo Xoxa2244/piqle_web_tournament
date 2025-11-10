@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -17,6 +17,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import BracketPyramidNew from '@/components/BracketPyramidNew'
 import BracketModal from '@/components/BracketModal'
 
 interface TeamStanding {
@@ -82,6 +83,18 @@ export default function PublicCoursePage() {
     { enabled: !!currentDivision?.id }
   )
 
+  // Get bracket structure (play-in + elimination)
+  const {
+    data: bracketData,
+    isLoading: bracketLoading,
+  } = (trpc as any).public.getBracketPublic.useQuery(
+    { divisionId: currentDivision?.id || '' },
+    {
+      enabled: !!currentDivision?.id,
+      refetchOnWindowFocus: false,
+    }
+  )
+
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
@@ -98,6 +111,34 @@ export default function PublicCoursePage() {
   const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
   const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
   const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
+
+  const bracketMatches = bracketData?.allMatches ?? []
+
+  const legacyBracketMatches = useMemo(
+    () =>
+      playoffMatches.map(match => ({
+        id: match.id,
+        teamA: match.teamA
+          ? {
+              id: match.teamA.id,
+              name: match.teamA.name,
+              seed: standings.find(s => s.teamId === match.teamA?.id)?.rank,
+            }
+          : null,
+        teamB: match.teamB
+          ? {
+              id: match.teamB.id,
+              name: match.teamB.name,
+              seed: standings.find(s => s.teamId === match.teamB?.id)?.rank,
+            }
+          : null,
+        games: match.games || [],
+        roundIndex: match.roundIndex,
+        stage: match.stage,
+        note: (match as any).note,
+      })),
+    [playoffMatches, standings]
+  )
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
@@ -438,30 +479,31 @@ export default function PublicCoursePage() {
                   <CardTitle>Playoff Bracket</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <BracketPyramid
-                    matches={playoffMatches.map(match => ({
-                      id: match.id,
-                      teamA: match.teamA ? {
-                        id: match.teamA.id,
-                        name: match.teamA.name,
-                        seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                      } : null,
-                      teamB: match.teamB ? {
-                        id: match.teamB.id,
-                        name: match.teamB.name,
-                        seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                      } : null,
-                      games: match.games || [],
-                      roundIndex: match.roundIndex,
-                      stage: match.stage,
-                      note: (match as any).note
-                    }))}
-                    showConnectingLines={showConnectingLines}
-                    onMatchClick={(matchId) => {
-                      // Handle match click - could open score input modal
-                      console.log('Match clicked:', matchId)
-                    }}
-                  />
+                  {bracketLoading ? (
+                    <div className="py-8 text-center text-gray-500">Loading bracket…</div>
+                  ) : bracketMatches.length > 0 ? (
+                    <BracketPyramidNew
+                      matches={bracketMatches}
+                      showConnectingLines={showConnectingLines}
+                      totalTeams={bracketData?.standings?.length}
+                      bracketSize={bracketData?.bracketSize}
+                      onMatchClick={(matchId) => {
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  ) : legacyBracketMatches.length > 0 ? (
+                    <BracketPyramid
+                      matches={legacyBracketMatches}
+                      showConnectingLines={showConnectingLines}
+                      onMatchClick={(matchId) => {
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  ) : (
+                    <div className="py-8 text-center text-gray-500">
+                      Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -655,29 +697,31 @@ export default function PublicCoursePage() {
                       <CardTitle>Bracket</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <BracketPyramid
-                        matches={playoffMatches.map(match => ({
-                          id: match.id,
-                          teamA: match.teamA ? {
-                            id: match.teamA.id,
-                            name: match.teamA.name,
-                            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                          } : null,
-                          teamB: match.teamB ? {
-                            id: match.teamB.id,
-                            name: match.teamB.name,
-                            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                          } : null,
-                          games: match.games || [],
-                          roundIndex: match.roundIndex,
-                          stage: match.stage,
-                          note: (match as any).note
-                        }))}
-                        showConnectingLines={showConnectingLines}
-                        onMatchClick={(matchId) => {
-                          console.log('Match clicked:', matchId)
-                        }}
-                      />
+                      {bracketLoading ? (
+                        <div className="py-6 text-center text-gray-500 text-sm">Loading bracket…</div>
+                      ) : bracketMatches.length > 0 ? (
+                        <BracketPyramidNew
+                          matches={bracketMatches}
+                          showConnectingLines={showConnectingLines}
+                          totalTeams={bracketData?.standings?.length}
+                          bracketSize={bracketData?.bracketSize}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      ) : legacyBracketMatches.length > 0 ? (
+                        <BracketPyramid
+                          matches={legacyBracketMatches}
+                          showConnectingLines={showConnectingLines}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      ) : (
+                        <div className="py-6 text-center text-gray-500 text-sm">
+                          Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>

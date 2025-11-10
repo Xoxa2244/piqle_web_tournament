@@ -382,41 +382,6 @@ const mapMatchesToBracket = (
     }
   })
 
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const normalizedDebug = normalizedMatches.map(match => ({
-        id: match.id,
-        round: match.round,
-        position: match.position,
-        nextMatchId: match.nextMatchId ?? null,
-        nextExists: normalizedMatches.some(candidate => candidate.id === match.nextMatchId),
-        leftSeed: match.left.seed,
-        rightSeed: match.right.seed,
-      }))
-      // eslint-disable-next-line no-console
-      console.log('[BracketPyramidNew] normalized matches table below')
-      // eslint-disable-next-line no-console
-      console.table(normalizedDebug)
-      const lightweightConverted = converted.map(match => ({
-        id: match.id,
-        nextMatchId: match.nextMatchId ?? null,
-        round: match.tournamentRoundText,
-        participantNames: match.participants.map(p => {
-          const participant = p as ExtendedParticipant
-          const labelParts = [participant.name]
-          if (participant.teamName) labelParts.push(`(${participant.teamName})`)
-          if (participant.isByeSlot) labelParts.push('[BYE]')
-          return labelParts.join(' ')
-        }),
-      }))
-      // eslint-disable-next-line no-console
-      console.log('[BracketPyramidNew] converted matches', JSON.stringify(lightweightConverted, null, 2))
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.warn('[BracketPyramidNew] Failed to log normalized matches', error)
-    }
-  }
-
   return { converted, originalMap, roundLabels, roundStats, hasPlayIn }
 }
 
@@ -504,11 +469,6 @@ export default function BracketPyramidNew({
     () => mapMatchesToBracket(matches, totalTeams, bracketSize),
     [matches, totalTeams, bracketSize]
   )
-
-  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
-    // eslint-disable-next-line no-console
-    console.log('[BracketPyramidNew props] matches', JSON.stringify(matches, null, 2))
-  }
 
   const totalRounds = roundStats.length
   const maxMatchesPerRound = roundStats.length > 0 ? Math.max(...roundStats.map(r => r.matchCount)) : 1
