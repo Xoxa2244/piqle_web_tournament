@@ -394,6 +394,8 @@ const mapMatchesToBracket = (
         rightSeed: match.right.seed,
       }))
       // eslint-disable-next-line no-console
+      console.log('[BracketPyramidNew] normalized matches table below')
+      // eslint-disable-next-line no-console
       console.table(normalizedDebug)
       const lightweightConverted = converted.map(match => ({
         id: match.id,
@@ -408,7 +410,7 @@ const mapMatchesToBracket = (
         }),
       }))
       // eslint-disable-next-line no-console
-      console.log('[BracketPyramidNew] converted matches', lightweightConverted)
+      console.log('[BracketPyramidNew] converted matches', JSON.stringify(lightweightConverted, null, 2))
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[BracketPyramidNew] Failed to log normalized matches', error)
