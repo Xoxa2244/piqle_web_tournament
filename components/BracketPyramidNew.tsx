@@ -505,6 +505,11 @@ export default function BracketPyramidNew({
     [matches, totalTeams, bracketSize]
   )
 
+  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.log('[BracketPyramidNew props] matches', JSON.stringify(matches, null, 2))
+  }
+
   const totalRounds = roundStats.length
   const maxMatchesPerRound = roundStats.length > 0 ? Math.max(...roundStats.map(r => r.matchCount)) : 1
   const viewerWidth = Math.max(960, (totalRounds || 1) * 260)
