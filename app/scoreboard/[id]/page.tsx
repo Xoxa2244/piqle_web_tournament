@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -114,31 +114,28 @@ export default function PublicCoursePage() {
 
   const bracketMatches = bracketData?.allMatches ?? []
 
-  const legacyBracketMatches = useMemo(
-    () =>
-      playoffMatches.map(match => ({
-        id: match.id,
-        teamA: match.teamA
-          ? {
-              id: match.teamA.id,
-              name: match.teamA.name,
-              seed: standings.find(s => s.teamId === match.teamA?.id)?.rank,
-            }
-          : null,
-        teamB: match.teamB
-          ? {
-              id: match.teamB.id,
-              name: match.teamB.name,
-              seed: standings.find(s => s.teamId === match.teamB?.id)?.rank,
-            }
-          : null,
-        games: match.games || [],
-        roundIndex: match.roundIndex,
-        stage: match.stage,
-        note: (match as any).note,
-      })),
-    [playoffMatches, standings]
-  )
+  const legacyBracketMatches =
+    playoffMatches.map(match => ({
+      id: match.id,
+      teamA: match.teamA
+        ? {
+            id: match.teamA.id,
+            name: match.teamA.name,
+            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank,
+          }
+        : null,
+      teamB: match.teamB
+        ? {
+            id: match.teamB.id,
+            name: match.teamB.name,
+            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank,
+          }
+        : null,
+      games: match.games || [],
+      roundIndex: match.roundIndex,
+      stage: match.stage,
+      note: (match as any).note,
+    })) ?? []
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
