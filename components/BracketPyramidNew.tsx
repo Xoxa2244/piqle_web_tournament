@@ -395,6 +395,13 @@ const mapMatchesToBracket = (
       }))
       // eslint-disable-next-line no-console
       console.table(normalizedDebug)
+      // eslint-disable-next-line no-console
+      console.table(converted.map(match => ({
+        id: match.id,
+        nextMatchId: match.nextMatchId ?? null,
+        tournamentRoundText: match.tournamentRoundText,
+        participants: match.participants.map(p => `${p.name}:${'teamName' in p ? (p as any).teamName : ''}`).join(' | '),
+      })))
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[BracketPyramidNew] Failed to log normalized matches', error)
