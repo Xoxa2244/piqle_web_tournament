@@ -395,13 +395,20 @@ const mapMatchesToBracket = (
       }))
       // eslint-disable-next-line no-console
       console.table(normalizedDebug)
-      // eslint-disable-next-line no-console
-      console.table(converted.map(match => ({
+      const lightweightConverted = converted.map(match => ({
         id: match.id,
         nextMatchId: match.nextMatchId ?? null,
-        tournamentRoundText: match.tournamentRoundText,
-        participants: match.participants.map(p => `${p.name}:${'teamName' in p ? (p as any).teamName : ''}`).join(' | '),
-      })))
+        round: match.tournamentRoundText,
+        participantNames: match.participants.map(p => {
+          const participant = p as ExtendedParticipant
+          const labelParts = [participant.name]
+          if (participant.teamName) labelParts.push(`(${participant.teamName})`)
+          if (participant.isByeSlot) labelParts.push('[BYE]')
+          return labelParts.join(' ')
+        }),
+      }))
+      // eslint-disable-next-line no-console
+      console.log('[BracketPyramidNew] converted matches', lightweightConverted)
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[BracketPyramidNew] Failed to log normalized matches', error)
