@@ -940,6 +940,7 @@ export const divisionRouter = createTRPCRouter({
       const division1Pools = division1.pools.sort((a, b) => a.order - b.order)
       const division2Pools = division2.pools.sort((a, b) => a.order - b.order)
       const teamPoolAssignments = new Map<string, string | null>()
+      const teamDivisionAssignments = new Map<string, string>()
 
       // Distribute teams1 to division1 pools
       for (let i = 0; i < teams1.length; i++) {
@@ -947,6 +948,7 @@ export const divisionRouter = createTRPCRouter({
         const targetPool = division1Pools[i % division1Pools.length]
 
         teamPoolAssignments.set(team.id, targetPool?.id ?? null)
+        teamDivisionAssignments.set(team.id, division1.id)
 
         await ctx.prisma.team.update({
           where: { id: team.id },
@@ -993,6 +995,7 @@ export const divisionRouter = createTRPCRouter({
         const targetPool = division2Pools[i % division2Pools.length]
 
         teamPoolAssignments.set(team.id, targetPool?.id ?? null)
+        teamDivisionAssignments.set(team.id, division2.id)
 
         await ctx.prisma.team.update({
           where: { id: team.id },
@@ -1038,53 +1041,60 @@ export const divisionRouter = createTRPCRouter({
       // Matches where both teams belong to division2 go to division2
       // Matches with teams from both divisions should be split (but this shouldn't happen in RR)
       const rrMatches = mergedDivision.matches.filter(m => m.stage === 'ROUND_ROBIN')
-      
-      for (const match of rrMatches) {
-        // Determine which division this match belongs to based on teams
-        const team1InDivision1 = teams1.some(t => t.id === match.teamAId)
-        const team1InDivision2 = teams2.some(t => t.id === match.teamAId)
-        const team2InDivision1 = teams1.some(t => t.id === match.teamBId)
-        const team2InDivision2 = teams2.some(t => t.id === match.teamBId)
-        
-        let targetDivisionId: string | null = null
-        
-        // If both teams are in division1, match goes to division1
-        if (team1InDivision1 && team2InDivision1) {
-          targetDivisionId = division1.id
-        }
-        // If both teams are in division2, match goes to division2
-        else if (team1InDivision2 && team2InDivision2) {
-          targetDivisionId = division2.id
-        }
-        // If teams are from different divisions (shouldn't happen in RR after merge)
-        // Put match in division1 by default (fallback)
-        else {
-          // Try to determine based on teamA
-          if (team1InDivision1) {
-            targetDivisionId = division1.id
-          } else if (team1InDivision2) {
-            targetDivisionId = division2.id
-          } else {
-            // Fallback: put in division1
-            targetDivisionId = division1.id
-          }
-        }
-        
-        if (targetDivisionId) {
-          const teamAPoolId = teamPoolAssignments.get(match.teamAId) ?? null
-          const teamBPoolId = teamPoolAssignments.get(match.teamBId) ?? null
-          const targetPoolId = teamAPoolId && teamAPoolId === teamBPoolId ? teamAPoolId : null
 
-          // Update match to point to target division
-          // Preserve pool assignment when both teams now belong to the same pool; otherwise leave it unset.
-          await ctx.prisma.match.update({
-            where: { id: match.id },
+      const getPoolAssignmentForDivision = (match: typeof rrMatches[number], divisionId: string) => {
+        const teamAPool = teamPoolAssignments.get(match.teamAId)
+        const teamBPool = teamPoolAssignments.get(match.teamBId)
+        const teamsShareDivision =
+          teamDivisionAssignments.get(match.teamAId) === divisionId &&
+          teamDivisionAssignments.get(match.teamBId) === divisionId
+
+        if (teamsShareDivision && teamAPool && teamAPool === teamBPool) {
+          return teamAPool
+        }
+
+        return null
+      }
+
+      for (const match of rrMatches) {
+        const teamADivisionId = teamDivisionAssignments.get(match.teamAId)
+        const teamBDivisionId = teamDivisionAssignments.get(match.teamBId)
+
+        const targetDivisionIds =
+          teamADivisionId && teamBDivisionId && teamADivisionId === teamBDivisionId
+            ? [teamADivisionId]
+            : [division1.id, division2.id]
+
+        for (const targetDivisionId of new Set(targetDivisionIds)) {
+          const clonedMatch = await ctx.prisma.match.create({
             data: {
               divisionId: targetDivisionId,
-              poolId: targetPoolId, // Preserve pool assignment when both teams share the same pool
+              teamAId: match.teamAId,
+              teamBId: match.teamBId,
+              roundIndex: match.roundIndex,
+              stage: match.stage,
+              note: match.note,
+              poolId: getPoolAssignmentForDivision(match, targetDivisionId),
+              bestOfMode: match.bestOfMode,
+              gamesCount: match.gamesCount,
+              targetPoints: match.targetPoints,
+              winBy: match.winBy,
+              winnerTeamId: match.winnerTeamId,
               locked: true,
             }
           })
+
+          for (const game of match.games) {
+            await ctx.prisma.game.create({
+              data: {
+                matchId: clonedMatch.id,
+                index: game.index,
+                scoreA: game.scoreA,
+                scoreB: game.scoreB,
+                winner: game.winner,
+              }
+            })
+          }
         }
       }
 
