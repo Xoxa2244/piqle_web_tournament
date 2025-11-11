@@ -62,51 +62,68 @@ export const standingsRouter = createTRPCRouter({
       division.matches.forEach(match => {
         const teamAStats = teamStats.get(match.teamAId)
         const teamBStats = teamStats.get(match.teamBId)
-        
-        if (!teamAStats || !teamBStats) return
+
+        if (!teamAStats && !teamBStats) {
+          return
+        }
 
         // Calculate total points for this match
         let teamAPoints = 0
         let teamBPoints = 0
-        
+
         match.games.forEach(game => {
           teamAPoints += game.scoreA
           teamBPoints += game.scoreB
         })
 
-        // Update overall stats
-        teamAStats.pointsFor += teamAPoints
-        teamAStats.pointsAgainst += teamBPoints
-        teamBStats.pointsFor += teamBPoints
-        teamBStats.pointsAgainst += teamAPoints
+        // Update overall stats if team belongs to this division
+        if (teamAStats) {
+          teamAStats.pointsFor += teamAPoints
+          teamAStats.pointsAgainst += teamBPoints
+        }
 
-        // Determine winner
+        if (teamBStats) {
+          teamBStats.pointsFor += teamBPoints
+          teamBStats.pointsAgainst += teamAPoints
+        }
+
+        // Determine winner/loser for teams that belong to this division
         if (teamAPoints > teamBPoints) {
-          teamAStats.wins += 1
-          teamBStats.losses += 1
+          if (teamAStats) {
+            teamAStats.wins += 1
+          }
+          if (teamBStats) {
+            teamBStats.losses += 1
+          }
         } else if (teamBPoints > teamAPoints) {
-          teamBStats.wins += 1
-          teamAStats.losses += 1
+          if (teamBStats) {
+            teamBStats.wins += 1
+          }
+          if (teamAStats) {
+            teamAStats.losses += 1
+          }
         }
         // If equal, both teams get 0.5 wins (handled in sorting)
 
-        // Update head-to-head stats
-        const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
-        const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+        // Update head-to-head stats only if both teams belong to this division
+        if (teamAStats && teamBStats) {
+          const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+          const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
 
-        if (teamAPoints > teamBPoints) {
-          teamAHeadToHead.wins += 1
-          teamBHeadToHead.losses += 1
-        } else if (teamBPoints > teamAPoints) {
-          teamBHeadToHead.wins += 1
-          teamAHeadToHead.losses += 1
+          if (teamAPoints > teamBPoints) {
+            teamAHeadToHead.wins += 1
+            teamBHeadToHead.losses += 1
+          } else if (teamBPoints > teamAPoints) {
+            teamBHeadToHead.wins += 1
+            teamAHeadToHead.losses += 1
+          }
+
+          teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
+          teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
+
+          teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+          teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
         }
-
-        teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
-        teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
-
-        teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
-        teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
       })
 
       // Calculate point differentials
