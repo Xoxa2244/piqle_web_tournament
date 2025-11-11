@@ -42,6 +42,61 @@ export const divisionRouter = createTRPCRouter({
         },
       })
 
+      // Check if the user is an admin (not owner) and add division to their access
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: { userId: true },
+      })
+
+      if (tournament && tournament.userId !== ctx.session.user.id) {
+        // User is not the owner, check if they have admin access
+        const adminAccess = await ctx.prisma.tournamentAccess.findFirst({
+          where: {
+            userId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+            accessLevel: 'ADMIN',
+          },
+        })
+
+        if (adminAccess) {
+          // Admin is creating a division
+          // Check if admin has access to all divisions (divisionId = null)
+          const hasAllDivisionsAccess = await ctx.prisma.tournamentAccess.findFirst({
+            where: {
+              userId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+              divisionId: null,
+            },
+          })
+
+          // If admin doesn't have "all divisions" access, add this specific division to their access
+          if (!hasAllDivisionsAccess) {
+            // Check if access to this specific division already exists
+            const existingAccess = await ctx.prisma.tournamentAccess.findUnique({
+              where: {
+                userId_tournamentId_divisionId: {
+                  userId: ctx.session.user.id,
+                  tournamentId: input.tournamentId,
+                  divisionId: division.id,
+                },
+              },
+            })
+
+            // Create access only if it doesn't exist
+            if (!existingAccess) {
+              await ctx.prisma.tournamentAccess.create({
+                data: {
+                  userId: ctx.session.user.id,
+                  tournamentId: input.tournamentId,
+                  divisionId: division.id,
+                  accessLevel: 'ADMIN',
+                },
+              })
+            }
+          }
+        }
+      }
+
       // Log the creation
       await ctx.prisma.auditLog.create({
         data: {
