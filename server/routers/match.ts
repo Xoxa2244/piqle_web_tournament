@@ -359,6 +359,10 @@ export const matchRouter = createTRPCRouter({
       const results = []
       
       for (const match of matches) {
+        if (match.locked) {
+          continue
+        }
+
         // Check if results already exist
         const hasResults = match.games && match.games.length > 0 && match.games[0].scoreA > 0
         

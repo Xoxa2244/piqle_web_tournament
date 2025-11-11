@@ -939,11 +939,14 @@ export const divisionRouter = createTRPCRouter({
       // Move teams back to original divisions
       const division1Pools = division1.pools.sort((a, b) => a.order - b.order)
       const division2Pools = division2.pools.sort((a, b) => a.order - b.order)
+      const teamPoolAssignments = new Map<string, string | null>()
 
       // Distribute teams1 to division1 pools
       for (let i = 0; i < teams1.length; i++) {
         const team = teams1[i]
         const targetPool = division1Pools[i % division1Pools.length]
+
+        teamPoolAssignments.set(team.id, targetPool?.id ?? null)
 
         await ctx.prisma.team.update({
           where: { id: team.id },
@@ -988,6 +991,8 @@ export const divisionRouter = createTRPCRouter({
       for (let i = 0; i < teams2.length; i++) {
         const team = teams2[i]
         const targetPool = division2Pools[i % division2Pools.length]
+
+        teamPoolAssignments.set(team.id, targetPool?.id ?? null)
 
         await ctx.prisma.team.update({
           where: { id: team.id },
@@ -1066,14 +1071,18 @@ export const divisionRouter = createTRPCRouter({
         }
         
         if (targetDivisionId) {
+          const teamAPoolId = teamPoolAssignments.get(match.teamAId) ?? null
+          const teamBPoolId = teamPoolAssignments.get(match.teamBId) ?? null
+          const targetPoolId = teamAPoolId && teamAPoolId === teamBPoolId ? teamAPoolId : null
+
           // Update match to point to target division
-          // Also need to update poolId if match was pool-based
-          // For now, we'll set poolId to null (matches can be regenerated with proper pool assignment if needed)
+          // Preserve pool assignment when both teams now belong to the same pool; otherwise leave it unset.
           await ctx.prisma.match.update({
             where: { id: match.id },
             data: {
               divisionId: targetDivisionId,
-              poolId: null, // Reset poolId - matches will be reassigned to pools if needed
+              poolId: targetPoolId, // Preserve pool assignment when both teams share the same pool
+              locked: true,
             }
           })
         }

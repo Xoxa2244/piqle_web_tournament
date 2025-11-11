@@ -41,6 +41,7 @@ export const divisionStageRouter = createTRPCRouter({
               stage: true,
               note: true,
               poolId: true,
+              locked: true,
               teamA: {
                 include: {
                   pool: true
@@ -251,6 +252,10 @@ export const divisionStageRouter = createTRPCRouter({
 
       if (!match) {
         throw new Error('Match not found')
+      }
+
+      if (match.locked) {
+        throw new Error('This match is locked and cannot be edited. Regenerate Round Robin to reset results.')
       }
 
       // Check score entry access to division

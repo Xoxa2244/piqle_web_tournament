@@ -194,6 +194,7 @@ export default function DivisionStageManagement() {
   const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
+  const hasLockedRRMatches = rrMatches.some((match: any) => match.locked)
   
   // Determine semifinal matches (2 matches in same round without third place match)
   const semifinalMatches = eliminationMatches.filter(match => {
@@ -357,6 +358,9 @@ export default function DivisionStageManagement() {
   }
 
   const handleScoreInput = (match: any) => {
+    if (match?.locked) {
+      return
+    }
     setSelectedMatch(match)
     setShowScoreModal(true)
   }
@@ -375,6 +379,37 @@ export default function DivisionStageManagement() {
   const handleScoreModalClose = () => {
     setShowScoreModal(false)
     setSelectedMatch(null)
+  }
+
+  const renderScoreActionButton = (match: any) => {
+    const hasResult = match?.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
+    const isLocked = Boolean(match?.locked)
+    const label = isLocked ? 'Scores Locked' : hasResult ? 'Change Score' : 'Enter Score'
+    const variant = isLocked ? 'secondary' : hasResult ? 'outline' : 'default'
+
+    return (
+      <Button
+        size="sm"
+        variant={variant}
+        onClick={isLocked ? undefined : () => handleScoreInput(match)}
+        disabled={isLocked}
+        className="w-full"
+        title={isLocked ? 'Round Robin results were locked after unmerging divisions. Use Regenerate RR to reset matches.' : undefined}
+      >
+        {label}
+      </Button>
+    )
+  }
+
+  const renderLockedNote = (match: any) => {
+    if (!match?.locked) {
+      return null
+    }
+    return (
+      <p className="text-xs text-gray-500 text-center">
+        Locked after unmerge. Regenerate RR to edit.
+      </p>
+    )
   }
 
   const handleRegenerate = (type: 'playin' | 'playoff' | 'rr') => {
@@ -443,7 +478,7 @@ export default function DivisionStageManagement() {
 
   // Determine button availability
   const canGenerateRR = !rrMatches.length
-  const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS'
+  const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS' && !hasLockedRRMatches
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
@@ -718,8 +753,9 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={handleFillRandomResults}
-                    disabled={fillRandomResultsMutation.isPending}
+                    disabled={fillRandomResultsMutation.isPending || hasLockedRRMatches}
                     className="flex items-center space-x-2 text-purple-600 border-purple-600 hover:bg-purple-50"
+                    title={hasLockedRRMatches ? 'Round Robin results are locked. Regenerate RR to create new matches.' : undefined}
                   >
                     <RefreshCw className="h-4 w-4" />
                     <span>Fill Random Results</span>
@@ -736,6 +772,15 @@ export default function DivisionStageManagement() {
                 </Button>
               </div>
             </div>
+
+            {hasLockedRRMatches && (
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Round Robin results were carried over from the merged division and are now locked. Regenerate the Round Robin to clear and re-enter scores.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* RR Matches List */}
             {rrMatches.length > 0 && (
@@ -814,23 +859,14 @@ export default function DivisionStageManagement() {
                                                   <div className="text-sm text-green-600 font-medium">
                                                     Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                   </div>
-                                                  <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => handleScoreInput(match)}
-                                                    className="w-full"
-                                                  >
-                                                    Change Score
-                                                  </Button>
+                                                  {renderScoreActionButton(match)}
+                                                  {renderLockedNote(match)}
                                                 </div>
                                               ) : (
-                                                <Button
-                                                  size="sm"
-                                                  onClick={() => handleScoreInput(match)}
-                                                  className="w-full"
-                                                >
-                                                  Enter Score
-                                                </Button>
+                                                <div className="text-center space-y-2">
+                                                  {renderScoreActionButton(match)}
+                                                  {renderLockedNote(match)}
+                                                </div>
                                               )}
                                             </div>
                                           ))}
@@ -880,23 +916,14 @@ export default function DivisionStageManagement() {
                                                 <div className="text-sm text-green-600 font-medium">
                                                   Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                 </div>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => handleScoreInput(match)}
-                                                  className="w-full"
-                                                >
-                                                  Change Score
-                                                </Button>
+                                                {renderScoreActionButton(match)}
+                                                {renderLockedNote(match)}
                                               </div>
                                             ) : (
-                                              <Button
-                                                size="sm"
-                                                onClick={() => handleScoreInput(match)}
-                                                className="w-full"
-                                              >
-                                                Enter Score
-                                              </Button>
+                                              <div className="text-center space-y-2">
+                                                {renderScoreActionButton(match)}
+                                                {renderLockedNote(match)}
+                                              </div>
                                             )}
                                           </div>
                                         ))}
@@ -1104,23 +1131,14 @@ export default function DivisionStageManagement() {
                           <div className="text-sm text-green-600 font-medium">
                             Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleScoreInput(match)}
-                            className="w-full"
-                          >
-                            Change Score
-                          </Button>
+                          {renderScoreActionButton(match)}
+                          {renderLockedNote(match)}
                         </div>
                       ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => handleScoreInput(match)}
-                          className="w-full"
-                        >
-                          Enter Score
-                        </Button>
+                        <div className="text-center space-y-2">
+                          {renderScoreActionButton(match)}
+                          {renderLockedNote(match)}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1334,23 +1352,14 @@ export default function DivisionStageManagement() {
                                 <div className="text-sm text-green-600 font-medium">
                                   Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleScoreInput(match)}
-                                  className="w-full"
-                                >
-                                  Change Score
-                                </Button>
+                                {renderScoreActionButton(match)}
+                                {renderLockedNote(match)}
                               </div>
                             ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => handleScoreInput(match)}
-                                className="w-full"
-                              >
-                                Enter Score
-                              </Button>
+                              <div className="text-center space-y-2">
+                                {renderScoreActionButton(match)}
+                                {renderLockedNote(match)}
+                              </div>
                             )}
                             </div>
                           )
