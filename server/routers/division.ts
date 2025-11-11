@@ -1065,7 +1065,7 @@ export const divisionRouter = createTRPCRouter({
             ? [teamADivisionId]
             : [division1.id, division2.id]
 
-        for (const targetDivisionId of new Set(targetDivisionIds)) {
+        for (const targetDivisionId of Array.from(new Set(targetDivisionIds))) {
           const clonedMatch = await ctx.prisma.match.create({
             data: {
               divisionId: targetDivisionId,
