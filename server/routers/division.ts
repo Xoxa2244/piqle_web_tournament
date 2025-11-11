@@ -942,6 +942,99 @@ export const divisionRouter = createTRPCRouter({
       const teamPoolAssignments = new Map<string, string | null>()
       const teamDivisionAssignments = new Map<string, string>()
 
+      const recalcDivisionStandings = async (divisionId: string, teams: typeof mergedDivision.teams) => {
+        const matches = await ctx.prisma.match.findMany({
+          where: {
+            divisionId,
+            stage: 'ROUND_ROBIN',
+          },
+          include: {
+            games: true,
+          },
+        })
+
+        const teamStats = new Map<string, {
+          wins: number
+          losses: number
+          pointsFor: number
+          pointsAgainst: number
+        }>()
+
+        teams.forEach(team => {
+          teamStats.set(team.id, {
+            wins: 0,
+            losses: 0,
+            pointsFor: 0,
+            pointsAgainst: 0,
+          })
+        })
+
+        for (const match of matches) {
+          if (!match.games || match.games.length === 0) {
+            continue
+          }
+
+          const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+          const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+
+          const teamAStats = teamStats.get(match.teamAId)
+          const teamBStats = teamStats.get(match.teamBId)
+
+          if (teamAStats) {
+            teamAStats.pointsFor += totalScoreA
+            teamAStats.pointsAgainst += totalScoreB
+          }
+
+          if (teamBStats) {
+            teamBStats.pointsFor += totalScoreB
+            teamBStats.pointsAgainst += totalScoreA
+          }
+
+          if (totalScoreA > totalScoreB) {
+            if (teamAStats) {
+              teamAStats.wins += 1
+            }
+            if (teamBStats) {
+              teamBStats.losses += 1
+            }
+          } else if (totalScoreB > totalScoreA) {
+            if (teamBStats) {
+              teamBStats.wins += 1
+            }
+            if (teamAStats) {
+              teamAStats.losses += 1
+            }
+          }
+        }
+
+        await Promise.all(Array.from(teamStats.entries()).map(([teamId, stats]) =>
+          ctx.prisma.standing.upsert({
+            where: {
+              divisionId_teamId: {
+                divisionId,
+                teamId,
+              }
+            },
+            create: {
+              divisionId,
+              teamId,
+              wins: stats.wins,
+              losses: stats.losses,
+              pointsFor: stats.pointsFor,
+              pointsAgainst: stats.pointsAgainst,
+              pointDiff: stats.pointsFor - stats.pointsAgainst,
+            },
+            update: {
+              wins: stats.wins,
+              losses: stats.losses,
+              pointsFor: stats.pointsFor,
+              pointsAgainst: stats.pointsAgainst,
+              pointDiff: stats.pointsFor - stats.pointsAgainst,
+            }
+          })
+        ))
+      }
+
       // Distribute teams1 to division1 pools
       for (let i = 0; i < teams1.length; i++) {
         const team = teams1[i]
@@ -958,35 +1051,6 @@ export const divisionRouter = createTRPCRouter({
             note: team.note, // Restore cleaned note
           }
         })
-
-        // Copy standings if they exist
-        const standing = team.standings.find(s => s.divisionId === mergedDivision.id)
-        if (standing) {
-          await ctx.prisma.standing.upsert({
-            where: {
-              divisionId_teamId: {
-                divisionId: division1.id,
-                teamId: team.id,
-              }
-            },
-            create: {
-              divisionId: division1.id,
-              teamId: team.id,
-              wins: standing.wins,
-              losses: standing.losses,
-              pointsFor: standing.pointsFor,
-              pointsAgainst: standing.pointsAgainst,
-              pointDiff: standing.pointDiff,
-            },
-            update: {
-              wins: standing.wins,
-              losses: standing.losses,
-              pointsFor: standing.pointsFor,
-              pointsAgainst: standing.pointsAgainst,
-              pointDiff: standing.pointDiff,
-            }
-          })
-        }
       }
 
       // Distribute teams2 to division2 pools
@@ -1005,35 +1069,6 @@ export const divisionRouter = createTRPCRouter({
             note: team.note, // Restore cleaned note
           }
         })
-
-        // Copy standings if they exist
-        const standing = team.standings.find(s => s.divisionId === mergedDivision.id)
-        if (standing) {
-          await ctx.prisma.standing.upsert({
-            where: {
-              divisionId_teamId: {
-                divisionId: division2.id,
-                teamId: team.id,
-              }
-            },
-            create: {
-              divisionId: division2.id,
-              teamId: team.id,
-              wins: standing.wins,
-              losses: standing.losses,
-              pointsFor: standing.pointsFor,
-              pointsAgainst: standing.pointsAgainst,
-              pointDiff: standing.pointDiff,
-            },
-            update: {
-              wins: standing.wins,
-              losses: standing.losses,
-              pointsFor: standing.pointsFor,
-              pointsAgainst: standing.pointsAgainst,
-              pointDiff: standing.pointDiff,
-            }
-          })
-        }
       }
 
       // Move Round Robin matches back to original divisions based on team composition
@@ -1097,6 +1132,9 @@ export const divisionRouter = createTRPCRouter({
           }
         }
       }
+
+      await recalcDivisionStandings(division1.id, teams1)
+      await recalcDivisionStandings(division2.id, teams2)
 
       // Delete merged division (this will cascade delete any remaining matches if there are any)
       // But we've already moved all RR matches, so this should only delete the division itself
