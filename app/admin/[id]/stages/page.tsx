@@ -45,8 +45,9 @@ export default function DivisionStageManagement() {
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
   const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
-  const [showUnmergeModal, setShowUnmergeModal] = useState(false)
-  const [showBracketModal, setShowBracketModal] = useState(false)
+  const [showEditRRPairsModal, setShowEditRRPairsModal] = useState(false)
+  const [showEditPlayInPairsModal, setShowEditPlayInPairsModal] = useState(false)
+
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -323,30 +324,33 @@ export default function DivisionStageManagement() {
   }
 
   const handleRegeneratePlayoffs = () => {
-    alert('Function under development. If you need to regenerate playoffs, please regenerate "PlayIn" instead.')
-    return
-    
     console.log('=== handleRegeneratePlayoffs called ===')
     console.log('selectedDivisionId:', selectedDivisionId)
+    console.log('needsPlayIn:', needsPlayIn)
+    console.log('playInMatches.length:', playInMatches.length)
     console.log('targetBracketSize:', targetBracketSize)
-    console.log('targetBracketSize.toString():', targetBracketSize.toString())
-    console.log('regenerateType:', regenerateType)
     
-    if (selectedDivisionId) {
-      console.log('Calling generatePlayoffsMutation.mutate with:', {
+    if (!selectedDivisionId) {
+      console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
+      return
+    }
+    
+    // If there's Play-In, regenerate Play-Off based on Play-In results
+    if (needsPlayIn && playInMatches.length > 0) {
+      console.log('Regenerating Play-Off based on Play-In results')
+      generatePlayoffAfterPlayInMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
-        regenerate: true
       })
-      
+    } else {
+      // No Play-In, regenerate Play-Off based on Round Robin results
+      console.log('Regenerating Play-Off based on Round Robin results')
       generatePlayoffsMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
         regenerate: true,
         regenerateType: 'playoff'
       })
-    } else {
-      console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
     }
   }
 
@@ -684,13 +688,26 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
+                {rrMatches.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      alert('Edit RR Pairs feature is under development')
+                    }}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit RR Pairs</span>
+                  </Button>
+                )}
+                
                 {canRegenerateRR && (
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('rr')}
-                    className="flex items-center space-x-2 text-orange-600 border-orange-600 hover:bg-orange-50"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     <span>Regenerate RR</span>
                   </Button>
                 )}
@@ -1015,13 +1032,26 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
+                {playInMatches.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      alert('Edit Play-In Pairs feature is under development')
+                    }}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit Play-In Pairs</span>
+                  </Button>
+                )}
+                
                 {canRegeneratePlayIn && (
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('playin')}
-                    className="flex items-center space-x-2"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     <span>Regenerate Play-In</span>
                   </Button>
                 )}
@@ -1258,17 +1288,6 @@ export default function DivisionStageManagement() {
                     <div key={roundIndex} className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-lg">{roundName}</h4>
-                        {roundName === 'Semi-Final' && (
-                          <Button
-                            onClick={() => setShowSemifinalSwapModal(true)}
-                            variant="outline"
-                            size="sm"
-                            className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            <span>Edit Pairs</span>
-                          </Button>
-                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {roundMatches.map((match) => {
@@ -1426,7 +1445,9 @@ export default function DivisionStageManagement() {
                 ? 'All Round Robin matches will be reset. This will allow teams to be redistributed across pools and create new matches. Continue?'
                 : regenerateType === 'playin' 
                   ? 'All Play-In and Play-Off matches will be reset. Play-In will be regenerated based on current Round Robin results. Continue?'
-                  : 'All Play-Off matches will be reset and regenerated. Continue?'
+                  : (needsPlayIn && playInMatches.length > 0)
+                    ? 'All Play-Off matches will be reset and regenerated based on current Play-In results. Continue?'
+                    : 'All Play-Off matches will be reset and regenerated based on current Round Robin results. Continue?'
               }
             </p>
             <div className="flex justify-end space-x-3">

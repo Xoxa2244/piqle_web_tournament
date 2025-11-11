@@ -50,6 +50,15 @@ export default function TournamentDetailPage() {
   
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  // Check if user is owner (for owner-only features like CSV import and access control)
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
   
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -210,7 +219,7 @@ export default function TournamentDetailPage() {
             </div>
             
             <div className="flex items-center space-x-3">
-              {isAdmin && (
+              {isOwner && (
                 <Link
                   href={`/admin/${tournamentId}/import`}
                   className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
@@ -416,8 +425,8 @@ export default function TournamentDetailPage() {
                     </Button>
                   </Link>
                   
-                  {isAdmin && (
-                    <Link href={`/admin/${tournamentId}/access`}>
+                  {isOwner && (
+                    <Link href={`/admin/${tournamentId}/access`} className="relative">
                       <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
                         <div className="flex flex-col items-center space-y-2 w-full">
                           <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
@@ -428,6 +437,11 @@ export default function TournamentDetailPage() {
                           </div>
                         </div>
                       </Button>
+                      {pendingRequestsCount > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow-md">
+                          {pendingRequestsCount}
+                        </span>
+                      )}
                     </Link>
                   )}
                 </div>
