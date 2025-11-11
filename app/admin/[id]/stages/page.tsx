@@ -47,6 +47,7 @@ export default function DivisionStageManagement() {
   const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
   const [showEditRRPairsModal, setShowEditRRPairsModal] = useState(false)
   const [showEditPlayInPairsModal, setShowEditPlayInPairsModal] = useState(false)
+  const [showBracketModal, setShowBracketModal] = useState(false)
 
 
   // Load tournament data
