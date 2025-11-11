@@ -42,6 +42,55 @@ export const standingsRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to calculate standings')
       }
 
+      const storedStandings = await ctx.prisma.standing.findMany({
+        where: { divisionId: input.divisionId },
+      })
+
+      const hasStoredStandings = storedStandings.length === division.teams.length && storedStandings.some(s =>
+        s.wins !== 0 ||
+        s.losses !== 0 ||
+        s.pointsFor !== 0 ||
+        s.pointsAgainst !== 0
+      )
+
+      if (hasStoredStandings) {
+        const standingsFromDb = storedStandings.map(standing => {
+          const team = division.teams.find(team => team.id === standing.teamId)
+          return {
+            teamId: standing.teamId,
+            teamName: team?.name || 'Unknown Team',
+            wins: standing.wins,
+            losses: standing.losses,
+            pointsFor: standing.pointsFor,
+            pointsAgainst: standing.pointsAgainst,
+            pointDiff: standing.pointDiff,
+            headToHead: new Map<string, { wins: number; losses: number; pointDiff: number }>(),
+          } as TeamStats
+        })
+
+        const sortedDbStandings = standingsFromDb.sort((a, b) => {
+          if (a.wins !== b.wins) {
+            return b.wins - a.wins
+          }
+
+          if (a.pointDiff !== b.pointDiff) {
+            return b.pointDiff - a.pointDiff
+          }
+
+          return b.pointsFor - a.pointsFor
+        })
+
+        return {
+          standings: sortedDbStandings.map((team, index) => ({
+            ...team,
+            rank: index + 1,
+            headToHead: Object.fromEntries(team.headToHead),
+          })),
+          totalMatches: division.matches.length,
+          completedMatches: division.matches.filter(m => m.games.length > 0).length,
+        }
+      }
+
       // Initialize team stats
       const teamStats: Map<string, TeamStats> = new Map()
       
