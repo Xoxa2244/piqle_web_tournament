@@ -1450,12 +1450,44 @@ export const standingsRouter = createTRPCRouter({
       const autoQualifiedTeamIds = standings.slice(0, N - 2 * E).map(s => s.teamId)
       const autoQualified = division.teams.filter(team => autoQualifiedTeamIds.includes(team.id))
 
-      // Generate playoff matches with correct participants
-      // Convert teams to the format expected by generateSingleEliminationMatches
-      const playoffTeams = [...autoQualified, ...playInWinners].map(team => ({
-        teamId: team.id
-      }))
-      const playoffMatches = generateSingleEliminationMatches(playoffTeams, 0)
+      console.log('=== Play-Off Generation After Play-In Debug ===')
+      console.log('Full RR standings:')
+      standings.forEach((s, idx) => {
+        console.log(`  ${idx + 1}. ${s.teamName} (${s.wins}W, ${s.pointDiff > 0 ? '+' : ''}${s.pointDiff}PD)`)
+      })
+      console.log('Auto-qualified team IDs:', autoQualifiedTeamIds)
+      console.log('Play-In winners:', playInWinners.map(w => w.name))
+
+      // Get IDs of all playoff participants (auto-qualified + play-in winners)
+      const playInWinnerIds = playInWinners.map(w => w.id)
+      const allPlayoffParticipantIds = [...autoQualifiedTeamIds, ...playInWinnerIds]
+
+      // Sort ALL playoff participants by their standings from Round Robin
+      // №1 plays with last by points (excluding those who lost in play-in)
+      // №2 plays with second-to-last, etc.
+      const playoffTeamsSorted = standings
+        .filter(s => allPlayoffParticipantIds.includes(s.teamId))
+        .map(s => ({
+          teamId: s.teamId,
+          teamName: s.teamName,
+          wins: s.wins,
+          pointDiff: s.pointDiff
+        }))
+
+      console.log('Playoff participants (sorted by RR standings):')
+      playoffTeamsSorted.forEach((team, idx) => {
+        console.log(`  ${idx + 1}. ${team.teamName} (${team.wins}W, ${team.pointDiff > 0 ? '+' : ''}${team.pointDiff}PD)`)
+      })
+
+      const playoffMatches = generateSingleEliminationMatches(playoffTeamsSorted, 0)
+      
+      console.log('Generated playoff pairings:')
+      playoffMatches.forEach((match, idx) => {
+        const teamA = playoffTeamsSorted.find(t => t.teamId === match.teamAId)
+        const teamB = playoffTeamsSorted.find(t => t.teamId === match.teamBId)
+        console.log(`  Match ${idx + 1}: ${teamA?.teamName} vs ${teamB?.teamName}`)
+      })
+      console.log('===========================')
 
       // Create playoff matches in database
       const createdMatches = await Promise.all(
