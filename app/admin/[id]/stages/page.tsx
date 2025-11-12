@@ -44,7 +44,6 @@ export default function DivisionStageManagement() {
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
-  const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
   const [showEditRRPairsModal, setShowEditRRPairsModal] = useState(false)
   const [showEditPlayInPairsModal, setShowEditPlayInPairsModal] = useState(false)
   const [showUnmergeModal, setShowUnmergeModal] = useState(false)
@@ -182,7 +181,8 @@ export default function DivisionStageManagement() {
       refetchDivision()
       refetchTournament()
       setShowPlayoffSwapModal(false)
-      setShowSemifinalSwapModal(false)
+      setShowEditRRPairsModal(false)
+      setShowEditPlayInPairsModal(false)
     }
   })
 
@@ -195,13 +195,6 @@ export default function DivisionStageManagement() {
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
   const hasLockedRRMatches = rrMatches.some((match: any) => match.locked)
-  
-  // Determine semifinal matches (2 matches in same round without third place match)
-  const semifinalMatches = eliminationMatches.filter(match => {
-    const roundMatches = eliminationMatches.filter(m => m.roundIndex === match.roundIndex)
-    const hasThirdPlaceMatch = roundMatches.some(m => m.note === 'Third Place Match')
-    return roundMatches.length === 2 && !hasThirdPlaceMatch
-  })
   
   console.log('Matches data:', {
     totalMatches: matches.length,
@@ -224,6 +217,14 @@ export default function DivisionStageManagement() {
   const completedPlayInMatches = playInMatches.filter(m => 
     m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
   )
+
+  const completedPlayoffMatches = eliminationMatches.filter(m => 
+    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+  )
+
+  const hasRRResults = completedRRMatches.length > 0
+  const hasPlayInResults = completedPlayInMatches.length > 0
+  const hasPlayoffResults = completedPlayoffMatches.length > 0
 
   const teamCount = teams.length
   // Determine target bracket size based on team count
@@ -438,7 +439,16 @@ export default function DivisionStageManagement() {
     }
   }
 
-  const handleSwapSemifinalTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+  const handleSwapRRTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+    if (selectedDivisionId) {
+      swapPlayoffTeamsMutation.mutate({
+        divisionId: selectedDivisionId,
+        swaps
+      })
+    }
+  }
+
+  const handleSwapPlayInTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
     if (selectedDivisionId) {
       swapPlayoffTeamsMutation.mutate({
         divisionId: selectedDivisionId,
@@ -728,10 +738,9 @@ export default function DivisionStageManagement() {
                 {rrMatches.length > 0 && (
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      alert('Edit RR Pairs feature is under development')
-                    }}
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    onClick={() => setShowEditRRPairsModal(true)}
+                    disabled={hasRRResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
                     <span>Edit RR Pairs</span>
@@ -1064,10 +1073,9 @@ export default function DivisionStageManagement() {
                 {playInMatches.length > 0 && (
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      alert('Edit Play-In Pairs feature is under development')
-                    }}
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    onClick={() => setShowEditPlayInPairsModal(true)}
+                    disabled={hasPlayInResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
                     <span>Edit Play-In Pairs</span>
@@ -1249,10 +1257,11 @@ export default function DivisionStageManagement() {
                   <Button
                     onClick={() => setShowPlayoffSwapModal(true)}
                     variant="outline"
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    disabled={hasPlayoffResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
-                    <span>Edit Playoff Pairs</span>
+                    <span>Edit Play-off Pairs</span>
                   </Button>
                   
                   <Button
@@ -1390,36 +1399,75 @@ export default function DivisionStageManagement() {
       )}
 
       {/* Playoff swap modal */}
-      {showPlayoffSwapModal && (
+      {showPlayoffSwapModal && (() => {
+        // Get only teams that participate in Play-Off
+        const playoffTeamIds = new Set<string>()
+        eliminationMatches.forEach(match => {
+          playoffTeamIds.add(match.teamAId)
+          playoffTeamIds.add(match.teamBId)
+        })
+        const playoffTeams = teams.filter(team => playoffTeamIds.has(team.id))
+
+        return (
+          <PlayoffSwapModal
+            isOpen={showPlayoffSwapModal}
+            onClose={() => setShowPlayoffSwapModal(false)}
+            onSubmit={handleSwapPlayoffTeams}
+            matches={eliminationMatches.map(match => ({
+              id: match.id,
+              teamA: { id: match.teamAId, name: match.teamA.name },
+              teamB: { id: match.teamBId, name: match.teamB.name }
+            }))}
+            teams={playoffTeams.map(team => ({ id: team.id, name: team.name }))}
+            isLoading={swapPlayoffTeamsMutation.isPending}
+            title="Edit Play-off Pairs"
+          />
+        )
+      })()}
+
+      {/* RR swap modal */}
+      {showEditRRPairsModal && (
         <PlayoffSwapModal
-          isOpen={showPlayoffSwapModal}
-          onClose={() => setShowPlayoffSwapModal(false)}
-          onSubmit={handleSwapPlayoffTeams}
-          matches={eliminationMatches.map(match => ({
+          isOpen={showEditRRPairsModal}
+          onClose={() => setShowEditRRPairsModal(false)}
+          onSubmit={handleSwapRRTeams}
+          matches={rrMatches.map(match => ({
             id: match.id,
             teamA: { id: match.teamAId, name: match.teamA.name },
             teamB: { id: match.teamBId, name: match.teamB.name }
           }))}
           teams={teams.map(team => ({ id: team.id, name: team.name }))}
           isLoading={swapPlayoffTeamsMutation.isPending}
+          title="Edit RR Pairs"
         />
       )}
 
-      {/* Semifinal swap modal */}
-      {showSemifinalSwapModal && (
-        <PlayoffSwapModal
-          isOpen={showSemifinalSwapModal}
-          onClose={() => setShowSemifinalSwapModal(false)}
-          onSubmit={handleSwapSemifinalTeams}
-          matches={semifinalMatches.map(match => ({
-            id: match.id,
-            teamA: { id: match.teamAId, name: match.teamA.name },
-            teamB: { id: match.teamBId, name: match.teamB.name }
-          }))}
-          teams={teams.map(team => ({ id: team.id, name: team.name }))}
-          isLoading={swapPlayoffTeamsMutation.isPending}
-        />
-      )}
+      {/* Play-In swap modal */}
+      {showEditPlayInPairsModal && (() => {
+        // Get only teams that participate in Play-In (not auto-qualified)
+        const playInTeamIds = new Set<string>()
+        playInMatches.forEach(match => {
+          playInTeamIds.add(match.teamAId)
+          playInTeamIds.add(match.teamBId)
+        })
+        const playInTeams = teams.filter(team => playInTeamIds.has(team.id))
+
+        return (
+          <PlayoffSwapModal
+            isOpen={showEditPlayInPairsModal}
+            onClose={() => setShowEditPlayInPairsModal(false)}
+            onSubmit={handleSwapPlayInTeams}
+            matches={playInMatches.map(match => ({
+              id: match.id,
+              teamA: { id: match.teamAId, name: match.teamA.name },
+              teamB: { id: match.teamBId, name: match.teamB.name }
+            }))}
+            teams={playInTeams.map(team => ({ id: team.id, name: team.name }))}
+            isLoading={swapPlayoffTeamsMutation.isPending}
+            title="Edit Play-In Pairs"
+          />
+        )
+      })()}
 
       {/* Unmerge Division Modal */}
       {showUnmergeModal && currentDivision && (
