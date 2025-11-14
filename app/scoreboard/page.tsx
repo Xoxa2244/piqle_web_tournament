@@ -55,9 +55,10 @@ export default function PublicTournamentsPage() {
                   <CardTitle className="text-xl">{tournament.title}</CardTitle>
                   {tournament.description && (
                     <div className="mt-2">
-                      <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
-                        {truncateText(tournament.description)}
-                      </div>
+                      <div
+                        className="text-gray-600 text-sm break-words line-clamp-3"
+                        dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
+                      />
                       {tournament.description && tournament.description.split('\n').length > 3 && (
                         <button
                           onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
