@@ -2,6 +2,35 @@ import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '../trpc'
 
 export const publicRouter = createTRPCRouter({
+  listBoards: publicProcedure.query(async ({ ctx }) => {
+    const tournaments = await ctx.prisma.tournament.findMany({
+      where: {
+        isPublicBoardEnabled: true,
+      },
+      orderBy: {
+        startDate: 'desc',
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        venueName: true,
+        startDate: true,
+        endDate: true,
+        entryFee: true,
+        publicSlug: true,
+        divisions: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    })
+
+    return tournaments
+  }),
+
   getBoard: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {

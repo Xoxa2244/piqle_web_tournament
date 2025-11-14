@@ -11,7 +11,7 @@ import { Calendar, MapPin, Users, Trophy, Eye } from 'lucide-react'
 
 export default function PublicTournamentsPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const { data: tournaments, isLoading } = trpc.tournament.list.useQuery()
+  const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
@@ -31,8 +31,7 @@ export default function PublicTournamentsPage() {
     )
   }
 
-  // Filter tournaments that have public board enabled
-  const publicTournaments = (tournaments as any[])?.filter((tournament: any) => tournament.isPublicBoardEnabled) || []
+  const publicTournaments = tournaments || []
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -118,7 +117,7 @@ export default function PublicTournamentsPage() {
 
                   {/* View Results Button */}
                   <div className="pt-4 border-t border-gray-200">
-                    <Link href={`/scoreboard/${tournament.id}`}>
+                    <Link href={tournament.publicSlug ? `/t/${tournament.publicSlug}` : `/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
                       </Button>
