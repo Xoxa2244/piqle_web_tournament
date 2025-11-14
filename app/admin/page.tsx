@@ -38,13 +38,6 @@ export default function AdminPage() {
     },
   })
 
-  const truncateText = (text: string | null, maxLines: number = 3) => {
-    if (!text) return ''
-    const lines = text.split('\n')
-    if (lines.length <= maxLines) return text
-    return lines.slice(0, maxLines).join('\n')
-  }
-
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
     const confirmed = window.confirm(
       `Are you sure you want to delete the tournament "${tournamentTitle}"?\n\n` +
@@ -130,7 +123,10 @@ export default function AdminPage() {
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold mb-2">{tournament.title}</h3>
                       {tournament.description && (
-                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{tournament.description}</p>
+                        <div
+                          className="text-sm text-gray-600 mb-2 line-clamp-2 break-words"
+                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        />
                       )}
                       <div className="space-y-1 text-sm text-gray-500">
                         <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
@@ -164,9 +160,10 @@ export default function AdminPage() {
               <h3 className="text-xl font-semibold mb-2">{tournament.title}</h3>
               {tournament.description && (
                 <div className="mb-4">
-                  <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
-                    {truncateText(tournament.description)}
-                  </div>
+                  <div
+                    className="text-gray-600 text-sm break-words line-clamp-3"
+                    dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                  />
                   {tournament.description && tournament.description.split('\n').length > 3 && (
                     <button
                       onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
