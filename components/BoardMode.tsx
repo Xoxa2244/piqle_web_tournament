@@ -1021,7 +1021,7 @@ function PoolDropZone({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="font-medium text-gray-900">Pool {pool.name}</h4>
+        <h4 className="font-medium text-gray-900">{pool.name || 'Pool'}</h4>
         <Badge variant="outline">{teams.length}</Badge>
       </div>
       
