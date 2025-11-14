@@ -1386,41 +1386,57 @@ export default function DivisionsPage() {
 
   if (tournament.divisions.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-4">
-                <Link href={`/admin/${tournamentId}`}>
-                  <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                    <ArrowLeft className="h-4 w-4" />
-                    <span>Back</span>
-                  </Button>
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                  <p className="text-sm text-gray-500">{tournament.title}</p>
+      <>
+        <div className="min-h-screen bg-gray-50">
+          <div className="bg-white border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16">
+                <div className="flex items-center space-x-4">
+                  <Link href={`/admin/${tournamentId}`}>
+                    <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                      <ArrowLeft className="h-4 w-4" />
+                      <span>Back</span>
+                    </Button>
+                  </Link>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
+                    <p className="text-sm text-gray-500">{tournament.title}</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-          <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
-            <p className="text-gray-600 mb-6">
-              You don&apos;t have access to any divisions in this tournament.
-              Please contact the tournament administrator to request access.
-            </p>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Back to Tournament
-            </Link>
+          <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
+            <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
+              <p className="text-gray-600 mb-6">
+                This tournament doesn&apos;t have any divisions yet. Create the first one to start adding teams and matches.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={() => setShowAddDivisionModal(true)} className="flex-1">
+                  Create division
+                </Button>
+                <Link
+                  href={`/admin/${tournamentId}`}
+                  className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
+                >
+                  Back to tournament
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+
+        <AddDivisionModal
+          isOpen={showAddDivisionModal}
+          onClose={() => setShowAddDivisionModal(false)}
+          tournamentId={tournamentId}
+          onSuccess={() => {
+            setShowAddDivisionModal(false)
+            refetch()
+          }}
+        />
+      </>
     )
   }
 

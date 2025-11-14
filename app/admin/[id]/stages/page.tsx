@@ -538,19 +538,26 @@ export default function DivisionStageManagement() {
   // Check if user has access to any divisions
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen px-4">
         <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
           <p className="text-gray-600 mb-6">
-            You don&apos;t have access to any divisions in this tournament.
-            Please contact the tournament administrator to request access.
+            There aren&apos;t any divisions to manage stages for. Create a division first to unlock score input and bracket tools.
           </p>
-          <Link
-            href={`/admin/${tournamentId}`}
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            Back to Tournament
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href={`/admin/${tournamentId}/divisions`}
+              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Create division
+            </Link>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
+            >
+              Back to tournament
+            </Link>
+          </div>
         </div>
       </div>
     )
