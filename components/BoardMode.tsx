@@ -252,9 +252,25 @@ export default function BoardMode({
   }, [searchQuery, localDivisions])
 
   const handleDragStart = (event: DragStartEvent) => {
+    const activeType = event.active.data.current?.type
+
+    if (activeType === 'player') {
+      setActivePlayer(event.active.id as string)
+      return
+    }
+
+    if (activeType === 'team') {
+      setActiveTeam(event.active.id as string)
+      return
+    }
+
+    if (activeType === 'division') {
+      setActiveTeam(null)
+      setActivePlayer(null)
+      return
+    }
+
     const activeId = event.active.id as string
-    
-    // Check if it's a player drag (starts with 'player-')
     if (activeId.startsWith('player-')) {
       setActivePlayer(activeId)
     } else {
@@ -292,9 +308,11 @@ export default function BoardMode({
 
     const activeId = active.id as string
     const overId = over.id as string
-
+    const activeType = active.data.current?.type
+    const overType = over.data?.current?.type
+    
     // Check if we're dragging a player
-    if (activeId.startsWith('player-') && overId.startsWith('player-')) {
+    if (activeType === 'player' && overType === 'player') {
       // Player to player drag
       const playerPattern = /^player-(.+)-slot-(\d+)$/
       const activePlayerMatch = activeId.match(playerPattern)
@@ -314,11 +332,11 @@ export default function BoardMode({
     }
 
     // Check if we're dragging a division (starts with 'division-header-')
-    if (activeId.startsWith('division-header-')) {
+    if (activeType === 'division' || activeId.startsWith('division-header-')) {
       const divisionId = activeId.replace('division-header-', '')
       const overDivisionId = overId.startsWith('division-header-') 
         ? overId.replace('division-header-', '')
-        : null
+        : (over.data?.current?.divisionId as string | undefined) || null
 
       if (overDivisionId && divisionId !== overDivisionId) {
         // Reorder divisions
@@ -338,9 +356,10 @@ export default function BoardMode({
 
     // Handle team dragging
     const teamId = activeId
-    const team = localDivisions
-      .flatMap(d => d.teams)
-      .find(t => t.id === teamId)
+    const team = (active.data.current as any)?.team as Team | undefined
+      ?? localDivisions
+        .flatMap(d => d.teams)
+        .find(t => t.id === teamId)
 
     if (!team) {
       console.error('Team not found:', teamId)
@@ -409,7 +428,7 @@ export default function BoardMode({
 
     console.log('Target division:', targetDivisionId, 'Target pool:', targetPoolId)
 
-    const teamDivisionId = getTeamDivisionId(teamId)
+    const teamDivisionId = getTeamDivisionId(teamId) || team.divisionId
     if (!teamDivisionId) return
 
     // Check if moving to a division with existing matches
@@ -442,7 +461,7 @@ export default function BoardMode({
   }
 
   const performMoveWithOptimisticUpdate = async (teamId: string, targetDivisionId: string, targetPoolId: string | null, team: Team) => {
-    const teamDivisionId = getTeamDivisionId(teamId)
+    const teamDivisionId = getTeamDivisionId(teamId) || team.divisionId
     if (!teamDivisionId) return
 
     // Apply optimistic update immediately
@@ -803,6 +822,10 @@ function DivisionColumn({
 
   const { setNodeRef: setHeaderRef, attributes, listeners, transform, transition, isDragging } = useSortable({
     id: `division-header-${division?.id || 'unknown'}`,
+    data: {
+      type: 'division',
+      divisionId: division?.id,
+    },
   })
 
   if (!division) {
@@ -1032,7 +1055,15 @@ function SortableTeamCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: team?.id || 'unknown' })
+  } = useSortable({ 
+    id: team?.id || 'unknown',
+    data: {
+      type: 'team',
+      teamId: team?.id,
+      divisionId: team?.divisionId,
+      team,
+    },
+  })
 
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -1159,7 +1190,14 @@ function SortablePlayerCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `player-${teamId}-slot-${slotIndex}` })
+  } = useSortable({ 
+    id: `player-${teamId}-slot-${slotIndex}`,
+    data: {
+      type: 'player',
+      teamId,
+      slotIndex,
+    },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
