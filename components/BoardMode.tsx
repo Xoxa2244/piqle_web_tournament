@@ -372,8 +372,8 @@ export default function BoardMode({
     console.log('Dragging team:', team.name, 'from division:', getTeamDivisionId(teamId))
 
     // Parse drop zone ID and determine target
-    let targetDivisionId: string | null
-    let targetPoolId: string | null
+    let targetDivisionId: string | null = null
+    let targetPoolId: string | null = null
 
     const resolveDivisionDefaultPool = (divisionId: string | null) => {
       if (!divisionId) return null
