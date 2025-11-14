@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc'
 import { useParams } from 'next/navigation'
+import { formatDescription } from '@/lib/formatDescription'
 
 export default function PublicScoreboardPage() {
   const params = useParams()
@@ -34,7 +35,10 @@ export default function PublicScoreboardPage() {
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold text-gray-900">{tournament.title}</h1>
           {tournament.description && (
-            <p className="text-gray-600 mt-2">{tournament.description}</p>
+            <div
+              className="text-gray-600 mt-2 prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+            />
           )}
           
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
