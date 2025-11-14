@@ -1513,23 +1513,6 @@ export default function DivisionsPage() {
                   </div>
                 </div>
                 
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-2">Quick actions</h4>
-                  <div className="space-y-2">
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Settings
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Copy className="h-4 w-4 mr-2" />
-                      Duplicate
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
               </div>
             </div>
 
