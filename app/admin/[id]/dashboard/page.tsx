@@ -20,6 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import BracketModal from '@/components/BracketModal'
 import Link from 'next/link'
 
 interface TeamStanding {
@@ -56,6 +57,7 @@ export default function DivisionDashboard() {
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
+  const [showBracketModal, setShowBracketModal] = useState(false)
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
@@ -72,8 +74,8 @@ export default function DivisionDashboard() {
   )
 
   // Set first division as default
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId) || 
-                         tournament?.divisions[0]
+  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
+                          (tournament?.divisions as any[])?.[0]
   
   if (currentDivision && !selectedDivisionId) {
     setSelectedDivisionId(currentDivision.id)
@@ -331,19 +333,26 @@ export default function DivisionDashboard() {
 
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen px-4">
         <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
           <p className="text-gray-600 mb-6">
-            You don&apos;t have access to any divisions in this tournament.
-            Please contact the tournament administrator to request access.
+            Create a division to start adding teams, generating schedules, and entering scores.
           </p>
-          <Link
-            href={`/admin/${tournamentId}`}
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            Back to Tournament
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href={`/admin/${tournamentId}/divisions`}
+              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Create division
+            </Link>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
+            >
+              Back to tournament
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -380,21 +389,34 @@ export default function DivisionDashboard() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
               <p className="text-gray-600">{tournament.title}</p>
               {/* Status badges hidden per user request */}
             </div>
             
+            {/* Show Bracket Button */}
+            {isRRComplete && currentDivision && (
+              <Button
+                onClick={() => setShowBracketModal(true)}
+                variant="outline"
+                className="flex items-center space-x-2 mr-4"
+              >
+                <Trophy className="h-4 w-4" />
+                <span>Show Bracket</span>
+              </Button>
+            )}
+
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
+                  const divisions = tournament.divisions as any[]
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
+                  setSelectedDivisionId(divisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -405,7 +427,7 @@ export default function DivisionDashboard() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -416,9 +438,10 @@ export default function DivisionDashboard() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
+                  const divisions = tournament.divisions as any[]
+                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -778,10 +801,27 @@ export default function DivisionDashboard() {
           </>
         ) : (
           <div className="text-center py-8">
+            {/* Bracket Modal */}
+            {showBracketModal && currentDivision && (
+              <BracketModal
+                isOpen={showBracketModal}
+                onClose={() => setShowBracketModal(false)}
+                divisionId={currentDivision.id}
+              />
+            )}
             <p className="text-gray-500">Select division</p>
           </div>
         )}
       </div>
+
+      {/* Bracket Modal */}
+      {showBracketModal && currentDivision && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={currentDivision.id}
+        />
+      )}
     </div>
   )
 }

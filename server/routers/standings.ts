@@ -1,5 +1,7 @@
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { TRPCError } from '@trpc/server'
+import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
+import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
 
 interface TeamStats {
   teamId: string
@@ -40,6 +42,55 @@ export const standingsRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to calculate standings')
       }
 
+      const storedStandings = await ctx.prisma.standing.findMany({
+        where: { divisionId: input.divisionId },
+      })
+
+      const hasStoredStandings = storedStandings.length === division.teams.length && storedStandings.some(s =>
+        s.wins !== 0 ||
+        s.losses !== 0 ||
+        s.pointsFor !== 0 ||
+        s.pointsAgainst !== 0
+      )
+
+      if (hasStoredStandings) {
+        const standingsFromDb = storedStandings.map(standing => {
+          const team = division.teams.find(team => team.id === standing.teamId)
+          return {
+            teamId: standing.teamId,
+            teamName: team?.name || 'Unknown Team',
+            wins: standing.wins,
+            losses: standing.losses,
+            pointsFor: standing.pointsFor,
+            pointsAgainst: standing.pointsAgainst,
+            pointDiff: standing.pointDiff,
+            headToHead: new Map<string, { wins: number; losses: number; pointDiff: number }>(),
+          } as TeamStats
+        })
+
+        const sortedDbStandings = standingsFromDb.sort((a, b) => {
+          if (a.wins !== b.wins) {
+            return b.wins - a.wins
+          }
+
+          if (a.pointDiff !== b.pointDiff) {
+            return b.pointDiff - a.pointDiff
+          }
+
+          return b.pointsFor - a.pointsFor
+        })
+
+        return {
+          standings: sortedDbStandings.map((team, index) => ({
+            ...team,
+            rank: index + 1,
+            headToHead: Object.fromEntries(team.headToHead),
+          })),
+          totalMatches: division.matches.length,
+          completedMatches: division.matches.filter(m => m.games.length > 0).length,
+        }
+      }
+
       // Initialize team stats
       const teamStats: Map<string, TeamStats> = new Map()
       
@@ -60,51 +111,68 @@ export const standingsRouter = createTRPCRouter({
       division.matches.forEach(match => {
         const teamAStats = teamStats.get(match.teamAId)
         const teamBStats = teamStats.get(match.teamBId)
-        
-        if (!teamAStats || !teamBStats) return
+
+        if (!teamAStats && !teamBStats) {
+          return
+        }
 
         // Calculate total points for this match
         let teamAPoints = 0
         let teamBPoints = 0
-        
+
         match.games.forEach(game => {
           teamAPoints += game.scoreA
           teamBPoints += game.scoreB
         })
 
-        // Update overall stats
-        teamAStats.pointsFor += teamAPoints
-        teamAStats.pointsAgainst += teamBPoints
-        teamBStats.pointsFor += teamBPoints
-        teamBStats.pointsAgainst += teamAPoints
+        // Update overall stats if team belongs to this division
+        if (teamAStats) {
+          teamAStats.pointsFor += teamAPoints
+          teamAStats.pointsAgainst += teamBPoints
+        }
 
-        // Determine winner
+        if (teamBStats) {
+          teamBStats.pointsFor += teamBPoints
+          teamBStats.pointsAgainst += teamAPoints
+        }
+
+        // Determine winner/loser for teams that belong to this division
         if (teamAPoints > teamBPoints) {
-          teamAStats.wins += 1
-          teamBStats.losses += 1
+          if (teamAStats) {
+            teamAStats.wins += 1
+          }
+          if (teamBStats) {
+            teamBStats.losses += 1
+          }
         } else if (teamBPoints > teamAPoints) {
-          teamBStats.wins += 1
-          teamAStats.losses += 1
+          if (teamBStats) {
+            teamBStats.wins += 1
+          }
+          if (teamAStats) {
+            teamAStats.losses += 1
+          }
         }
         // If equal, both teams get 0.5 wins (handled in sorting)
 
-        // Update head-to-head stats
-        const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
-        const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+        // Update head-to-head stats only if both teams belong to this division
+        if (teamAStats && teamBStats) {
+          const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+          const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
 
-        if (teamAPoints > teamBPoints) {
-          teamAHeadToHead.wins += 1
-          teamBHeadToHead.losses += 1
-        } else if (teamBPoints > teamAPoints) {
-          teamBHeadToHead.wins += 1
-          teamAHeadToHead.losses += 1
+          if (teamAPoints > teamBPoints) {
+            teamAHeadToHead.wins += 1
+            teamBHeadToHead.losses += 1
+          } else if (teamBPoints > teamAPoints) {
+            teamBHeadToHead.wins += 1
+            teamAHeadToHead.losses += 1
+          }
+
+          teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
+          teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
+
+          teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+          teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
         }
-
-        teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
-        teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
-
-        teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
-        teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
       })
 
       // Calculate point differentials
@@ -761,6 +829,494 @@ export const standingsRouter = createTRPCRouter({
       return { success: true }
     }),
 
+  getBracket: protectedProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      console.log('[getBracket] Starting with divisionId:', input.divisionId)
+      try {
+        // Get division with teams, matches, and standings
+        console.log('[getBracket] Fetching division from database...')
+        const division = await ctx.prisma.division.findUnique({
+          where: { id: input.divisionId },
+          include: {
+            teams: true,
+            matches: {
+              include: {
+                teamA: true,
+                teamB: true,
+                games: {
+                  orderBy: { index: 'asc' }
+                },
+              },
+            },
+            standings: {
+              include: {
+                team: true,
+              },
+            },
+          },
+        })
+
+        if (!division) {
+          console.error('[getBracket] Division not found:', input.divisionId)
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Division not found' })
+        }
+
+        console.log('[getBracket] Division found:', {
+          id: division.id,
+          name: division.name,
+          teamsCount: division.teams.length,
+          matchesCount: division.matches.length,
+        })
+
+      // Calculate standings if not available or recalculate from RR matches
+      console.log('[getBracket] Filtering matches by stage...')
+      const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
+      const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
+      const playoffMatches = division.matches.filter(m => m.stage === 'ELIMINATION')
+      
+      console.log('[getBracket] Match counts:', {
+        rr: rrMatches.length,
+        playIn: playInMatches.length,
+        playoff: playoffMatches.length,
+      })
+
+      // Calculate standings from RR matches
+      console.log('[getBracket] Calculating standings from RR matches...')
+      const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointDiff: number }> = new Map()
+      
+      division.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: 0,
+          losses: 0,
+          pointDiff: 0,
+        })
+      })
+      
+      console.log('[getBracket] Team stats initialized:', teamStats.size)
+
+      rrMatches.forEach(match => {
+        const teamAStats = teamStats.get(match.teamAId)
+        const teamBStats = teamStats.get(match.teamBId)
+        
+        if (!teamAStats || !teamBStats) {
+          console.warn(`Team stats not found for match ${match.id}: teamA=${match.teamAId}, teamB=${match.teamBId}`)
+          return
+        }
+
+        // Safely calculate scores - handle cases where games array might be empty
+        const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+        const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+
+        teamAStats.pointDiff += totalScoreA - totalScoreB
+        teamBStats.pointDiff += totalScoreB - totalScoreA
+
+        if (totalScoreA > totalScoreB) {
+          teamAStats.wins += 1
+          teamBStats.losses += 1
+        } else if (totalScoreB > totalScoreA) {
+          teamBStats.wins += 1
+          teamAStats.losses += 1
+        }
+      })
+
+      console.log('[getBracket] Processing RR matches...')
+      const standings = Array.from(teamStats.values())
+        .sort((a, b) => {
+          if (a.wins !== b.wins) return b.wins - a.wins
+          return b.pointDiff - a.pointDiff
+        })
+        .map((stats, index) => ({
+          ...stats,
+          seed: index + 1,
+        }))
+
+      console.log('[getBracket] Standings calculated:', standings.length)
+
+      // Check if RR is complete
+      const completedRRMatches = rrMatches.filter(m => 
+        (m.games || []).length > 0 && (m.games || []).some(g => (g.scoreA || 0) > 0 || (g.scoreB || 0) > 0)
+      )
+      const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
+      
+      console.log('[getBracket] RR completion status:', {
+        isRRComplete,
+        completedMatches: completedRRMatches.length,
+        totalRRMatches: rrMatches.length,
+      })
+
+      // Determine bracket size - use next power of 2
+      const N = division.teams.length
+      // Calculate bracket size as next power of 2, but cap at maxTeams if set
+      const nextPowerOf2 = N <= 1 ? 1 : Math.pow(2, Math.ceil(Math.log2(N)))
+      const B = division.maxTeams ? Math.min(division.maxTeams, nextPowerOf2) : nextPowerOf2
+      const needsPlayIn = B < N && N < 2 * B
+      
+      console.log('[getBracket] Bracket parameters:', { N, B, needsPlayIn })
+
+      // Build complete bracket using new structure (includes both play-in and playoff)
+      // Always generate bracket, even if RR is not complete - show seed numbers only
+      console.log('[getBracket] Building bracket structure...')
+      let allBracketMatches: BracketMatch[] = []
+      try {
+        // Validate inputs before building bracket
+        if (N === 0) {
+          console.warn('[getBracket] No teams in division, cannot build bracket')
+          allBracketMatches = []
+        } else if (B <= 0 || B < N / 2) {
+          console.warn(`[getBracket] Invalid bracket size ${B} for ${N} teams`)
+          allBracketMatches = []
+        } else {
+          console.log('[getBracket] Preparing match data...')
+          // Prepare play-in match data - always include if matches exist in DB
+          // This ensures Round 0 is displayed even if needsPlayIn calculation says it's not needed
+          const playInMatchData = playInMatches.length > 0
+            ? playInMatches
+                .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+                .map(match => {
+                  const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+                  const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+                  const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                  
+                  return {
+                    id: match.id,
+                    winnerTeamId: winnerId,
+                    teamAId: match.teamAId!,
+                    teamBId: match.teamBId!,
+                  }
+                })
+            : undefined
+          
+          console.log('[getBracket] Play-In match data prepared:', {
+            playInMatchesCount: playInMatches.length,
+            playInMatchDataCount: playInMatchData?.length || 0,
+          })
+          
+          // Prepare playoff match data - always include if matches exist in DB
+          // This ensures bracket is built from actual DB matches, not generated structure
+          const playoffMatchData = playoffMatches.length > 0
+            ? playoffMatches
+                .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
+                .map(match => ({
+                  id: match.id,
+                  roundIndex: match.roundIndex || 0,
+                  teamAId: match.teamAId!,
+                  teamBId: match.teamBId!,
+                  winnerId: match.winnerTeamId || undefined,
+                  games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
+                  note: match.note || undefined, // Include note to filter out third place matches
+                }))
+            : undefined
+          
+          // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
+          // Always generate bracket structure, even if RR is not complete
+          // If RR is not complete, standings will be based on current state (or just seed numbers)
+          console.log('[getBracket] Calling buildCompleteBracket...', { isRRComplete })
+          allBracketMatches = buildCompleteBracket(
+            N,
+            B,
+            standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
+            playInMatchData,
+            playoffMatchData
+          )
+          console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
+        }
+      } catch (error) {
+        console.error('[getBracket] Error building complete bracket:', error)
+        console.error('[getBracket] Error details:', {
+          totalTeams: N,
+          bracketSize: B,
+          standingsCount: standings.length,
+          playInMatchesCount: playInMatches.length,
+          playoffMatchesCount: playoffMatches.length,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+        })
+        // If bracket building fails, return empty array - frontend will handle gracefully
+        allBracketMatches = []
+      }
+
+      // Separate play-in and playoff matches for backward compatibility
+      console.log('[getBracket] Separating matches for backward compatibility...')
+      const playInBracket = allBracketMatches.filter(m => m.round === 0)
+      const playoffBracket = allBracketMatches.filter(m => m.round > 0)
+
+      console.log('[getBracket] Preparing response...')
+      const response = {
+        divisionName: division.name,
+        isRRComplete,
+        needsPlayIn,
+        standings,
+        playInBracket,
+        playoffBracket,
+        bracketSize: B,
+        // New structure: all matches in one array
+        allMatches: allBracketMatches,
+      }
+      
+      console.log('[getBracket] Response prepared successfully:', {
+        divisionName: response.divisionName,
+        isRRComplete: response.isRRComplete,
+        standingsCount: response.standings.length,
+        allMatchesCount: response.allMatches.length,
+      })
+      
+      return response
+      } catch (error) {
+        console.error('[getBracket] Fatal error:', error)
+        console.error('[getBracket] Error details:', {
+          divisionId: input.divisionId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          errorName: error instanceof Error ? error.name : typeof error,
+        })
+        
+        // Return TRPCError for proper error handling
+        if (error instanceof TRPCError) {
+          throw error
+        }
+        
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to get bracket',
+          cause: error,
+        })
+      }
+    }),
+
+  getBracketPublic: publicProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Same logic as getBracket but public
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: true,
+          matches: {
+            include: {
+              teamA: true,
+              teamB: true,
+              games: {
+                orderBy: { index: 'asc' }
+              },
+            },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
+      const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
+      const playoffMatches = division.matches.filter(m => m.stage === 'ELIMINATION')
+
+      const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointDiff: number }> = new Map()
+      
+      division.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: 0,
+          losses: 0,
+          pointDiff: 0,
+        })
+      })
+
+      rrMatches.forEach(match => {
+        const teamAStats = teamStats.get(match.teamAId)
+        const teamBStats = teamStats.get(match.teamBId)
+        
+        if (!teamAStats || !teamBStats) return
+
+        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+
+        teamAStats.pointDiff += totalScoreA - totalScoreB
+        teamBStats.pointDiff += totalScoreB - totalScoreA
+
+        if (totalScoreA > totalScoreB) {
+          teamAStats.wins += 1
+          teamBStats.losses += 1
+        } else if (totalScoreB > totalScoreA) {
+          teamBStats.wins += 1
+          teamAStats.losses += 1
+        }
+      })
+
+      const standings = Array.from(teamStats.values())
+        .sort((a, b) => {
+          if (a.wins !== b.wins) return b.wins - a.wins
+          return b.pointDiff - a.pointDiff
+        })
+        .map((stats, index) => ({
+          ...stats,
+          seed: index + 1,
+        }))
+
+      const completedRRMatches = rrMatches.filter(m => 
+        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+      )
+      const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
+
+      const N = division.teams.length
+      const B = division.maxTeams || Math.min(16, N)
+      const needsPlayIn = B < N && N < 2 * B
+
+      let playInBracket: any[] = []
+      if (needsPlayIn && isRRComplete) {
+        const E = N - B
+        const playInTeams = standings.slice(N - 2 * E)
+        
+        if (playInMatches.length > 0) {
+          playInBracket = playInMatches.map((match, index) => {
+            const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+            const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
+            const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
+
+            return {
+              matchId: match.id,
+              roundIndex: match.roundIndex,
+              teamA: {
+                id: match.teamAId,
+                name: match.teamA.name,
+                seed: playInTeams[index * 2]?.seed,
+              },
+              teamB: {
+                id: match.teamBId,
+                name: match.teamB.name,
+                seed: playInTeams[index * 2 + 1]?.seed,
+              },
+              isCompleted,
+              winner: winner ? { id: winner.id, name: winner.name } : null,
+            }
+          })
+        } else {
+          for (let i = 0; i < E; i++) {
+            playInBracket.push({
+              matchId: null,
+              roundIndex: 0,
+              teamA: {
+                id: playInTeams[i].teamId,
+                name: playInTeams[i].teamName,
+                seed: playInTeams[i].seed,
+              },
+              teamB: {
+                id: playInTeams[playInTeams.length - 1 - i].teamId,
+                name: playInTeams[playInTeams.length - 1 - i].teamName,
+                seed: playInTeams[playInTeams.length - 1 - i].seed,
+              },
+              isCompleted: false,
+              winner: null,
+            })
+          }
+        }
+      }
+
+      const playoffBracket: any[] = []
+      if (isRRComplete) {
+        const autoQualified = needsPlayIn ? standings.slice(0, N - 2 * (N - B)) : standings
+        const playInWinners: any[] = []
+
+        if (playInMatches.length > 0) {
+          const completedPlayIn = playInMatches.filter(m => {
+            const totalScoreA = m.games.reduce((sum, game) => sum + game.scoreA, 0)
+            const totalScoreB = m.games.reduce((sum, game) => sum + game.scoreB, 0)
+            return m.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
+          })
+          const allPlayInComplete = completedPlayIn.length === playInMatches.length
+
+          if (allPlayInComplete) {
+            playInMatches.forEach(match => {
+              const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+              const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+              if (totalScoreA > totalScoreB) {
+                playInWinners.push({ id: match.teamAId, name: match.teamA.name })
+              } else {
+                playInWinners.push({ id: match.teamBId, name: match.teamB.name })
+              }
+            })
+          }
+        }
+
+        const playoffTeams = needsPlayIn 
+          ? [...autoQualified.map(s => ({ id: s.teamId, name: s.teamName, seed: s.seed })), ...playInWinners.map((w, i) => ({ id: w.id, name: w.name, seed: N - 2 * (N - B) + i + 1 }))]
+          : standings.map(s => ({ id: s.teamId, name: s.teamName, seed: s.seed }))
+
+        const rounds: Map<number, any[]> = new Map()
+        
+        if (playoffMatches.length > 0) {
+          playoffMatches.forEach(match => {
+            const round = match.roundIndex || 0
+            if (!rounds.has(round)) {
+              rounds.set(round, [])
+            }
+            
+            const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
+            const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
+            const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
+
+            rounds.get(round)!.push({
+              matchId: match.id,
+              roundIndex: round,
+              teamA: {
+                id: match.teamAId,
+                name: match.teamA.name,
+                seed: playoffTeams.find(t => t.id === match.teamAId)?.seed,
+              },
+              teamB: {
+                id: match.teamBId,
+                name: match.teamB.name,
+                seed: playoffTeams.find(t => t.id === match.teamBId)?.seed,
+              },
+              isCompleted,
+              winner: winner ? { id: winner.id, name: winner.name } : null,
+            })
+          })
+        } else {
+          let currentRoundTeams = [...playoffTeams]
+          let roundIndex = 0
+          
+          while (currentRoundTeams.length > 1) {
+            const roundMatches: any[] = []
+            for (let i = 0; i < currentRoundTeams.length / 2; i++) {
+              roundMatches.push({
+                matchId: null,
+                roundIndex,
+                teamA: currentRoundTeams[i],
+                teamB: currentRoundTeams[currentRoundTeams.length - 1 - i],
+                isCompleted: false,
+                winner: null,
+              })
+            }
+            rounds.set(roundIndex, roundMatches)
+            roundIndex++
+            currentRoundTeams = currentRoundTeams.slice(0, currentRoundTeams.length / 2)
+          }
+        }
+
+        const sortedRounds = Array.from(rounds.entries()).sort((a, b) => a[0] - b[0])
+        sortedRounds.forEach(([roundIndex, matches]) => {
+          playoffBracket.push(...matches)
+        })
+      }
+
+      return {
+        divisionName: division.name,
+        isRRComplete,
+        needsPlayIn,
+        standings,
+        playInBracket,
+        playoffBracket,
+        bracketSize: B,
+      }
+    }),
+
   generatePlayoffAfterPlayIn: tdProcedure
     .input(z.object({ 
       divisionId: z.string(),
@@ -787,6 +1343,14 @@ export const standingsRouter = createTRPCRouter({
       if (!division) {
         throw new Error('Division not found')
       }
+
+      // Delete existing Play-Off matches before regenerating
+      await ctx.prisma.match.deleteMany({
+        where: {
+          divisionId: input.divisionId,
+          stage: 'ELIMINATION'
+        }
+      })
 
       // Check if all play-in matches are completed
       const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
@@ -886,12 +1450,44 @@ export const standingsRouter = createTRPCRouter({
       const autoQualifiedTeamIds = standings.slice(0, N - 2 * E).map(s => s.teamId)
       const autoQualified = division.teams.filter(team => autoQualifiedTeamIds.includes(team.id))
 
-      // Generate playoff matches with correct participants
-      // Convert teams to the format expected by generateSingleEliminationMatches
-      const playoffTeams = [...autoQualified, ...playInWinners].map(team => ({
-        teamId: team.id
-      }))
-      const playoffMatches = generateSingleEliminationMatches(playoffTeams, 0)
+      console.log('=== Play-Off Generation After Play-In Debug ===')
+      console.log('Full RR standings:')
+      standings.forEach((s, idx) => {
+        console.log(`  ${idx + 1}. ${s.teamName} (${s.wins}W, ${s.pointDiff > 0 ? '+' : ''}${s.pointDiff}PD)`)
+      })
+      console.log('Auto-qualified team IDs:', autoQualifiedTeamIds)
+      console.log('Play-In winners:', playInWinners.map(w => w.name))
+
+      // Get IDs of all playoff participants (auto-qualified + play-in winners)
+      const playInWinnerIds = playInWinners.map(w => w.id)
+      const allPlayoffParticipantIds = [...autoQualifiedTeamIds, ...playInWinnerIds]
+
+      // Sort ALL playoff participants by their standings from Round Robin
+      // №1 plays with last by points (excluding those who lost in play-in)
+      // №2 plays with second-to-last, etc.
+      const playoffTeamsSorted = standings
+        .filter(s => allPlayoffParticipantIds.includes(s.teamId))
+        .map(s => ({
+          teamId: s.teamId,
+          teamName: s.teamName,
+          wins: s.wins,
+          pointDiff: s.pointDiff
+        }))
+
+      console.log('Playoff participants (sorted by RR standings):')
+      playoffTeamsSorted.forEach((team, idx) => {
+        console.log(`  ${idx + 1}. ${team.teamName} (${team.wins}W, ${team.pointDiff > 0 ? '+' : ''}${team.pointDiff}PD)`)
+      })
+
+      const playoffMatches = generateSingleEliminationMatches(playoffTeamsSorted, 0)
+      
+      console.log('Generated playoff pairings:')
+      playoffMatches.forEach((match, idx) => {
+        const teamA = playoffTeamsSorted.find(t => t.teamId === match.teamAId)
+        const teamB = playoffTeamsSorted.find(t => t.teamId === match.teamBId)
+        console.log(`  Match ${idx + 1}: ${teamA?.teamName} vs ${teamB?.teamName}`)
+      })
+      console.log('===========================')
 
       // Create playoff matches in database
       const createdMatches = await Promise.all(

@@ -31,6 +31,8 @@ import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import MergeDivisionModal from '@/components/MergeDivisionModal'
+import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import { 
   ChevronDown, 
@@ -52,6 +54,8 @@ import {
   Clock,
   Trophy,
   Target,
+  GitMerge,
+  GitBranch,
   AlertTriangle
 } from 'lucide-react'
 
@@ -228,10 +232,10 @@ function PoolCard({
 
   return (
     <div className="mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="font-medium text-sm text-blue-600 flex items-center">
-          <Target className="h-4 w-4 mr-1" />
-          Pool {pool.name} ({poolTeams.length})
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm text-blue-600 flex items-center">
+              <Target className="h-4 w-4 mr-1" />
+              {pool.name || 'Pool'} ({poolTeams.length})
         </h4>
       </div>
       
@@ -374,6 +378,8 @@ function DivisionCard({
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
+  onMergeDivisions,
+  onUnmergeDivisions,
   onDeleteDivision,
   onTeamMove, 
   onEditTeam, 
@@ -392,6 +398,8 @@ function DivisionCard({
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
+  onMergeDivisions: (division: Division) => void
+  onUnmergeDivisions?: (division: Division) => void
   onDeleteDivision: (divisionId: string) => void
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
   onEditTeam: (team: Team) => void
@@ -461,10 +469,35 @@ function DivisionCard({
               onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
+              disabled={(division as any).isMerged}
             >
               <Target className="h-4 w-4 mr-1" />
               Distribute
             </Button>
+            
+            {(division as any).isMerged ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onUnmergeDivisions?.(division)}
+                className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
+                title="Unmerge division back to original divisions"
+              >
+                <GitBranch className="h-4 w-4 mr-1" />
+                Unmerge
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onMergeDivisions(division)}
+                className="h-8 px-3"
+                title="Merge with another division"
+              >
+                <GitMerge className="h-4 w-4 mr-1" />
+                Merge
+              </Button>
+            )}
             
             <div className="flex items-center space-x-1">
               <Button
@@ -594,6 +627,10 @@ export default function DivisionsPage() {
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
+  const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
+  const [selectedDivisionForMerge, setSelectedDivisionForMerge] = useState<Division | null>(null)
+  const [showUnmergeDivisionModal, setShowUnmergeDivisionModal] = useState(false)
+  const [selectedDivisionForUnmerge, setSelectedDivisionForUnmerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
 
@@ -609,6 +646,9 @@ export default function DivisionsPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Check if user has admin access
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -623,12 +663,36 @@ export default function DivisionsPage() {
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
   const [availablePlayers, setAvailablePlayers] = useState<any[]>([])
   
-  // Sync local divisions with fetched data
+  // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
+  const visibleDivisions = useMemo(() => {
+    if (!tournament?.divisions) return []
+    const divisions = tournament.divisions as any[]
+    const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisions.filter((div: any) => {
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      const wasMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      return !wasMerged
+    })
+  }, [tournament?.divisions])
+
+  // Sync local divisions with fetched data (filtered)
   useEffect(() => {
-    if (tournament?.divisions) {
+    if (visibleDivisions.length > 0) {
+      setLocalDivisions(visibleDivisions as Division[])
+    } else if (tournament?.divisions) {
       setLocalDivisions(tournament.divisions)
     }
-  }, [tournament?.divisions])
+  }, [visibleDivisions, tournament?.divisions])
   
   // Sync local availablePlayers with fetched data
   useEffect(() => {
@@ -948,9 +1012,29 @@ export default function DivisionsPage() {
   const filteredDivisions = useMemo(() => {
     if (!localDivisions) return []
     
-    return localDivisions.filter(division =>
-      division.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    // Filter out divisions that are part of a merged division
+    const mergedDivisionIds = new Set<string>()
+    const mergedDivisions = localDivisions.filter((div: any) => div.isMerged && div.mergedFromDivisionIds)
+    
+    mergedDivisions.forEach((div: any) => {
+      const mergedFromIds = Array.isArray(div.mergedFromDivisionIds) 
+        ? div.mergedFromDivisionIds 
+        : []
+      mergedFromIds.forEach((id: string) => mergedDivisionIds.add(id))
+    })
+    
+    return localDivisions.filter((div: any) => {
+      // Filter by search query
+      const matchesSearch = div.name.toLowerCase().includes(searchQuery.toLowerCase())
+      if (!matchesSearch) return false
+      
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      return !mergedDivisionIds.has(div.id)
+    })
   }, [localDivisions, searchQuery])
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -1104,6 +1188,16 @@ export default function DivisionsPage() {
     setShowAddTeamModal(true)
   }
 
+  const handleMergeDivisions = (division: Division) => {
+    setSelectedDivisionForMerge(division)
+    setShowMergeDivisionModal(true)
+  }
+
+  const handleUnmergeDivisions = (division: Division) => {
+    setSelectedDivisionForUnmerge(division)
+    setShowUnmergeDivisionModal(true)
+  }
+
   const handleDistributeTeams = (divisionId: string) => {
     if (window.confirm('Are you sure you want to redistribute teams by DUPR rating? This will move all teams from their current pools.')) {
       distributeTeamsMutation.mutate({ divisionId })
@@ -1244,7 +1338,8 @@ export default function DivisionsPage() {
   }
 
   // Check if user has access to any divisions
-  if (tournament.divisions.length === 0) {
+  // Check if user has admin access to manage divisions
+  if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="bg-white border-b">
@@ -1259,7 +1354,7 @@ export default function DivisionsPage() {
                 </Link>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                  <p className="text-sm text-gray-500">{tournament.title}</p>
+                  <p className="text-sm text-gray-500">{tournament?.title}</p>
                 </div>
               </div>
             </div>
@@ -1267,10 +1362,15 @@ export default function DivisionsPage() {
         </div>
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Insufficient Permissions</h2>
             <p className="text-gray-600 mb-6">
-              You don&apos;t have access to any divisions in this tournament.
-              Please contact the tournament administrator to request access.
+              Division management is only available to tournament administrators.
+              Please contact the tournament owner to request administrative access.
             </p>
             <Link
               href={`/admin/${tournamentId}`}
@@ -1281,6 +1381,62 @@ export default function DivisionsPage() {
           </div>
         </div>
       </div>
+    )
+  }
+
+  if (tournament.divisions.length === 0) {
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50">
+          <div className="bg-white border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16">
+                <div className="flex items-center space-x-4">
+                  <Link href={`/admin/${tournamentId}`}>
+                    <Button variant="ghost" size="sm" className="flex items-center space-x-2">
+                      <ArrowLeft className="h-4 w-4" />
+                      <span>Back</span>
+                    </Button>
+                  </Link>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
+                    <p className="text-sm text-gray-500">{tournament.title}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
+            <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+              <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
+              <p className="text-gray-600 mb-6">
+                This tournament doesn&apos;t have any divisions yet. Create the first one to start adding teams and matches.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={() => setShowAddDivisionModal(true)} className="flex-1">
+                  Create division
+                </Button>
+                <Link
+                  href={`/admin/${tournamentId}`}
+                  className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
+                >
+                  Back to tournament
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <AddDivisionModal
+          isOpen={showAddDivisionModal}
+          onClose={() => setShowAddDivisionModal(false)}
+          tournamentId={tournamentId}
+          onSuccess={() => {
+            setShowAddDivisionModal(false)
+            refetch()
+          }}
+        />
+      </>
     )
   }
 
@@ -1357,23 +1513,6 @@ export default function DivisionsPage() {
                   </div>
                 </div>
                 
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-2">Quick actions</h4>
-                  <div className="space-y-2">
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Settings
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Copy className="h-4 w-4 mr-2" />
-                      Duplicate
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full justify-start">
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1394,6 +1533,8 @@ export default function DivisionsPage() {
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
+                      onMergeDivisions={handleMergeDivisions}
+                    onUnmergeDivisions={handleUnmergeDivisions}
                       onDeleteDivision={handleDeleteDivision}
                       onTeamMove={handleTeamMove}
                       onEditTeam={handleEditTeam}
@@ -1470,6 +1611,36 @@ export default function DivisionsPage() {
           refetch()
         }}
       />
+      
+      {selectedDivisionForMerge && (
+        <MergeDivisionModal
+          isOpen={showMergeDivisionModal}
+          onClose={() => {
+            setShowMergeDivisionModal(false)
+            setSelectedDivisionForMerge(null)
+          }}
+          tournamentId={tournamentId}
+          sourceDivision={selectedDivisionForMerge as any}
+          availableDivisions={localDivisions as any}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
+
+      {selectedDivisionForUnmerge && (
+        <UnmergeDivisionModal
+          isOpen={showUnmergeDivisionModal}
+          onClose={() => {
+            setShowUnmergeDivisionModal(false)
+            setSelectedDivisionForUnmerge(null)
+          }}
+          mergedDivision={selectedDivisionForUnmerge as any}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
 
       {/* Edit Team Modal */}
       <EditTeamModal

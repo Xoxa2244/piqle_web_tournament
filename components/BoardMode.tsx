@@ -28,7 +28,6 @@ import {
   GripVertical, 
   Users, 
   Edit, 
-  MoreVertical,
   Plus,
   Search,
   Undo,
@@ -253,9 +252,25 @@ export default function BoardMode({
   }, [searchQuery, localDivisions])
 
   const handleDragStart = (event: DragStartEvent) => {
+    const activeType = event.active.data.current?.type
+
+    if (activeType === 'player') {
+      setActivePlayer(event.active.id as string)
+      return
+    }
+
+    if (activeType === 'team') {
+      setActiveTeam(event.active.id as string)
+      return
+    }
+
+    if (activeType === 'division') {
+      setActiveTeam(null)
+      setActivePlayer(null)
+      return
+    }
+
     const activeId = event.active.id as string
-    
-    // Check if it's a player drag (starts with 'player-')
     if (activeId.startsWith('player-')) {
       setActivePlayer(activeId)
     } else {
@@ -293,9 +308,11 @@ export default function BoardMode({
 
     const activeId = active.id as string
     const overId = over.id as string
-
+    const activeType = active.data.current?.type
+    const overType = over.data?.current?.type
+    
     // Check if we're dragging a player
-    if (activeId.startsWith('player-') && overId.startsWith('player-')) {
+    if (activeType === 'player' && overType === 'player') {
       // Player to player drag
       const playerPattern = /^player-(.+)-slot-(\d+)$/
       const activePlayerMatch = activeId.match(playerPattern)
@@ -315,11 +332,11 @@ export default function BoardMode({
     }
 
     // Check if we're dragging a division (starts with 'division-header-')
-    if (activeId.startsWith('division-header-')) {
+    if (activeType === 'division' || activeId.startsWith('division-header-')) {
       const divisionId = activeId.replace('division-header-', '')
       const overDivisionId = overId.startsWith('division-header-') 
         ? overId.replace('division-header-', '')
-        : null
+        : (over.data?.current?.divisionId as string | undefined) || null
 
       if (overDivisionId && divisionId !== overDivisionId) {
         // Reorder divisions
@@ -339,9 +356,13 @@ export default function BoardMode({
 
     // Handle team dragging
     const teamId = activeId
-    const team = localDivisions
-      .flatMap(d => d.teams)
-      .find(t => t.id === teamId)
+    const activeData = active.data.current as any
+    const overData = over.data?.current as any
+
+    const team = (activeData?.team as Team | undefined)
+      ?? localDivisions
+        .flatMap(d => d.teams)
+        .find(t => t.id === teamId)
 
     if (!team) {
       console.error('Team not found:', teamId)
@@ -351,66 +372,68 @@ export default function BoardMode({
     console.log('Dragging team:', team.name, 'from division:', getTeamDivisionId(teamId))
 
     // Parse drop zone ID and determine target
-    let targetDivisionId: string | null
-    let targetPoolId: string | null
+    let targetDivisionId: string | null = null
+    let targetPoolId: string | null = null
 
-    console.log('Drop target:', overId)
+    const resolveDivisionDefaultPool = (divisionId: string | null) => {
+      if (!divisionId) return null
+      const targetDivision = localDivisions.find(d => d.id === divisionId)
+      return targetDivision?.pools.length ? targetDivision.pools[0].id : null
+    }
 
-    if (overId.startsWith('waitlist-')) {
+    if (overType === 'waitlist') {
+      targetDivisionId = overData?.divisionId || null
+      targetPoolId = null
+    } else if (overType === 'pool') {
+      targetDivisionId = overData?.divisionId || null
+      targetPoolId = overData?.poolId || null
+    } else if (overType === 'team') {
+      targetDivisionId = overData?.team?.divisionId || overData?.divisionId || null
+      targetPoolId = overData?.team?.poolId ?? overData?.poolId ?? null
+    } else if (overType === 'division') {
+      targetDivisionId = overData?.divisionId || null
+      targetPoolId = resolveDivisionDefaultPool(targetDivisionId)
+    } else if (overId.startsWith('waitlist-')) {
       targetDivisionId = overId.replace('waitlist-', '')
       targetPoolId = null
-      console.log('Dropped on waitlist')
     } else if (overId.startsWith('pool-')) {
-      // Format: pool-{divisionId}-{poolId}
-      // Remove 'pool-' prefix and split by first occurrence of '-'
+      // Fallback parsing for legacy IDs: pool-{divisionId}-{poolId}
       const withoutPrefix = overId.replace('pool-', '')
-      const firstDashIndex = withoutPrefix.indexOf('-')
-      if (firstDashIndex > 0) {
-        targetDivisionId = withoutPrefix.substring(0, firstDashIndex)
-        targetPoolId = withoutPrefix.substring(firstDashIndex + 1)
-        console.log('Dropped on pool:', targetPoolId)
-      } else {
-        console.error('Invalid pool ID format:', overId)
-        return
+      const separatorIndex = withoutPrefix.lastIndexOf('-')
+      if (separatorIndex > 0) {
+        targetDivisionId = withoutPrefix.substring(0, separatorIndex)
+        targetPoolId = withoutPrefix.substring(separatorIndex + 1)
       }
     } else if (overId.startsWith('division-')) {
       targetDivisionId = overId.replace('division-', '')
-      // For division drops, use first pool or waitlist
-      const targetDivision = localDivisions.find(d => d.id === targetDivisionId)
-      targetPoolId = targetDivision?.pools.length ? targetDivision.pools[0].id : null
-      console.log('Dropped on division, using first pool:', targetPoolId)
+      targetPoolId = resolveDivisionDefaultPool(targetDivisionId)
     } else {
-      // Handle case where team drops on division header or other element
-      // Check if overId is a division ID
       const targetDivision = localDivisions.find(d => d.id === overId)
       if (targetDivision) {
-        targetDivisionId = overId
-        targetPoolId = targetDivision.pools.length ? targetDivision.pools[0].id : null
-        console.log('Team dropped on division header, using first pool:', targetPoolId)
-      } else {
-        // overId is not a drop zone - it's probably another team
-        const targetTeam = localDivisions
-          .flatMap(division => division.teams)
-          .find(team => team.id === overId)
-        
+        targetDivisionId = targetDivision.id
+        targetPoolId = resolveDivisionDefaultPool(targetDivisionId)
+      } else if (overType === 'droppable') {
+        targetDivisionId = overData?.divisionId || null
+        targetPoolId = overData?.poolId || null
+      } else if (!targetDivisionId) {
+        const targetTeam = overData?.team
+          ?? localDivisions.flatMap(division => division.teams).find(t => t.id === overId)
         if (targetTeam) {
+          targetDivisionId = targetTeam.divisionId
           targetPoolId = targetTeam.poolId
-          // Find division for this team
-          const division = localDivisions.find(d => 
-            d.teams.some(t => t.id === overId)
-          )
-          targetDivisionId = division?.id || null
-          console.log('Team dropped on another team:', targetTeam.name, 'pool:', targetPoolId)
-        } else {
-          console.error('Unknown drop target:', overId)
-          return
         }
       }
     }
 
+    if (!targetDivisionId) {
+      console.error('Unknown drop target:', overId, overData)
+      setActiveTeam(null)
+      return
+    }
+
     console.log('Target division:', targetDivisionId, 'Target pool:', targetPoolId)
 
-    const teamDivisionId = getTeamDivisionId(teamId)
+    const teamDivisionId = getTeamDivisionId(teamId) || team.divisionId
     if (!teamDivisionId) return
 
     // Check if moving to a division with existing matches
@@ -443,7 +466,7 @@ export default function BoardMode({
   }
 
   const performMoveWithOptimisticUpdate = async (teamId: string, targetDivisionId: string, targetPoolId: string | null, team: Team) => {
-    const teamDivisionId = getTeamDivisionId(teamId)
+    const teamDivisionId = getTeamDivisionId(teamId) || team.divisionId
     if (!teamDivisionId) return
 
     // Apply optimistic update immediately
@@ -796,35 +819,27 @@ function DivisionColumn({
 }) {
   const { setNodeRef: setWaitListRef } = useDroppable({
     id: `waitlist-${division?.id || 'unknown'}`,
+    data: {
+      type: 'waitlist',
+      divisionId: division?.id,
+    },
   })
 
   const { setNodeRef: setDivisionRef } = useDroppable({
     id: `division-${division?.id || 'unknown'}`,
+    data: {
+      type: 'division',
+      divisionId: division?.id,
+    },
   })
 
   const { setNodeRef: setHeaderRef, attributes, listeners, transform, transition, isDragging } = useSortable({
     id: `division-header-${division?.id || 'unknown'}`,
+    data: {
+      type: 'division',
+      divisionId: division?.id,
+    },
   })
-
-  // State for context menu
-  const [showContextMenu, setShowContextMenu] = useState(false)
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showContextMenu) {
-        setShowContextMenu(false)
-      }
-    }
-
-    if (showContextMenu) {
-      document.addEventListener('click', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside)
-    }
-  }, [showContextMenu])
 
   if (!division) {
     console.warn('DivisionColumn: division is undefined')
@@ -879,30 +894,15 @@ function DivisionColumn({
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => setShowContextMenu(!showContextMenu)}
+                className="text-red-500 hover:text-red-700"
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
+                    onDeleteDivision?.(division.id)
+                  }
+                }}
               >
-                <MoreVertical className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               </Button>
-              
-              {/* Context Menu */}
-              {showContextMenu && (
-                <div className="absolute right-0 top-8 bg-white border rounded-lg shadow-lg z-10 min-w-[120px]">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
-                        onDeleteDivision?.(division.id)
-                        setShowContextMenu(false)
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Division
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
           
@@ -1006,6 +1006,11 @@ function PoolDropZone({
 }) {
   const { setNodeRef } = useDroppable({
     id: `pool-${divisionId}-${pool?.id || 'unknown'}`,
+    data: {
+      type: 'pool',
+      divisionId,
+      poolId: pool?.id,
+    },
   })
 
   if (!pool) {
@@ -1016,7 +1021,7 @@ function PoolDropZone({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="font-medium text-gray-900">Pool {pool.name}</h4>
+        <h4 className="font-medium text-gray-900">{pool.name || 'Pool'}</h4>
         <Badge variant="outline">{teams.length}</Badge>
       </div>
       
@@ -1068,7 +1073,15 @@ function SortableTeamCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: team?.id || 'unknown' })
+  } = useSortable({ 
+    id: team?.id || 'unknown',
+    data: {
+      type: 'team',
+      teamId: team?.id,
+      divisionId: team?.divisionId,
+      team,
+    },
+  })
 
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -1195,7 +1208,14 @@ function SortablePlayerCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `player-${teamId}-slot-${slotIndex}` })
+  } = useSortable({ 
+    id: `player-${teamId}-slot-${slotIndex}`,
+    data: {
+      type: 'player',
+      teamId,
+      slotIndex,
+    },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),

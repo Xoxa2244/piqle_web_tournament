@@ -17,6 +17,8 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
+import BracketPyramidNew from '@/components/BracketPyramidNew'
+import BracketModal from '@/components/BracketModal'
 
 interface TeamStanding {
   teamId: string
@@ -52,6 +54,7 @@ export default function PublicCoursePage() {
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
+  const [showBracketModal, setShowBracketModal] = useState(false)
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
@@ -60,8 +63,9 @@ export default function PublicCoursePage() {
   )
 
   // Set first division as default
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId) || 
-                         tournament?.divisions[0]
+  const divisions = tournament?.divisions as any[]
+  const currentDivision = divisions?.find((d: any) => d.id === selectedDivisionId) || 
+                         divisions?.[0]
   
   if (currentDivision && !selectedDivisionId) {
     setSelectedDivisionId(currentDivision.id)
@@ -77,6 +81,18 @@ export default function PublicCoursePage() {
   const { data: divisionStage, isLoading: stageLoading } = trpc.divisionStage.getDivisionStage.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
+  )
+
+  // Get bracket structure (play-in + elimination)
+  const {
+    data: bracketData,
+    isLoading: bracketLoading,
+  } = (trpc as any).public.getBracketPublic.useQuery(
+    { divisionId: currentDivision?.id || '' },
+    {
+      enabled: !!currentDivision?.id,
+      refetchOnWindowFocus: false,
+    }
   )
 
   if (tournamentLoading) {
@@ -95,6 +111,31 @@ export default function PublicCoursePage() {
   const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
   const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
   const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
+
+  const bracketMatches = bracketData?.allMatches ?? []
+
+  const legacyBracketMatches =
+    playoffMatches.map(match => ({
+      id: match.id,
+      teamA: match.teamA
+        ? {
+            id: match.teamA.id,
+            name: match.teamA.name,
+            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank,
+          }
+        : null,
+      teamB: match.teamB
+        ? {
+            id: match.teamB.id,
+            name: match.teamB.name,
+            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank,
+          }
+        : null,
+      games: match.games || [],
+      roundIndex: match.roundIndex,
+      stage: match.stage,
+      note: (match as any).note,
+    })) ?? []
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
@@ -138,14 +179,26 @@ export default function PublicCoursePage() {
               </h1>
             </div>
             
+            {/* Show Bracket Button */}
+            {isRRComplete && currentDivision && (
+              <button
+                onClick={() => setShowBracketModal(true)}
+                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors mr-4"
+              >
+                <Trophy className="h-4 w-4" />
+                <span>Show Bracket</span>
+              </button>
+            )}
+
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divs.length - 1
+                  setSelectedDivisionId(divs[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -156,7 +209,7 @@ export default function PublicCoursePage() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -166,9 +219,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divs.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divs[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -201,9 +255,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divs.length - 1
+                  setSelectedDivisionId(divs[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -214,7 +269,7 @@ export default function PublicCoursePage() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center min-w-0 flex-1"
               >
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -224,9 +279,10 @@ export default function PublicCoursePage() {
               <button
                 className="p-2 hover:bg-gray-100 rounded-md"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const divs = tournament.divisions as any[]
+                  const currentIndex = divs.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < divs.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(divs[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -420,30 +476,31 @@ export default function PublicCoursePage() {
                   <CardTitle>Playoff Bracket</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <BracketPyramid
-                    matches={playoffMatches.map(match => ({
-                      id: match.id,
-                      teamA: match.teamA ? {
-                        id: match.teamA.id,
-                        name: match.teamA.name,
-                        seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                      } : null,
-                      teamB: match.teamB ? {
-                        id: match.teamB.id,
-                        name: match.teamB.name,
-                        seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                      } : null,
-                      games: match.games || [],
-                      roundIndex: match.roundIndex,
-                      stage: match.stage,
-                      note: (match as any).note
-                    }))}
-                    showConnectingLines={showConnectingLines}
-                    onMatchClick={(matchId) => {
-                      // Handle match click - could open score input modal
-                      console.log('Match clicked:', matchId)
-                    }}
-                  />
+                  {bracketLoading ? (
+                    <div className="py-8 text-center text-gray-500">Loading bracket…</div>
+                  ) : bracketMatches.length > 0 ? (
+                    <BracketPyramidNew
+                      matches={bracketMatches}
+                      showConnectingLines={showConnectingLines}
+                      totalTeams={bracketData?.standings?.length}
+                      bracketSize={bracketData?.bracketSize}
+                      onMatchClick={(matchId) => {
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  ) : legacyBracketMatches.length > 0 ? (
+                    <BracketPyramid
+                      matches={legacyBracketMatches}
+                      showConnectingLines={showConnectingLines}
+                      onMatchClick={(matchId) => {
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  ) : (
+                    <div className="py-8 text-center text-gray-500">
+                      Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -637,29 +694,31 @@ export default function PublicCoursePage() {
                       <CardTitle>Bracket</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <BracketPyramid
-                        matches={playoffMatches.map(match => ({
-                          id: match.id,
-                          teamA: match.teamA ? {
-                            id: match.teamA.id,
-                            name: match.teamA.name,
-                            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                          } : null,
-                          teamB: match.teamB ? {
-                            id: match.teamB.id,
-                            name: match.teamB.name,
-                            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                          } : null,
-                          games: match.games || [],
-                          roundIndex: match.roundIndex,
-                          stage: match.stage,
-                          note: (match as any).note
-                        }))}
-                        showConnectingLines={showConnectingLines}
-                        onMatchClick={(matchId) => {
-                          console.log('Match clicked:', matchId)
-                        }}
-                      />
+                      {bracketLoading ? (
+                        <div className="py-6 text-center text-gray-500 text-sm">Loading bracket…</div>
+                      ) : bracketMatches.length > 0 ? (
+                        <BracketPyramidNew
+                          matches={bracketMatches}
+                          showConnectingLines={showConnectingLines}
+                          totalTeams={bracketData?.standings?.length}
+                          bracketSize={bracketData?.bracketSize}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      ) : legacyBracketMatches.length > 0 ? (
+                        <BracketPyramid
+                          matches={legacyBracketMatches}
+                          showConnectingLines={showConnectingLines}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      ) : (
+                        <div className="py-6 text-center text-gray-500 text-sm">
+                          Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -672,6 +731,16 @@ export default function PublicCoursePage() {
           </div>
         )}
       </div>
+
+      {/* Bracket Modal */}
+      {showBracketModal && currentDivision && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={currentDivision.id}
+          isPublic={true}
+        />
+      )}
     </div>
   )
 }

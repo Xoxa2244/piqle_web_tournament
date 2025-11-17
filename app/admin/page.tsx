@@ -1,6 +1,7 @@
 'use client'
 
 import { trpc } from '@/lib/trpc'
+import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -36,23 +37,6 @@ export default function AdminPage() {
       alert(`Error: ${error.message}`)
     },
   })
-
-  const truncateText = (text: string | null, maxLines: number = 3) => {
-    if (!text) return ''
-    const lines = text.split('\n')
-    if (lines.length <= maxLines) return text
-    return lines.slice(0, maxLines).join('\n')
-  }
-
-  const formatText = (text: string) => {
-    return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
-      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>') // Code
-      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">$1</a>') // URLs
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">$1</a>') // Markdown links
-      .replace(/\n/g, '<br>') // Line breaks
-  }
 
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
     const confirmed = window.confirm(
@@ -139,7 +123,10 @@ export default function AdminPage() {
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold mb-2">{tournament.title}</h3>
                       {tournament.description && (
-                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{tournament.description}</p>
+                        <div
+                          className="text-sm text-gray-600 mb-2 line-clamp-2 break-words"
+                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        />
                       )}
                       <div className="space-y-1 text-sm text-gray-500">
                         <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
@@ -168,14 +155,15 @@ export default function AdminPage() {
 
       {tournaments && tournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {tournaments.map((tournament) => (
+          {(tournaments as any[]).map((tournament: any) => (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-xl font-semibold mb-2">{tournament.title}</h3>
               {tournament.description && (
                 <div className="mb-4">
-                  <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
-                    {truncateText(tournament.description)}
-                  </div>
+                  <div
+                    className="text-gray-600 text-sm break-words line-clamp-3"
+                    dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                  />
                   {tournament.description && tournament.description.split('\n').length > 3 && (
                     <button
                       onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
@@ -249,7 +237,7 @@ export default function AdminPage() {
             <div className="p-6 overflow-y-auto flex-1">
               <div 
                 className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formatText(selectedDescription.description) }}
+                dangerouslySetInnerHTML={{ __html: formatDescription(selectedDescription.description) }}
               />
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end">
