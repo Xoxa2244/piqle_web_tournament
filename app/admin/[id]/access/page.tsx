@@ -2,12 +2,13 @@
 
 import { useParams } from 'next/navigation'
 import { useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import Link from 'next/link'
 import { ArrowLeft, Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
 
 export default function AccessManagementPage() {
@@ -34,6 +35,9 @@ export default function AccessManagementPage() {
 
   // Get tournament divisions
   const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
+  
+  // Check if user is owner (only owners can manage access)
+  const isOwner = tournament?.userAccessInfo?.isOwner
   
   // Search users
   const searchUsersQuery = trpc.tournamentAccess.searchUsers.useQuery(
@@ -219,6 +223,42 @@ export default function AccessManagementPage() {
 
   const groupedAccessesArray = Object.values(groupedAccesses)
 
+  // Check if user is owner - only owners can manage access
+  if (!isOwner) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="mb-6">
+          <Link
+            href={`/admin/${tournamentId}`}
+            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Tournament
+          </Link>
+        </div>
+        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+          <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Insufficient Permissions</h2>
+            <p className="text-gray-600 mb-6">
+              Access management is only available to the tournament owner.
+            </p>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Back to Tournament
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto py-8">
       <div className="mb-6">
@@ -270,7 +310,14 @@ export default function AccessManagementPage() {
                       className="w-full text-left p-3 hover:bg-gray-50 flex items-center space-x-3"
                     >
                       {user.image && (
-                        <img src={user.image} alt="" className="w-8 h-8 rounded-full" />
+                        <Image
+                          src={user.image}
+                          alt={user.name || 'User avatar'}
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 rounded-full object-cover"
+                          unoptimized
+                        />
                       )}
                       <div>
                         <div className="font-medium">{user.name || 'No name'}</div>
@@ -289,7 +336,14 @@ export default function AccessManagementPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {selectedUser.image && (
-                    <img src={selectedUser.image} alt="" className="w-10 h-10 rounded-full" />
+                    <Image
+                      src={selectedUser.image}
+                      alt={selectedUser.name || 'User avatar'}
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full object-cover"
+                      unoptimized
+                    />
                   )}
                   <div>
                     <div className="font-medium">{selectedUser.name || 'No name'}</div>
@@ -368,7 +422,7 @@ export default function AccessManagementPage() {
                 {divisionMode === 'selected' && (
                   <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                     <div className="grid grid-cols-5 gap-2">
-                      {divisions.map((division) => (
+                      {(divisions as any[]).map((division: any) => (
                         <label
                           key={division.id}
                           className="flex items-center space-x-2 cursor-pointer"
@@ -428,10 +482,13 @@ export default function AccessManagementPage() {
                         {/* Approve Mode */}
                         <div className="flex items-center space-x-3">
                           {request.user.image && (
-                            <img
+                            <Image
                               src={request.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={request.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div>
@@ -514,7 +571,7 @@ export default function AccessManagementPage() {
                           {requestDivisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {divisions.map((division) => (
+                                {(divisions as any[]).map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -557,10 +614,13 @@ export default function AccessManagementPage() {
                         {/* View Mode */}
                         <div className="flex items-center space-x-3 flex-1">
                           {request.user.image && (
-                            <img
+                            <Image
                               src={request.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={request.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div className="flex-1">
@@ -635,10 +695,13 @@ export default function AccessManagementPage() {
                         {/* Edit Mode */}
                         <div className="flex items-center space-x-3">
                           {groupedAccess.user.image && (
-                            <img
+                            <Image
                               src={groupedAccess.user.image}
-                              alt=""
-                              className="w-10 h-10 rounded-full"
+                              alt={groupedAccess.user.name || 'User avatar'}
+                              width={40}
+                              height={40}
+                              className="w-10 h-10 rounded-full object-cover"
+                              unoptimized
                             />
                           )}
                           <div>
@@ -714,7 +777,7 @@ export default function AccessManagementPage() {
                           {divisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {divisions.map((division) => (
+                                {(divisions as any[]).map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -762,10 +825,13 @@ export default function AccessManagementPage() {
                       {/* View Mode */}
                       <div className="flex items-center space-x-3 flex-1">
                         {groupedAccess.user.image && (
-                          <img
+                          <Image
                             src={groupedAccess.user.image}
-                            alt=""
-                            className="w-10 h-10 rounded-full"
+                            alt={groupedAccess.user.name || 'User avatar'}
+                            width={40}
+                            height={40}
+                            className="w-10 h-10 rounded-full object-cover"
+                            unoptimized
                           />
                         )}
                         <div className="flex-1">

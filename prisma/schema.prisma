@@ -111,26 +111,28 @@ model Prize {
 }
 
 model Division {
-  id                   String                @id @default(uuid())
-  tournamentId         String
-  name                 String
-  teamKind             TeamKind
-  pairingMode          PairingMode
-  maxTeams             Int?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  stage                DivisionStage?        @default(RR_IN_PROGRESS)
-  poolCount            Int                   @default(1)
-  assistantAssignments AssistantAssignment[]
-  constraints          DivisionConstraints?
-  rrBindings           DivisionRRBinding[]
-  tournament           Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  matches              Match[]
-  pools                Pool[]
-  prizes               Prize[]
-  standings            Standing[]
-  teams                Team[]
-  tournamentAccesses   TournamentAccess[]
+  id                    String                @id @default(uuid())
+  tournamentId          String
+  name                  String
+  teamKind              TeamKind
+  pairingMode           PairingMode
+  maxTeams              Int?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  stage                 DivisionStage?        @default(RR_IN_PROGRESS)
+  poolCount             Int                   @default(1)
+  isMerged              Boolean               @default(false)
+  mergedFromDivisionIds Json? // Array of division IDs that were merged into this division
+  assistantAssignments  AssistantAssignment[]
+  constraints           DivisionConstraints?
+  rrBindings            DivisionRRBinding[]
+  tournament            Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches               Match[]
+  pools                 Pool[]
+  prizes                Prize[]
+  standings             Standing[]
+  teams                 Team[]
+  tournamentAccesses    TournamentAccess[]
 
   @@map("divisions")
 }

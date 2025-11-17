@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
@@ -17,7 +17,8 @@ import {
   Users,
   Target,
   RefreshCw,
-  Edit3
+  Edit3,
+  GitBranch
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,8 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
+import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
+import BracketModal from '@/components/BracketModal'
 import Link from 'next/link'
 
 export default function DivisionStageManagement() {
@@ -41,7 +44,11 @@ export default function DivisionStageManagement() {
   const [showRegenerateModal, setShowRegenerateModal] = useState(false)
   const [regenerateType, setRegenerateType] = useState<'playin' | 'playoff' | 'rr' | null>(null)
   const [showPlayoffSwapModal, setShowPlayoffSwapModal] = useState(false)
-  const [showSemifinalSwapModal, setShowSemifinalSwapModal] = useState(false)
+  const [showEditRRPairsModal, setShowEditRRPairsModal] = useState(false)
+  const [showEditPlayInPairsModal, setShowEditPlayInPairsModal] = useState(false)
+  const [showUnmergeModal, setShowUnmergeModal] = useState(false)
+  const [showBracketModal, setShowBracketModal] = useState(false)
+
 
   // Load tournament data
   const { data: tournament, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -49,12 +56,34 @@ export default function DivisionStageManagement() {
     { enabled: !!tournamentId }
   )
 
+  // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
+  const visibleDivisions = useMemo(() => {
+    if (!tournament?.divisions) return []
+    const divisions = tournament.divisions as any[]
+    const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisions.filter((div: any) => {
+      // Show merged divisions
+      if (div.isMerged) return true
+      // Show divisions with teams
+      if ((div.teams?.length || 0) > 0) return true
+      // Hide divisions with 0 teams that were merged into another division
+      const wasMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      return !wasMerged
+    })
+  }, [tournament?.divisions])
+
   // Automatically select first division if not selected
   useEffect(() => {
-    if (tournament && tournament.divisions.length > 0 && !selectedDivisionId) {
-      setSelectedDivisionId(tournament.divisions[0].id)
+    if (visibleDivisions.length > 0 && !selectedDivisionId) {
+      setSelectedDivisionId(visibleDivisions[0]?.id || '')
     }
-  }, [tournament, selectedDivisionId])
+  }, [visibleDivisions, selectedDivisionId])
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -152,7 +181,8 @@ export default function DivisionStageManagement() {
       refetchDivision()
       refetchTournament()
       setShowPlayoffSwapModal(false)
-      setShowSemifinalSwapModal(false)
+      setShowEditRRPairsModal(false)
+      setShowEditPlayInPairsModal(false)
     }
   })
 
@@ -164,13 +194,7 @@ export default function DivisionStageManagement() {
   const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
-  
-  // Determine semifinal matches (2 matches in same round without third place match)
-  const semifinalMatches = eliminationMatches.filter(match => {
-    const roundMatches = eliminationMatches.filter(m => m.roundIndex === match.roundIndex)
-    const hasThirdPlaceMatch = roundMatches.some(m => m.note === 'Third Place Match')
-    return roundMatches.length === 2 && !hasThirdPlaceMatch
-  })
+  const hasLockedRRMatches = rrMatches.some((match: any) => match.locked)
   
   console.log('Matches data:', {
     totalMatches: matches.length,
@@ -194,6 +218,14 @@ export default function DivisionStageManagement() {
     m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
   )
 
+  const completedPlayoffMatches = eliminationMatches.filter(m => 
+    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+  )
+
+  const hasRRResults = completedRRMatches.length > 0
+  const hasPlayInResults = completedPlayInMatches.length > 0
+  const hasPlayoffResults = completedPlayoffMatches.length > 0
+
   const teamCount = teams.length
   // Determine target bracket size based on team count
   const getTargetBracketSize = (teamCount: number) => {
@@ -208,7 +240,7 @@ export default function DivisionStageManagement() {
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = tournament?.divisions.find(d => d.id === selectedDivisionId)
+  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
@@ -296,34 +328,40 @@ export default function DivisionStageManagement() {
   }
 
   const handleRegeneratePlayoffs = () => {
-    alert('Function under development. If you need to regenerate playoffs, please regenerate "PlayIn" instead.')
-    return
-    
     console.log('=== handleRegeneratePlayoffs called ===')
     console.log('selectedDivisionId:', selectedDivisionId)
+    console.log('needsPlayIn:', needsPlayIn)
+    console.log('playInMatches.length:', playInMatches.length)
     console.log('targetBracketSize:', targetBracketSize)
-    console.log('targetBracketSize.toString():', targetBracketSize.toString())
-    console.log('regenerateType:', regenerateType)
     
-    if (selectedDivisionId) {
-      console.log('Calling generatePlayoffsMutation.mutate with:', {
+    if (!selectedDivisionId) {
+      console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
+      return
+    }
+    
+    // If there's Play-In, regenerate Play-Off based on Play-In results
+    if (needsPlayIn && playInMatches.length > 0) {
+      console.log('Regenerating Play-Off based on Play-In results')
+      generatePlayoffAfterPlayInMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
-        regenerate: true
       })
-      
+    } else {
+      // No Play-In, regenerate Play-Off based on Round Robin results
+      console.log('Regenerating Play-Off based on Round Robin results')
       generatePlayoffsMutation.mutate({ 
         divisionId: selectedDivisionId,
         bracketSize: targetBracketSize.toString() as "4" | "8" | "16",
         regenerate: true,
         regenerateType: 'playoff'
       })
-    } else {
-      console.error('selectedDivisionId is null/undefined - cannot regenerate Play-Off')
     }
   }
 
   const handleScoreInput = (match: any) => {
+    if (match?.locked) {
+      return
+    }
     setSelectedMatch(match)
     setShowScoreModal(true)
   }
@@ -342,6 +380,37 @@ export default function DivisionStageManagement() {
   const handleScoreModalClose = () => {
     setShowScoreModal(false)
     setSelectedMatch(null)
+  }
+
+  const renderScoreActionButton = (match: any) => {
+    const hasResult = match?.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
+    const isLocked = Boolean(match?.locked)
+    const label = isLocked ? 'Scores Locked' : hasResult ? 'Change Score' : 'Enter Score'
+    const variant = isLocked ? 'secondary' : hasResult ? 'outline' : 'default'
+
+    return (
+      <Button
+        size="sm"
+        variant={variant}
+        onClick={isLocked ? undefined : () => handleScoreInput(match)}
+        disabled={isLocked}
+        className="w-full"
+        title={isLocked ? 'Round Robin results were locked after unmerging divisions. Use Regenerate RR to reset matches.' : undefined}
+      >
+        {label}
+      </Button>
+    )
+  }
+
+  const renderLockedNote = (match: any) => {
+    if (!match?.locked) {
+      return null
+    }
+    return (
+      <p className="text-xs text-gray-500 text-center">
+        Locked after unmerge. Regenerate RR to edit.
+      </p>
+    )
   }
 
   const handleRegenerate = (type: 'playin' | 'playoff' | 'rr') => {
@@ -370,7 +439,16 @@ export default function DivisionStageManagement() {
     }
   }
 
-  const handleSwapSemifinalTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+  const handleSwapRRTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
+    if (selectedDivisionId) {
+      swapPlayoffTeamsMutation.mutate({
+        divisionId: selectedDivisionId,
+        swaps
+      })
+    }
+  }
+
+  const handleSwapPlayInTeams = (swaps: Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>) => {
     if (selectedDivisionId) {
       swapPlayoffTeamsMutation.mutate({
         divisionId: selectedDivisionId,
@@ -410,7 +488,7 @@ export default function DivisionStageManagement() {
 
   // Determine button availability
   const canGenerateRR = !rrMatches.length
-  const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS'
+  const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS' && !hasLockedRRMatches
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
@@ -460,19 +538,26 @@ export default function DivisionStageManagement() {
   // Check if user has access to any divisions
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen px-4">
         <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">No Access to Divisions</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
           <p className="text-gray-600 mb-6">
-            You don&apos;t have access to any divisions in this tournament.
-            Please contact the tournament administrator to request access.
+            There aren&apos;t any divisions to manage stages for. Create a division first to unlock score input and bracket tools.
           </p>
-          <Link
-            href={`/admin/${tournamentId}`}
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            Back to Tournament
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href={`/admin/${tournamentId}/divisions`}
+              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
+              Create division
+            </Link>
+            <Link
+              href={`/admin/${tournamentId}`}
+              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
+            >
+              Back to tournament
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -540,9 +625,9 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : tournament.divisions.length - 1
-                  setSelectedDivisionId(tournament.divisions[prevIndex].id)
+                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
+                  setSelectedDivisionId(visibleDivisions[prevIndex].id)
                 }}
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -553,7 +638,7 @@ export default function DivisionStageManagement() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm"
               >
-                {tournament.divisions.map((div) => (
+                {visibleDivisions.map((div: any) => (
                   <option key={div.id} value={div.id}>
                     {div.name} ({div.teams?.length || 0} teams)
                   </option>
@@ -564,9 +649,9 @@ export default function DivisionStageManagement() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = tournament.divisions.findIndex(d => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < tournament.divisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(tournament.divisions[nextIndex].id)
+                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                  const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
+                  setSelectedDivisionId(visibleDivisions[nextIndex].id)
                 }}
               >
                 <ChevronRight className="h-4 w-4" />
@@ -593,10 +678,10 @@ export default function DivisionStageManagement() {
                   Total matches: {rrMatches.length} • Matches per team: {(() => {
                     // Calculate matches per team within pools
                     if (currentDivision?.pools && currentDivision.pools.length > 0) {
-                      const maxMatchesPerTeam = Math.max(...currentDivision.pools.map(pool => {
-                        const poolTeams = teams.filter(team => team.poolId === pool.id)
+                      const maxMatchesPerTeam = Math.max(...((currentDivision.pools as any[]).map((pool: any) => {
+                        const poolTeams = teams.filter((team: any) => team.poolId === pool.id)
                         return poolTeams.length - 1
-                      }))
+                      })))
                       return maxMatchesPerTeam
                     }
                     return Math.max(0, teamCount - 1)
@@ -657,13 +742,25 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
+                {rrMatches.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowEditRRPairsModal(true)}
+                    disabled={hasRRResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit RR Pairs</span>
+                  </Button>
+                )}
+                
                 {canRegenerateRR && (
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('rr')}
-                    className="flex items-center space-x-2 text-orange-600 border-orange-600 hover:bg-orange-50"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     <span>Regenerate RR</span>
                   </Button>
                 )}
@@ -672,8 +769,9 @@ export default function DivisionStageManagement() {
                   <Button
                     variant="outline"
                     onClick={handleFillRandomResults}
-                    disabled={fillRandomResultsMutation.isPending}
+                    disabled={fillRandomResultsMutation.isPending || hasLockedRRMatches}
                     className="flex items-center space-x-2 text-purple-600 border-purple-600 hover:bg-purple-50"
+                    title={hasLockedRRMatches ? 'Round Robin results are locked. Regenerate RR to create new matches.' : undefined}
                   >
                     <RefreshCw className="h-4 w-4" />
                     <span>Fill Random Results</span>
@@ -690,6 +788,15 @@ export default function DivisionStageManagement() {
                 </Button>
               </div>
             </div>
+
+            {hasLockedRRMatches && (
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Round Robin results were carried over from the merged division and are now locked. Regenerate the Round Robin to clear and re-enter scores.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* RR Matches List */}
             {rrMatches.length > 0 && (
@@ -711,9 +818,9 @@ export default function DivisionStageManagement() {
                     {/* Group matches by pools */}
                     {(() => {
                       // Get all pools from matches, sort by order
-                      const pools = Array.from(new Set(rrMatches.map(m => m.poolId).filter(Boolean)))
-                        .map(poolId => {
-                          const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                      const pools = Array.from(new Set(rrMatches.map((m: any) => m.poolId).filter(Boolean)))
+                        .map((poolId: any) => {
+                          const pool = ((currentDivision?.pools as any[]) || []).find((p: any) => p.id === poolId)
                           return { id: poolId, order: pool?.order || 0 }
                         })
                         .sort((a, b) => a.order - b.order)
@@ -724,9 +831,9 @@ export default function DivisionStageManagement() {
                       return (
                         <>
                           {/* Pool matches */}
-                          {pools.map(poolId => {
-                            const poolMatches = rrMatches.filter(m => m.poolId === poolId)
-                            const pool = currentDivision?.pools?.find(p => p.id === poolId)
+                          {pools.map((poolId: any) => {
+                            const poolMatches = rrMatches.filter((m: any) => m.poolId === poolId)
+                            const pool = ((currentDivision?.pools as any[]) || []).find((p: any) => p.id === poolId)
                             const poolName = pool?.name?.startsWith('Pool ') ? pool.name : `Pool ${pool?.name || poolId}`
                             
                             // Group pool matches by rounds and sort
@@ -768,23 +875,14 @@ export default function DivisionStageManagement() {
                                                   <div className="text-sm text-green-600 font-medium">
                                                     Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                   </div>
-                                                  <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => handleScoreInput(match)}
-                                                    className="w-full"
-                                                  >
-                                                    Change Score
-                                                  </Button>
+                                                  {renderScoreActionButton(match)}
+                                                  {renderLockedNote(match)}
                                                 </div>
                                               ) : (
-                                                <Button
-                                                  size="sm"
-                                                  onClick={() => handleScoreInput(match)}
-                                                  className="w-full"
-                                                >
-                                                  Enter Score
-                                                </Button>
+                                                <div className="text-center space-y-2">
+                                                  {renderScoreActionButton(match)}
+                                                  {renderLockedNote(match)}
+                                                </div>
                                               )}
                                             </div>
                                           ))}
@@ -834,23 +932,14 @@ export default function DivisionStageManagement() {
                                                 <div className="text-sm text-green-600 font-medium">
                                                   Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                                 </div>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => handleScoreInput(match)}
-                                                  className="w-full"
-                                                >
-                                                  Change Score
-                                                </Button>
+                                                {renderScoreActionButton(match)}
+                                                {renderLockedNote(match)}
                                               </div>
                                             ) : (
-                                              <Button
-                                                size="sm"
-                                                onClick={() => handleScoreInput(match)}
-                                                className="w-full"
-                                              >
-                                                Enter Score
-                                              </Button>
+                                              <div className="text-center space-y-2">
+                                                {renderScoreActionButton(match)}
+                                                {renderLockedNote(match)}
+                                              </div>
                                             )}
                                           </div>
                                         ))}
@@ -878,6 +967,20 @@ export default function DivisionStageManagement() {
                 </AlertDescription>
               </Alert>
             )}
+
+            {/* Show Bracket Button */}
+            {completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setShowBracketModal(true)}
+                  variant="outline"
+                  className="flex items-center space-x-2"
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Show Bracket</span>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -892,6 +995,34 @@ export default function DivisionStageManagement() {
                   Teams: {teamCount}, required: {targetBracketSize}.
                 </AlertDescription>
               </Alert>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Unmerge Button - show for merged divisions after RR completion */}
+        {currentDivision && (currentDivision as any).isMerged && 
+         completedRRMatches.length === rrMatches.length && 
+         rrMatches.length > 0 && (
+          <Card className="border-orange-200 bg-orange-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                    Unmerge Division
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Round Robin is complete. You can now split this merged division back into the original two divisions.
+                    Each division will have separate Play-In and Play-Off brackets.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setShowUnmergeModal(true)}
+                  className="ml-4 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
+                >
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  Unmerge Division
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -946,13 +1077,25 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
+                {playInMatches.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowEditPlayInPairsModal(true)}
+                    disabled={hasPlayInResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit Play-In Pairs</span>
+                  </Button>
+                )}
+                
                 {canRegeneratePlayIn && (
                   <Button
                     variant="outline"
                     onClick={() => handleRegenerate('playin')}
-                    className="flex items-center space-x-2"
+                    className="flex items-center space-x-2 text-red-600 border-red-600 hover:bg-red-50"
                   >
-                    <RotateCcw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     <span>Regenerate Play-In</span>
                   </Button>
                 )}
@@ -1003,23 +1146,14 @@ export default function DivisionStageManagement() {
                           <div className="text-sm text-green-600 font-medium">
                             Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleScoreInput(match)}
-                            className="w-full"
-                          >
-                            Change Score
-                          </Button>
+                          {renderScoreActionButton(match)}
+                          {renderLockedNote(match)}
                         </div>
                       ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => handleScoreInput(match)}
-                          className="w-full"
-                        >
-                          Enter Score
-                        </Button>
+                        <div className="text-center space-y-2">
+                          {renderScoreActionButton(match)}
+                          {renderLockedNote(match)}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1130,10 +1264,11 @@ export default function DivisionStageManagement() {
                   <Button
                     onClick={() => setShowPlayoffSwapModal(true)}
                     variant="outline"
-                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+                    disabled={hasPlayoffResults}
+                    className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Edit3 className="h-4 w-4" />
-                    <span>Edit Playoff Pairs</span>
+                    <span>Edit Play-off Pairs</span>
                   </Button>
                   
                   <Button
@@ -1189,17 +1324,6 @@ export default function DivisionStageManagement() {
                     <div key={roundIndex} className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-lg">{roundName}</h4>
-                        {roundName === 'Semi-Final' && (
-                          <Button
-                            onClick={() => setShowSemifinalSwapModal(true)}
-                            variant="outline"
-                            size="sm"
-                            className="flex items-center space-x-2 text-blue-600 border-blue-600 hover:bg-blue-50"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            <span>Edit Pairs</span>
-                          </Button>
-                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {roundMatches.map((match) => {
@@ -1244,23 +1368,14 @@ export default function DivisionStageManagement() {
                                 <div className="text-sm text-green-600 font-medium">
                                   Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleScoreInput(match)}
-                                  className="w-full"
-                                >
-                                  Change Score
-                                </Button>
+                                {renderScoreActionButton(match)}
+                                {renderLockedNote(match)}
                               </div>
                             ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => handleScoreInput(match)}
-                                className="w-full"
-                              >
-                                Enter Score
-                              </Button>
+                              <div className="text-center space-y-2">
+                                {renderScoreActionButton(match)}
+                                {renderLockedNote(match)}
+                              </div>
                             )}
                             </div>
                           )
@@ -1291,34 +1406,96 @@ export default function DivisionStageManagement() {
       )}
 
       {/* Playoff swap modal */}
-      {showPlayoffSwapModal && (
+      {showPlayoffSwapModal && (() => {
+        // Get only teams that participate in Play-Off
+        const playoffTeamIds = new Set<string>()
+        eliminationMatches.forEach(match => {
+          playoffTeamIds.add(match.teamAId)
+          playoffTeamIds.add(match.teamBId)
+        })
+        const playoffTeams = teams.filter(team => playoffTeamIds.has(team.id))
+
+        return (
+          <PlayoffSwapModal
+            isOpen={showPlayoffSwapModal}
+            onClose={() => setShowPlayoffSwapModal(false)}
+            onSubmit={handleSwapPlayoffTeams}
+            matches={eliminationMatches.map(match => ({
+              id: match.id,
+              teamA: { id: match.teamAId, name: match.teamA.name },
+              teamB: { id: match.teamBId, name: match.teamB.name }
+            }))}
+            teams={playoffTeams.map(team => ({ id: team.id, name: team.name }))}
+            isLoading={swapPlayoffTeamsMutation.isPending}
+            title="Edit Play-off Pairs"
+          />
+        )
+      })()}
+
+      {/* RR swap modal */}
+      {showEditRRPairsModal && (
         <PlayoffSwapModal
-          isOpen={showPlayoffSwapModal}
-          onClose={() => setShowPlayoffSwapModal(false)}
-          onSubmit={handleSwapPlayoffTeams}
-          matches={eliminationMatches.map(match => ({
+          isOpen={showEditRRPairsModal}
+          onClose={() => setShowEditRRPairsModal(false)}
+          onSubmit={handleSwapRRTeams}
+          matches={rrMatches.map(match => ({
             id: match.id,
             teamA: { id: match.teamAId, name: match.teamA.name },
             teamB: { id: match.teamBId, name: match.teamB.name }
           }))}
           teams={teams.map(team => ({ id: team.id, name: team.name }))}
           isLoading={swapPlayoffTeamsMutation.isPending}
+          title="Edit RR Pairs"
         />
       )}
 
-      {/* Semifinal swap modal */}
-      {showSemifinalSwapModal && (
-        <PlayoffSwapModal
-          isOpen={showSemifinalSwapModal}
-          onClose={() => setShowSemifinalSwapModal(false)}
-          onSubmit={handleSwapSemifinalTeams}
-          matches={semifinalMatches.map(match => ({
-            id: match.id,
-            teamA: { id: match.teamAId, name: match.teamA.name },
-            teamB: { id: match.teamBId, name: match.teamB.name }
-          }))}
-          teams={teams.map(team => ({ id: team.id, name: team.name }))}
-          isLoading={swapPlayoffTeamsMutation.isPending}
+      {/* Play-In swap modal */}
+      {showEditPlayInPairsModal && (() => {
+        // Get only teams that participate in Play-In (not auto-qualified)
+        const playInTeamIds = new Set<string>()
+        playInMatches.forEach(match => {
+          playInTeamIds.add(match.teamAId)
+          playInTeamIds.add(match.teamBId)
+        })
+        const playInTeams = teams.filter(team => playInTeamIds.has(team.id))
+
+        return (
+          <PlayoffSwapModal
+            isOpen={showEditPlayInPairsModal}
+            onClose={() => setShowEditPlayInPairsModal(false)}
+            onSubmit={handleSwapPlayInTeams}
+            matches={playInMatches.map(match => ({
+              id: match.id,
+              teamA: { id: match.teamAId, name: match.teamA.name },
+              teamB: { id: match.teamBId, name: match.teamB.name }
+            }))}
+            teams={playInTeams.map(team => ({ id: team.id, name: team.name }))}
+            isLoading={swapPlayoffTeamsMutation.isPending}
+            title="Edit Play-In Pairs"
+          />
+        )
+      })()}
+
+      {/* Unmerge Division Modal */}
+      {showUnmergeModal && currentDivision && (
+        <UnmergeDivisionModal
+          isOpen={showUnmergeModal}
+          onClose={() => setShowUnmergeModal(false)}
+          mergedDivision={currentDivision as any}
+          onSuccess={() => {
+            refetchTournament()
+            // Redirect to divisions page after unmerge
+            router.push(`/admin/${tournamentId}/divisions`)
+          }}
+        />
+      )}
+
+      {/* Bracket Modal */}
+      {showBracketModal && selectedDivisionId && (
+        <BracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          divisionId={selectedDivisionId}
         />
       )}
 
@@ -1334,7 +1511,9 @@ export default function DivisionStageManagement() {
                 ? 'All Round Robin matches will be reset. This will allow teams to be redistributed across pools and create new matches. Continue?'
                 : regenerateType === 'playin' 
                   ? 'All Play-In and Play-Off matches will be reset. Play-In will be regenerated based on current Round Robin results. Continue?'
-                  : 'All Play-Off matches will be reset and regenerated. Continue?'
+                  : (needsPlayIn && playInMatches.length > 0)
+                    ? 'All Play-Off matches will be reset and regenerated based on current Play-In results. Continue?'
+                    : 'All Play-Off matches will be reset and regenerated based on current Round Robin results. Continue?'
               }
             </p>
             <div className="flex justify-end space-x-3">

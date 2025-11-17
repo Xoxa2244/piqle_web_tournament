@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc'
 import { useParams } from 'next/navigation'
+import { formatDescription } from '@/lib/formatDescription'
 
 export default function PublicScoreboardPage() {
   const params = useParams()
@@ -34,7 +35,10 @@ export default function PublicScoreboardPage() {
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold text-gray-900">{tournament.title}</h1>
           {tournament.description && (
-            <p className="text-gray-600 mt-2">{tournament.description}</p>
+            <div
+              className="text-gray-600 mt-2 prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+            />
           )}
           
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
@@ -54,15 +58,15 @@ export default function PublicScoreboardPage() {
             
             {tournament.divisions.length > 0 ? (
               <div className="space-y-6">
-                {tournament.divisions.map((division) => (
+                {(tournament.divisions as any[]).map((division) => (
                   <div key={division.id} className="bg-white rounded-lg shadow-md p-6">
                     <h3 className="text-xl font-semibold mb-4">{division.name}</h3>
                     
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <h4 className="font-medium text-gray-900 mb-2">Teams ({division.teams.length})</h4>
+                        <h4 className="font-medium text-gray-900 mb-2">Teams ({division.teams?.length || 0})</h4>
                         <div className="space-y-1">
-                          {division.teams.map((team) => (
+                          {(division.teams || []).map((team: any) => (
                             <div key={team.id} className="text-sm text-gray-600">
                               {team.name}
                             </div>
@@ -73,8 +77,8 @@ export default function PublicScoreboardPage() {
                       <div>
                         <h4 className="font-medium text-gray-900 mb-2">Settings</h4>
                         <div className="text-sm text-gray-600 space-y-1">
-                          <div>Type: {division.teamKind.replace('_', ' ')}</div>
-                          <div>Mode: {division.pairingMode}</div>
+                          <div>Type: {division.teamKind?.replace('_', ' ') || 'N/A'}</div>
+                          <div>Mode: {division.pairingMode || 'N/A'}</div>
                           {division.poolCount > 1 && <div>Pools: {division.poolCount} pools</div>}
                         </div>
                       </div>

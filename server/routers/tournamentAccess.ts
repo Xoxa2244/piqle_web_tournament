@@ -11,9 +11,17 @@ export const tournamentAccessRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const users = await ctx.prisma.user.findMany({
         where: {
-          OR: [
-            { email: { contains: input.query, mode: 'insensitive' } },
-            { name: { contains: input.query, mode: 'insensitive' } },
+          AND: [
+            {
+              OR: [
+                { email: { contains: input.query, mode: 'insensitive' } },
+                { name: { contains: input.query, mode: 'insensitive' } },
+              ],
+            },
+            // Исключаем текущего пользователя из результатов поиска
+            {
+              id: { not: ctx.session.user.id },
+            },
           ],
         },
         select: {
@@ -356,9 +364,27 @@ export const tournamentAccessRouter = createTRPCRouter({
         })
       }
 
+      // Удаляем доступ
       await ctx.prisma.tournamentAccess.delete({
         where: { id: input.accessId },
       })
+
+      // Сбрасываем статус запроса на доступ (если существует) чтобы пользователь мог подать запрос снова
+      const existingRequest = await ctx.prisma.tournamentAccessRequest.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: access.userId,
+            tournamentId: access.tournamentId,
+          },
+        },
+      })
+
+      if (existingRequest && existingRequest.status === 'APPROVED') {
+        // Сбрасываем статус, чтобы пользователь мог подать новый запрос
+        await ctx.prisma.tournamentAccessRequest.delete({
+          where: { id: existingRequest.id },
+        })
+      }
 
       // Audit log
       await ctx.prisma.auditLog.create({
@@ -498,11 +524,15 @@ export const tournamentAccessRouter = createTRPCRouter({
             message: 'You already have a pending request for this tournament',
           })
         } else if (existingRequest.status === 'APPROVED') {
-          // Если запрос был одобрен, но доступа нет (был удален),
+          // Если запрос был одобрен, но доступа нет (был удален через revoke),
           // обновляем статус на PENDING, чтобы можно было повторно рассмотреть
           await ctx.prisma.tournamentAccessRequest.update({
             where: { id: existingRequest.id },
-            data: { status: 'PENDING' },
+            data: { 
+              status: 'PENDING',
+              message: input.message,
+              updatedAt: new Date(),
+            },
           })
           // Возвращаем обновленный запрос
           return await ctx.prisma.tournamentAccessRequest.findUnique({
@@ -525,12 +555,7 @@ export const tournamentAccessRouter = createTRPCRouter({
             },
           })
         }
-        // Если запрос был отклонен, удаляем его и создаем новый
-        if (existingRequest.status === 'REJECTED') {
-          await ctx.prisma.tournamentAccessRequest.delete({
-            where: { id: existingRequest.id },
-          })
-        }
+        // Для других статусов (REJECTED) - запросы уже удалены, так что этот код не выполнится
       }
 
       // Создаем запрос
@@ -739,10 +764,9 @@ export const tournamentAccessRouter = createTRPCRouter({
         })
       }
 
-      // Обновляем статус запроса
-      await ctx.prisma.tournamentAccessRequest.update({
+      // Удаляем запрос (пользователь сможет подать заявку снова)
+      await ctx.prisma.tournamentAccessRequest.delete({
         where: { id: input.requestId },
-        data: { status: 'REJECTED' },
       })
 
       // Audit log

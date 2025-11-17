@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,23 +11,13 @@ import { Calendar, MapPin, Users, Trophy, Eye } from 'lucide-react'
 
 export default function PublicTournamentsPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const { data: tournaments, isLoading } = trpc.tournament.list.useQuery()
+  const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
     const lines = text.split('\n')
     if (lines.length <= maxLines) return text
     return lines.slice(0, maxLines).join('\n')
-  }
-
-  const formatText = (text: string) => {
-    return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
-      .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>') // Code
-      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">$1</a>') // URLs
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">$1</a>') // Markdown links
-      .replace(/\n/g, '<br>') // Line breaks
   }
 
   if (isLoading) {
@@ -40,8 +31,7 @@ export default function PublicTournamentsPage() {
     )
   }
 
-  // Filter tournaments that have public board enabled
-  const publicTournaments = tournaments?.filter(tournament => tournament.isPublicBoardEnabled) || []
+  const publicTournaments = tournaments || []
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -65,9 +55,10 @@ export default function PublicTournamentsPage() {
                   <CardTitle className="text-xl">{tournament.title}</CardTitle>
                   {tournament.description && (
                     <div className="mt-2">
-                      <div className="text-gray-600 text-sm whitespace-pre-wrap break-words">
-                        {truncateText(tournament.description)}
-                      </div>
+                      <div
+                        className="text-gray-600 text-sm break-words line-clamp-3"
+                        dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
+                      />
                       {tournament.description && tournament.description.split('\n').length > 3 && (
                         <button
                           onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
@@ -108,7 +99,7 @@ export default function PublicTournamentsPage() {
                     <div>
                       <h4 className="text-sm font-medium text-gray-900 mb-2">Divisions:</h4>
                       <div className="flex flex-wrap gap-1">
-                        {tournament.divisions.map((division) => (
+                        {(tournament.divisions as any[]).map((division: any) => (
                           <Badge key={division.id} variant="secondary" className="text-xs">
                             {division.name}
                           </Badge>
@@ -127,7 +118,7 @@ export default function PublicTournamentsPage() {
 
                   {/* View Results Button */}
                   <div className="pt-4 border-t border-gray-200">
-                    <Link href={`/scoreboard/${tournament.id}`}>
+                    <Link href={tournament.publicSlug ? `/t/${tournament.publicSlug}` : `/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
                       </Button>
@@ -159,7 +150,7 @@ export default function PublicTournamentsPage() {
             <div className="p-6 overflow-y-auto flex-1">
               <div 
                 className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formatText(selectedDescription.description) }}
+                dangerouslySetInnerHTML={{ __html: formatDescription(selectedDescription.description) }}
               />
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end">
