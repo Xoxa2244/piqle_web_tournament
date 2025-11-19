@@ -488,10 +488,54 @@ export const divisionRouter = createTRPCRouter({
       }
     }),
 
+  checkDivisionsHasData: tdProcedure
+    .input(z.object({
+      divisionId1: z.string(),
+      divisionId2: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Check if divisions have matches with scores entered
+      const [matches1, matches2] = await Promise.all([
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: input.divisionId1,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        }),
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: input.divisionId2,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        })
+      ])
+
+      // Check if any matches have scores entered (games with scoreA > 0 or scoreB > 0)
+      const hasData1 = matches1.some(match => 
+        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      )
+      const hasData2 = matches2.some(match => 
+        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      )
+
+      return {
+        hasData: hasData1 || hasData2,
+        division1HasData: hasData1,
+        division2HasData: hasData2
+      }
+    }),
+
   mergeDivisions: tdProcedure
     .input(z.object({
       divisionId1: z.string(),
       divisionId2: z.string(),
+      clearData: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
       // Get both divisions with all related data
@@ -554,6 +598,46 @@ export const divisionRouter = createTRPCRouter({
 
       if (division1.pairingMode !== division2.pairingMode) {
         throw new Error('Cannot merge divisions with different pairing modes')
+      }
+
+      // If clearData is true, delete all matches and games from both divisions
+      if (input.clearData) {
+        // Get all matches from both divisions
+        const [allMatches1, allMatches2] = await Promise.all([
+          ctx.prisma.match.findMany({
+            where: { divisionId: division1.id },
+            include: { games: true }
+          }),
+          ctx.prisma.match.findMany({
+            where: { divisionId: division2.id },
+            include: { games: true }
+          })
+        ])
+
+        // Delete all games first (foreign key constraint)
+        const allMatchIds = [...allMatches1.map(m => m.id), ...allMatches2.map(m => m.id)]
+        if (allMatchIds.length > 0) {
+          await ctx.prisma.game.deleteMany({
+            where: { matchId: { in: allMatchIds } }
+          })
+        }
+
+        // Delete all matches
+        if (allMatchIds.length > 0) {
+          await ctx.prisma.match.deleteMany({
+            where: { id: { in: allMatchIds } }
+          })
+        }
+
+        // Delete standings for both divisions
+        await ctx.prisma.standing.deleteMany({
+          where: {
+            OR: [
+              { divisionId: division1.id },
+              { divisionId: division2.id }
+            ]
+          }
+        })
       }
 
       // Determine merged division settings (use division1 as base)

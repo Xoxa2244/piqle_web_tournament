@@ -31,6 +31,17 @@ export default function MergeDivisionModal({
     div => div.id !== sourceDivision.id && !div.isMerged
   )
 
+  // Check if divisions have data when a division is selected
+  const { data: hasDataInfo, isLoading: checkingData } = trpc.division.checkDivisionsHasData.useQuery(
+    {
+      divisionId1: sourceDivision.id,
+      divisionId2: selectedDivisionId,
+    },
+    {
+      enabled: !!selectedDivisionId && isOpen,
+    }
+  )
+
   const mergeMutation = trpc.division.mergeDivisions.useMutation({
     onSuccess: () => {
       onSuccess()
@@ -67,15 +78,34 @@ export default function MergeDivisionModal({
       return
     }
 
-    if (window.confirm(
-      `Are you sure you want to merge "${sourceDivision.name}" with "${targetDivision.name}"?\n\n` +
-      `Both divisions will be combined into one merged division. Round Robin will be played among all merged teams. ` +
-      `You can manually unmerge the division after Round Robin completes.`
-    )) {
-      mergeMutation.mutate({
-        divisionId1: sourceDivision.id,
-        divisionId2: selectedDivisionId,
-      })
+    // Check if data has been entered
+    const hasData = hasDataInfo?.hasData || false
+
+    if (hasData) {
+      // Show warning about data loss
+      if (window.confirm(
+        `Data has already been entered for this tournament. Merging divisions will delete all tournament data (scores, matches). Do you want to continue?`
+      )) {
+        // User confirmed - clear data and merge
+        mergeMutation.mutate({
+          divisionId1: sourceDivision.id,
+          divisionId2: selectedDivisionId,
+          clearData: true,
+        })
+      }
+    } else {
+      // No data entered - proceed with normal merge
+      if (window.confirm(
+        `Are you sure you want to merge "${sourceDivision.name}" with "${targetDivision.name}"?\n\n` +
+        `Both divisions will be combined into one merged division. Round Robin will be played among all merged teams. ` +
+        `You can manually unmerge the division after Round Robin completes.`
+      )) {
+        mergeMutation.mutate({
+          divisionId1: sourceDivision.id,
+          divisionId2: selectedDivisionId,
+          clearData: false,
+        })
+      }
     }
   }
 
@@ -177,21 +207,41 @@ export default function MergeDivisionModal({
               </div>
 
               {selectedDivisionId && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start">
-                    <AlertCircle className="h-5 w-5 text-blue-500 mr-2 mt-0.5" />
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium mb-1">What happens when you merge:</p>
-                      <ul className="list-disc list-inside space-y-1 text-blue-700">
-                        <li>Both divisions will be combined into one merged division</li>
-                        <li>All teams from both divisions will be moved to the merged division</li>
-                        <li>Round Robin stage will be played among all merged teams</li>
-                        <li>After Round Robin completes, you can manually unmerge the division</li>
-                        <li>Teams will be distributed back to the original divisions when unmerged</li>
-                      </ul>
+                <>
+                  {checkingData ? (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-sm text-gray-600">Checking for existing data...</p>
                     </div>
-                  </div>
-                </div>
+                  ) : hasDataInfo?.hasData ? (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <AlertCircle className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
+                        <div className="text-sm text-red-800">
+                          <p className="font-medium mb-1">Warning: Data has been entered</p>
+                          <p className="text-red-700">
+                            Data has already been entered for this tournament. Merging divisions will delete all tournament data (scores, matches).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <AlertCircle className="h-5 w-5 text-blue-500 mr-2 mt-0.5" />
+                        <div className="text-sm text-blue-800">
+                          <p className="font-medium mb-1">What happens when you merge:</p>
+                          <ul className="list-disc list-inside space-y-1 text-blue-700">
+                            <li>Both divisions will be combined into one merged division</li>
+                            <li>All teams from both divisions will be moved to the merged division</li>
+                            <li>Round Robin stage will be played among all merged teams</li>
+                            <li>After Round Robin completes, you can manually unmerge the division</li>
+                            <li>Teams will be distributed back to the original divisions when unmerged</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="flex justify-end space-x-3 pt-4 border-t">
