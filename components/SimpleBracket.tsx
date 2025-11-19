@@ -31,8 +31,9 @@ interface MatchPosition {
 
 const MATCH_WIDTH = 200
 const MATCH_HEIGHT = 100
-const ROUND_GAP = 80
+const ROUND_GAP = 150
 const MATCH_GAP = 20
+const HEADER_HEIGHT = 60
 
 export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -57,14 +58,25 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     return Array.from(grouped.entries()).sort((a, b) => a[0] - b[0])
   }, [matches])
 
-  // Calculate positions for all matches
+  // Calculate maximum round height for centering
+  const maxRoundHeight = useMemo(() => {
+    if (matchesByRound.length === 0) return 0
+    
+    return Math.max(...matchesByRound.map(([_, roundMatches]) => {
+      return roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
+    }))
+  }, [matchesByRound])
+
+  // Calculate positions for all matches (centered vertically)
   const matchPositions = useMemo(() => {
     const positions = new Map<string, MatchPosition>()
     let currentX = 50
 
     matchesByRound.forEach(([round, roundMatches]) => {
       const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
-      let currentY = 50
+      // Center this round vertically relative to the tallest round
+      const verticalOffset = (maxRoundHeight - roundHeight) / 2
+      let currentY = HEADER_HEIGHT + verticalOffset
 
       roundMatches.forEach((match) => {
         positions.set(match.id, {
@@ -80,7 +92,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     })
 
     return positions
-  }, [matchesByRound])
+  }, [matchesByRound, maxRoundHeight])
 
   // Store positions in ref for SVG calculations
   useEffect(() => {
@@ -92,13 +104,13 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     if (matchPositions.size === 0) return { width: 0, height: 0 }
     
     const maxX = Math.max(...Array.from(matchPositions.values()).map(p => p.x + p.width))
-    const maxY = Math.max(...Array.from(matchPositions.values()).map(p => p.y + p.height))
+    const totalHeight = HEADER_HEIGHT + maxRoundHeight + 50
     
     return {
       width: maxX + 50,
-      height: maxY + 50,
+      height: totalHeight,
     }
-  }, [matchPositions])
+  }, [matchPositions, maxRoundHeight])
 
   // Generate connection lines between rounds
   const connectionLines = useMemo(() => {
@@ -112,30 +124,51 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
 
       const [nextRoundNumber, nextRoundMatches] = nextRound
 
-      roundMatches.forEach((match, matchIndex) => {
-        const currentPos = matchPositions.get(match.id)
-        if (!currentPos) return
-
-        // Calculate which match in next round this connects to
-        const nextMatchIndex = Math.floor(matchIndex / 2)
+      // Connect pairs of matches from current round to next round
+      for (let i = 0; i < roundMatches.length; i += 2) {
+        const match1 = roundMatches[i]
+        const match2 = roundMatches[i + 1]
+        const nextMatchIndex = Math.floor(i / 2)
         const nextMatch = nextRoundMatches[nextMatchIndex]
-        if (!nextMatch) return
+
+        if (!match1 || !nextMatch) continue
+
+        const currentPos1 = matchPositions.get(match1.id)
+        if (!currentPos1) continue
 
         const nextPos = matchPositions.get(nextMatch.id)
-        if (!nextPos) return
+        if (!nextPos) continue
 
-        // Start point: right center of current match
-        const x1 = currentPos.x + currentPos.width
-        const y1 = currentPos.y + currentPos.height / 2
+        // Connection from match1 (top match) to next match (top slot)
+        const x1_1 = currentPos1.x + currentPos1.width
+        const y1_1 = currentPos1.y + currentPos1.height / 2
+        const x2_1 = nextPos.x
+        const y2_1 = nextPos.y + nextPos.height / 4
 
-        // End point: left center of next match (top or bottom based on matchIndex)
-        const x2 = nextPos.x
-        const y2 = matchIndex % 2 === 0 
-          ? nextPos.y + nextPos.height / 4  // Top half
-          : nextPos.y + (nextPos.height * 3) / 4  // Bottom half
+        lines.push({ x1: x1_1, y1: y1_1, x2: x2_1, y2: y2_1 })
 
-        lines.push({ x1, y1, x2, y2 })
-      })
+        // Connection from match2 (bottom match) to next match (bottom slot) if it exists
+        if (match2) {
+          const currentPos2 = matchPositions.get(match2.id)
+          if (currentPos2) {
+            const x1_2 = currentPos2.x + currentPos2.width
+            const y1_2 = currentPos2.y + currentPos2.height / 2
+            const x2_2 = nextPos.x
+            const y2_2 = nextPos.y + (nextPos.height * 3) / 4
+
+            lines.push({ x1: x1_2, y1: y1_2, x2: x2_2, y2: y2_2 })
+          }
+        } else {
+          // If match2 doesn't exist (odd number of matches), connect match1 to bottom slot as well
+          // This handles BYE cases
+          const x1_2 = currentPos1.x + currentPos1.width
+          const y1_2 = currentPos1.y + currentPos1.height / 2
+          const x2_2 = nextPos.x
+          const y2_2 = nextPos.y + (nextPos.height * 3) / 4
+
+          lines.push({ x1: x1_2, y1: y1_2, x2: x2_2, y2: y2_2 })
+        }
+      }
     })
 
     return lines
@@ -244,7 +277,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                 }}
               >
                 {/* Round header */}
-                <div className="mb-4 text-center" style={{ height: '40px' }}>
+                <div className="text-center" style={{ height: `${HEADER_HEIGHT}px`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <h3 className="text-lg font-semibold text-gray-900">{roundName}</h3>
                 </div>
 
@@ -263,7 +296,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                         key={match.id}
                         style={{
                           position: 'absolute',
-                          top: `${pos.y}px`,
+                          top: `${pos.y - HEADER_HEIGHT}px`, // Offset by header
                           left: 0,
                         }}
                       >
