@@ -1155,36 +1155,34 @@ export const divisionRouter = createTRPCRouter({
         })
       }
 
-      // Move Round Robin matches back to original divisions based on team composition
-      // Matches where both teams belong to division1 go to division1
-      // Matches where both teams belong to division2 go to division2
-      // Matches with teams from both divisions should be split (but this shouldn't happen in RR)
+      // Move Round Robin matches back to original divisions
+      // Each team must keep ALL its matches from the merged Round Robin
+      // A match should be copied to the division of EACH team that participated in it
       const rrMatches = mergedDivision.matches.filter(m => m.stage === 'ROUND_ROBIN')
 
-      const getPoolAssignmentForDivision = (match: typeof rrMatches[number], divisionId: string) => {
-        const teamAPool = teamPoolAssignments.get(match.teamAId)
-        const teamBPool = teamPoolAssignments.get(match.teamBId)
-        const teamsShareDivision =
-          teamDivisionAssignments.get(match.teamAId) === divisionId &&
-          teamDivisionAssignments.get(match.teamBId) === divisionId
-
-        if (teamsShareDivision && teamAPool && teamAPool === teamBPool) {
-          return teamAPool
-        }
-
-        return null
+      const getPoolAssignmentForDivision = (match: typeof rrMatches[number], divisionId: string, teamId: string) => {
+        const teamPool = teamPoolAssignments.get(teamId)
+        return teamPool || null
       }
 
       for (const match of rrMatches) {
         const teamADivisionId = teamDivisionAssignments.get(match.teamAId)
         const teamBDivisionId = teamDivisionAssignments.get(match.teamBId)
 
-        const targetDivisionIds =
-          teamADivisionId && teamBDivisionId && teamADivisionId === teamBDivisionId
-            ? [teamADivisionId]
-            : [division1.id, division2.id]
+        // Determine which divisions should receive this match
+        // Each team's division should have a copy of the match
+        const targetDivisions = new Set<string>()
+        
+        if (teamADivisionId) {
+          targetDivisions.add(teamADivisionId)
+        }
+        if (teamBDivisionId) {
+          targetDivisions.add(teamBDivisionId)
+        }
 
-        for (const targetDivisionId of Array.from(new Set(targetDivisionIds))) {
+        // If both teams are in the same division, create one match
+        // If teams are in different divisions, create a match in each division
+        for (const targetDivisionId of Array.from(targetDivisions)) {
           const clonedMatch = await ctx.prisma.match.create({
             data: {
               divisionId: targetDivisionId,
@@ -1193,7 +1191,10 @@ export const divisionRouter = createTRPCRouter({
               roundIndex: match.roundIndex,
               stage: match.stage,
               note: match.note,
-              poolId: getPoolAssignmentForDivision(match, targetDivisionId),
+              // Use pool of teamA if it's in this division, otherwise teamB's pool
+              poolId: targetDivisionId === teamADivisionId 
+                ? getPoolAssignmentForDivision(match, targetDivisionId, match.teamAId)
+                : getPoolAssignmentForDivision(match, targetDivisionId, match.teamBId),
               bestOfMode: match.bestOfMode,
               gamesCount: match.gamesCount,
               targetPoints: match.targetPoints,
@@ -1203,6 +1204,7 @@ export const divisionRouter = createTRPCRouter({
             }
           })
 
+          // Copy all games (results) for this match
           for (const game of match.games) {
             await ctx.prisma.game.create({
               data: {
