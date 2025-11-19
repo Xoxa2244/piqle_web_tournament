@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
 import { X, RefreshCw, Trophy } from 'lucide-react'
 import { useMemo } from 'react'
-import BracketPyramidNew from '@/components/BracketPyramidNew'
+import SimpleBracket from '@/components/SimpleBracket'
 
 interface BracketModalProps {
   isOpen: boolean
@@ -231,16 +231,13 @@ export default function BracketModal({
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Use new bracket component if new structure is available */}
+              {/* Use simple bracket component */}
               {allMatches && allMatches.length > 0 ? (
-                <BracketPyramidNew
+                <SimpleBracket
                   matches={allMatches}
-                  showConnectingLines={true}
                   onMatchClick={(matchId) => {
                     console.log('Match clicked:', matchId)
                   }}
-                  totalTeams={(bracketData as any)?.standings?.length}
-                  bracketSize={(bracketData as any)?.bracketSize}
                 />
               ) : allMatches !== null && allMatches.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
