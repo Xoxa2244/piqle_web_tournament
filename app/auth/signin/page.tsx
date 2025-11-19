@@ -6,7 +6,6 @@ import { useState } from "react"
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl: '/admin' })
@@ -14,20 +13,7 @@ export default function SignInPage() {
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
-    try {
-      await signIn('email', { 
-        email,
-        callbackUrl: '/admin',
-        redirect: false 
-      })
-      // Redirect to verify request page
-      window.location.href = '/auth/verify-request'
-    } catch (error) {
-      console.error('Error signing in:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    alert('This feature is not available yet, please sign in with Google')
   }
 
   return (
@@ -87,17 +73,24 @@ export default function SignInPage() {
 
             <Button
               type="submit"
-              disabled={isLoading || !email}
+              disabled={!email}
               className="w-full bg-blue-600 hover:bg-blue-700"
             >
-              {isLoading ? 'Sending...' : 'Sign in with Email'}
+              Sign in with Email
             </Button>
           </form>
         </div>
 
         <p className="mt-4 text-center text-sm text-gray-600">
           New to Piqle?{" "}
-          <a href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
+          <a 
+            href="#" 
+            onClick={(e) => {
+              e.preventDefault()
+              alert('This feature is not available yet, please sign in with Google')
+            }}
+            className="font-medium text-blue-600 hover:text-blue-500"
+          >
             Create an account
           </a>
         </p>
