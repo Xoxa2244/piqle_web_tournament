@@ -170,9 +170,9 @@ export default function PublicTournamentsPage() {
                         href="/profile"
                         className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                       >
-                        {tournament.user.image ? (
+                        {(tournament.user as { image?: string | null }).image ? (
                           <Image
-                            src={tournament.user.image}
+                            src={(tournament.user as { image?: string | null }).image!}
                             alt={tournament.user.name || tournament.user.email || 'TD'}
                             width={20}
                             height={20}
