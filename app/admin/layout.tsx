@@ -55,7 +55,7 @@ export default function AdminLayout({
                   {hasValidAvatar && !avatarError && avatarSrc ? (
                     <Image
                       src={avatarSrc}
-                      alt={session.user.name || 'Profile'}
+                      alt={session?.user?.name || 'Profile'}
                       width={32}
                       height={32}
                       className="rounded-full object-cover"
