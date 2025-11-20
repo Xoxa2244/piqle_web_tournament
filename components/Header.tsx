@@ -4,14 +4,20 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { User as UserIcon } from 'lucide-react'
+import { useState } from 'react'
 
 export default function Header() {
   const { data: session } = useSession()
+  const [avatarError, setAvatarError] = useState(false)
 
   // Only show header if user is logged in
   if (!session) {
     return null
   }
+
+  const hasValidAvatar = session?.user?.image && 
+    session.user.image.trim() !== '' &&
+    (session.user.image.startsWith('http') || session.user.image.startsWith('data:'))
 
   return (
     <header className="bg-white shadow-sm border-b fixed top-0 left-0 right-0 z-50">
@@ -21,13 +27,14 @@ export default function Header() {
             href="/profile"
             className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
           >
-            {session?.user?.image ? (
+            {hasValidAvatar && !avatarError ? (
               <Image
                 src={session.user.image}
                 alt={session.user.name || 'Profile'}
                 width={32}
                 height={32}
                 className="rounded-full object-cover"
+                onError={() => setAvatarError(true)}
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">

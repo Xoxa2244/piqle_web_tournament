@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 import Image from 'next/image'
 import { User as UserIcon, Save, ArrowLeft, Upload, Camera } from 'lucide-react'
 import Link from 'next/link'
+import AvatarCropper from '@/components/AvatarCropper'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -26,6 +27,9 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarError, setAvatarError] = useState(false)
+  const [showCropper, setShowCropper] = useState(false)
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     gender: '' as 'M' | 'F' | 'X' | '',
@@ -43,6 +47,7 @@ export default function ProfilePage() {
         duprLink: profile.duprLink || '',
       })
       setAvatarPreview(null)
+      setAvatarError(false)
     }
   }, [profile, isEditing])
 
@@ -103,37 +108,60 @@ export default function ProfilePage() {
       return
     }
 
-    // Create preview
+    // Show cropper with the selected image
     const reader = new FileReader()
     reader.onload = (e) => {
-      setAvatarPreview(e.target?.result as string)
+      setCropperImageSrc(e.target?.result as string)
+      setShowCropper(true)
     }
     reader.readAsDataURL(file)
+  }
 
-    // Upload file
+  const handleCropComplete = async (croppedImageUrl: string) => {
+    setShowCropper(false)
     setIsUploadingAvatar(true)
-    const formData = new FormData()
-    formData.append('file', file)
 
     try {
-      const response = await fetch('/api/upload-avatar', {
+      // Convert blob URL to File
+      const response = await fetch(croppedImageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' })
+
+      // Upload cropped file
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-avatar', {
         method: 'POST',
         body: formData,
       })
 
-      if (!response.ok) {
-        const error = await response.json()
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json()
         throw new Error(error.error || 'Failed to upload avatar')
       }
 
-      const data = await response.json()
+      const data = await uploadResponse.json()
       setAvatarPreview(data.url)
+      
+      // Clean up blob URL
+      URL.revokeObjectURL(croppedImageUrl)
     } catch (error) {
       console.error('Upload error:', error)
       alert('Failed to upload avatar. Please try again.')
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)
+      setCropperImageSrc(null)
+    }
+  }
+
+  const handleCropperClose = () => {
+    setShowCropper(false)
+    setCropperImageSrc(null)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
@@ -160,6 +188,8 @@ export default function ProfilePage() {
   }
 
   const currentAvatar = avatarPreview || profile.image
+  const hasValidAvatar = currentAvatar && currentAvatar.trim() !== '' && 
+    (currentAvatar.startsWith('http') || currentAvatar.startsWith('data:'))
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -187,14 +217,19 @@ export default function ProfilePage() {
             {/* Avatar */}
             <div className="flex items-center space-x-4">
               <div className="relative">
-                {currentAvatar ? (
-                  <Image
-                    src={currentAvatar}
-                    alt={profile.name || 'User'}
-                    width={100}
-                    height={100}
-                    className="rounded-full object-cover"
-                  />
+                {hasValidAvatar && !avatarError ? (
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
+                    <Image
+                      src={currentAvatar}
+                      alt={profile.name || 'User'}
+                      width={100}
+                      height={100}
+                      className="rounded-full object-cover"
+                      onError={() => {
+                        setAvatarError(true)
+                      }}
+                    />
+                  </div>
                 ) : (
                   <div className="w-24 h-24 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border-2 border-gray-300">
                     <UserIcon className="h-14 w-14 text-gray-500" />
@@ -339,6 +374,17 @@ export default function ProfilePage() {
             )}
           </div>
         </Card>
+
+        {/* Avatar Cropper Modal */}
+        {cropperImageSrc && (
+          <AvatarCropper
+            imageSrc={cropperImageSrc}
+            isOpen={showCropper}
+            onClose={handleCropperClose}
+            onCrop={handleCropComplete}
+            aspectRatio={1}
+          />
+        )}
       </div>
     </div>
   )

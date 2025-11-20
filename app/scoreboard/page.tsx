@@ -11,6 +11,30 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, MapPin, Users, Trophy, Eye, User as UserIcon } from 'lucide-react'
 
+function AvatarImage({ src, alt, className }: { src?: string | null, alt?: string, className?: string }) {
+  const [error, setError] = useState(false)
+  const hasValidAvatar = src && src.trim() !== '' && (src.startsWith('http') || src.startsWith('data:'))
+  
+  if (hasValidAvatar && !error) {
+    return (
+      <Image
+        src={src}
+        alt={alt || 'Profile'}
+        width={32}
+        height={32}
+        className={className}
+        onError={() => setError(true)}
+      />
+    )
+  }
+  
+  return (
+    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+      <UserIcon className="h-5 w-5 text-gray-500" />
+    </div>
+  )
+}
+
 export default function PublicTournamentsPage() {
   const { data: session } = useSession()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
@@ -51,19 +75,11 @@ export default function PublicTournamentsPage() {
                 href="/profile"
                 className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
               >
-                {session?.user?.image ? (
-                  <Image
-                    src={session.user.image}
-                    alt={session.user.name || 'Profile'}
-                    width={32}
-                    height={32}
-                    className="rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
-                    <UserIcon className="h-5 w-5 text-gray-500" />
-                  </div>
-                )}
+                <AvatarImage 
+                  src={session?.user?.image} 
+                  alt={session?.user?.name || 'Profile'}
+                  className="rounded-full object-cover"
+                />
                 <span className="hidden sm:inline">
                   {session?.user?.name || 'Profile'}
                 </span>
