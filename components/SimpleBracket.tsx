@@ -31,7 +31,7 @@ interface MatchPosition {
 
 const MATCH_WIDTH = 140
 const MATCH_HEIGHT = 70
-const ROUND_GAP = 100
+const ROUND_GAP = 180
 const MATCH_GAP = 12
 const HEADER_HEIGHT = 0 // No headers
 
@@ -140,8 +140,10 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
         if (!nextPos) continue
 
         // Connection from match1 (top match) to next match (top slot)
+        // Start: right center of match1
         const x1_1 = currentPos1.x + currentPos1.width
         const y1_1 = currentPos1.y + currentPos1.height / 2
+        // End: left center of top half of next match
         const x2_1 = nextPos.x
         const y2_1 = nextPos.y + nextPos.height / 4
 
@@ -151,8 +153,10 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
         if (match2) {
           const currentPos2 = matchPositions.get(match2.id)
           if (currentPos2) {
+            // Start: right center of match2
             const x1_2 = currentPos2.x + currentPos2.width
             const y1_2 = currentPos2.y + currentPos2.height / 2
+            // End: left center of bottom half of next match
             const x2_2 = nextPos.x
             const y2_2 = nextPos.y + (nextPos.height * 3) / 4
 
@@ -215,7 +219,8 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-auto">
-      <div style={{ position: 'relative', width: `${svgDimensions.width}px`, height: `${svgDimensions.height}px`, minHeight: '600px' }}>
+      <div className="flex items-center justify-center min-h-full py-8">
+        <div style={{ position: 'relative', width: `${svgDimensions.width}px`, height: `${svgDimensions.height}px` }}>
         {/* SVG overlay for connection lines */}
         <svg
           style={{
@@ -228,37 +233,42 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
             zIndex: 1,
           }}
         >
-          {connectionLines.map((line, index) => (
-            <g key={index}>
-              {/* Horizontal line */}
-              <line
-                x1={line.x1}
-                y1={line.y1}
-                x2={(line.x1 + line.x2) / 2}
-                y2={line.y1}
-                stroke="#CBD5E0"
-                strokeWidth="2"
-              />
-              {/* Vertical line */}
-              <line
-                x1={(line.x1 + line.x2) / 2}
-                y1={line.y1}
-                x2={(line.x1 + line.x2) / 2}
-                y2={line.y2}
-                stroke="#CBD5E0"
-                strokeWidth="2"
-              />
-              {/* Final horizontal line */}
-              <line
-                x1={(line.x1 + line.x2) / 2}
-                y1={line.y2}
-                x2={line.x2}
-                y2={line.y2}
-                stroke="#CBD5E0"
-                strokeWidth="2"
-              />
-            </g>
-          ))}
+          {connectionLines.map((line, index) => {
+            // Calculate midpoint for vertical line
+            const midX = (line.x1 + line.x2) / 2
+            
+            return (
+              <g key={index}>
+                {/* Horizontal line from source match */}
+                <line
+                  x1={line.x1}
+                  y1={line.y1}
+                  x2={midX}
+                  y2={line.y1}
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                />
+                {/* Vertical line connecting the two horizontal segments */}
+                <line
+                  x1={midX}
+                  y1={line.y1}
+                  x2={midX}
+                  y2={line.y2}
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                />
+                {/* Horizontal line to target match */}
+                <line
+                  x1={midX}
+                  y1={line.y2}
+                  x2={line.x2}
+                  y2={line.y2}
+                  stroke="#CBD5E0"
+                  strokeWidth="2"
+                />
+              </g>
+            )
+          })}
         </svg>
 
         {/* Matches */}
@@ -386,6 +396,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
               </div>
             )
           })}
+        </div>
         </div>
       </div>
     </div>
