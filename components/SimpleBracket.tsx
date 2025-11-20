@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Check } from 'lucide-react'
 
 interface BracketMatch {
   id: string
@@ -296,6 +297,10 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                     const winnerId = match.winnerTeamId
                     const { scoreA, scoreB } = getScore(match)
 
+                    // Check if this is a BYE match (one team is BYE)
+                    const isByeMatch = match.left.isBye || match.right.isBye
+                    const autoQualifiedTeam = match.left.isBye ? match.right : (match.right.isBye ? match.left : undefined)
+
                     return (
                       <div
                         key={match.id}
@@ -313,80 +318,118 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                           style={{ width: `${MATCH_WIDTH}px` }}
                         >
                           <CardContent className="p-2">
-                            {/* Team A */}
-                            <div
-                              className={`flex items-center justify-between mb-1 p-1.5 rounded ${
-                                winnerId === match.left.teamId
-                                  ? 'bg-green-100 border-2 border-green-500'
-                                  : isFinished && winnerId !== match.left.teamId
-                                  ? 'bg-gray-50 opacity-50'
-                                  : 'bg-blue-50'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-1.5 min-w-0 flex-1">
-                                <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
-                                  #{match.left.seed || '?'}
-                                </span>
-                                <span
-                                  className={`text-xs font-medium truncate ${
+                            {isByeMatch && autoQualifiedTeam ? (
+                              // Auto-qualified format: single centered team
+                              <div className="flex flex-col items-center justify-center h-full py-2">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <Check className="h-3 w-3 text-green-600" />
+                                  <span className="text-[10px] text-gray-500 font-medium">
+                                    Auto-qualified
+                                  </span>
+                                </div>
+                                <div
+                                  className={`flex items-center justify-center p-2 rounded w-full ${
+                                    winnerId === autoQualifiedTeam.teamId
+                                      ? 'bg-green-100 border-2 border-green-500'
+                                      : 'bg-blue-50'
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-1.5 min-w-0">
+                                    <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
+                                      #{autoQualifiedTeam.seed || '?'}
+                                    </span>
+                                    <span
+                                      className={`text-xs font-medium truncate ${
+                                        winnerId === autoQualifiedTeam.teamId
+                                          ? 'text-green-800 font-semibold'
+                                          : 'text-gray-900'
+                                      }`}
+                                      title={autoQualifiedTeam.teamName || 'TBD'}
+                                    >
+                                      {autoQualifiedTeam.teamName || 'TBD'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              // Regular match format: two teams
+                              <>
+                                {/* Team A */}
+                                <div
+                                  className={`flex items-center justify-between mb-1 p-1.5 rounded ${
                                     winnerId === match.left.teamId
-                                      ? 'text-green-800 font-semibold'
-                                      : winnerId === match.right.teamId
-                                      ? 'text-gray-400'
-                                      : 'text-gray-900'
+                                      ? 'bg-green-100 border-2 border-green-500'
+                                      : isFinished && winnerId !== match.left.teamId
+                                      ? 'bg-gray-50 opacity-50'
+                                      : 'bg-blue-50'
                                   }`}
-                                  title={match.left.teamName || (match.left.isBye ? 'BYE' : 'TBD')}
                                 >
-                                  {match.left.isBye
-                                    ? 'BYE'
-                                    : match.left.teamName || 'TBD'}
-                                </span>
-                              </div>
-                              {scoreA !== null && (
-                                <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
-                                  {scoreA}
-                                </span>
-                              )}
-                            </div>
+                                  <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                                    <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
+                                      #{match.left.seed || '?'}
+                                    </span>
+                                    <span
+                                      className={`text-xs font-medium truncate ${
+                                        winnerId === match.left.teamId
+                                          ? 'text-green-800 font-semibold'
+                                          : winnerId === match.right.teamId
+                                          ? 'text-gray-400'
+                                          : 'text-gray-900'
+                                      }`}
+                                      title={match.left.teamName || (match.left.isBye ? 'BYE' : 'TBD')}
+                                    >
+                                      {match.left.isBye
+                                        ? 'BYE'
+                                        : match.left.teamName || 'TBD'}
+                                    </span>
+                                  </div>
+                                  {scoreA !== null && (
+                                    <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
+                                      {scoreA}
+                                    </span>
+                                  )}
+                                </div>
 
-                            {/* VS divider */}
-                            <div className="text-center text-[10px] text-gray-400 my-0.5">vs</div>
+                                {/* VS divider */}
+                                <div className="text-center text-[10px] text-gray-400 my-0.5">vs</div>
 
-                            {/* Team B */}
-                            <div
-                              className={`flex items-center justify-between p-1.5 rounded ${
-                                winnerId === match.right.teamId
-                                  ? 'bg-green-100 border-2 border-green-500'
-                                  : isFinished && winnerId !== match.right.teamId
-                                  ? 'bg-gray-50 opacity-50'
-                                  : 'bg-blue-50'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-1.5 min-w-0 flex-1">
-                                <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
-                                  #{match.right.seed || '?'}
-                                </span>
-                                <span
-                                  className={`text-xs font-medium truncate ${
+                                {/* Team B */}
+                                <div
+                                  className={`flex items-center justify-between p-1.5 rounded ${
                                     winnerId === match.right.teamId
-                                      ? 'text-green-800 font-semibold'
-                                      : winnerId === match.left.teamId
-                                      ? 'text-gray-400'
-                                      : 'text-gray-900'
+                                      ? 'bg-green-100 border-2 border-green-500'
+                                      : isFinished && winnerId !== match.right.teamId
+                                      ? 'bg-gray-50 opacity-50'
+                                      : 'bg-blue-50'
                                   }`}
-                                  title={match.right.teamName || (match.right.isBye ? 'BYE' : 'TBD')}
                                 >
-                                  {match.right.isBye
-                                    ? 'BYE'
-                                    : match.right.teamName || 'TBD'}
-                                </span>
-                              </div>
-                              {scoreB !== null && (
-                                <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
-                                  {scoreB}
-                                </span>
-                              )}
-                            </div>
+                                  <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                                    <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
+                                      #{match.right.seed || '?'}
+                                    </span>
+                                    <span
+                                      className={`text-xs font-medium truncate ${
+                                        winnerId === match.right.teamId
+                                          ? 'text-green-800 font-semibold'
+                                          : winnerId === match.left.teamId
+                                          ? 'text-gray-400'
+                                          : 'text-gray-900'
+                                      }`}
+                                      title={match.right.teamName || (match.right.isBye ? 'BYE' : 'TBD')}
+                                    >
+                                      {match.right.isBye
+                                        ? 'BYE'
+                                        : match.right.teamName || 'TBD'}
+                                    </span>
+                                  </div>
+                                  {scoreB !== null && (
+                                    <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
+                                      {scoreB}
+                                    </span>
+                                  )}
+                                </div>
+                              </>
+                            )}
                           </CardContent>
                         </Card>
                       </div>
