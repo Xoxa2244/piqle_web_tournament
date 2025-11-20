@@ -29,11 +29,11 @@ interface MatchPosition {
   height: number
 }
 
-const MATCH_WIDTH = 200
-const MATCH_HEIGHT = 100
-const ROUND_GAP = 150
-const MATCH_GAP = 20
-const HEADER_HEIGHT = 60
+const MATCH_WIDTH = 140
+const MATCH_HEIGHT = 70
+const ROUND_GAP = 100
+const MATCH_GAP = 12
+const HEADER_HEIGHT = 0 // No headers
 
 export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -70,7 +70,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
   // Calculate positions for all matches (centered vertically)
   const matchPositions = useMemo(() => {
     const positions = new Map<string, MatchPosition>()
-    let currentX = 50
+    let currentX = 30
 
     matchesByRound.forEach(([round, roundMatches]) => {
       const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
@@ -104,10 +104,10 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     if (matchPositions.size === 0) return { width: 0, height: 0 }
     
     const maxX = Math.max(...Array.from(matchPositions.values()).map(p => p.x + p.width))
-    const totalHeight = HEADER_HEIGHT + maxRoundHeight + 50
+    const totalHeight = HEADER_HEIGHT + maxRoundHeight + 30
     
     return {
-      width: maxX + 50,
+      width: maxX + 30,
       height: totalHeight,
     }
   }, [matchPositions, maxRoundHeight])
@@ -276,11 +276,6 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                   top: 0,
                 }}
               >
-                {/* Round header */}
-                <div className="text-center" style={{ height: `${HEADER_HEIGHT}px`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <h3 className="text-lg font-semibold text-gray-900">{roundName}</h3>
-                </div>
-
                 {/* Matches in this round */}
                 <div>
                   {roundMatches.map((match) => {
@@ -296,21 +291,21 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                         key={match.id}
                         style={{
                           position: 'absolute',
-                          top: `${pos.y - HEADER_HEIGHT}px`, // Offset by header
+                          top: `${pos.y}px`,
                           left: 0,
                         }}
                       >
                         <Card
-                          className={`w-[${MATCH_WIDTH}px] cursor-pointer transition-shadow hover:shadow-lg ${
+                          className={`cursor-pointer transition-shadow hover:shadow-lg ${
                             isFinished ? 'border-green-200 bg-green-50/50' : 'border-gray-200'
                           }`}
                           onClick={() => match.matchId && onMatchClick?.(match.matchId)}
                           style={{ width: `${MATCH_WIDTH}px` }}
                         >
-                          <CardContent className="p-3">
+                          <CardContent className="p-2">
                             {/* Team A */}
                             <div
-                              className={`flex items-center justify-between mb-2 p-2 rounded ${
+                              className={`flex items-center justify-between mb-1 p-1.5 rounded ${
                                 winnerId === match.left.teamId
                                   ? 'bg-green-100 border-2 border-green-500'
                                   : isFinished && winnerId !== match.left.teamId
@@ -318,12 +313,12 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                                   : 'bg-blue-50'
                               }`}
                             >
-                              <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                <span className="text-xs text-gray-500 font-medium flex-shrink-0">
+                              <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                                <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
                                   #{match.left.seed || '?'}
                                 </span>
                                 <span
-                                  className={`text-sm font-medium truncate ${
+                                  className={`text-xs font-medium truncate ${
                                     winnerId === match.left.teamId
                                       ? 'text-green-800 font-semibold'
                                       : winnerId === match.right.teamId
@@ -338,18 +333,18 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                                 </span>
                               </div>
                               {scoreA !== null && (
-                                <span className="text-sm font-semibold text-blue-600 flex-shrink-0 ml-2">
+                                <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
                                   {scoreA}
                                 </span>
                               )}
                             </div>
 
                             {/* VS divider */}
-                            <div className="text-center text-xs text-gray-400 my-1">vs</div>
+                            <div className="text-center text-[10px] text-gray-400 my-0.5">vs</div>
 
                             {/* Team B */}
                             <div
-                              className={`flex items-center justify-between p-2 rounded ${
+                              className={`flex items-center justify-between p-1.5 rounded ${
                                 winnerId === match.right.teamId
                                   ? 'bg-green-100 border-2 border-green-500'
                                   : isFinished && winnerId !== match.right.teamId
@@ -357,12 +352,12 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                                   : 'bg-blue-50'
                               }`}
                             >
-                              <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                <span className="text-xs text-gray-500 font-medium flex-shrink-0">
+                              <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                                <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
                                   #{match.right.seed || '?'}
                                 </span>
                                 <span
-                                  className={`text-sm font-medium truncate ${
+                                  className={`text-xs font-medium truncate ${
                                     winnerId === match.right.teamId
                                       ? 'text-green-800 font-semibold'
                                       : winnerId === match.left.teamId
@@ -377,7 +372,7 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
                                 </span>
                               </div>
                               {scoreB !== null && (
-                                <span className="text-sm font-semibold text-blue-600 flex-shrink-0 ml-2">
+                                <span className="text-xs font-semibold text-blue-600 flex-shrink-0 ml-1.5">
                                   {scoreB}
                                 </span>
                               )}
