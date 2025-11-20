@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, MapPin, Users, Trophy, Eye, User as UserIcon } from 'lucide-react'
-import Image from 'next/image'
 
 function AvatarImage({ src, alt, className }: { src?: string | null, alt?: string, className?: string }) {
   const [error, setError] = useState(false)
