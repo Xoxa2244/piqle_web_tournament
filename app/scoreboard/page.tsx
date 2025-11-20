@@ -13,12 +13,13 @@ import { Calendar, MapPin, Users, Trophy, Eye, User as UserIcon } from 'lucide-r
 
 function AvatarImage({ src, alt, className }: { src?: string | null, alt?: string, className?: string }) {
   const [error, setError] = useState(false)
-  const hasValidAvatar = src && src.trim() !== '' && (src.startsWith('http') || src.startsWith('data:'))
+  const hasValidAvatar = Boolean(src && src.trim() !== '' && (src.startsWith('http') || src.startsWith('data:')))
+  const avatarSrc = src || ''
   
-  if (hasValidAvatar && !error) {
+  if (hasValidAvatar && !error && avatarSrc) {
     return (
       <Image
-        src={src}
+        src={avatarSrc}
         alt={alt || 'Profile'}
         width={32}
         height={32}

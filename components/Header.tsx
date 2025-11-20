@@ -15,9 +15,11 @@ export default function Header() {
     return null
   }
 
-  const hasValidAvatar = session?.user?.image && 
+  const hasValidAvatar = Boolean(session?.user?.image && 
     session.user.image.trim() !== '' &&
-    (session.user.image.startsWith('http') || session.user.image.startsWith('data:'))
+    (session.user.image.startsWith('http') || session.user.image.startsWith('data:')))
+  
+  const avatarSrc = session?.user?.image || ''
 
   return (
     <header className="bg-white shadow-sm border-b fixed top-0 left-0 right-0 z-50">
@@ -27,9 +29,9 @@ export default function Header() {
             href="/profile"
             className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
           >
-            {hasValidAvatar && !avatarError ? (
+            {hasValidAvatar && !avatarError && avatarSrc ? (
               <Image
-                src={session.user.image}
+                src={avatarSrc}
                 alt={session.user.name || 'Profile'}
                 width={32}
                 height={32}
