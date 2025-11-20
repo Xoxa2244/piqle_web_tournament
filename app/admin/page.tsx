@@ -137,13 +137,13 @@ export default function AdminPage() {
                         {tournament.user && (
                           <div className="flex items-center space-x-2">
                             <span>Tournament Director:</span>
-                            {tournament.user.image ? (
+                            {(tournament.user as { image?: string | null }).image ? (
                               <Link
                                 href="/profile"
                                 className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                               >
                                 <Image
-                                  src={tournament.user.image}
+                                  src={(tournament.user as { image?: string | null }).image!}
                                   alt={tournament.user.name || tournament.user.email || 'TD'}
                                   width={18}
                                   height={18}
@@ -224,13 +224,13 @@ export default function AdminPage() {
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-gray-500">Tournament Director:</span>
-                    {tournament.user.image ? (
+                    {(tournament.user as { image?: string | null }).image ? (
                       <Link
                         href="/profile"
                         className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
                       >
                         <Image
-                          src={tournament.user.image}
+                          src={(tournament.user as { image?: string | null }).image!}
                           alt={tournament.user.name || tournament.user.email || 'TD'}
                           width={20}
                           height={20}

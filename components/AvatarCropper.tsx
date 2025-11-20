@@ -196,6 +196,7 @@ export default function AvatarCropper({
               }}
               onMouseDown={handleMouseDown}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 ref={imageRef}
                 src={imageSrc}
