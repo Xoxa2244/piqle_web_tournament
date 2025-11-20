@@ -1,6 +1,10 @@
+import Header from '@/components/Header'
+
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Header />
+      <div className="flex items-center justify-center pt-16">
       <div className="text-center">
         <div className="mb-8">
           <h1 className="text-6xl font-bold text-gray-900 mb-4">
@@ -24,6 +28,7 @@ export default function HomePage() {
         <div className="flex justify-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
         </div>
+      </div>
       </div>
     </div>
   )

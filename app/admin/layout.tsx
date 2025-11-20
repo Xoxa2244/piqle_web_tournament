@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useCallback } from 'react'
-import { signOut } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
+import Image from 'next/image'
+import { User as UserIcon } from 'lucide-react'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -12,6 +14,7 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
+  const { data: session } = useSession()
   const handleLogout = useCallback(async () => {
     await signOut({ callbackUrl: '/auth/signin' })
   }, [])
@@ -24,7 +27,7 @@ export default function AdminLayout({
               <Link href="/admin" className="text-xl font-bold text-gray-900">
                 Piqle Admin
               </Link>
-              <div className="flex space-x-4">
+              <div className="flex items-center space-x-4">
                 <Link
                   href="/admin"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
@@ -36,6 +39,28 @@ export default function AdminLayout({
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Home
+                </Link>
+                {/* Profile Link */}
+                <Link
+                  href="/profile"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  {session?.user?.image ? (
+                    <Image
+                      src={session.user.image}
+                      alt={session.user.name || 'Profile'}
+                      width={32}
+                      height={32}
+                      className="rounded-full"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                      <UserIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                  )}
+                  <span className="hidden sm:inline">
+                    {session?.user?.name || 'Profile'}
+                  </span>
                 </Link>
                 <button
                   onClick={handleLogout}

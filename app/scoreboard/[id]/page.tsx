@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+import Image from 'next/image'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +16,8 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  ArrowLeft
+  ArrowLeft,
+  User as UserIcon
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketPyramidNew from '@/components/BracketPyramidNew'
@@ -50,6 +53,7 @@ interface PlayoffMatch {
 }
 
 export default function PublicCoursePage() {
+  const { data: session } = useSession()
   const params = useParams()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
@@ -227,6 +231,31 @@ export default function PublicCoursePage() {
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
+              
+              {/* Profile Link */}
+              {session && (
+                <Link
+                  href="/profile"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors ml-4"
+                >
+                  {session?.user?.image ? (
+                    <Image
+                      src={session.user.image}
+                      alt={session.user.name || 'Profile'}
+                      width={32}
+                      height={32}
+                      className="rounded-full"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                      <UserIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                  )}
+                  <span className="hidden sm:inline">
+                    {session?.user?.name || 'Profile'}
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
 

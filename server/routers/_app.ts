@@ -10,6 +10,7 @@ import { divisionStageRouter } from './divisionStage'
 import { importRouter } from './import'
 import { publicRouter } from './public'
 import { tournamentAccessRouter } from './tournamentAccess'
+import { userRouter } from './user'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -23,6 +24,7 @@ export const appRouter = createTRPCRouter({
   import: importRouter,
   public: publicRouter,
   tournamentAccess: tournamentAccessRouter,
+  user: userRouter,
 })
 
 export type AppRouter = typeof appRouter
