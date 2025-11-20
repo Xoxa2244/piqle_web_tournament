@@ -27,6 +27,7 @@ model User {
   tournaments              Tournament[]
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
+  tournamentRatings        TournamentRating[]
 
   @@map("users")
 }
@@ -91,6 +92,7 @@ model Tournament {
   prizes                  Prize[]
   rrGroups                RoundRobinGroup[]
   tournamentAccesses      TournamentAccess[]
+  tournamentRatings       TournamentRating[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
 
@@ -409,6 +411,21 @@ model TournamentAccessRequest {
   @@map("tournament_access_requests")
 }
 
+model TournamentRating {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  rating       RatingType
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tournamentId]) // One rating per user per tournament
+  @@map("tournament_ratings")
+}
+
 enum UserRole {
   TD
   ASSISTANT
@@ -511,4 +528,9 @@ enum DivisionStage {
   FINAL_IN_PROGRESS
   FINAL_COMPLETE
   DIVISION_COMPLETE
+}
+
+enum RatingType {
+  LIKE
+  DISLIKE
 }
