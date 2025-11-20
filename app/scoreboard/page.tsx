@@ -167,7 +167,7 @@ export default function PublicTournamentsPage() {
                       <UserIcon className="h-4 w-4 mr-2" />
                       <span className="text-gray-500 mr-1">Tournament Director:</span>
                       <Link
-                        href="/profile"
+                        href={`/profile/${tournament.user.id}`}
                         className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                       >
                         {(tournament.user as { image?: string | null }).image ? (
