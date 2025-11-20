@@ -7,9 +7,6 @@ export const publicRouter = createTRPCRouter({
       where: {
         isPublicBoardEnabled: true,
       },
-      orderBy: {
-        startDate: 'desc',
-      },
       select: {
         id: true,
         title: true,
@@ -33,10 +30,38 @@ export const publicRouter = createTRPCRouter({
             name: true,
           },
         },
+        tournamentRatings: {
+          select: {
+            rating: true,
+          },
+        },
       },
     })
 
-    return tournaments
+    // Calculate karma for each tournament and sort by karma (descending)
+    const tournamentsWithKarma = tournaments.map((tournament) => {
+      const likes = tournament.tournamentRatings.filter((r) => r.rating === 'LIKE').length
+      const dislikes = tournament.tournamentRatings.filter((r) => r.rating === 'DISLIKE').length
+      const karma = likes - dislikes
+
+      return {
+        ...tournament,
+        karma,
+        likes,
+        dislikes,
+      }
+    })
+
+    // Sort by karma (descending), then by startDate (descending)
+    tournamentsWithKarma.sort((a, b) => {
+      if (a.karma !== b.karma) {
+        return b.karma - a.karma
+      }
+      return new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+    })
+
+    // Remove tournamentRatings from response (we already calculated karma)
+    return tournamentsWithKarma.map(({ tournamentRatings, ...tournament }) => tournament)
   }),
 
   getBoard: publicProcedure
