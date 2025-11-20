@@ -32,7 +32,7 @@ interface MatchPosition {
 
 const MATCH_WIDTH = 140
 const MATCH_HEIGHT = 85 // Increased to accommodate card content with padding
-const ROUND_GAP = 180
+const ROUND_GAP = 126 // Reduced by 30% (from 180) to fit more stages
 const MATCH_GAP = 25 // Increased to prevent overlapping
 const HEADER_HEIGHT = 0 // No headers
 
@@ -68,26 +68,82 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     }))
   }, [matchesByRound])
 
-  // Calculate positions for all matches (centered vertically)
+  // Calculate positions for all matches (centered vertically and aligned between source matches)
   const matchPositions = useMemo(() => {
     const positions = new Map<string, MatchPosition>()
     let currentX = 30
 
-    matchesByRound.forEach(([round, roundMatches]) => {
-      const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
-      // Center this round vertically relative to the tallest round
-      const verticalOffset = (maxRoundHeight - roundHeight) / 2
-      let currentY = HEADER_HEIGHT + verticalOffset
+    matchesByRound.forEach(([round, roundMatches], roundIndex) => {
+      if (roundIndex === 0) {
+        // First round: position matches from top to bottom, centered vertically
+        const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
+        const verticalOffset = (maxRoundHeight - roundHeight) / 2
+        let currentY = HEADER_HEIGHT + verticalOffset
 
-      roundMatches.forEach((match) => {
-        positions.set(match.id, {
-          x: currentX,
-          y: currentY,
-          width: MATCH_WIDTH,
-          height: MATCH_HEIGHT,
+        roundMatches.forEach((match) => {
+          positions.set(match.id, {
+            x: currentX,
+            y: currentY,
+            width: MATCH_WIDTH,
+            height: MATCH_HEIGHT,
+          })
+          currentY += MATCH_HEIGHT + MATCH_GAP
         })
-        currentY += MATCH_HEIGHT + MATCH_GAP
-      })
+      } else {
+        // Subsequent rounds: position matches centered between their source matches
+        const previousRound = matchesByRound[roundIndex - 1]
+        if (!previousRound) return
+
+        const [_, previousRoundMatches] = previousRound
+
+        roundMatches.forEach((match, matchIndex) => {
+          // Find the two source matches from previous round that feed into this match
+          const sourceMatch1Index = matchIndex * 2
+          const sourceMatch2Index = matchIndex * 2 + 1
+          const sourceMatch1 = previousRoundMatches[sourceMatch1Index]
+          const sourceMatch2 = previousRoundMatches[sourceMatch2Index]
+
+          let targetY: number
+
+          if (sourceMatch1 && sourceMatch2) {
+            // Both source matches exist: center this match between them
+            const pos1 = positions.get(sourceMatch1.id)
+            const pos2 = positions.get(sourceMatch2.id)
+            if (pos1 && pos2) {
+              const center1 = pos1.y + pos1.height / 2
+              const center2 = pos2.y + pos2.height / 2
+              targetY = (center1 + center2) / 2 - MATCH_HEIGHT / 2
+            } else {
+              // Fallback: position sequentially
+              const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
+              const verticalOffset = (maxRoundHeight - roundHeight) / 2
+              targetY = HEADER_HEIGHT + verticalOffset + matchIndex * (MATCH_HEIGHT + MATCH_GAP)
+            }
+          } else if (sourceMatch1) {
+            // Only one source match: align with it
+            const pos1 = positions.get(sourceMatch1.id)
+            if (pos1) {
+              targetY = pos1.y + pos1.height / 2 - MATCH_HEIGHT / 2
+            } else {
+              const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
+              const verticalOffset = (maxRoundHeight - roundHeight) / 2
+              targetY = HEADER_HEIGHT + verticalOffset + matchIndex * (MATCH_HEIGHT + MATCH_GAP)
+            }
+          } else {
+            // Fallback: position sequentially
+            const roundHeight = roundMatches.length * (MATCH_HEIGHT + MATCH_GAP) - MATCH_GAP
+            const verticalOffset = (maxRoundHeight - roundHeight) / 2
+            targetY = HEADER_HEIGHT + verticalOffset + matchIndex * (MATCH_HEIGHT + MATCH_GAP)
+          }
+
+          positions.set(match.id, {
+            x: currentX,
+            y: targetY,
+            width: MATCH_WIDTH,
+            height: MATCH_HEIGHT,
+          })
+        })
+      }
 
       currentX += MATCH_WIDTH + ROUND_GAP
     })
