@@ -57,11 +57,11 @@ export default function PublicTournamentsPage() {
                     alt={session.user.name || 'Profile'}
                     width={32}
                     height={32}
-                    className="rounded-full"
+                    className="rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                    <UserIcon className="h-5 w-5 text-gray-400" />
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                    <UserIcon className="h-5 w-5 text-gray-500" />
                   </div>
                 )}
                 <span className="hidden sm:inline">
