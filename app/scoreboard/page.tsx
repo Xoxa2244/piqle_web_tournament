@@ -284,11 +284,6 @@ export default function PublicTournamentsPage() {
                         <ThumbsDown className="h-4 w-4" />
                         <span className="text-sm font-medium">{tournamentRating.dislikes}</span>
                       </button>
-                      <div className="ml-auto text-sm font-medium text-gray-600">
-                        Karma: <span className={tournamentRating.karma >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          {tournamentRating.karma > 0 ? '+' : ''}{tournamentRating.karma}
-                        </span>
-                      </div>
                     </div>
 
                     {/* View Results Button */}
