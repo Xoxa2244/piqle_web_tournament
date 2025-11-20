@@ -13,6 +13,7 @@ export const userRouter = createTRPCRouter({
           email: true,
           name: true,
           image: true,
+          gender: true,
           city: true,
           duprLink: true,
           role: true,
@@ -29,6 +30,7 @@ export const userRouter = createTRPCRouter({
   updateProfile: protectedProcedure
     .input(z.object({
       name: z.string().min(1).optional(),
+      gender: z.enum(['M', 'F', 'X']).optional(),
       city: z.string().optional(),
       duprLink: z.string().url().optional().or(z.literal('')),
     }))
@@ -39,6 +41,7 @@ export const userRouter = createTRPCRouter({
         },
         data: {
           ...(input.name !== undefined && { name: input.name }),
+          ...(input.gender !== undefined && { gender: input.gender }),
           ...(input.city !== undefined && { city: input.city }),
           ...(input.duprLink !== undefined && { 
             duprLink: input.duprLink === '' ? null : input.duprLink 
@@ -49,6 +52,7 @@ export const userRouter = createTRPCRouter({
           email: true,
           name: true,
           image: true,
+          gender: true,
           city: true,
           duprLink: true,
           role: true,
