@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
+    gender: '' as 'M' | 'F' | 'X' | '',
     city: '',
     duprLink: '',
   })
@@ -30,6 +31,7 @@ export default function ProfilePage() {
     if (profile && !isEditing) {
       setFormData({
         name: profile.name || '',
+        gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
       })
@@ -40,6 +42,7 @@ export default function ProfilePage() {
     if (profile) {
       setFormData({
         name: profile.name || '',
+        gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
       })
@@ -50,6 +53,7 @@ export default function ProfilePage() {
   const handleSave = () => {
     updateProfile.mutate({
       name: formData.name || undefined,
+      gender: formData.gender || undefined,
       city: formData.city || undefined,
       duprLink: formData.duprLink || undefined,
     })
@@ -59,6 +63,7 @@ export default function ProfilePage() {
     if (profile) {
       setFormData({
         name: profile.name || '',
+        gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
       })
@@ -80,6 +85,12 @@ export default function ProfilePage() {
         <div className="text-lg">Profile not found</div>
       </div>
     )
+  }
+
+  const genderLabels: Record<string, string> = {
+    M: 'Мужской',
+    F: 'Женский',
+    X: 'Другой',
   }
 
   return (
@@ -130,6 +141,28 @@ export default function ProfilePage() {
               ) : (
                 <div className="mt-1 text-lg text-gray-900">
                   {profile.name || 'Не указано'}
+                </div>
+              )}
+            </div>
+
+            {/* Gender */}
+            <div>
+              <Label htmlFor="gender">Пол</Label>
+              {isEditing ? (
+                <select
+                  id="gender"
+                  value={formData.gender}
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'M' | 'F' | 'X' | '' })}
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Не указано</option>
+                  <option value="M">Мужской</option>
+                  <option value="F">Женский</option>
+                  <option value="X">Другой</option>
+                </select>
+              ) : (
+                <div className="mt-1 text-lg text-gray-900">
+                  {profile.gender ? genderLabels[profile.gender] : 'Не указано'}
                 </div>
               )}
             </div>

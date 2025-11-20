@@ -1,17 +1,26 @@
 -- Migration: Add user profile fields (gender, city, duprLink)
--- This migration adds fields to the users table to support user profiles
+-- This migration adds fields to support user profile information
 
--- Add gender field (ENUM: M, F, X)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS "gender" VARCHAR(1);
+-- Create Gender enum if it doesn't exist
+DO $$ BEGIN
+    CREATE TYPE "Gender" AS ENUM ('M', 'F', 'X');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
--- Add city field (string)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS "city" VARCHAR(255);
+-- Add gender column to users table
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS gender "Gender";
 
--- Add duprLink field (string, nullable URL)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS "duprLink" VARCHAR(255);
+-- Add city column to users table
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS city VARCHAR(255);
 
--- Add comment to clarify the fields
+-- Add duprLink column to users table
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS "duprLink" VARCHAR(255);
+
+-- Add comments for clarity
 COMMENT ON COLUMN users.gender IS 'User gender: M (Male), F (Female), X (Other)';
 COMMENT ON COLUMN users.city IS 'User city/location';
-COMMENT ON COLUMN users.duprLink IS 'Link to user DUPR profile';
-
+COMMENT ON COLUMN users."duprLink" IS 'Link to DUPR profile';
