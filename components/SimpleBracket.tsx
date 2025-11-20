@@ -139,36 +139,36 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
         const nextPos = matchPositions.get(nextMatch.id)
         if (!nextPos) continue
 
-        // Connection from match1 (top match) to next match (top slot)
+        // Connection from match1 (top match) to next match
         // Start: right center of match1
         const x1_1 = currentPos1.x + currentPos1.width
         const y1_1 = currentPos1.y + currentPos1.height / 2
-        // End: left center of top half of next match
+        // End: left center of next match (exact center)
         const x2_1 = nextPos.x
-        const y2_1 = nextPos.y + nextPos.height / 4
+        const y2_1 = nextPos.y + nextPos.height / 2
 
         lines.push({ x1: x1_1, y1: y1_1, x2: x2_1, y2: y2_1 })
 
-        // Connection from match2 (bottom match) to next match (bottom slot) if it exists
+        // Connection from match2 (bottom match) to next match if it exists
         if (match2) {
           const currentPos2 = matchPositions.get(match2.id)
           if (currentPos2) {
             // Start: right center of match2
             const x1_2 = currentPos2.x + currentPos2.width
             const y1_2 = currentPos2.y + currentPos2.height / 2
-            // End: left center of bottom half of next match
+            // End: left center of next match (exact center - same point as match1)
             const x2_2 = nextPos.x
-            const y2_2 = nextPos.y + (nextPos.height * 3) / 4
+            const y2_2 = nextPos.y + nextPos.height / 2
 
             lines.push({ x1: x1_2, y1: y1_2, x2: x2_2, y2: y2_2 })
           }
         } else {
-          // If match2 doesn't exist (odd number of matches), connect match1 to bottom slot as well
+          // If match2 doesn't exist (odd number of matches), connect match1 to center
           // This handles BYE cases
           const x1_2 = currentPos1.x + currentPos1.width
           const y1_2 = currentPos1.y + currentPos1.height / 2
           const x2_2 = nextPos.x
-          const y2_2 = nextPos.y + (nextPos.height * 3) / 4
+          const y2_2 = nextPos.y + nextPos.height / 2
 
           lines.push({ x1: x1_2, y1: y1_2, x2: x2_2, y2: y2_2 })
         }
