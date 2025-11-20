@@ -60,7 +60,7 @@ export default function UserProfilePage() {
             {/* Avatar */}
             <div className="flex items-center space-x-4">
               <div className="relative">
-                {hasValidAvatar && !avatarError ? (
+                {hasValidAvatar && !avatarError && profile.image ? (
                   <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
                     <Image
                       src={profile.image}
