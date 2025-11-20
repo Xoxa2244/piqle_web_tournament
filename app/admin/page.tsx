@@ -139,7 +139,7 @@ export default function AdminPage() {
                             <span>Tournament Director:</span>
                             {(tournament.user as { image?: string | null }).image ? (
                               <Link
-                                href="/profile"
+                                href={`/profile/${tournament.user.id}`}
                                 className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                               >
                                 <Image
@@ -155,7 +155,7 @@ export default function AdminPage() {
                               </Link>
                             ) : (
                               <Link
-                                href="/profile"
+                                href={`/profile/${tournament.user.id}`}
                                 className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                               >
                                 <div className="w-4.5 h-4.5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
@@ -226,7 +226,7 @@ export default function AdminPage() {
                     <span className="text-xs text-gray-500">Tournament Director:</span>
                     {(tournament.user as { image?: string | null }).image ? (
                       <Link
-                        href="/profile"
+                        href={`/profile/${tournament.user.id}`}
                         className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
                       >
                         <Image
@@ -242,7 +242,7 @@ export default function AdminPage() {
                       </Link>
                     ) : (
                       <Link
-                        href="/profile"
+                        href={`/profile/${tournament.user.id}`}
                         className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
                       >
                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
