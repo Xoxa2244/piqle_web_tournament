@@ -11,6 +11,7 @@ import Image from 'next/image'
 import { User as UserIcon, Save, ArrowLeft, Upload, Camera } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
+import CityAutocomplete from '@/components/CityAutocomplete'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -311,10 +312,10 @@ export default function ProfilePage() {
             <div>
               <Label htmlFor="city">City</Label>
               {isEditing ? (
-                <Input
+                <CityAutocomplete
                   id="city"
                   value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  onChange={(value) => setFormData({ ...formData, city: value })}
                   className="mt-1"
                   placeholder="Enter your city"
                 />
