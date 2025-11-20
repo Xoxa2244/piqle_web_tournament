@@ -61,9 +61,11 @@ export default function PublicCoursePage() {
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
 
-  const hasValidAvatar = session?.user?.image && 
+  const hasValidAvatar = Boolean(session?.user?.image && 
     session.user.image.trim() !== '' &&
-    (session.user.image.startsWith('http') || session.user.image.startsWith('data:'))
+    (session.user.image.startsWith('http') || session.user.image.startsWith('data:')))
+  
+  const avatarSrc = session?.user?.image || ''
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
@@ -243,9 +245,9 @@ export default function PublicCoursePage() {
                   href="/profile"
                   className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors ml-4"
                 >
-                  {hasValidAvatar && !avatarError ? (
+                  {hasValidAvatar && !avatarError && avatarSrc ? (
                     <Image
-                      src={session.user.image}
+                      src={avatarSrc}
                       alt={session.user.name || 'Profile'}
                       width={32}
                       height={32}
