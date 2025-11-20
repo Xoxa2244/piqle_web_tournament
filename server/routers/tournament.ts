@@ -73,6 +73,14 @@ export const tournamentRouter = createTRPCRouter({
         orderBy: { createdAt: 'desc' },
         include: {
           divisions: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              email: true,
+            },
+          },
           _count: {
             select: {
               divisions: true,

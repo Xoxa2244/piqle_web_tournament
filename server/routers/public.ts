@@ -19,6 +19,14 @@ export const publicRouter = createTRPCRouter({
         endDate: true,
         entryFee: true,
         publicSlug: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            email: true,
+          },
+        },
         divisions: {
           select: {
             id: true,
