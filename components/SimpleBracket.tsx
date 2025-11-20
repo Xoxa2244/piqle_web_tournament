@@ -30,9 +30,9 @@ interface MatchPosition {
 }
 
 const MATCH_WIDTH = 140
-const MATCH_HEIGHT = 70
+const MATCH_HEIGHT = 85 // Increased to accommodate card content with padding
 const ROUND_GAP = 180
-const MATCH_GAP = 12
+const MATCH_GAP = 25 // Increased to prevent overlapping
 const HEADER_HEIGHT = 0 // No headers
 
 export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketProps) {
