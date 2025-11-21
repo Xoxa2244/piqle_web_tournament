@@ -885,12 +885,16 @@ export default function DivisionStageManagement() {
                                                 </div>
                                                 {teamAPlayers.length > 0 && (
                                                   <div className="text-xs text-gray-500 mt-0.5">
-                                                    {teamAPlayers.join(', ')}
+                                                    {teamAPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
                                                   </div>
                                                 )}
                                                 {teamBPlayers.length > 0 && (
                                                   <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                                    {teamBPlayers.join(', ')}
+                                                    {teamBPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
                                                   </div>
                                                 )}
                                               </div>
@@ -963,12 +967,16 @@ export default function DivisionStageManagement() {
                                               </div>
                                               {teamAPlayers.length > 0 && (
                                                 <div className="text-xs text-gray-500 mt-0.5">
-                                                  {teamAPlayers.join(', ')}
+                                                  {teamAPlayers.map((player, idx) => (
+                                                    <div key={idx}>{player}</div>
+                                                  ))}
                                                 </div>
                                               )}
                                               {teamBPlayers.length > 0 && (
                                                 <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                                  {teamBPlayers.join(', ')}
+                                                  {teamBPlayers.map((player, idx) => (
+                                                    <div key={idx}>{player}</div>
+                                                  ))}
                                                 </div>
                                               )}
                                             </div>
@@ -1198,12 +1206,16 @@ export default function DivisionStageManagement() {
                         </div>
                         {teamAPlayers.length > 0 && (
                           <div className="text-xs text-gray-500 mt-0.5">
-                            {teamAPlayers.join(', ')}
+                            {teamAPlayers.map((player, idx) => (
+                              <div key={idx}>{player}</div>
+                            ))}
                           </div>
                         )}
                         {teamBPlayers.length > 0 && (
                           <div className="text-xs text-gray-500 mt-0.5 text-right">
-                            {teamBPlayers.join(', ')}
+                            {teamBPlayers.map((player, idx) => (
+                              <div key={idx}>{player}</div>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -1442,12 +1454,16 @@ export default function DivisionStageManagement() {
                                     </div>
                                     {teamAPlayers.length > 0 && (
                                       <div className="text-xs text-gray-500 mt-0.5">
-                                        {teamAPlayers.join(', ')}
+                                        {teamAPlayers.map((player, idx) => (
+                                          <div key={idx}>{player}</div>
+                                        ))}
                                       </div>
                                     )}
                                     {teamBPlayers.length > 0 && (
                                       <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                        {teamBPlayers.join(', ')}
+                                        {teamBPlayers.map((player, idx) => (
+                                          <div key={idx}>{player}</div>
+                                        ))}
                                       </div>
                                     )}
                                   </div>
