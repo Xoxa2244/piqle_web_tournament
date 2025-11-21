@@ -4,7 +4,7 @@ import { createTRPCRouter, publicProcedure } from '../trpc'
 
 // Super admin credentials
 const SUPERADMIN_LOGIN = 'superadmin'
-const SUPERADMIN_PASSWORD = 'hammer24'
+const SUPERADMIN_PASSWORD = 'KalVasFlam'
 
 export const superadminRouter = createTRPCRouter({
   // Authenticate super admin
