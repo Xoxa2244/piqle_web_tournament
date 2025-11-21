@@ -161,10 +161,10 @@ export default function TournamentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-50/50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <div className="text-lg text-slate-600">Loading tournament...</div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-stone-400 mx-auto mb-3"></div>
+          <div className="text-sm text-stone-600">Loading tournament...</div>
         </div>
       </div>
     )
@@ -172,18 +172,18 @@ export default function TournamentDetailPage() {
 
   if (error || !tournament) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-50/50 flex items-center justify-center">
         <div className="text-center">
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-lg shadow-md p-6 max-w-md mx-4 border border-stone-200">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Tournament not found</h1>
-            <p className="text-slate-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
-            <Link href="/admin" className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              <ArrowLeft className="w-4 h-4 mr-2" />
+            <h1 className="text-xl font-bold text-stone-900 mb-2">Tournament not found</h1>
+            <p className="text-sm text-stone-600 mb-4">The tournament may have been deleted or you don&apos;t have access</p>
+            <Link href="/admin" className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+              <ArrowLeft className="w-3.5 h-3.5 mr-2" />
               Back to tournaments
             </Link>
           </div>
@@ -193,7 +193,7 @@ export default function TournamentDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-50/50">
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
@@ -205,95 +205,93 @@ export default function TournamentDetailPage() {
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid gap-8 lg:grid-cols-3">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid gap-5 lg:grid-cols-3">
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
-            <Card className="h-full border-0 shadow-xl bg-white/70 backdrop-blur-sm">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mr-3">
-                    <Calendar className="w-4 h-4 text-white" />
+            <Card className="h-full border border-stone-200/60 shadow-sm bg-white/90">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold text-stone-900 flex items-center">
+                  <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center mr-2.5">
+                    <Calendar className="w-3.5 h-3.5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-4">
                 {/* Tournament Description */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                  <div className="h-24 overflow-y-auto">
+                <div className="bg-stone-50 rounded-lg p-3 border border-stone-200/60">
+                  <div className="h-20 overflow-y-auto">
                     {tournament.description ? (
                       <div 
-                        className="text-lg font-medium text-slate-900 prose prose-sm max-w-none"
+                        className="text-sm font-medium text-stone-900 prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                       />
                     ) : (
-                      <p className="text-lg font-medium text-slate-900 text-gray-500 italic">
+                      <p className="text-sm font-medium text-stone-500 italic">
                         No description provided
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="grid gap-6 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Start Date</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                        <Calendar className="w-4 h-4 text-white" />
+                    <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5 block">Start Date</label>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
+                        <Calendar className="w-3 h-3 text-white" />
                       </div>
-                      <p className="text-base font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-stone-900">
                         {new Date(tournament.startDate).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
                         })}
                       </p>
                     </div>
                   </div>
                   
                   <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">End Date</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
-                        <Calendar className="w-4 h-4 text-white" />
+                    <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5 block">End Date</label>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-red-600 rounded flex items-center justify-center">
+                        <Calendar className="w-3 h-3 text-white" />
                       </div>
-                      <p className="text-base font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-stone-900">
                         {new Date(tournament.endDate).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
+                          month: 'short', 
+                          day: 'numeric',
+                          year: 'numeric'
                         })}
                       </p>
                     </div>
                   </div>
                   
                   <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Venue</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5 block">Venue</label>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-amber-600 rounded flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                       </div>
-                      <p className="text-base font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-stone-900">
                         {tournament.venueName || '—'}
                       </p>
                     </div>
                   </div>
                   
                   <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Entry Fee</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <label className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-1.5 block">Entry Fee</label>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center">
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                         </svg>
                       </div>
-                      <p className="text-base font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-stone-900">
                         {tournament.entryFee ? `$${tournament.entryFee}` : '—'}
                       </p>
                     </div>
@@ -305,26 +303,26 @@ export default function TournamentDetailPage() {
 
           {/* Quick Actions - Right Column (40%) */}
           <div className="lg:col-span-1">
-            <Card className="h-full border-0 shadow-xl bg-white/70 backdrop-blur-sm">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <Settings className="w-4 h-4 text-white" />
+            <Card className="h-full border border-stone-200/60 shadow-sm bg-white/90">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold text-stone-900 flex items-center">
+                  <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center mr-2.5">
+                    <Settings className="w-3.5 h-3.5 text-white" />
                   </div>
                   Quick Actions
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   {isAdmin && (
                     <Link href={`/admin/${tournamentId}/divisions`}>
-                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:border-blue-200 transition-all duration-200 group">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                            <Settings className="h-4 w-4 text-white" />
+                      <Button variant="outline" className="h-16 w-full p-3 hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 group border-stone-200">
+                        <div className="flex flex-col items-center space-y-1.5 w-full">
+                          <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
+                            <Settings className="h-3.5 w-3.5 text-white" />
                           </div>
                           <div className="text-center">
-                            <div className="font-semibold text-base text-slate-900">Divisions</div>
+                            <div className="font-semibold text-xs text-stone-900">Divisions</div>
                           </div>
                         </div>
                       </Button>
@@ -332,39 +330,39 @@ export default function TournamentDetailPage() {
                   )}
                   
                   <Link href={`/admin/${tournamentId}/players`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-green-50 hover:border-emerald-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <Users className="h-4 w-4 text-white" />
+                    <Button variant="outline" className="h-16 w-full p-3 hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 group border-stone-200">
+                      <div className="flex flex-col items-center space-y-1.5 w-full">
+                        <div className="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
+                          <Users className="h-3.5 w-3.5 text-white" />
                         </div>
                         <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Player Management</div>
+                          <div className="font-semibold text-xs text-stone-900">Players</div>
                         </div>
                       </div>
                     </Button>
                   </Link>
                   
                   <Link href={`/admin/${tournamentId}/stages`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 hover:border-amber-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <FileText className="h-4 w-4 text-white" />
+                    <Button variant="outline" className="h-16 w-full p-3 hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 group border-stone-200">
+                      <div className="flex flex-col items-center space-y-1.5 w-full">
+                        <div className="w-6 h-6 bg-amber-600 rounded flex items-center justify-center">
+                          <FileText className="h-3.5 w-3.5 text-white" />
                         </div>
                         <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Score Input</div>
+                          <div className="font-semibold text-xs text-stone-900">Score Input</div>
                         </div>
                       </div>
                     </Button>
                   </Link>
                   
                   <Link href={`/admin/${tournamentId}/dashboard`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-purple-50 hover:to-pink-50 hover:border-purple-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <BarChart3 className="h-4 w-4 text-white" />
+                    <Button variant="outline" className="h-16 w-full p-3 hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 group border-stone-200">
+                      <div className="flex flex-col items-center space-y-1.5 w-full">
+                        <div className="w-6 h-6 bg-purple-600 rounded flex items-center justify-center">
+                          <BarChart3 className="h-3.5 w-3.5 text-white" />
                         </div>
                         <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Dashboard</div>
+                          <div className="font-semibold text-xs text-stone-900">Dashboard</div>
                         </div>
                       </div>
                     </Button>
@@ -372,18 +370,18 @@ export default function TournamentDetailPage() {
                   
                   {isOwner && (
                     <Link href={`/admin/${tournamentId}/access`} className="relative">
-                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                            <Shield className="h-4 w-4 text-white" />
+                      <Button variant="outline" className="h-16 w-full p-3 hover:bg-stone-50 hover:border-stone-300 transition-all duration-200 group border-stone-200">
+                        <div className="flex flex-col items-center space-y-1.5 w-full">
+                          <div className="w-6 h-6 bg-stone-600 rounded flex items-center justify-center">
+                            <Shield className="h-3.5 w-3.5 text-white" />
                           </div>
                           <div className="text-center">
-                            <div className="font-semibold text-base text-slate-900">Access Control</div>
+                            <div className="font-semibold text-xs text-stone-900">Access</div>
                           </div>
                         </div>
                       </Button>
                       {pendingRequestsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow-md">
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm">
                           {pendingRequestsCount}
                         </span>
                       )}
@@ -399,36 +397,36 @@ export default function TournamentDetailPage() {
       {/* Create Division Modal */}
       {showCreateDivision && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 border border-slate-200">
-            <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
-                <Settings className="w-5 h-5 text-white" />
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4 border border-stone-200">
+            <div className="flex items-center mb-4">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-2.5">
+                <Settings className="w-4 h-4 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Create Division</h2>
+              <h2 className="text-lg font-bold text-stone-900">Create Division</h2>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Division Name *
                 </label>
                 <input
                   type="text"
                   value={divisionForm.name}
                   onChange={(e) => setDivisionForm({ ...divisionForm, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="e.g., Men's 2v2"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Team Type
                 </label>
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -437,13 +435,13 @@ export default function TournamentDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Pairing Mode
                 </label>
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>
@@ -451,7 +449,7 @@ export default function TournamentDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Number of Pools
                 </label>
                 <input
@@ -459,12 +457,12 @@ export default function TournamentDetailPage() {
                   min="0"
                   value={divisionForm.poolCount}
                   onChange={(e) => setDivisionForm({ ...divisionForm, poolCount: parseInt(e.target.value) || 1 })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Max Teams (optional)
                 </label>
                 <input
@@ -472,25 +470,25 @@ export default function TournamentDetailPage() {
                   min="1"
                   value={divisionForm.maxTeams || ''}
                   onChange={(e) => setDivisionForm({ ...divisionForm, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="No limit"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8">
+            <div className="flex justify-end space-x-2 mt-6">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateDivision(false)}
                 disabled={createDivision.isPending}
-                className="px-6 py-2.5 rounded-xl border-slate-300 hover:bg-slate-50 transition-all duration-200"
+                className="px-4 py-2 text-sm rounded-lg border-stone-300 hover:bg-stone-50 transition-all duration-200"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 shadow-sm hover:shadow"
               >
                 {createDivision.isPending ? 'Creating...' : 'Create Division'}
               </Button>
@@ -502,17 +500,17 @@ export default function TournamentDetailPage() {
       {/* Edit Tournament Modal */}
       {showEditTournament && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
-                <Edit className="w-5 h-5 text-white" />
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 border border-stone-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center mb-4">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-2.5">
+                <Edit className="w-4 h-4 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Edit Tournament</h2>
+              <h2 className="text-lg font-bold text-stone-900">Edit Tournament</h2>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Tournament Name *
                 </label>
                 <input
@@ -520,13 +518,13 @@ export default function TournamentDetailPage() {
                   name="title"
                   value={tournamentForm.title}
                   onChange={handleTournamentChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="e.g., Pickleball Championship 2024"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Description
                 </label>
                 <textarea
@@ -534,13 +532,13 @@ export default function TournamentDetailPage() {
                   value={tournamentForm.description}
                   onChange={handleTournamentChange}
                   rows={3}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="Tournament description, rules, features..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Venue
                 </label>
                 <input
@@ -548,14 +546,14 @@ export default function TournamentDetailPage() {
                   name="venueName"
                   value={tournamentForm.venueName}
                   onChange={handleTournamentChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="Sports complex name"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                     Start Date *
                   </label>
                   <input
@@ -563,12 +561,12 @@ export default function TournamentDetailPage() {
                     name="startDate"
                     value={tournamentForm.startDate}
                     onChange={handleTournamentChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                     End Date *
                   </label>
                   <input
@@ -576,13 +574,13 @@ export default function TournamentDetailPage() {
                     name="endDate"
                     value={tournamentForm.endDate}
                     onChange={handleTournamentChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1.5">
                   Entry Fee ($)
                 </label>
                 <input
@@ -592,7 +590,7 @@ export default function TournamentDetailPage() {
                   onChange={handleTournamentChange}
                   min="0"
                   step="0.01"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="0.00"
                 />
               </div>
@@ -605,25 +603,25 @@ export default function TournamentDetailPage() {
                   onChange={handleTournamentChange}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label className="ml-2 block text-sm text-gray-700">
+                <label className="ml-2 block text-xs text-stone-700">
                   Enable public results board
                 </label>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8">
+            <div className="flex justify-end space-x-2 mt-6">
               <Button
                 variant="outline"
                 onClick={() => setShowEditTournament(false)}
                 disabled={updateTournament.isPending}
-                className="px-6 py-2.5 rounded-xl border-slate-300 hover:bg-slate-50 transition-all duration-200"
+                className="px-4 py-2 text-sm rounded-lg border-stone-300 hover:bg-stone-50 transition-all duration-200"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleTournamentSubmit}
                 disabled={updateTournament.isPending}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 shadow-sm hover:shadow"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
