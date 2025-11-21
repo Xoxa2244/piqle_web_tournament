@@ -44,12 +44,32 @@ export const divisionStageRouter = createTRPCRouter({
               locked: true,
               teamA: {
                 include: {
-                  pool: true
+                  pool: true,
+                  teamPlayers: {
+                    include: {
+                      player: {
+                        select: {
+                          firstName: true,
+                          lastName: true
+                        }
+                      }
+                    }
+                  }
                 }
               },
               teamB: {
                 include: {
-                  pool: true
+                  pool: true,
+                  teamPlayers: {
+                    include: {
+                      player: {
+                        select: {
+                          firstName: true,
+                          lastName: true
+                        }
+                      }
+                    }
+                  }
                 }
               },
               games: true,
