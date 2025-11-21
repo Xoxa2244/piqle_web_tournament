@@ -403,6 +403,79 @@ export const tournamentAccessRouter = createTRPCRouter({
       return { success: true }
     }),
 
+  // Отзыв всех доступов пользователя для турнира
+  revokeAll: tdProcedure
+    .input(z.object({
+      userId: z.string(),
+      tournamentId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Проверяем что пользователь является владельцем турнира
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+      })
+
+      if (!tournament || tournament.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tournament owner can revoke access',
+        })
+      }
+
+      // Получаем все доступы пользователя для этого турнира
+      const userAccesses = await ctx.prisma.tournamentAccess.findMany({
+        where: {
+          userId: input.userId,
+          tournamentId: input.tournamentId,
+        },
+      })
+
+      if (userAccesses.length === 0) {
+        return { success: true, revokedCount: 0 }
+      }
+
+      // Удаляем все доступы
+      await ctx.prisma.tournamentAccess.deleteMany({
+        where: {
+          userId: input.userId,
+          tournamentId: input.tournamentId,
+        },
+      })
+
+      // Сбрасываем статус запроса на доступ (если существует)
+      const existingRequest = await ctx.prisma.tournamentAccessRequest.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: input.userId,
+            tournamentId: input.tournamentId,
+          },
+        },
+      })
+
+      if (existingRequest && existingRequest.status === 'APPROVED') {
+        await ctx.prisma.tournamentAccessRequest.delete({
+          where: { id: existingRequest.id },
+        })
+      }
+
+      // Audit log
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: input.tournamentId,
+          action: 'REVOKE_ALL_ACCESS',
+          entityType: 'TournamentAccess',
+          entityId: userAccesses[0]?.id || '',
+          payload: {
+            userId: input.userId,
+            revokedCount: userAccesses.length,
+          },
+        },
+      })
+
+      return { success: true, revokedCount: userAccesses.length }
+    }),
+
   // Поиск турниров (только чужие, не те что у пользователя уже есть доступ)
   searchTournaments: protectedProcedure
     .input(z.object({

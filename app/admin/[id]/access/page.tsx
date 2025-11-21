@@ -100,6 +100,13 @@ export default function AccessManagementPage() {
     },
   })
 
+  // Revoke all access mutation
+  const revokeAllAccessMutation = trpc.tournamentAccess.revokeAll.useMutation({
+    onSuccess: () => {
+      refetchAccesses()
+    },
+  })
+
   const handleGrantAccess = () => {
     if (!selectedUser) return
 
@@ -127,8 +134,8 @@ export default function AccessManagementPage() {
     })
   }
 
-  const handleRevokeAccess = (accessId: string) => {
-    if (confirm('Are you sure you want to revoke this access?')) {
+  const handleRevokeAccess = (accessId: string, skipConfirm = false) => {
+    if (skipConfirm || confirm('Are you sure you want to revoke this access?')) {
       revokeAccessMutation.mutate({ accessId })
     }
   }
@@ -906,18 +913,20 @@ export default function AccessManagementPage() {
                         <Button
                           onClick={() => {
                             if (confirm('Are you sure you want to revoke all access for this user?')) {
-                              // Revoke all accesses for this user
-                              userAccessIds.forEach(accessId => {
-                                handleRevokeAccess(accessId)
+                              // Revoke all accesses for this user in one operation
+                              revokeAllAccessMutation.mutate({
+                                userId: groupedAccess.user.id,
+                                tournamentId,
                               })
                             }
                           }}
                           variant="outline"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
+                          disabled={revokeAllAccessMutation.isLoading}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Revoke
+                          {revokeAllAccessMutation.isLoading ? 'Revoking...' : 'Revoke'}
                         </Button>
                       </div>
                     </>
