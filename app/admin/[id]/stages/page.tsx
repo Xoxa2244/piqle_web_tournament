@@ -29,6 +29,7 @@ import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
 
 export default function DivisionStageManagement() {
@@ -574,23 +575,30 @@ export default function DivisionStageManagement() {
     )
   }
 
+  // Get access info for nav bar
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Top panel */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Left part - division information */}
           <div className="flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.back()}
-              className="flex items-center space-x-2"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Back</span>
-            </Button>
-            
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{division.name}</h1>
               <div className="flex items-center space-x-4 mt-1">

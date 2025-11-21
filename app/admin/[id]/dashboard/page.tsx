@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
 
 interface TeamStanding {
@@ -210,15 +211,30 @@ export default function DivisionDashboard() {
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
-              <p className="text-gray-600">{tournament.title}</p>
               {/* Status badges hidden per user request */}
             </div>
             
