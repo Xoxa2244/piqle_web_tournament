@@ -56,6 +56,15 @@ export default function DivisionStageManagement() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Get access info for nav bar (must be before any conditional returns)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
@@ -574,15 +583,6 @@ export default function DivisionStageManagement() {
       </div>
     )
   }
-
-  // Get access info for nav bar
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   return (
     <div className="min-h-screen bg-gray-50">
