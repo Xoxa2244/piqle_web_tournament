@@ -1,0 +1,187 @@
+import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
+import { createTRPCRouter, publicProcedure } from '../trpc'
+
+// Super admin credentials
+const SUPERADMIN_LOGIN = 'superadmin'
+const SUPERADMIN_PASSWORD = 'hammer24'
+
+export const superadminRouter = createTRPCRouter({
+  // Authenticate super admin
+  authenticate: publicProcedure
+    .input(z.object({
+      login: z.string(),
+      password: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.login === SUPERADMIN_LOGIN && input.password === SUPERADMIN_PASSWORD) {
+        return { success: true }
+      }
+      throw new TRPCError({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid credentials',
+      })
+    }),
+
+  // Get all tournaments (no access checks)
+  getAllTournaments: publicProcedure
+    .query(async ({ ctx }) => {
+      const tournaments = await ctx.prisma.tournament.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          divisions: {
+            select: {
+              id: true,
+              name: true,
+              _count: {
+                select: {
+                  teams: true,
+                  matches: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              divisions: true,
+            },
+          },
+        },
+      })
+
+      return tournaments
+    }),
+
+  // Get tournament by ID (no access checks)
+  getTournament: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.id },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          divisions: {
+            include: {
+              teams: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              matches: {
+                include: {
+                  teamA: true,
+                  teamB: true,
+                  games: {
+                    orderBy: { index: 'asc' },
+                  },
+                },
+              },
+              pools: true,
+              constraints: true,
+            },
+          },
+          prizes: true,
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      return tournament
+    }),
+
+  // Delete tournament (no access checks)
+  deleteTournament: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Delete all related data
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.id },
+        include: {
+          divisions: {
+            include: {
+              matches: {
+                include: {
+                  games: true,
+                },
+              },
+            },
+          },
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      // Delete all games
+      for (const division of tournament.divisions) {
+        for (const match of division.matches) {
+          await ctx.prisma.game.deleteMany({
+            where: { matchId: match.id },
+          })
+        }
+      }
+
+      // Delete all matches
+      for (const division of tournament.divisions) {
+        await ctx.prisma.match.deleteMany({
+          where: { divisionId: division.id },
+        })
+      }
+
+      // Delete standings
+      await ctx.prisma.standing.deleteMany({
+        where: {
+          divisionId: {
+            in: tournament.divisions.map(d => d.id),
+          },
+        },
+      })
+
+      // Delete tournament access
+      await ctx.prisma.tournamentAccess.deleteMany({
+        where: { tournamentId: input.id },
+      })
+
+      // Delete divisions (this will cascade delete teams, teamPlayers, etc.)
+      await ctx.prisma.division.deleteMany({
+        where: { tournamentId: input.id },
+      })
+
+      // Delete prizes
+      await ctx.prisma.prize.deleteMany({
+        where: { tournamentId: input.id },
+      })
+
+      // Finally delete tournament
+      return ctx.prisma.tournament.delete({
+        where: { id: input.id },
+      })
+    }),
+})
+
