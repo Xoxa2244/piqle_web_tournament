@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -199,6 +199,30 @@ export default function AccessManagementPage() {
   }
 
   const divisions = tournament?.divisions || []
+
+  // Filter out divisions that are part of a merged division
+  // Only show merged divisions and standalone divisions (not those that were merged)
+  const visibleDivisions = useMemo(() => {
+    if (!divisions || divisions.length === 0) return []
+    
+    const divisionsArray = divisions as any[]
+    const mergedDivisions = divisionsArray.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisionsArray.filter((div: any) => {
+      // Always show merged divisions
+      if (div.isMerged) return true
+      
+      // Hide divisions that are part of a merged division
+      const isPartOfMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      
+      return !isPartOfMerged
+    })
+  }, [divisions])
 
   // Group accesses by user
   type AccessItem = NonNullable<typeof accesses>[0]
@@ -422,7 +446,7 @@ export default function AccessManagementPage() {
                 {divisionMode === 'selected' && (
                   <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                     <div className="grid grid-cols-5 gap-2">
-                      {(divisions as any[]).map((division: any) => (
+                      {visibleDivisions.map((division: any) => (
                         <label
                           key={division.id}
                           className="flex items-center space-x-2 cursor-pointer"
@@ -571,7 +595,7 @@ export default function AccessManagementPage() {
                           {requestDivisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {(divisions as any[]).map((division: any) => (
+                                {visibleDivisions.map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -777,7 +801,7 @@ export default function AccessManagementPage() {
                           {divisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {(divisions as any[]).map((division: any) => (
+                                {visibleDivisions.map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
