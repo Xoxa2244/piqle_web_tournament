@@ -863,16 +863,36 @@ export default function DivisionStageManagement() {
                                       <div key={roundIndex} className="space-y-2">
                                         <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                          {roundMatches.map((match) => (
+                                          {roundMatches.map((match) => {
+                                            const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                              `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                            ).filter(Boolean) || []
+                                            const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                              `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                            ).filter(Boolean) || []
+                                            
+                                            return (
                                             <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                                              <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-medium">
-                                                  {match.teamA.name}
+                                              <div className="mb-2">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <div className="text-sm font-medium">
+                                                    {match.teamA.name}
+                                                  </div>
+                                                  <div className="text-sm text-gray-500">vs</div>
+                                                  <div className="text-sm font-medium">
+                                                    {match.teamB.name}
+                                                  </div>
                                                 </div>
-                                                <div className="text-sm text-gray-500">vs</div>
-                                                <div className="text-sm font-medium">
-                                                  {match.teamB.name}
-                                                </div>
+                                                {teamAPlayers.length > 0 && (
+                                                  <div className="text-xs text-gray-500 mt-0.5">
+                                                    {teamAPlayers.join(', ')}
+                                                  </div>
+                                                )}
+                                                {teamBPlayers.length > 0 && (
+                                                  <div className="text-xs text-gray-500 mt-0.5 text-right">
+                                                    {teamBPlayers.join(', ')}
+                                                  </div>
+                                                )}
                                               </div>
                                               
                                               {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -893,7 +913,8 @@ export default function DivisionStageManagement() {
                                                 </div>
                                               )}
                                             </div>
-                                          ))}
+                                            )
+                                          })}
                                         </div>
                                       </div>
                                     )
@@ -920,16 +941,36 @@ export default function DivisionStageManagement() {
                                     <div key={roundIndex} className="space-y-2">
                                       <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {roundMatches.map((match) => (
+                                        {roundMatches.map((match) => {
+                                          const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                            `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                          ).filter(Boolean) || []
+                                          const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                            `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                          ).filter(Boolean) || []
+                                          
+                                          return (
                                           <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                              <div className="text-sm font-medium">
-                                                {match.teamA.name}
+                                            <div className="mb-2">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <div className="text-sm font-medium">
+                                                  {match.teamA.name}
+                                                </div>
+                                                <div className="text-sm text-gray-500">vs</div>
+                                                <div className="text-sm font-medium">
+                                                  {match.teamB.name}
+                                                </div>
                                               </div>
-                                              <div className="text-sm text-gray-500">vs</div>
-                                              <div className="text-sm font-medium">
-                                                {match.teamB.name}
-                                              </div>
+                                              {teamAPlayers.length > 0 && (
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                  {teamAPlayers.join(', ')}
+                                                </div>
+                                              )}
+                                              {teamBPlayers.length > 0 && (
+                                                <div className="text-xs text-gray-500 mt-0.5 text-right">
+                                                  {teamBPlayers.join(', ')}
+                                                </div>
+                                              )}
                                             </div>
                                             
                                             {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -950,7 +991,8 @@ export default function DivisionStageManagement() {
                                               </div>
                                             )}
                                           </div>
-                                        ))}
+                                          )
+                                        })}
                                       </div>
                                     </div>
                                   )
@@ -1134,16 +1176,36 @@ export default function DivisionStageManagement() {
               {/* Play-In Pairings List */}
               {playInMatches.length > 0 && showPlayInMatches && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {playInMatches.map((match) => (
+                  {playInMatches.map((match) => {
+                    const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                      `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                    ).filter(Boolean) || []
+                    const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                      `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                    ).filter(Boolean) || []
+                    
+                    return (
                     <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-medium">
-                          [{match.teamA.seed || '?'}] {match.teamA.name}
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-sm font-medium">
+                            [{match.teamA.seed || '?'}] {match.teamA.name}
+                          </div>
+                          <div className="text-sm text-gray-500">vs</div>
+                          <div className="text-sm font-medium">
+                            [{match.teamB.seed || '?'}] {match.teamB.name}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">vs</div>
-                        <div className="text-sm font-medium">
-                          [{match.teamB.seed || '?'}] {match.teamB.name}
-                        </div>
+                        {teamAPlayers.length > 0 && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {teamAPlayers.join(', ')}
+                          </div>
+                        )}
+                        {teamBPlayers.length > 0 && (
+                          <div className="text-xs text-gray-500 mt-0.5 text-right">
+                            {teamBPlayers.join(', ')}
+                          </div>
+                        )}
                       </div>
                       
                       {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -1164,7 +1226,8 @@ export default function DivisionStageManagement() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1358,15 +1421,38 @@ export default function DivisionStageManagement() {
                                   1st Place Match
                                 </div>
                               )}
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-sm font-medium">
-                                  {match.teamA.name}
-                                </div>
-                                <div className="text-sm text-gray-500">vs</div>
-                                <div className="text-sm font-medium">
-                                  {match.teamB.name}
-                                </div>
-                              </div>
+                              {(() => {
+                                const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                  `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                ).filter(Boolean) || []
+                                const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                  `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                ).filter(Boolean) || []
+                                
+                                return (
+                                  <div className="mb-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="text-sm font-medium">
+                                        {match.teamA.name}
+                                      </div>
+                                      <div className="text-sm text-gray-500">vs</div>
+                                      <div className="text-sm font-medium">
+                                        {match.teamB.name}
+                                      </div>
+                                    </div>
+                                    {teamAPlayers.length > 0 && (
+                                      <div className="text-xs text-gray-500 mt-0.5">
+                                        {teamAPlayers.join(', ')}
+                                      </div>
+                                    )}
+                                    {teamBPlayers.length > 0 && (
+                                      <div className="text-xs text-gray-500 mt-0.5 text-right">
+                                        {teamBPlayers.join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             
                             {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
                               <div className="text-center space-y-2">
