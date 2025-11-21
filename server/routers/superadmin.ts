@@ -25,8 +25,12 @@ export const superadminRouter = createTRPCRouter({
 
   // Get all tournaments (no access checks)
   getAllTournaments: publicProcedure
-    .query(async ({ ctx }) => {
+    .input(z.object({
+      userId: z.string().optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
       const tournaments = await ctx.prisma.tournament.findMany({
+        where: input?.userId ? { userId: input.userId } : undefined,
         orderBy: { createdAt: 'desc' },
         include: {
           user: {
@@ -57,6 +61,43 @@ export const superadminRouter = createTRPCRouter({
       })
 
       return tournaments
+    }),
+
+  // Get all users who own tournaments
+  getAllTournamentOwners: publicProcedure
+    .query(async ({ ctx }) => {
+      // Get unique user IDs from tournaments
+      const tournaments = await ctx.prisma.tournament.findMany({
+        select: {
+          userId: true,
+        },
+        distinct: ['userId'],
+      })
+
+      const userIds = tournaments.map(t => t.userId).filter(Boolean)
+
+      if (userIds.length === 0) {
+        return []
+      }
+
+      // Get user details
+      const users = await ctx.prisma.user.findMany({
+        where: {
+          id: {
+            in: userIds,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+        orderBy: {
+          name: 'asc',
+        },
+      })
+
+      return users
     }),
 
   // Get tournament by ID (no access checks)
