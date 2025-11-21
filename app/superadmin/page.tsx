@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
+const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
+
 export default function SuperAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [login, setLogin] = useState('')
@@ -16,9 +18,18 @@ export default function SuperAdminPage() {
   const [error, setError] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string>('')
 
+  // Check authentication on mount
+  useEffect(() => {
+    const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+    }
+  }, [])
+
   const authenticate = trpc.superadmin.authenticate.useMutation({
     onSuccess: () => {
       setIsAuthenticated(true)
+      localStorage.setItem(SUPERADMIN_AUTH_KEY, 'true')
       setError('')
     },
     onError: (err) => {
@@ -130,7 +141,10 @@ export default function SuperAdminPage() {
             <p className="text-gray-600 mt-2">Full access to all tournaments</p>
           </div>
           <Button
-            onClick={() => setIsAuthenticated(false)}
+            onClick={() => {
+              setIsAuthenticated(false)
+              localStorage.removeItem(SUPERADMIN_AUTH_KEY)
+            }}
             variant="outline"
           >
             Logout

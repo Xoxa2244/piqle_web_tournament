@@ -21,10 +21,13 @@ import {
   Shield
 } from 'lucide-react'
 
+const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
+
 export default function SuperAdminTournamentPage() {
   const params = useParams()
   const router = useRouter()
   const tournamentId = params.id as string
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
   const [tournamentForm, setTournamentForm] = useState({
@@ -48,8 +51,26 @@ export default function SuperAdminTournamentPage() {
     maxAge: undefined as number | undefined,
   })
 
+  // Check authentication on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
+      if (authStatus === 'true') {
+        setIsAuthenticated(true)
+      } else {
+        setIsAuthenticated(false)
+        router.push('/superadmin')
+      }
+    }
+  }, [router])
+
   // Use superadmin query instead of regular tournament.get
-  const { data: tournament, isLoading, error } = trpc.superadmin.getTournament.useQuery({ id: tournamentId })
+  const { data: tournament, isLoading, error } = trpc.superadmin.getTournament.useQuery(
+    { id: tournamentId },
+    { 
+      enabled: isAuthenticated === true
+    }
+  )
   
   // Super admin has full access
   const isAdmin = true
@@ -151,6 +172,18 @@ export default function SuperAdminTournamentPage() {
       })
     }
   }, [tournament])
+
+  // Show loading while checking authentication
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-lg text-slate-600">Checking authentication...</div>
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
