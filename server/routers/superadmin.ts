@@ -152,6 +152,31 @@ export const superadminRouter = createTRPCRouter({
       return tournament
     }),
 
+  // Update tournament (no access checks)
+  updateTournament: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      title: z.string().min(1).optional(),
+      description: z.string().optional(),
+      rulesUrl: z.string().url().optional(),
+      venueName: z.string().optional(),
+      venueAddress: z.string().optional(),
+      startDate: z.string().transform((str) => new Date(str)).optional(),
+      endDate: z.string().transform((str) => new Date(str)).optional(),
+      entryFee: z.number().optional(),
+      isPublicBoardEnabled: z.boolean().optional(),
+      publicSlug: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input
+      const tournament = await ctx.prisma.tournament.update({
+        where: { id },
+        data,
+      })
+
+      return tournament
+    }),
+
   // Delete tournament (no access checks)
   deleteTournament: publicProcedure
     .input(z.object({ id: z.string() }))

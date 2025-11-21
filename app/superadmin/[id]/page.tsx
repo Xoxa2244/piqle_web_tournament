@@ -62,7 +62,7 @@ export default function SuperAdminTournamentPage() {
   )
   const pendingRequestsCount = accessRequests?.length || 0
   
-  const updateTournament = trpc.tournament.update.useMutation({
+  const updateTournament = trpc.superadmin.updateTournament.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
       window.location.reload()
@@ -73,6 +73,8 @@ export default function SuperAdminTournamentPage() {
     },
   })
   
+  // Note: createDivision still uses regular mutation which requires auth
+  // If this fails, we'll need to create superadmin.createDivision
   const createDivision = trpc.division.create.useMutation({
     onSuccess: () => {
       setShowCreateDivision(false)
