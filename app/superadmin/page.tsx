@@ -13,6 +13,7 @@ export default function SuperAdminPage() {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [selectedUserId, setSelectedUserId] = useState<string>('')
 
   const authenticate = trpc.superadmin.authenticate.useMutation({
     onSuccess: () => {
@@ -24,8 +25,15 @@ export default function SuperAdminPage() {
     },
   })
 
-  const { data: tournaments, isLoading, refetch } = trpc.superadmin.getAllTournaments.useQuery(
+  // Get all tournament owners
+  const { data: owners } = trpc.superadmin.getAllTournamentOwners.useQuery(
     undefined,
+    { enabled: isAuthenticated }
+  )
+
+  // Get tournaments with optional user filter
+  const { data: tournaments, isLoading, refetch } = trpc.superadmin.getAllTournaments.useQuery(
+    { userId: selectedUserId || undefined },
     { enabled: isAuthenticated }
   )
 
@@ -126,6 +134,41 @@ export default function SuperAdminPage() {
           >
             Logout
           </Button>
+        </div>
+
+        {/* User Filter */}
+        <div className="mb-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <label htmlFor="user-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Filter by Owner:
+                </label>
+                <select
+                  id="user-filter"
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Tournaments</option>
+                  {owners?.map((owner) => (
+                    <option key={owner.id} value={owner.id}>
+                      {owner.name || owner.email} ({owner.email})
+                    </option>
+                  ))}
+                </select>
+                {selectedUserId && (
+                  <Button
+                    onClick={() => setSelectedUserId('')}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Clear Filter
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {isLoading ? (
