@@ -20,6 +20,7 @@ import {
   Edit,
   Shield
 } from 'lucide-react'
+import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -193,62 +194,15 @@ export default function TournamentDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/60 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-lg">P</span>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                  {tournament.title}
-                </h1>
-                <p className="text-slate-500 text-sm mt-1">Tournament Dashboard</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              {isOwner && (
-                <Link
-                  href={`/admin/${tournamentId}/import`}
-                  className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  <span className="font-medium">CSV Import</span>
-                </Link>
-              )}
-              
-              <button
-                onClick={handlePublicScoreboardClick}
-                className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                <Globe className="w-4 h-4 mr-2" />
-                <span className="font-medium">Public Scoreboard</span>
-              </button>
-              
-              {isAdmin && (
-                <button
-                  onClick={handleEditTournamentClick}
-                  className="group flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  <span className="font-medium">Edit Tournament</span>
-                </button>
-              )}
-              
-              <Link
-                href="/admin"
-                className="group flex items-center px-4 py-2.5 bg-slate-600 text-white rounded-xl hover:bg-slate-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                <span className="font-medium">Back</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+        onPublicScoreboardClick={handlePublicScoreboardClick}
+        onEditTournamentClick={handleEditTournamentClick}
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">

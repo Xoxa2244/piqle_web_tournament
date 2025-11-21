@@ -22,6 +22,7 @@ import {
 import Link from 'next/link'
 import AddPlayerModal from '@/components/AddPlayerModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 
 interface Player {
   id: string
@@ -67,6 +68,12 @@ export default function PlayersPage() {
   
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   // Get all players (participants)
   const { data: players, refetch: refetchPlayers } = trpc.player.list.useQuery(
@@ -180,22 +187,21 @@ export default function PlayersPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <Link href={`/admin/${tournamentId}`}>
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Tournament
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
-            <p className="text-gray-600 mt-1">General tournament participants list</p>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
+      <div className="container mx-auto p-6">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
+          <p className="text-gray-600 mt-1">General tournament participants list</p>
         </div>
-      </div>
 
       {/* Filters and Controls */}
       <Card className="mb-6">
@@ -396,6 +402,7 @@ export default function PlayersPage() {
           }}
         />
       )}
+      </div>
     </div>
   )
 }
