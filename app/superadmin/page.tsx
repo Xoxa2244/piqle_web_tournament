@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 
 export default function SuperAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -178,9 +179,22 @@ export default function SuperAdminPage() {
         ) : tournaments && tournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {tournaments.map((tournament) => (
-              <Card key={tournament.id} className="bg-white">
+              <Card key={tournament.id} className="bg-white relative">
+                {/* Public/Private Badge */}
+                <div className="absolute top-4 right-4 z-10">
+                  <Badge 
+                    variant={tournament.isPublicBoardEnabled ? "default" : "secondary"}
+                    className={
+                      tournament.isPublicBoardEnabled 
+                        ? "bg-green-500 hover:bg-green-600 text-white" 
+                        : "bg-gray-500 hover:bg-gray-600 text-white"
+                    }
+                  >
+                    {tournament.isPublicBoardEnabled ? 'Public' : 'Private'}
+                  </Badge>
+                </div>
                 <CardHeader>
-                  <CardTitle className="text-xl font-semibold">{tournament.title}</CardTitle>
+                  <CardTitle className="text-xl font-semibold pr-16">{tournament.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {tournament.description && (
