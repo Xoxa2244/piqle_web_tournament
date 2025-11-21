@@ -103,52 +103,60 @@ export const ratingRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const existingRating = await ctx.prisma.tournamentRating.findUnique({
-        where: {
-          userId_tournamentId: {
-            userId: ctx.session.user.id,
-            tournamentId: input.tournamentId,
+      try {
+        const existingRating = await ctx.prisma.tournamentRating.findUnique({
+          where: {
+            userId_tournamentId: {
+              userId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+            },
           },
-        },
-      })
+        })
 
-      if (existingRating) {
-        if (existingRating.rating === input.rating) {
-          // Remove rating if clicking the same one
-          await ctx.prisma.tournamentRating.delete({
-            where: {
-              userId_tournamentId: {
-                userId: ctx.session.user.id,
-                tournamentId: input.tournamentId,
+        if (existingRating) {
+          if (existingRating.rating === input.rating) {
+            // Remove rating if clicking the same one
+            await ctx.prisma.tournamentRating.delete({
+              where: {
+                userId_tournamentId: {
+                  userId: ctx.session.user.id,
+                  tournamentId: input.tournamentId,
+                },
               },
-            },
-          })
-          return { action: 'removed' as const, rating: null }
+            })
+            return { action: 'removed' as const, rating: null }
+          } else {
+            // Update rating if clicking different one
+            const updated = await ctx.prisma.tournamentRating.update({
+              where: {
+                userId_tournamentId: {
+                  userId: ctx.session.user.id,
+                  tournamentId: input.tournamentId,
+                },
+              },
+              data: {
+                rating: input.rating,
+              },
+            })
+            return { action: 'updated' as const, rating: updated.rating }
+          }
         } else {
-          // Update rating if clicking different one
-          const updated = await ctx.prisma.tournamentRating.update({
-            where: {
-              userId_tournamentId: {
-                userId: ctx.session.user.id,
-                tournamentId: input.tournamentId,
-              },
-            },
+          // Create new rating
+          const created = await ctx.prisma.tournamentRating.create({
             data: {
+              tournamentId: input.tournamentId,
+              userId: ctx.session.user.id,
               rating: input.rating,
             },
           })
-          return { action: 'updated' as const, rating: updated.rating }
+          return { action: 'created' as const, rating: created.rating }
         }
-      } else {
-        // Create new rating
-        const created = await ctx.prisma.tournamentRating.create({
-          data: {
-            tournamentId: input.tournamentId,
-            userId: ctx.session.user.id,
-            rating: input.rating,
-          },
+      } catch (error: any) {
+        console.error('Error in toggleRating:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error?.message || 'Failed to toggle rating',
         })
-        return { action: 'created' as const, rating: created.rating }
       }
     }),
 })
