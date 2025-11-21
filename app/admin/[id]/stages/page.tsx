@@ -883,18 +883,18 @@ export default function DivisionStageManagement() {
                                                     {match.teamB.name}
                                                   </div>
                                                 </div>
-                                                {teamAPlayers.length > 0 && (
-                                                  <div className="text-xs text-gray-500 mt-0.5">
-                                                    {teamAPlayers.map((player, idx) => (
-                                                      <div key={idx}>{player}</div>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                                {teamBPlayers.length > 0 && (
-                                                  <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                                    {teamBPlayers.map((player, idx) => (
-                                                      <div key={idx}>{player}</div>
-                                                    ))}
+                                                {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                                                  <div className="flex justify-between mt-0.5">
+                                                    <div className="text-xs text-gray-500">
+                                                      {teamAPlayers.map((player, idx) => (
+                                                        <div key={idx}>{player}</div>
+                                                      ))}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 text-right">
+                                                      {teamBPlayers.map((player, idx) => (
+                                                        <div key={idx}>{player}</div>
+                                                      ))}
+                                                    </div>
                                                   </div>
                                                 )}
                                               </div>
@@ -965,18 +965,18 @@ export default function DivisionStageManagement() {
                                                   {match.teamB.name}
                                                 </div>
                                               </div>
-                                              {teamAPlayers.length > 0 && (
-                                                <div className="text-xs text-gray-500 mt-0.5">
-                                                  {teamAPlayers.map((player, idx) => (
-                                                    <div key={idx}>{player}</div>
-                                                  ))}
-                                                </div>
-                                              )}
-                                              {teamBPlayers.length > 0 && (
-                                                <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                                  {teamBPlayers.map((player, idx) => (
-                                                    <div key={idx}>{player}</div>
-                                                  ))}
+                                              {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                                                <div className="flex justify-between mt-0.5">
+                                                  <div className="text-xs text-gray-500">
+                                                    {teamAPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
+                                                  </div>
+                                                  <div className="text-xs text-gray-500 text-right">
+                                                    {teamBPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
+                                                  </div>
                                                 </div>
                                               )}
                                             </div>
@@ -1204,18 +1204,18 @@ export default function DivisionStageManagement() {
                             [{match.teamB.seed || '?'}] {match.teamB.name}
                           </div>
                         </div>
-                        {teamAPlayers.length > 0 && (
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {teamAPlayers.map((player, idx) => (
-                              <div key={idx}>{player}</div>
-                            ))}
-                          </div>
-                        )}
-                        {teamBPlayers.length > 0 && (
-                          <div className="text-xs text-gray-500 mt-0.5 text-right">
-                            {teamBPlayers.map((player, idx) => (
-                              <div key={idx}>{player}</div>
-                            ))}
+                        {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                          <div className="flex justify-between mt-0.5">
+                            <div className="text-xs text-gray-500">
+                              {teamAPlayers.map((player, idx) => (
+                                <div key={idx}>{player}</div>
+                              ))}
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              {teamBPlayers.map((player, idx) => (
+                                <div key={idx}>{player}</div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1452,18 +1452,18 @@ export default function DivisionStageManagement() {
                                         {match.teamB.name}
                                       </div>
                                     </div>
-                                    {teamAPlayers.length > 0 && (
-                                      <div className="text-xs text-gray-500 mt-0.5">
-                                        {teamAPlayers.map((player, idx) => (
-                                          <div key={idx}>{player}</div>
-                                        ))}
-                                      </div>
-                                    )}
-                                    {teamBPlayers.length > 0 && (
-                                      <div className="text-xs text-gray-500 mt-0.5 text-right">
-                                        {teamBPlayers.map((player, idx) => (
-                                          <div key={idx}>{player}</div>
-                                        ))}
+                                    {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                                      <div className="flex justify-between mt-0.5">
+                                        <div className="text-xs text-gray-500">
+                                          {teamAPlayers.map((player, idx) => (
+                                            <div key={idx}>{player}</div>
+                                          ))}
+                                        </div>
+                                        <div className="text-xs text-gray-500 text-right">
+                                          {teamBPlayers.map((player, idx) => (
+                                            <div key={idx}>{player}</div>
+                                          ))}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
