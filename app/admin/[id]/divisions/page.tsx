@@ -34,6 +34,7 @@ import AddTeamModal from '@/components/AddTeamModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -647,8 +648,7 @@ export default function DivisionsPage() {
     { enabled: !!tournamentId }
   )
   
-  // Check if user has admin access
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  // Check if user has admin access (defined later, avoid redeclaration)
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -1337,29 +1337,28 @@ export default function DivisionsPage() {
     return <div>Loading...</div>
   }
 
+  // Check if user has admin access (owner or ADMIN access level)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   // Check if user has access to any divisions
   // Check if user has admin access to manage divisions
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-4">
-                <Link href={`/admin/${tournamentId}`}>
-                  <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                    <ArrowLeft className="h-4 w-4" />
-                    <span>Back</span>
-                  </Button>
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                  <p className="text-sm text-gray-500">{tournament?.title}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <TournamentNavBar
+          tournamentTitle={tournament?.title}
+          isAdmin={false}
+          isOwner={false}
+          pendingRequestsCount={0}
+        />
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1388,24 +1387,12 @@ export default function DivisionsPage() {
     return (
       <>
         <div className="min-h-screen bg-gray-50">
-          <div className="bg-white border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-between h-16">
-                <div className="flex items-center space-x-4">
-                  <Link href={`/admin/${tournamentId}`}>
-                    <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                      <ArrowLeft className="h-4 w-4" />
-                      <span>Back</span>
-                    </Button>
-                  </Link>
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                    <p className="text-sm text-gray-500">{tournament.title}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <TournamentNavBar
+            tournamentTitle={tournament.title}
+            isAdmin={isAdmin}
+            isOwner={isOwner}
+            pendingRequestsCount={pendingRequestsCount}
+          />
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
             <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
@@ -1442,21 +1429,21 @@ export default function DivisionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href={`/admin/${tournamentId}`}>
-                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Back</span>
-                </Button>
-              </Link>
-              
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                <p className="text-sm text-gray-500">{tournament.title}</p>
               </div>
             </div>
             
