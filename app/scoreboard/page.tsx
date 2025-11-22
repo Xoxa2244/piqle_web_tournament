@@ -186,7 +186,7 @@ export default function PublicTournamentsPage() {
 
                   {/* View Results Button */}
                   <div className="pt-4 border-t border-gray-200">
-                    <Link href={tournament.publicSlug ? `/t/${tournament.publicSlug}` : `/scoreboard/${tournament.id}`}>
+                    <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
                       </Button>
