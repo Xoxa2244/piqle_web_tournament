@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -100,6 +100,13 @@ export default function AccessManagementPage() {
     },
   })
 
+  // Revoke all access mutation
+  const revokeAllAccessMutation = trpc.tournamentAccess.revokeAll.useMutation({
+    onSuccess: () => {
+      refetchAccesses()
+    },
+  })
+
   const handleGrantAccess = () => {
     if (!selectedUser) return
 
@@ -127,8 +134,8 @@ export default function AccessManagementPage() {
     })
   }
 
-  const handleRevokeAccess = (accessId: string) => {
-    if (confirm('Are you sure you want to revoke this access?')) {
+  const handleRevokeAccess = (accessId: string, skipConfirm = false) => {
+    if (skipConfirm || confirm('Are you sure you want to revoke this access?')) {
       revokeAccessMutation.mutate({ accessId })
     }
   }
@@ -199,6 +206,30 @@ export default function AccessManagementPage() {
   }
 
   const divisions = tournament?.divisions || []
+
+  // Filter out divisions that are part of a merged division
+  // Only show merged divisions and standalone divisions (not those that were merged)
+  const visibleDivisions = useMemo(() => {
+    if (!divisions || divisions.length === 0) return []
+    
+    const divisionsArray = divisions as any[]
+    const mergedDivisions = divisionsArray.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
+    
+    return divisionsArray.filter((div: any) => {
+      // Always show merged divisions
+      if (div.isMerged) return true
+      
+      // Hide divisions that are part of a merged division
+      const isPartOfMerged = mergedDivisions.some((merged: any) => {
+        const mergedFromIds = Array.isArray(merged.mergedFromDivisionIds) 
+          ? merged.mergedFromDivisionIds 
+          : []
+        return mergedFromIds.includes(div.id)
+      })
+      
+      return !isPartOfMerged
+    })
+  }, [divisions])
 
   // Group accesses by user
   type AccessItem = NonNullable<typeof accesses>[0]
@@ -422,7 +453,7 @@ export default function AccessManagementPage() {
                 {divisionMode === 'selected' && (
                   <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                     <div className="grid grid-cols-5 gap-2">
-                      {(divisions as any[]).map((division: any) => (
+                      {visibleDivisions.map((division: any) => (
                         <label
                           key={division.id}
                           className="flex items-center space-x-2 cursor-pointer"
@@ -571,7 +602,7 @@ export default function AccessManagementPage() {
                           {requestDivisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {(divisions as any[]).map((division: any) => (
+                                {visibleDivisions.map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -777,7 +808,7 @@ export default function AccessManagementPage() {
                           {divisionMode === 'selected' && (
                             <div className="mt-2 max-h-64 overflow-y-auto border rounded-md p-4">
                               <div className="grid grid-cols-5 gap-2">
-                                {(divisions as any[]).map((division: any) => (
+                                {visibleDivisions.map((division: any) => (
                                   <label
                                     key={division.id}
                                     className="flex items-center space-x-2 cursor-pointer"
@@ -882,18 +913,20 @@ export default function AccessManagementPage() {
                         <Button
                           onClick={() => {
                             if (confirm('Are you sure you want to revoke all access for this user?')) {
-                              // Revoke all accesses for this user
-                              userAccessIds.forEach(accessId => {
-                                handleRevokeAccess(accessId)
+                              // Revoke all accesses for this user in one operation
+                              revokeAllAccessMutation.mutate({
+                                userId: groupedAccess.user.id,
+                                tournamentId,
                               })
                             }
                           }}
                           variant="outline"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
+                          disabled={revokeAllAccessMutation.isLoading}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Revoke
+                          {revokeAllAccessMutation.isLoading ? 'Revoking...' : 'Revoke'}
                         </Button>
                       </div>
                     </>

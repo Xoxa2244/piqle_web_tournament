@@ -762,6 +762,56 @@ export const divisionRouter = createTRPCRouter({
         })
       }
 
+      // Copy access permissions from source divisions to merged division
+      // Get all access records for both source divisions (including users with access to all divisions)
+      const sourceDivisionAccesses = await ctx.prisma.tournamentAccess.findMany({
+        where: {
+          tournamentId: division1.tournamentId,
+          OR: [
+            { divisionId: division1.id },
+            { divisionId: division2.id },
+            { divisionId: null }, // Users with access to all divisions
+          ],
+        },
+      })
+
+      // For each unique user with access to source divisions, grant access to merged division
+      const userIds = Array.from(new Set(sourceDivisionAccesses.map(a => a.userId)))
+      for (const userId of userIds) {
+        // Get the highest access level for this user from source divisions
+        const userAccesses = sourceDivisionAccesses.filter(a => a.userId === userId)
+        const highestAccessLevel = userAccesses.some(a => a.accessLevel === 'ADMIN') 
+          ? 'ADMIN' 
+          : 'SCORE_ONLY'
+        
+        // Check if user has access to all divisions (divisionId = null)
+        const hasAllDivisionsAccess = userAccesses.some(a => a.divisionId === null)
+        
+        // If user has access to all divisions, they automatically have access to merged division
+        // Otherwise, grant specific access to merged division
+        if (!hasAllDivisionsAccess) {
+          // Grant access to merged division
+          await ctx.prisma.tournamentAccess.upsert({
+            where: {
+              userId_tournamentId_divisionId: {
+                userId,
+                tournamentId: division1.tournamentId,
+                divisionId: mergedDivision.id,
+              },
+            },
+            create: {
+              userId,
+              tournamentId: division1.tournamentId,
+              divisionId: mergedDivision.id,
+              accessLevel: highestAccessLevel,
+            },
+            update: {
+              accessLevel: highestAccessLevel,
+            },
+          })
+        }
+      }
+
       // Log the merge
       await ctx.prisma.auditLog.create({
         data: {
@@ -1222,8 +1272,60 @@ export const divisionRouter = createTRPCRouter({
       await recalcDivisionStandings(division1.id, teams1)
       await recalcDivisionStandings(division2.id, teams2)
 
+      // Copy access permissions from merged division to both original divisions
+      // Get all access records for the merged division
+      const mergedDivisionAccesses = await ctx.prisma.tournamentAccess.findMany({
+        where: {
+          divisionId: input.mergedDivisionId,
+        },
+      })
+
+      // For each access record, create access for both original divisions
+      for (const access of mergedDivisionAccesses) {
+        // Create access for division1
+        await ctx.prisma.tournamentAccess.upsert({
+          where: {
+            userId_tournamentId_divisionId: {
+              userId: access.userId,
+              tournamentId: access.tournamentId,
+              divisionId: division1.id,
+            },
+          },
+          create: {
+            userId: access.userId,
+            tournamentId: access.tournamentId,
+            divisionId: division1.id,
+            accessLevel: access.accessLevel,
+          },
+          update: {
+            accessLevel: access.accessLevel,
+          },
+        })
+
+        // Create access for division2
+        await ctx.prisma.tournamentAccess.upsert({
+          where: {
+            userId_tournamentId_divisionId: {
+              userId: access.userId,
+              tournamentId: access.tournamentId,
+              divisionId: division2.id,
+            },
+          },
+          create: {
+            userId: access.userId,
+            tournamentId: access.tournamentId,
+            divisionId: division2.id,
+            accessLevel: access.accessLevel,
+          },
+          update: {
+            accessLevel: access.accessLevel,
+          },
+        })
+      }
+
       // Delete merged division (this will cascade delete any remaining matches if there are any)
       // But we've already moved all RR matches, so this should only delete the division itself
+      // Note: TournamentAccess records for merged division will be automatically deleted due to cascade
       await ctx.prisma.division.delete({
         where: { id: input.mergedDivisionId }
       })

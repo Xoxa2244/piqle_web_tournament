@@ -288,6 +288,52 @@ export const standingsRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate playoffs')
       }
 
+      // Validate Round Robin matches - check for teams playing multiple times in same round
+      // Only check Round Robin matches (not Play-In or Playoff)
+      const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
+      
+      if (rrMatches.length > 0) {
+        const roundTeamCount = new Map<number, Map<string, number>>()
+        const roundTeamNames = new Map<number, Map<string, string>>()
+        
+        rrMatches.forEach(match => {
+          const roundIndex = match.roundIndex
+          if (!roundTeamCount.has(roundIndex)) {
+            roundTeamCount.set(roundIndex, new Map())
+            roundTeamNames.set(roundIndex, new Map())
+          }
+          
+          const teamCount = roundTeamCount.get(roundIndex)!
+          const teamNames = roundTeamNames.get(roundIndex)!
+          
+          // Count teamA
+          const countA = (teamCount.get(match.teamAId) || 0) + 1
+          teamCount.set(match.teamAId, countA)
+          teamNames.set(match.teamAId, match.teamA.name)
+          
+          // Count teamB
+          const countB = (teamCount.get(match.teamBId) || 0) + 1
+          teamCount.set(match.teamBId, countB)
+          teamNames.set(match.teamBId, match.teamB.name)
+        })
+
+        // Check for violations
+        const violations: string[] = []
+        roundTeamCount.forEach((teamCount, roundIndex) => {
+          teamCount.forEach((count, teamId) => {
+            if (count > 1) {
+              const teamName = roundTeamNames.get(roundIndex)?.get(teamId) || 'Unknown'
+              violations.push(`Team "${teamName}" plays ${count} times in Round ${roundIndex}`)
+            }
+          })
+        })
+
+        if (violations.length > 0) {
+          const errorMessage = `Cannot generate Play-In. Round Robin validation failed:\n${violations.join('\n')}\n\nA team cannot play more than once in the same round. Please fix this by using "Edit RR Pairs" or regenerating Round Robin.`
+          throw new Error(errorMessage)
+        }
+      }
+
       // If regenerating, delete existing matches based on type
       if (input.regenerate) {
         if (input.regenerateType === 'playoff') {
