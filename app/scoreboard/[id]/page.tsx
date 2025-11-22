@@ -56,8 +56,8 @@ export default function PublicCoursePage() {
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
 
-  // Get tournament data
-  const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
+  // Get tournament data (using public endpoint)
+  const { data: tournament, isLoading: tournamentLoading } = trpc.public.getTournamentById.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
@@ -71,14 +71,14 @@ export default function PublicCoursePage() {
     setSelectedDivisionId(currentDivision.id)
   }
 
-  // Get standings for current division
-  const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
+  // Get standings for current division (using public endpoint)
+  const { data: standingsData, isLoading: standingsLoading } = trpc.public.getPublicStandings.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
 
-  // Get division stage
-  const { data: divisionStage, isLoading: stageLoading } = trpc.divisionStage.getDivisionStage.useQuery(
+  // Get division stage (using public endpoint)
+  const { data: divisionStage, isLoading: stageLoading } = trpc.public.getPublicDivisionStage.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
