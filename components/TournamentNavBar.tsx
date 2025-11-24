@@ -124,7 +124,8 @@ export default function TournamentNavBar({
               </Button>
             </Link>
             
-            <Link href={`/admin/${tournamentId}/teams`}>
+            {/* Teams button hidden - functionality not ready */}
+            {/* <Link href={`/admin/${tournamentId}/teams`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -133,7 +134,7 @@ export default function TournamentNavBar({
                 <Users className="w-4 h-4" />
                 <span>Teams</span>
               </Button>
-            </Link>
+            </Link> */}
             
             <Link href={`/admin/${tournamentId}/stages${divisionQuery}`}>
               <Button 
