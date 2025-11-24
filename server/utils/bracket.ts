@@ -659,10 +659,11 @@ export function buildCompleteBracket(
       
       if (hasPlayInMatches && !hasPlayInWinners) {
         // Play-In matches exist but no winners yet - structure was already built correctly
-        // Do NOT rebuild - just return empty array for Round 1+ (structure will be preserved from previous build)
-        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - preserving existing structure, not rebuilding Round 1+')
-        // Return only Play-In matches (Round 0) - Round 1+ structure should remain unchanged
-        return allMatches
+        // Build Round 1+ using the SAME logic as before Play-In generation (ignore Play-In matches)
+        // This preserves the structure that was built before Play-In generation
+        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - using pre-Play-In structure logic')
+        // Continue with normal structure building, but treat as if Play-In doesn't exist yet
+        // This will generate the same structure as before Play-In generation
       }
       
       // Generate bracket structure (either initial build or Play-In winners are determined)
@@ -690,8 +691,11 @@ export function buildCompleteBracket(
       }
       
       // Determine auto-qualified teams (upper seeds)
+      // CRITICAL: If Play-In matches exist but no winners yet, use ALL teams (as before Play-In generation)
+      // This preserves the structure that was built before Play-In generation
       const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-      if (needsPlayIn) {
+      if (needsPlayIn && hasPlayInWinners) {
+        // Play-In winners are determined - use only auto-qualified teams
         const E = totalTeams - bracketSize
         const playInTeamCount = 2 * E
         standings.forEach(team => {
@@ -700,7 +704,8 @@ export function buildCompleteBracket(
           }
         })
       } else {
-        // All teams directly qualify
+        // All teams directly qualify (either no Play-In needed, or Play-In exists but no winners yet)
+        // When Play-In exists but no winners, use all teams to preserve pre-Play-In structure
         standings.forEach(team => {
           upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
         })
