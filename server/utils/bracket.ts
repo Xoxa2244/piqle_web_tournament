@@ -650,7 +650,22 @@ export function buildCompleteBracket(
       
       console.log('[buildCompleteBracket] All playoff matches added:', allMatches.length)
     } else {
-      // No playoff matches in DB - generate bracket structure based on standings and play-in winners
+      // No playoff matches in DB
+      // CRITICAL: If Play-In matches exist but no winners yet, DO NOT rebuild structure
+      // The structure was already built correctly before Play-In generation
+      // Only rebuild if Play-In matches don't exist yet (initial build) or if winners are determined
+      const hasPlayInMatches = playInMatches && playInMatches.length > 0
+      const hasPlayInWinners = playInMatches && playInMatches.some(m => m.winnerTeamId)
+      
+      if (hasPlayInMatches && !hasPlayInWinners) {
+        // Play-In matches exist but no winners yet - structure was already built correctly
+        // Do NOT rebuild - just return empty array for Round 1+ (structure will be preserved from previous build)
+        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - preserving existing structure, not rebuilding Round 1+')
+        // Return only Play-In matches (Round 0) - Round 1+ structure should remain unchanged
+        return allMatches
+      }
+      
+      // Generate bracket structure (either initial build or Play-In winners are determined)
       console.log('[buildCompleteBracket] No playoff matches in DB - generating bracket structure...')
       
       // Calculate play-in spots and determine if play-in is needed
@@ -658,9 +673,6 @@ export function buildCompleteBracket(
       const needsPlayIn = playInSpots > 0
       
       // Extract play-in winners from Play-In matches
-      // CRITICAL: Only extract winners if they exist (matches have results)
-      // If Play-In matches exist but have no winners yet, structure should remain the same
-      // (with TBD for Play-In positions) - no need to rebuild structure
       const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
       if (playInMatches && playInMatches.length > 0) {
         playInMatches.forEach(match => {
@@ -676,10 +688,6 @@ export function buildCompleteBracket(
           }
         })
       }
-      
-      // If Play-In matches exist but no winners yet, structure should be identical to before Play-In generation
-      // The structure is already correct - we just need to show TBD for Play-In positions
-      // No need to rebuild - the structure was already built correctly before Play-In generation
       
       // Determine auto-qualified teams (upper seeds)
       const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
