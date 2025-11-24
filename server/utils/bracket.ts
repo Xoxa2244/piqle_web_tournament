@@ -784,7 +784,11 @@ export function buildCompleteBracket(
       const totalQualified = upperSeeds.length + playInWinners.length
       const missing = bracketSize - totalQualified
       
-      pairs.forEach(([seedA, seedB], index) => {
+      // CRITICAL: Always create matches for ALL pairs to maintain consistent structure
+      // Position must match the index in pairs array to preserve bracket structure
+      // Even if teams are TBD (Play-In positions without winners), we still create the match
+      let matchPosition = 0
+      pairs.forEach(([seedA, seedB], pairIndex) => {
         // Determine left/right based on seed order (lower seed on left)
         const leftSeed = Math.min(seedA, seedB)
         const rightSeed = Math.max(seedA, seedB)
@@ -801,60 +805,62 @@ export function buildCompleteBracket(
         const leftIsBye = !isLeftPlayInPosition && (leftSeed > totalQualified || (leftSeed <= missing && !leftTeam))
         const rightIsBye = !isRightPlayInPosition && (rightSeed > totalQualified || (rightSeed <= missing && !rightTeam))
         
-        // Only create match if at least one team is known or it's a BYE match or Play-In position
-        if (leftTeam || rightTeam || leftIsBye || rightIsBye || isLeftPlayInPosition || isRightPlayInPosition) {
-          const left: SeedSlot = leftTeam ? {
-            seed: leftSeed,
-            teamId: leftTeam.teamId,
-            teamName: leftTeam.teamName,
-            isBye: false,
-          } : {
-            seed: leftSeed,
-            isBye: leftIsBye,
-          }
-          
-          const right: SeedSlot = rightTeam ? {
-            seed: rightSeed,
-            teamId: rightTeam.teamId,
-            teamName: rightTeam.teamName,
-            isBye: false,
-          } : {
-            seed: rightSeed,
-            isBye: rightIsBye,
-          }
-          
-          // Determine winner if one side is BYE
-          let winnerSeed: number | undefined
-          let winnerTeamId: string | undefined
-          let winnerTeamName: string | undefined
-          let status: MatchStatus = 'scheduled'
-          
-          if (leftIsBye && rightTeam) {
-            // Left is BYE, right autopasses
-            winnerSeed = rightSeed
-            winnerTeamId = rightTeam.teamId
-            winnerTeamName = rightTeam.teamName
-            status = 'finished'
-          } else if (rightIsBye && leftTeam) {
-            // Right is BYE, left autopasses
-            winnerSeed = leftSeed
-            winnerTeamId = leftTeam.teamId
-            winnerTeamName = leftTeam.teamName
-            status = 'finished'
-          }
-          
-          round1Matches.push({
-            id: `round1-${index}`,
-            round: 1,
-            position: index,
-            left,
-            right,
-            status,
-            winnerSeed,
-            winnerTeamId,
-            winnerTeamName,
-          })
+        // Always create match - structure must be consistent
+        // If both sides are unknown and not BYE/Play-In, still create with TBD
+        const left: SeedSlot = leftTeam ? {
+          seed: leftSeed,
+          teamId: leftTeam.teamId,
+          teamName: leftTeam.teamName,
+          isBye: false,
+        } : {
+          seed: leftSeed,
+          isBye: leftIsBye,
         }
+        
+        const right: SeedSlot = rightTeam ? {
+          seed: rightSeed,
+          teamId: rightTeam.teamId,
+          teamName: rightTeam.teamName,
+          isBye: false,
+        } : {
+          seed: rightSeed,
+          isBye: rightIsBye,
+        }
+        
+        // Determine winner if one side is BYE
+        let winnerSeed: number | undefined
+        let winnerTeamId: string | undefined
+        let winnerTeamName: string | undefined
+        let status: MatchStatus = 'scheduled'
+        
+        if (leftIsBye && rightTeam) {
+          // Left is BYE, right autopasses
+          winnerSeed = rightSeed
+          winnerTeamId = rightTeam.teamId
+          winnerTeamName = rightTeam.teamName
+          status = 'finished'
+        } else if (rightIsBye && leftTeam) {
+          // Right is BYE, left autopasses
+          winnerSeed = leftSeed
+          winnerTeamId = leftTeam.teamId
+          winnerTeamName = leftTeam.teamName
+          status = 'finished'
+        }
+        
+        // CRITICAL: Use matchPosition (sequential) not pairIndex to maintain structure
+        // This ensures position is consistent even if some pairs are skipped in future
+        round1Matches.push({
+          id: `round1-${matchPosition}`,
+          round: 1,
+          position: matchPosition,
+          left,
+          right,
+          status,
+          winnerSeed,
+          winnerTeamId,
+          winnerTeamName,
+        })
+        matchPosition++
       })
       
       allMatches.push(...round1Matches)
