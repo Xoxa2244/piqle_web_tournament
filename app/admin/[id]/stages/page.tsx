@@ -647,18 +647,7 @@ export default function DivisionStageManagement() {
 
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
-            <Link
-              href={`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`}
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span>Dashboard</span>
-              </Button>
-            </Link>
+            {/* Dashboard button hidden - available in navigation menu */}
             
             {/* Division switcher */}
             <div className="flex items-center space-x-2">
@@ -819,17 +808,7 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
-                <Link
-                  href={`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`}
-                >
-                  <Button
-                    variant="ghost"
-                    className="flex items-center space-x-2"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Dashboard</span>
-                  </Button>
-                </Link>
+                {/* Dashboard button hidden - available in navigation menu */}
               </div>
             </div>
 
