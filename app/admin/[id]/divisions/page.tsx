@@ -31,6 +31,7 @@ import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import AddPlayerModal from '@/components/AddPlayerModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
@@ -515,7 +516,7 @@ function DivisionCard({
                 size="sm"
                 onClick={onAddTeam}
                 className="h-8 w-8 p-0"
-                title="Add team to division"
+                title={division.teamKind === 'SINGLES_1v1' ? 'Add player to division' : 'Add team to division'}
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -626,6 +627,7 @@ export default function DivisionsPage() {
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
@@ -634,6 +636,7 @@ export default function DivisionsPage() {
   const [selectedDivisionForUnmerge, setSelectedDivisionForUnmerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
+  const [selectedDivisionForPlayer, setSelectedDivisionForPlayer] = useState<Division | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1184,8 +1187,14 @@ export default function DivisionsPage() {
   }
 
   const handleAddTeam = (division: Division) => {
-    setSelectedDivisionForTeam(division)
-    setShowAddTeamModal(true)
+    // For SINGLES_1v1, use AddPlayerModal instead
+    if (division.teamKind === 'SINGLES_1v1') {
+      setSelectedDivisionForPlayer(division)
+      setShowAddPlayerModal(true)
+    } else {
+      setSelectedDivisionForTeam(division)
+      setShowAddTeamModal(true)
+    }
   }
 
   const handleMergeDivisions = (division: Division) => {
@@ -1588,6 +1597,23 @@ export default function DivisionsPage() {
           refetch()
         }}
       />
+
+      {/* Add Player Modal (for SINGLES_1v1) */}
+      {selectedDivisionForPlayer && (
+        <AddPlayerModal
+          division={selectedDivisionForPlayer}
+          availablePlayers={availablePlayers}
+          tournamentId={tournamentId}
+          isOpen={showAddPlayerModal}
+          onClose={() => {
+            setShowAddPlayerModal(false)
+            setSelectedDivisionForPlayer(null)
+          }}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
 
       {/* Add Division Modal */}
       <AddDivisionModal
