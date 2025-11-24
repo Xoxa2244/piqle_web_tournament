@@ -1001,7 +1001,7 @@ export default function DivisionStageManagement() {
                                                   {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                 </div>
                                               </div>
-                                              {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                                              {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                                                 <div className="flex justify-between mt-0.5">
                                                   <div className="text-xs text-gray-500">
                                                     {teamAPlayers.map((player, idx) => (
