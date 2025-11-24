@@ -1251,7 +1251,20 @@ export default function DivisionsPage() {
   }
 
   const handleDeleteTeam = (team: Team) => {
-    if (window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
+    // Find division to get teamKind
+    const division = localDivisions.find(d => d.teams.some(t => t.id === team.id))
+    const teamKind = division?.teamKind
+    
+    // Get display name (player name for SINGLES_1v1, team name for others)
+    const displayName = teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0
+      ? `${team.teamPlayers[0].player.firstName} ${team.teamPlayers[0].player.lastName}`
+      : team.name
+    
+    const confirmMessage = teamKind === 'SINGLES_1v1'
+      ? `Are you sure you want to delete "${displayName}"?`
+      : `Are you sure you want to delete "${displayName}"? This will remove all players from the team and cannot be undone.`
+    
+    if (window.confirm(confirmMessage)) {
       // Use the existing deleteTeamMutation
       deleteTeamMutation.mutate({ id: team.id })
     }

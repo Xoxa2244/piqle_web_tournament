@@ -7,7 +7,8 @@ import {
   ChevronDown, 
   ChevronRight,
   GripVertical, 
-  Users, 
+  Users,
+  User, 
   Edit, 
   Trash2, 
   MoreVertical,
@@ -252,10 +253,10 @@ export default function TeamWithSlots({
               )
             )}
             
-            {/* Player count badge - for SINGLES_1v1 show only icon, for others show count */}
+            {/* Player count badge - for SINGLES_1v1 show only single user icon, for others show count */}
             {teamKind === 'SINGLES_1v1' ? (
               <Badge variant="outline" className="text-xs">
-                <Users className="h-3 w-3" />
+                <User className="h-3 w-3" />
               </Badge>
             ) : (
               <Badge variant="outline" className="text-xs">
@@ -264,14 +265,17 @@ export default function TeamWithSlots({
               </Badge>
             )}
             
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onEdit}
-              className="h-6 w-6 p-0"
-            >
-              <Edit className="h-3 w-3" />
-            </Button>
+            {/* Edit button - hide for SINGLES_1v1 */}
+            {teamKind !== 'SINGLES_1v1' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onEdit}
+                className="h-6 w-6 p-0"
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+            )}
             
             <Button
               variant="ghost"
