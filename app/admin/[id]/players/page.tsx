@@ -20,7 +20,7 @@ import {
   EyeOff
 } from 'lucide-react'
 import Link from 'next/link'
-import AddPlayerModal from '@/components/AddPlayerModal'
+import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 
@@ -379,7 +379,7 @@ export default function PlayersPage() {
       </Card>
 
       {/* Modals */}
-      <AddPlayerModal
+      <AddParticipantModal
         tournamentId={tournamentId}
         isOpen={showAddPlayerModal}
         onClose={() => setShowAddPlayerModal(false)}
