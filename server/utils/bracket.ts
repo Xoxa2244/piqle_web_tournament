@@ -779,9 +779,13 @@ export function buildCompleteBracket(
       // Calculate total qualified teams and missing (BYE slots)
       // CRITICAL: If Play-In matches exist but no winners yet, structure should be identical
       // to before Play-In generation - just show TBD for Play-In positions
-      // The totalQualified should reflect only teams that are actually qualified (upper seeds)
-      // Play-In positions will show as TBD until winners are determined
-      const totalQualified = upperSeeds.length + playInWinners.length
+      // The totalQualified should be the same as before Play-In generation to maintain structure
+      // Before Play-In: totalQualified = all teams (or bracketSize if teams > bracketSize)
+      // After Play-In (no winners): totalQualified should still be the same to preserve structure
+      // Only when Play-In winners are determined should totalQualified change
+      const totalQualified = needsPlayIn && playInWinners.length === 0 
+        ? totalTeams  // Before Play-In results: use totalTeams to maintain structure
+        : upperSeeds.length + playInWinners.length  // After Play-In results: use actual qualified teams
       const missing = bracketSize - totalQualified
       
       // CRITICAL: Always create matches for ALL pairs to maintain consistent structure
