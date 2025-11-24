@@ -18,6 +18,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface Player {
   id: string
@@ -128,7 +129,8 @@ export default function TeamWithSlots({
   }, [team.teamPlayers, slotCount])
 
   const filledSlots = slots.filter(slot => slot !== null).length
-  const teamName = team.name || `${team.teamPlayers[0]?.player.firstName} ${team.teamPlayers[0]?.player.lastName}`
+  // Use getTeamDisplayName to show player names for SINGLES_1v1, team names for others
+  const teamName = getTeamDisplayName(team, teamKind)
 
   // Calculate DUPR ratings
   const duprStats = useMemo(() => {
