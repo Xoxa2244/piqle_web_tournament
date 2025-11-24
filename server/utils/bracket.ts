@@ -659,21 +659,21 @@ export function buildCompleteBracket(
       
       if (hasPlayInMatches && !hasPlayInWinners) {
         // Play-In matches exist but no winners yet - structure was already built correctly
-        // DO NOT rebuild Round 1+ structure - it was already built before Play-In generation
-        // Return only Play-In matches (Round 0) - Round 1+ structure should remain unchanged
-        // The frontend will preserve the existing bracket structure from previous render
-        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - NOT rebuilding Round 1+ structure')
-        console.log('[buildCompleteBracket] Returning only Play-In matches, Round 1+ structure preserved from previous build')
-        // Return only Play-In matches - Round 1+ will not be rebuilt
-        return allMatches
+        // Build Round 1+ using the SAME logic as before Play-In generation (treat as if Play-In doesn't exist)
+        // This preserves the structure that was built before Play-In generation
+        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - using pre-Play-In structure logic (treating as if no Play-In)')
+        // Continue with normal structure building, but treat needsPlayIn as false to preserve structure
+        // This will generate the same structure as before Play-In generation
       }
       
       // Generate bracket structure (either initial build or Play-In winners are determined)
       console.log('[buildCompleteBracket] No playoff matches in DB - generating bracket structure...')
       
       // Calculate play-in spots and determine if play-in is needed
+      // CRITICAL: If Play-In matches exist but no winners yet, treat as if Play-In doesn't exist
+      // This preserves the structure that was built before Play-In generation
       const playInSpots = calculatePlayInSpots(totalTeams, bracketSize)
-      const needsPlayIn = playInSpots > 0
+      const needsPlayIn = hasPlayInMatches && !hasPlayInWinners ? false : playInSpots > 0
       
       // Extract play-in winners from Play-In matches
       const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
