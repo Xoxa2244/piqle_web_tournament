@@ -658,6 +658,9 @@ export function buildCompleteBracket(
       const needsPlayIn = playInSpots > 0
       
       // Extract play-in winners from Play-In matches
+      // CRITICAL: Only extract winners if they exist (matches have results)
+      // If Play-In matches exist but have no winners yet, structure should remain the same
+      // (with TBD for Play-In positions) - no need to rebuild structure
       const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
       if (playInMatches && playInMatches.length > 0) {
         playInMatches.forEach(match => {
@@ -673,6 +676,10 @@ export function buildCompleteBracket(
           }
         })
       }
+      
+      // If Play-In matches exist but no winners yet, structure should be identical to before Play-In generation
+      // The structure is already correct - we just need to show TBD for Play-In positions
+      // No need to rebuild - the structure was already built correctly before Play-In generation
       
       // Determine auto-qualified teams (upper seeds)
       const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
@@ -770,6 +777,10 @@ export function buildCompleteBracket(
       }
       
       // Calculate total qualified teams and missing (BYE slots)
+      // CRITICAL: If Play-In matches exist but no winners yet, structure should be identical
+      // to before Play-In generation - just show TBD for Play-In positions
+      // The totalQualified should reflect only teams that are actually qualified (upper seeds)
+      // Play-In positions will show as TBD until winners are determined
       const totalQualified = upperSeeds.length + playInWinners.length
       const missing = bracketSize - totalQualified
       
@@ -780,12 +791,18 @@ export function buildCompleteBracket(
         const leftTeam = seedMap.get(leftSeed)
         const rightTeam = seedMap.get(rightSeed)
         
-        // If seed > totalQualified, it's a BYE (upper seeds get BYE)
-        const leftIsBye = leftSeed > totalQualified || (leftSeed <= missing && !leftTeam)
-        const rightIsBye = rightSeed > totalQualified || (rightSeed <= missing && !rightTeam)
+        // If seed > totalQualified, it's a BYE or TBD (for Play-In positions without winners yet)
+        // For Play-In positions: if no winner yet, show as TBD (not BYE)
+        const E = needsPlayIn ? totalTeams - bracketSize : 0
+        const playInStartSeed = needsPlayIn ? totalTeams - 2 * E + 1 : bracketSize + 1
+        const isLeftPlayInPosition = needsPlayIn && leftSeed >= playInStartSeed && !leftTeam
+        const isRightPlayInPosition = needsPlayIn && rightSeed >= playInStartSeed && !rightTeam
         
-        // Only create match if at least one team is known or it's a BYE match
-        if (leftTeam || rightTeam || leftIsBye || rightIsBye) {
+        const leftIsBye = !isLeftPlayInPosition && (leftSeed > totalQualified || (leftSeed <= missing && !leftTeam))
+        const rightIsBye = !isRightPlayInPosition && (rightSeed > totalQualified || (rightSeed <= missing && !rightTeam))
+        
+        // Only create match if at least one team is known or it's a BYE match or Play-In position
+        if (leftTeam || rightTeam || leftIsBye || rightIsBye || isLeftPlayInPosition || isRightPlayInPosition) {
           const left: SeedSlot = leftTeam ? {
             seed: leftSeed,
             teamId: leftTeam.teamId,
