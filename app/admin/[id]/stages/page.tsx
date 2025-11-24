@@ -919,7 +919,7 @@ export default function DivisionStageManagement() {
                                                     {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                   </div>
                                                 </div>
-                                                {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
+                                                {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                                                   <div className="flex justify-between mt-0.5">
                                                     <div className="text-xs text-gray-500">
                                                       {teamAPlayers.map((player, idx) => (
@@ -994,11 +994,11 @@ export default function DivisionStageManagement() {
                                             <div className="mb-2">
                                               <div className="flex items-center justify-between mb-1">
                                                 <div className="text-sm font-medium">
-                                                  {match.teamA.name}
+                                                  {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
                                                 </div>
                                                 <div className="text-sm text-gray-500">vs</div>
                                                 <div className="text-sm font-medium">
-                                                  {match.teamB.name}
+                                                  {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                 </div>
                                               </div>
                                               {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
@@ -1023,7 +1023,7 @@ export default function DivisionStageManagement() {
                                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                                 </div>
                                                 <div className="text-sm text-green-600 font-medium">
-                                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                 </div>
                                                 {renderScoreActionButton(match)}
                                                 {renderLockedNote(match)}
