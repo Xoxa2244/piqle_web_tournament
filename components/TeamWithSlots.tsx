@@ -132,8 +132,21 @@ export default function TeamWithSlots({
   // Use getTeamDisplayName to show player names for SINGLES_1v1, team names for others
   const teamName = getTeamDisplayName(team, teamKind)
 
-  // Calculate DUPR ratings
+  // For SINGLES_1v1, get player rating directly (no SUM/AVG needed)
+  const playerRating = useMemo(() => {
+    if (teamKind === 'SINGLES_1v1' && team.teamPlayers.length > 0) {
+      const player = team.teamPlayers[0].player
+      return player.duprRating || null
+    }
+    return null
+  }, [team.teamPlayers, teamKind])
+
+  // Calculate DUPR ratings for non-SINGLES (SUM/AVG)
   const duprStats = useMemo(() => {
+    if (teamKind === 'SINGLES_1v1') {
+      return { sum: null, avg: null, count: 0 }
+    }
+    
     const playersWithRatings = team.teamPlayers
       .map(tp => tp.player)
       .filter(player => player.duprRating !== null)
@@ -153,7 +166,7 @@ export default function TeamWithSlots({
       avg: avg.toFixed(1),
       count: playersWithRatings.length
     }
-  }, [team.teamPlayers])
+  }, [team.teamPlayers, teamKind])
 
   const handleAddPlayerClick = (slotIndex: number) => {
     setSelectedSlotIndex(slotIndex)
@@ -184,21 +197,24 @@ export default function TeamWithSlots({
           isDragging ? 'opacity-50' : ''
         }`}
       >
-        {/* Team Header */}
+        {/* Team/Player Header */}
         <div className="flex items-center justify-between p-3 border-b">
           <div className="flex items-center space-x-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleExpansion}
-              className="h-6 w-6 p-0"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
+            {/* For SINGLES_1v1, no expand button - player is always visible */}
+            {teamKind !== 'SINGLES_1v1' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleExpansion}
+                className="h-6 w-6 p-0"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            )}
             
             <div
               {...attributes}
@@ -217,18 +233,36 @@ export default function TeamWithSlots({
           </div>
           
           <div className="flex items-center space-x-1">
-            {/* DUPR Stats */}
-            {duprStats.count > 0 && (
-              <Badge variant="outline" className="text-xs">
-                <Star className="h-3 w-3 mr-1" />
-                SUM: {duprStats.sum} | AVG: {duprStats.avg}
-              </Badge>
+            {/* DUPR Rating/Stats */}
+            {teamKind === 'SINGLES_1v1' ? (
+              // For SINGLES_1v1: show only rating (no SUM/AVG)
+              playerRating && (
+                <Badge variant="outline" className="text-xs">
+                  <Star className="h-3 w-3 mr-1" />
+                  {playerRating}
+                </Badge>
+              )
+            ) : (
+              // For DOUBLES/SQUAD: show SUM/AVG
+              duprStats.count > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  <Star className="h-3 w-3 mr-1" />
+                  SUM: {duprStats.sum} | AVG: {duprStats.avg}
+                </Badge>
+              )
             )}
             
-            <Badge variant="outline" className="text-xs">
-              <Users className="h-3 w-3 mr-1" />
-              {filledSlots}/{slotCount}
-            </Badge>
+            {/* Player count badge - for SINGLES_1v1 show only icon, for others show count */}
+            {teamKind === 'SINGLES_1v1' ? (
+              <Badge variant="outline" className="text-xs">
+                <Users className="h-3 w-3" />
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs">
+                <Users className="h-3 w-3 mr-1" />
+                {filledSlots}/{slotCount}
+              </Badge>
+            )}
             
             <Button
               variant="ghost"
@@ -248,19 +282,21 @@ export default function TeamWithSlots({
               <Trash2 className="h-3 w-3" />
             </Button>
             
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onContextMenu}
-              className="h-6 w-6 p-0"
-            >
-              <MoreVertical className="h-3 w-3" />
-            </Button>
+            {teamKind !== 'SINGLES_1v1' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onContextMenu}
+                className="h-6 w-6 p-0"
+              >
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Player Slots */}
-        {isExpanded && (
+        {/* Player Slots - only show for non-SINGLES or when expanded */}
+        {teamKind !== 'SINGLES_1v1' && isExpanded && (
           <div className="p-2 space-y-2">
             {slots.map((player, index) => (
               <PlayerSlot
