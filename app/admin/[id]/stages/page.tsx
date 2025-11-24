@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
   ChevronLeft, 
@@ -35,6 +35,7 @@ import Link from 'next/link'
 export default function DivisionStageManagement() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
@@ -88,12 +89,40 @@ export default function DivisionStageManagement() {
     })
   }, [tournament?.divisions])
 
-  // Automatically select first division if not selected
+  // Read division from URL params on mount and when URL changes
   useEffect(() => {
-    if (visibleDivisions.length > 0 && !selectedDivisionId) {
-      setSelectedDivisionId(visibleDivisions[0]?.id || '')
+    if (visibleDivisions.length === 0) return
+    
+    const divisionFromUrl = searchParams.get('division')
+    if (divisionFromUrl && visibleDivisions.some((d: any) => d.id === divisionFromUrl)) {
+      // Division from URL is valid - use it
+      if (selectedDivisionId !== divisionFromUrl) {
+        setSelectedDivisionId(divisionFromUrl)
+      }
+    } else if (!selectedDivisionId && visibleDivisions.length > 0) {
+      // No division in URL and no selected division - set first one and update URL
+      const firstDivisionId = visibleDivisions[0]?.id || ''
+      setSelectedDivisionId(firstDivisionId)
+      if (!divisionFromUrl) {
+        router.replace(`/admin/${tournamentId}/stages?division=${firstDivisionId}`, { scroll: false })
+      }
     }
-  }, [visibleDivisions, selectedDivisionId])
+  }, [searchParams, visibleDivisions])
+
+  // Update URL when division changes via selector (not from URL read)
+  useEffect(() => {
+    if (selectedDivisionId && visibleDivisions.length > 0) {
+      const divisionFromUrl = searchParams.get('division')
+      // Only update URL if it's different and division was not just set from URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        // Small delay to avoid race condition with URL reading
+        const timeoutId = setTimeout(() => {
+          router.replace(`/admin/${tournamentId}/stages?division=${selectedDivisionId}`, { scroll: false })
+        }, 0)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDivisionId, tournamentId, router])
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -617,15 +646,18 @@ export default function DivisionStageManagement() {
 
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`)}
-              className="flex items-center space-x-2"
+            <Link
+              href={`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`}
             >
-              <BarChart3 className="h-4 w-4" />
-              <span>Dashboard</span>
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center space-x-2"
+              >
+                <BarChart3 className="h-4 w-4" />
+                <span>Dashboard</span>
+              </Button>
+            </Link>
             
             {/* Division switcher */}
             <div className="flex items-center space-x-2">
@@ -786,14 +818,17 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`)}
-                  className="flex items-center space-x-2"
+                <Link
+                  href={`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`}
                 >
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Dashboard</span>
-                </Button>
+                  <Button
+                    variant="ghost"
+                    className="flex items-center space-x-2"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span>Dashboard</span>
+                  </Button>
+                </Link>
               </div>
             </div>
 
