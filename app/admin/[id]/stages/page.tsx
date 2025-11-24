@@ -31,6 +31,7 @@ import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
+import { getTeamDisplayName } from '@/lib/utils'
 
 export default function DivisionStageManagement() {
   const router = useRouter()
@@ -911,11 +912,11 @@ export default function DivisionStageManagement() {
                                               <div className="mb-2">
                                                 <div className="flex items-center justify-between mb-1">
                                                   <div className="text-sm font-medium">
-                                                    {match.teamA.name}
+                                                    {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
                                                   </div>
                                                   <div className="text-sm text-gray-500">vs</div>
                                                   <div className="text-sm font-medium">
-                                                    {match.teamB.name}
+                                                    {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                   </div>
                                                 </div>
                                                 {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
@@ -940,7 +941,7 @@ export default function DivisionStageManagement() {
                                                     {match.games[0].scoreA} - {match.games[0].scoreB}
                                                   </div>
                                                   <div className="text-sm text-green-600 font-medium">
-                                                    Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                    Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                   </div>
                                                   {renderScoreActionButton(match)}
                                                   {renderLockedNote(match)}
@@ -1232,11 +1233,11 @@ export default function DivisionStageManagement() {
                       <div className="mb-2">
                         <div className="flex items-center justify-between mb-1">
                           <div className="text-sm font-medium">
-                            [{match.teamA.seed || '?'}] {match.teamA.name}
+                            [{match.teamA.seed || '?'}] {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
                           </div>
                           <div className="text-sm text-gray-500">vs</div>
                           <div className="text-sm font-medium">
-                            [{match.teamB.seed || '?'}] {match.teamB.name}
+                            [{match.teamB.seed || '?'}] {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                           </div>
                         </div>
                         {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
@@ -1261,7 +1262,7 @@ export default function DivisionStageManagement() {
                             {match.games[0].scoreA} - {match.games[0].scoreB}
                           </div>
                           <div className="text-sm text-green-600 font-medium">
-                            Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                            Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                           </div>
                           {renderScoreActionButton(match)}
                           {renderLockedNote(match)}
@@ -1480,11 +1481,11 @@ export default function DivisionStageManagement() {
                                   <div className="mb-2">
                                     <div className="flex items-center justify-between mb-1">
                                       <div className="text-sm font-medium">
-                                        {match.teamA.name}
+                                        {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
                                       </div>
                                       <div className="text-sm text-gray-500">vs</div>
                                       <div className="text-sm font-medium">
-                                        {match.teamB.name}
+                                        {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                       </div>
                                     </div>
                                     {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && (
@@ -1511,7 +1512,7 @@ export default function DivisionStageManagement() {
                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                 </div>
                                 <div className="text-sm text-green-600 font-medium">
-                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                 </div>
                                 {renderScoreActionButton(match)}
                                 {renderLockedNote(match)}
@@ -1543,8 +1544,8 @@ export default function DivisionStageManagement() {
           onSubmit={(scoreA, scoreB) => {
             handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
           }}
-          teamAName={selectedMatch.teamA.name}
-          teamBName={selectedMatch.teamB.name}
+          teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
+          teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
           poolName={selectedMatch.teamA.pool?.name}
           isLoading={updateMatchResultMutation.isPending}
         />
@@ -1567,12 +1568,13 @@ export default function DivisionStageManagement() {
             onSubmit={handleSwapPlayoffTeams}
             matches={eliminationMatches.map(match => ({
               id: match.id,
-              teamA: { id: match.teamAId, name: match.teamA.name },
-              teamB: { id: match.teamBId, name: match.teamB.name }
+              teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+              teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
             }))}
             teams={playoffTeams.map(team => ({ id: team.id, name: team.name }))}
             isLoading={swapPlayoffTeamsMutation.isPending}
             title="Edit Play-off Pairs"
+            teamKind={currentDivision?.teamKind}
           />
         )
       })()}
@@ -1585,12 +1587,13 @@ export default function DivisionStageManagement() {
           onSubmit={handleSwapRRTeams}
           matches={rrMatches.map(match => ({
             id: match.id,
-            teamA: { id: match.teamAId, name: match.teamA.name },
-            teamB: { id: match.teamBId, name: match.teamB.name }
+            teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+            teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
           }))}
           teams={teams.map(team => ({ id: team.id, name: team.name }))}
           isLoading={swapPlayoffTeamsMutation.isPending}
           title="Edit RR Pairs"
+          teamKind={currentDivision?.teamKind}
         />
       )}
 
@@ -1611,12 +1614,13 @@ export default function DivisionStageManagement() {
             onSubmit={handleSwapPlayInTeams}
             matches={playInMatches.map(match => ({
               id: match.id,
-              teamA: { id: match.teamAId, name: match.teamA.name },
-              teamB: { id: match.teamBId, name: match.teamB.name }
+              teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+              teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
             }))}
             teams={playInTeams.map(team => ({ id: team.id, name: team.name }))}
             isLoading={swapPlayoffTeamsMutation.isPending}
             title="Edit Play-In Pairs"
+            teamKind={currentDivision?.teamKind}
           />
         )
       })()}
