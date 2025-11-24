@@ -659,11 +659,13 @@ export function buildCompleteBracket(
       
       if (hasPlayInMatches && !hasPlayInWinners) {
         // Play-In matches exist but no winners yet - structure was already built correctly
-        // Build Round 1+ using the SAME logic as before Play-In generation (ignore Play-In matches)
-        // This preserves the structure that was built before Play-In generation
-        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - using pre-Play-In structure logic')
-        // Continue with normal structure building, but treat as if Play-In doesn't exist yet
-        // This will generate the same structure as before Play-In generation
+        // DO NOT rebuild Round 1+ structure - it was already built before Play-In generation
+        // Return only Play-In matches (Round 0) - Round 1+ structure should remain unchanged
+        // The frontend will preserve the existing bracket structure from previous render
+        console.log('[buildCompleteBracket] Play-In matches exist but no winners yet - NOT rebuilding Round 1+ structure')
+        console.log('[buildCompleteBracket] Returning only Play-In matches, Round 1+ structure preserved from previous build')
+        // Return only Play-In matches - Round 1+ will not be rebuilt
+        return allMatches
       }
       
       // Generate bracket structure (either initial build or Play-In winners are determined)
