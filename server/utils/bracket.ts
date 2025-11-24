@@ -722,12 +722,18 @@ export function buildCompleteBracket(
         const playInStartSeed = totalTeams - 2 * E + 1 // First seed that goes to Play-In
         
         // Collect Play-In winner teams (in order of their matches)
+        // CRITICAL: Play-In matches are created in order: teams[i] vs teams[teams.length - 1 - i]
+        // We need to maintain this order when placing winners in Round 1
         const playInWinnerTeams: Array<{ seed: number; teamId?: string; teamName?: string }> = []
         if (playInMatches && playInMatches.length > 0) {
-          // Sort Play-In matches by position to maintain order
+          // Sort Play-In matches by the seed of teamA (first team in pair)
+          // This maintains the original order: first match has lowest seed, last match has highest seed
           const sortedPlayInMatches = [...playInMatches].sort((a, b) => {
-            // Use match ID or index to maintain order
-            return a.id.localeCompare(b.id)
+            const teamA_a = teamMap.get(a.teamAId)
+            const teamA_b = teamMap.get(b.teamAId)
+            const seedA = teamA_a?.seed || 999
+            const seedB = teamA_b?.seed || 999
+            return seedA - seedB
           })
           
           sortedPlayInMatches.forEach(match => {
