@@ -1,10 +1,3 @@
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
 /**
  * Helper function to get display name for a team
  * For SINGLES_1v1: returns player name (FirstName LastName)
@@ -12,6 +5,7 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function getTeamDisplayName(
   team: { 
+    id: string
     name: string
     teamPlayers?: Array<{ 
       player: { 
@@ -20,7 +14,7 @@ export function getTeamDisplayName(
       } 
     }> 
   },
-  teamKind?: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null
+  teamKind: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null | undefined
 ): string {
   // If teamKind is SINGLES_1v1 and team has players, return player name
   if (teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0) {
@@ -34,3 +28,4 @@ export function getTeamDisplayName(
   // Fallback to team name
   return team.name || 'Unknown Team'
 }
+
