@@ -96,9 +96,8 @@ export default function TournamentNavBar({
                 title={tournamentTitle}
                 size="sm"
                 variant="outline"
-                className="px-3 py-1.5"
+                className="px-3 py-1.5 rounded-lg transition-all duration-200 text-sm font-medium"
               />
-            )}
             
             <Link
               href="/admin"
