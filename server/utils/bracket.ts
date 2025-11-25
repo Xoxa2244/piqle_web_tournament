@@ -538,50 +538,34 @@ export function buildCompleteBracket(
     const needsPlayIn = playInSpots > 0
     
     if (needsPlayIn) {
-      // Build Play-In structure from standings (deterministic)
-      const E = totalTeams - bracketSize
-      const playInTeamCount = 2 * E
-      const playInTeams = standings.slice(totalTeams - playInTeamCount)
-      
-      // Pair teams: first vs last, second vs second-last, etc.
-      const playInMatchesStructure: BracketMatch[] = []
-      for (let i = 0; i < E; i++) {
-        const teamA = playInTeams[i]
-        const teamB = playInTeams[playInTeamCount - 1 - i]
-        
-        playInMatchesStructure.push({
-          id: `playin-${i}`,
-          round: 0,
-          position: i,
-          left: {
-            seed: teamA.seed,
-            teamId: teamA.teamId,
-            teamName: teamA.teamName,
-            isBye: false,
-          },
-          right: {
-            seed: teamB.seed,
-            teamId: teamB.teamId,
-            teamName: teamB.teamName,
-            isBye: false,
-          },
-          status: 'scheduled',
-        })
-      }
-      
-      // Fill in data from DB matches if they exist
+      // CRITICAL: If Play-In matches exist in DB, use them directly (no duplicates)
+      // Only build structure from standings if matches don't exist in DB
       if (playInMatches && playInMatches.length > 0) {
-        playInMatchesStructure.forEach((match, index) => {
-          const dbMatch = playInMatches.find(m => {
-            const dbTeamA = teamMap.get(m.teamAId)
-            const dbTeamB = teamMap.get(m.teamBId)
-            return (dbTeamA?.seed === match.left.seed && dbTeamB?.seed === match.right.seed) ||
-                   (dbTeamA?.seed === match.right.seed && dbTeamB?.seed === match.left.seed)
-          })
+        // Use existing Play-In matches from DB
+        playInMatches.forEach((dbMatch, index) => {
+          const teamA = teamMap.get(dbMatch.teamAId)
+          const teamB = teamMap.get(dbMatch.teamBId)
           
-          if (dbMatch) {
-            match.matchId = dbMatch.id
-            match.id = dbMatch.id || match.id
+          if (teamA && teamB) {
+            const match: BracketMatch = {
+              id: dbMatch.id || `playin-${index}`,
+              round: 0,
+              position: index,
+              left: {
+                seed: teamA.seed,
+                teamId: teamA.teamId,
+                teamName: teamA.teamName,
+                isBye: false,
+              },
+              right: {
+                seed: teamB.seed,
+                teamId: teamB.teamId,
+                teamName: teamB.teamName,
+                isBye: false,
+              },
+              status: dbMatch.winnerTeamId ? 'finished' : 'scheduled',
+              matchId: dbMatch.id,
+            }
             
             if (dbMatch.winnerTeamId) {
               match.winnerTeamId = dbMatch.winnerTeamId
@@ -589,15 +573,45 @@ export function buildCompleteBracket(
               if (winnerTeam) {
                 match.winnerSeed = winnerTeam.seed
                 match.winnerTeamName = winnerTeam.teamName
-                match.status = 'finished'
               }
             }
+            
+            allMatches.push(match)
           }
         })
+        console.log('[buildCompleteBracket] Round 0 (Play-In) matches from DB:', playInMatches.length)
+      } else {
+        // Build Play-In structure from standings (when no DB matches exist yet)
+        const E = totalTeams - bracketSize
+        const playInTeamCount = 2 * E
+        const playInTeams = standings.slice(totalTeams - playInTeamCount)
+        
+        // Pair teams: first vs last, second vs second-last, etc.
+        for (let i = 0; i < E; i++) {
+          const teamA = playInTeams[i]
+          const teamB = playInTeams[playInTeamCount - 1 - i]
+          
+          allMatches.push({
+            id: `playin-${i}`,
+            round: 0,
+            position: i,
+            left: {
+              seed: teamA.seed,
+              teamId: teamA.teamId,
+              teamName: teamA.teamName,
+              isBye: false,
+            },
+            right: {
+              seed: teamB.seed,
+              teamId: teamB.teamId,
+              teamName: teamB.teamName,
+              isBye: false,
+            },
+            status: 'scheduled',
+          })
+        }
+        console.log('[buildCompleteBracket] Round 0 (Play-In) structure built from standings:', E)
       }
-      
-      allMatches.push(...playInMatchesStructure)
-      console.log('[buildCompleteBracket] Round 0 (Play-In) structure built:', playInMatchesStructure.length)
     }
     
     // Step 2: Always build Round 1+ structure deterministically
