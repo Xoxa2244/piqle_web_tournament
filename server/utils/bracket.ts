@@ -541,62 +541,80 @@ export function buildCompleteBracket(
       // CRITICAL: If Play-In matches exist in DB, use them directly (no duplicates)
       // Only build structure from standings if matches don't exist in DB
       if (playInMatches && playInMatches.length > 0) {
-        // Use existing Play-In matches from DB
-        playInMatches.forEach((dbMatch, index) => {
-          const teamA = teamMap.get(dbMatch.teamAId)
-          const teamB = teamMap.get(dbMatch.teamBId)
-          
-          if (teamA && teamB) {
-            const match: BracketMatch = {
-              id: dbMatch.id || `playin-${index}`,
-              round: 0,
-              position: index,
-              left: {
-                seed: teamA.seed,
-                teamId: teamA.teamId,
-                teamName: teamA.teamName,
-                isBye: false,
-              },
-              right: {
-                seed: teamB.seed,
-                teamId: teamB.teamId,
-                teamName: teamB.teamName,
-                isBye: false,
-              },
-              status: dbMatch.winnerTeamId ? 'finished' : 'scheduled',
-              matchId: dbMatch.id,
+        // Validate and sort Play-In matches from DB
+        // Play-In teams are the last 2E teams (where E = totalTeams - bracketSize)
+        const E = totalTeams - bracketSize
+        const playInTeamCount = 2 * E
+        const playInStartSeed = totalTeams - playInTeamCount + 1 // First seed that goes to Play-In
+        
+        // Filter and validate: only include matches where both teams should be in Play-In
+        const validPlayInMatches = playInMatches
+          .map(dbMatch => {
+            const teamA = teamMap.get(dbMatch.teamAId)
+            const teamB = teamMap.get(dbMatch.teamBId)
+            
+            // Validate that both teams should be in Play-In
+            if (teamA && teamB && teamA.seed >= playInStartSeed && teamB.seed >= playInStartSeed) {
+              return { dbMatch, teamA, teamB }
             }
-            
-            // Determine winner from winnerTeamId or games
-            let winnerTeamId: string | undefined = dbMatch.winnerTeamId
-            
-            // If no winnerTeamId, calculate from games
-            if (!winnerTeamId && (dbMatch as any).games && (dbMatch as any).games.length > 0) {
-              const games = (dbMatch as any).games
-              const totalScoreA = games.reduce((sum: number, game: any) => sum + (game.scoreA || 0), 0)
-              const totalScoreB = games.reduce((sum: number, game: any) => sum + (game.scoreB || 0), 0)
-              
-              if (totalScoreA > totalScoreB) {
-                winnerTeamId = dbMatch.teamAId
-              } else if (totalScoreB > totalScoreA) {
-                winnerTeamId = dbMatch.teamBId
-              }
-            }
-            
-            if (winnerTeamId) {
-              match.winnerTeamId = winnerTeamId
-              const winnerTeam = teamMap.get(winnerTeamId)
-              if (winnerTeam) {
-                match.winnerSeed = winnerTeam.seed
-                match.winnerTeamName = winnerTeam.teamName
-                match.status = 'finished'
-              }
-            }
-            
-            allMatches.push(match)
+            return null
+          })
+          .filter((item): item is { dbMatch: typeof playInMatches[0]; teamA: { seed: number; teamId: string; teamName: string }; teamB: { seed: number; teamId: string; teamName: string } } => item !== null)
+        
+        // Sort by seed of teamA to maintain the correct order (same as when matches were created)
+        validPlayInMatches.sort((a, b) => a.teamA.seed - b.teamA.seed)
+        
+        // Use validated and sorted Play-In matches from DB
+        validPlayInMatches.forEach(({ dbMatch, teamA, teamB }, index) => {
+          const match: BracketMatch = {
+            id: dbMatch.id || `playin-${index}`,
+            round: 0,
+            position: index,
+            left: {
+              seed: teamA.seed,
+              teamId: teamA.teamId,
+              teamName: teamA.teamName,
+              isBye: false,
+            },
+            right: {
+              seed: teamB.seed,
+              teamId: teamB.teamId,
+              teamName: teamB.teamName,
+              isBye: false,
+            },
+            status: dbMatch.winnerTeamId ? 'finished' : 'scheduled',
+            matchId: dbMatch.id,
           }
+          
+          // Determine winner from winnerTeamId or games
+          let winnerTeamId: string | undefined = dbMatch.winnerTeamId
+          
+          // If no winnerTeamId, calculate from games
+          if (!winnerTeamId && (dbMatch as any).games && (dbMatch as any).games.length > 0) {
+            const games = (dbMatch as any).games
+            const totalScoreA = games.reduce((sum: number, game: any) => sum + (game.scoreA || 0), 0)
+            const totalScoreB = games.reduce((sum: number, game: any) => sum + (game.scoreB || 0), 0)
+            
+            if (totalScoreA > totalScoreB) {
+              winnerTeamId = dbMatch.teamAId
+            } else if (totalScoreB > totalScoreA) {
+              winnerTeamId = dbMatch.teamBId
+            }
+          }
+          
+          if (winnerTeamId) {
+            match.winnerTeamId = winnerTeamId
+            const winnerTeam = teamMap.get(winnerTeamId)
+            if (winnerTeam) {
+              match.winnerSeed = winnerTeam.seed
+              match.winnerTeamName = winnerTeam.teamName
+              match.status = 'finished'
+            }
+          }
+          
+          allMatches.push(match)
         })
-        console.log('[buildCompleteBracket] Round 0 (Play-In) matches from DB:', playInMatches.length)
+        console.log('[buildCompleteBracket] Round 0 (Play-In) matches from DB (validated and sorted):', validPlayInMatches.length)
       } else {
         // Build Play-In structure from standings (when no DB matches exist yet)
         const E = totalTeams - bracketSize
@@ -700,24 +718,25 @@ export function buildCompleteBracket(
     })
     
     // Map Play-In winners to the positions they should fill
+    // CRITICAL: Use the order of matches (matchIndex), not seed order, to preserve correct mapping
     if (needsPlayIn && playInWinners.length > 0) {
       const E = totalTeams - bracketSize
       const playInStartSeed = totalTeams - 2 * E + 1
       
-      // Sort Play-In winners by seed to maintain order
-      const sortedPlayInWinners = [...playInWinners].sort((a, b) => a.seed - b.seed)
-      
-      // Map Play-In winners to bracket positions
+      // Play-In winners are already in the correct order (sorted by match creation order)
+      // Map them to bracket positions in the same order
       let playInWinnerIndex = 0
       pairs.forEach(([seedA, seedB]) => {
-        if (playInWinnerIndex < sortedPlayInWinners.length) {
+        if (playInWinnerIndex < playInWinners.length) {
+          // Find the bracket position that needs a Play-In winner
+          // These are positions where seeds >= playInStartSeed
           if (seedA >= playInStartSeed && !seedMap.has(seedA)) {
-            const winner = sortedPlayInWinners[playInWinnerIndex]
-            seedMap.set(seedA, { ...winner, seed: seedA })
+            const winner = playInWinners[playInWinnerIndex]
+            seedMap.set(seedA, { seed: seedA, teamId: winner.teamId, teamName: winner.teamName })
             playInWinnerIndex++
           } else if (seedB >= playInStartSeed && !seedMap.has(seedB)) {
-            const winner = sortedPlayInWinners[playInWinnerIndex]
-            seedMap.set(seedB, { ...winner, seed: seedB })
+            const winner = playInWinners[playInWinnerIndex]
+            seedMap.set(seedB, { seed: seedB, teamId: winner.teamId, teamName: winner.teamName })
             playInWinnerIndex++
           }
         }
