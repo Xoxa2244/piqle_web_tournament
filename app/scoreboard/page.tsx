@@ -7,14 +7,80 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, MapPin, Users, Trophy, Eye } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon } from 'lucide-react'
+import Image from 'next/image'
+import Header from '@/components/Header'
 
 type FilterType = 'current' | 'past' | 'all'
+
+// Helper component for avatar display
+function AvatarImage({ 
+  src, 
+  alt, 
+  userId,
+  size = 20 
+}: { 
+  src?: string | null
+  alt: string
+  userId: string
+  size?: number
+}) {
+  const [avatarError, setAvatarError] = useState(false)
+  const hasValidAvatar = Boolean(src && 
+    src.trim() !== '' &&
+    (src.startsWith('http') || src.startsWith('data:')))
+
+  if (hasValidAvatar && !avatarError && src) {
+    return (
+      <Image
+        src={src}
+        alt={alt}
+        width={size}
+        height={size}
+        className="rounded-full object-cover"
+        onError={() => setAvatarError(true)}
+      />
+    )
+  }
+
+  const iconSize = Math.round(size * 0.6)
+  return (
+    <div 
+      className="rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300"
+      style={{ width: size, height: size }}
+    >
+      <UserIcon style={{ width: iconSize, height: iconSize }} className="text-gray-500" />
+    </div>
+  )
+}
 
 export default function PublicTournamentsPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [filter, setFilter] = useState<FilterType>('current')
+  const [searchQuery, setSearchQuery] = useState('')
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
+  
+  // Get ratings for all tournaments
+  const tournamentIds = useMemo(() => {
+    return tournaments?.map(t => t.id) || []
+  }, [tournaments])
+  
+  const utils = trpc.useUtils()
+  
+  const { data: ratingsData } = trpc.rating.getTournamentRatings.useQuery(
+    { tournamentIds },
+    { enabled: tournamentIds.length > 0 }
+  )
+  
+  const toggleRating = trpc.rating.toggleRating.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch ratings after mutation
+      utils.rating.getTournamentRatings.invalidate({ tournamentIds })
+      // Also refetch tournaments to update karma sorting
+      utils.public.listBoards.invalidate()
+    },
+  })
 
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
@@ -40,19 +106,39 @@ export default function PublicTournamentsPage() {
     return endDateTime < nextDay
   }
 
-  // Filter tournaments based on selected filter
+  // Filter tournaments based on selected filter and search query
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
     
-    if (filter === 'all') {
-      return tournaments
+    let filtered = tournaments
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(tournament =>
+        tournament.title.toLowerCase().includes(searchQuery.toLowerCase())
+      )
     }
     
-    return tournaments.filter(tournament => {
-      const isPast = isTournamentPast(new Date(tournament.endDate))
-      return filter === 'current' ? !isPast : isPast
-    })
-  }, [tournaments, filter])
+    // Apply time filter
+    if (filter !== 'all') {
+      filtered = filtered.filter(tournament => {
+        const isPast = isTournamentPast(new Date(tournament.endDate))
+        return filter === 'current' ? !isPast : isPast
+      })
+    }
+    
+    return filtered
+  }, [tournaments, filter, searchQuery])
+  
+  const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
+    try {
+      await toggleRating.mutateAsync({ tournamentId, rating })
+      // Refetch ratings after mutation
+      // The query will automatically refetch due to React Query invalidation
+    } catch (error) {
+      console.error('Error toggling rating:', error)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -69,12 +155,27 @@ export default function PublicTournamentsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Header />
       {/* Header */}
-      <div className="bg-white border-b">
+      <div className="bg-white border-b pt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
             <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
             <p className="text-gray-600 mt-2">Select a tournament to view results</p>
+            
+            {/* Search Input */}
+            <div className="mt-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  type="text"
+                  placeholder="Search tournaments by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 max-w-md"
+                />
+              </div>
+            </div>
             
             {/* Filter Tabs */}
             <div className="mt-4 flex gap-2 border-b border-gray-200">
@@ -184,8 +285,59 @@ export default function PublicTournamentsPage() {
                     </div>
                   )}
 
+                  {/* Tournament Director */}
+                  {tournament.user && (
+                    <div className="pt-2 border-t border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs text-gray-500">Tournament Director:</span>
+                        <Link
+                          href={`/profile/${tournament.user.id}`}
+                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                        >
+                          <AvatarImage
+                            src={(tournament.user as { image?: string | null }).image}
+                            alt={tournament.user.name || tournament.user.email || 'TD'}
+                            userId={tournament.user.id}
+                            size={18}
+                          />
+                          <span className="text-xs font-medium group-hover:underline">
+                            {tournament.user.name || tournament.user.email}
+                          </span>
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Like/Dislike Buttons */}
+                  <div className="pt-2 border-t border-gray-200 flex items-center gap-2">
+                    <button
+                      onClick={() => handleRatingClick(tournament.id, 'LIKE')}
+                      disabled={toggleRating.isPending}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
+                        ratingsData?.[tournament.id]?.userRating === 'LIKE'
+                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                      <span>{ratingsData?.[tournament.id]?.likes || tournament.likes || 0}</span>
+                    </button>
+                    <button
+                      onClick={() => handleRatingClick(tournament.id, 'DISLIKE')}
+                      disabled={toggleRating.isPending}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
+                        ratingsData?.[tournament.id]?.userRating === 'DISLIKE'
+                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <ThumbsDown className="h-4 w-4" />
+                      <span>{ratingsData?.[tournament.id]?.dislikes || tournament.dislikes || 0}</span>
+                    </button>
+                  </div>
+
                   {/* View Results Button */}
-                  <div className="pt-4 border-t border-gray-200">
+                  <div className="pt-2">
                     <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
