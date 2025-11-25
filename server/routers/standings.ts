@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
 import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
+import { getTeamDisplayName } from '../utils/teamDisplay'
 
 interface TeamStats {
   teamId: string
@@ -22,12 +23,36 @@ export const standingsRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             where: { stage: 'ROUND_ROBIN' },
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: true,
             },
           },
@@ -58,7 +83,7 @@ export const standingsRouter = createTRPCRouter({
           const team = division.teams.find(team => team.id === standing.teamId)
           return {
             teamId: standing.teamId,
-            teamName: team?.name || 'Unknown Team',
+            teamName: team ? getTeamDisplayName(team, division.teamKind) : 'Unknown Team',
             wins: standing.wins,
             losses: standing.losses,
             pointsFor: standing.pointsFor,
@@ -97,7 +122,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointsFor: 0,
@@ -267,12 +292,36 @@ export const standingsRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             where: { stage: 'ROUND_ROBIN' },
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: true,
             },
           },
@@ -286,6 +335,52 @@ export const standingsRouter = createTRPCRouter({
 
       if (division.teams.length < 2) {
         throw new Error('Need at least 2 teams to generate playoffs')
+      }
+
+      // Validate Round Robin matches - check for teams playing multiple times in same round
+      // Only check Round Robin matches (not Play-In or Playoff)
+      const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
+      
+      if (rrMatches.length > 0) {
+        const roundTeamCount = new Map<number, Map<string, number>>()
+        const roundTeamNames = new Map<number, Map<string, string>>()
+        
+        rrMatches.forEach(match => {
+          const roundIndex = match.roundIndex
+          if (!roundTeamCount.has(roundIndex)) {
+            roundTeamCount.set(roundIndex, new Map())
+            roundTeamNames.set(roundIndex, new Map())
+          }
+          
+          const teamCount = roundTeamCount.get(roundIndex)!
+          const teamNames = roundTeamNames.get(roundIndex)!
+          
+          // Count teamA
+          const countA = (teamCount.get(match.teamAId) || 0) + 1
+          teamCount.set(match.teamAId, countA)
+          teamNames.set(match.teamAId, getTeamDisplayName(match.teamA, division.teamKind))
+          
+          // Count teamB
+          const countB = (teamCount.get(match.teamBId) || 0) + 1
+          teamCount.set(match.teamBId, countB)
+          teamNames.set(match.teamBId, getTeamDisplayName(match.teamB, division.teamKind))
+        })
+
+        // Check for violations
+        const violations: string[] = []
+        roundTeamCount.forEach((teamCount, roundIndex) => {
+          teamCount.forEach((count, teamId) => {
+            if (count > 1) {
+              const teamName = roundTeamNames.get(roundIndex)?.get(teamId) || 'Unknown'
+              violations.push(`Team "${teamName}" plays ${count} times in Round ${roundIndex}`)
+            }
+          })
+        })
+
+        if (violations.length > 0) {
+          const errorMessage = `Cannot generate Play-In. Round Robin validation failed:\n${violations.join('\n')}\n\nA team cannot play more than once in the same round. Please fix this by using "Edit RR Pairs" or regenerating Round Robin.`
+          throw new Error(errorMessage)
+        }
       }
 
       // If regenerating, delete existing matches based on type
@@ -315,7 +410,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointsFor: 0,
@@ -737,7 +832,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointsFor: 0,
@@ -839,11 +934,35 @@ export const standingsRouter = createTRPCRouter({
         const division = await ctx.prisma.division.findUnique({
           where: { id: input.divisionId },
           include: {
-            teams: true,
+            teams: {
+              include: {
+                teamPlayers: {
+                  include: {
+                    player: true,
+                  },
+                },
+              },
+            },
             matches: {
               include: {
-                teamA: true,
-                teamB: true,
+                teamA: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
+                    },
+                  },
+                },
+                teamB: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
+                    },
+                  },
+                },
                 games: {
                   orderBy: { index: 'asc' }
                 },
@@ -851,7 +970,15 @@ export const standingsRouter = createTRPCRouter({
             },
             standings: {
               include: {
-                team: true,
+                team: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -888,7 +1015,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointDiff: 0,
@@ -1119,7 +1246,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointDiff: 0,
@@ -1327,12 +1454,36 @@ export const standingsRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             where: { stage: 'PLAY_IN' },
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: true,
             },
           },
@@ -1368,7 +1519,7 @@ export const standingsRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointsFor: 0,

@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useSession } from 'next-auth/react'
-import Image from 'next/image'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -16,12 +14,12 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  ArrowLeft,
-  User as UserIcon
+  ArrowLeft
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketPyramidNew from '@/components/BracketPyramidNew'
 import BracketModal from '@/components/BracketModal'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface TeamStanding {
   teamId: string
@@ -53,22 +51,14 @@ interface PlayoffMatch {
 }
 
 export default function PublicCoursePage() {
-  const { data: session } = useSession()
-  const [avatarError, setAvatarError] = useState(false)
   const params = useParams()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
 
-  const hasValidAvatar = Boolean(session?.user?.image && 
-    session.user.image.trim() !== '' &&
-    (session.user.image.startsWith('http') || session.user.image.startsWith('data:')))
-  
-  const avatarSrc = session?.user?.image || ''
-
-  // Get tournament data
-  const { data: tournament, isLoading: tournamentLoading } = trpc.tournament.get.useQuery(
+  // Get tournament data (using public endpoint)
+  const { data: tournament, isLoading: tournamentLoading } = trpc.public.getTournamentById.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
@@ -82,14 +72,14 @@ export default function PublicCoursePage() {
     setSelectedDivisionId(currentDivision.id)
   }
 
-  // Get standings for current division
-  const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
+  // Get standings for current division (using public endpoint)
+  const { data: standingsData, isLoading: standingsLoading } = trpc.public.getPublicStandings.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
 
-  // Get division stage
-  const { data: divisionStage, isLoading: stageLoading } = trpc.divisionStage.getDivisionStage.useQuery(
+  // Get division stage (using public endpoint)
+  const { data: divisionStage, isLoading: stageLoading } = trpc.public.getPublicDivisionStage.useQuery(
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
@@ -131,14 +121,14 @@ export default function PublicCoursePage() {
       teamA: match.teamA
         ? {
             id: match.teamA.id,
-            name: match.teamA.name,
+            name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
             seed: standings.find(s => s.teamId === match.teamA?.id)?.rank,
           }
         : null,
       teamB: match.teamB
         ? {
             id: match.teamB.id,
-            name: match.teamB.name,
+            name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
             seed: standings.find(s => s.teamId === match.teamB?.id)?.rank,
           }
         : null,
@@ -238,32 +228,6 @@ export default function PublicCoursePage() {
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
-              
-              {/* Profile Link */}
-              {session && (
-                <Link
-                  href="/profile"
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors ml-4"
-                >
-                  {hasValidAvatar && !avatarError && avatarSrc ? (
-                    <Image
-                      src={avatarSrc}
-                      alt={session?.user?.name || 'Profile'}
-                      width={32}
-                      height={32}
-                      className="rounded-full object-cover"
-                      onError={() => setAvatarError(true)}
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
-                      <UserIcon className="h-5 w-5 text-gray-500" />
-                    </div>
-                  )}
-                  <span className="hidden sm:inline">
-                    {session?.user?.name || 'Profile'}
-                  </span>
-                </Link>
-              )}
             </div>
           </div>
 
@@ -662,8 +626,8 @@ export default function PublicCoursePage() {
                                       <div className="text-xs text-gray-500 font-medium w-6">
                                         #{teamASeed || '?'}
                                       </div>
-                                      <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA?.name || 'TBD'}>
-                                        {match.teamA?.name || 'TBD'}
+                                      <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}>
+                                        {match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}
                                       </div>
                                       {winner === 'A' && (
                                         <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -693,8 +657,8 @@ export default function PublicCoursePage() {
                                         winner === 'B' ? 'text-gray-900' : 
                                         winner === 'A' ? 'text-gray-500' : 
                                         'text-gray-900'
-                                      }`} title={match.teamB?.name || 'TBD'}>
-                                        {match.teamB?.name || 'TBD'}
+                                      }`} title={match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}>
+                                        {match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}
                                       </div>
                                       {winner === 'B' && (
                                         <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">

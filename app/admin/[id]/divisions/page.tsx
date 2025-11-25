@@ -31,9 +31,11 @@ import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import AddPlayerModal from '@/components/AddPlayerModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -514,7 +516,7 @@ function DivisionCard({
                 size="sm"
                 onClick={onAddTeam}
                 className="h-8 w-8 p-0"
-                title="Add team to division"
+                title={division.teamKind === 'SINGLES_1v1' ? 'Add player to division' : 'Add team to division'}
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -625,6 +627,7 @@ export default function DivisionsPage() {
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
@@ -633,6 +636,7 @@ export default function DivisionsPage() {
   const [selectedDivisionForUnmerge, setSelectedDivisionForUnmerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
+  const [selectedDivisionForPlayer, setSelectedDivisionForPlayer] = useState<Division | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -647,8 +651,7 @@ export default function DivisionsPage() {
     { enabled: !!tournamentId }
   )
   
-  // Check if user has admin access
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  // Check if user has admin access (defined later, avoid redeclaration)
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -1184,8 +1187,14 @@ export default function DivisionsPage() {
   }
 
   const handleAddTeam = (division: Division) => {
-    setSelectedDivisionForTeam(division)
-    setShowAddTeamModal(true)
+    // For SINGLES_1v1, use AddPlayerModal instead
+    if (division.teamKind === 'SINGLES_1v1') {
+      setSelectedDivisionForPlayer(division)
+      setShowAddPlayerModal(true)
+    } else {
+      setSelectedDivisionForTeam(division)
+      setShowAddTeamModal(true)
+    }
   }
 
   const handleMergeDivisions = (division: Division) => {
@@ -1242,7 +1251,20 @@ export default function DivisionsPage() {
   }
 
   const handleDeleteTeam = (team: Team) => {
-    if (window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
+    // Find division to get teamKind
+    const division = localDivisions.find(d => d.teams.some(t => t.id === team.id))
+    const teamKind = division?.teamKind
+    
+    // Get display name (player name for SINGLES_1v1, team name for others)
+    const displayName = teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0
+      ? `${team.teamPlayers[0].player.firstName} ${team.teamPlayers[0].player.lastName}`
+      : team.name
+    
+    const confirmMessage = teamKind === 'SINGLES_1v1'
+      ? `Are you sure you want to delete "${displayName}"?`
+      : `Are you sure you want to delete "${displayName}"? This will remove all players from the team and cannot be undone.`
+    
+    if (window.confirm(confirmMessage)) {
       // Use the existing deleteTeamMutation
       deleteTeamMutation.mutate({ id: team.id })
     }
@@ -1337,29 +1359,28 @@ export default function DivisionsPage() {
     return <div>Loading...</div>
   }
 
+  // Check if user has admin access (owner or ADMIN access level)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   // Check if user has access to any divisions
   // Check if user has admin access to manage divisions
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="bg-white border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-4">
-                <Link href={`/admin/${tournamentId}`}>
-                  <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                    <ArrowLeft className="h-4 w-4" />
-                    <span>Back</span>
-                  </Button>
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                  <p className="text-sm text-gray-500">{tournament?.title}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <TournamentNavBar
+          tournamentTitle={tournament?.title}
+          isAdmin={false}
+          isOwner={false}
+          pendingRequestsCount={0}
+        />
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1388,24 +1409,12 @@ export default function DivisionsPage() {
     return (
       <>
         <div className="min-h-screen bg-gray-50">
-          <div className="bg-white border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-between h-16">
-                <div className="flex items-center space-x-4">
-                  <Link href={`/admin/${tournamentId}`}>
-                    <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                      <ArrowLeft className="h-4 w-4" />
-                      <span>Back</span>
-                    </Button>
-                  </Link>
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                    <p className="text-sm text-gray-500">{tournament.title}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <TournamentNavBar
+            tournamentTitle={tournament.title}
+            isAdmin={isAdmin}
+            isOwner={isOwner}
+            pendingRequestsCount={pendingRequestsCount}
+          />
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
             <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
               <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
@@ -1442,21 +1451,21 @@ export default function DivisionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href={`/admin/${tournamentId}`}>
-                <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-                  <ArrowLeft className="h-4 w-4" />
-                  <span>Back</span>
-                </Button>
-              </Link>
-              
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
-                <p className="text-sm text-gray-500">{tournament.title}</p>
               </div>
             </div>
             
@@ -1601,6 +1610,23 @@ export default function DivisionsPage() {
           refetch()
         }}
       />
+
+      {/* Add Player Modal (for SINGLES_1v1) */}
+      {selectedDivisionForPlayer && (
+        <AddPlayerModal
+          division={selectedDivisionForPlayer}
+          availablePlayers={availablePlayers}
+          tournamentId={tournamentId}
+          isOpen={showAddPlayerModal}
+          onClose={() => {
+            setShowAddPlayerModal(false)
+            setSelectedDivisionForPlayer(null)
+          }}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
 
       {/* Add Division Modal */}
       <AddDivisionModal

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '../trpc'
+import { getTeamDisplayName } from '../utils/teamDisplay'
 
 export const publicRouter = createTRPCRouter({
   listBoards: publicProcedure.query(async ({ ctx }) => {
@@ -131,6 +132,51 @@ export const publicRouter = createTRPCRouter({
       return tournament
     }),
 
+  getTournamentById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.id },
+        include: {
+          divisions: {
+            include: {
+              constraints: true,
+              teams: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              pools: true,
+              matches: {
+                include: {
+                  teamA: true,
+                  teamB: true,
+                  games: {
+                    orderBy: { index: 'asc' },
+                  },
+                },
+              },
+            },
+          },
+          prizes: true,
+        },
+      })
+
+      if (!tournament) {
+        throw new Error('Tournament not found')
+      }
+
+      if (!tournament.isPublicBoardEnabled) {
+        throw new Error('Public board is disabled for this tournament')
+      }
+
+      return tournament
+    }),
+
   getStandings: publicProcedure
     .input(z.object({ 
       slug: z.string(),
@@ -208,6 +254,296 @@ export const publicRouter = createTRPCRouter({
       return matches
     }),
 
+  getPublicStandings: publicProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Check that division belongs to a public tournament
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          tournament: {
+            select: {
+              id: true,
+              isPublicBoardEnabled: true,
+            },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (!division.tournament.isPublicBoardEnabled) {
+        throw new Error('Public board is disabled for this tournament')
+      }
+
+      // Reuse the logic from standings router
+      const divisionWithData = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
+          matches: {
+            where: { stage: 'ROUND_ROBIN' },
+            include: {
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              games: true,
+            },
+          },
+        },
+      })
+
+      if (!divisionWithData) {
+        throw new Error('Division not found')
+      }
+
+      if (divisionWithData.teams.length < 2) {
+        throw new Error('Need at least 2 teams to calculate standings')
+      }
+
+      // Initialize team stats
+      const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointsFor: number; pointsAgainst: number; pointDiff: number; headToHead: Map<string, { wins: number; losses: number; pointDiff: number }> }> = new Map()
+      
+      divisionWithData.teams.forEach(team => {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: getTeamDisplayName(team, divisionWithData.teamKind),
+          wins: 0,
+          losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+          pointDiff: 0,
+          headToHead: new Map(),
+        })
+      })
+
+      // Process matches
+      divisionWithData.matches.forEach(match => {
+        const teamAStats = teamStats.get(match.teamAId)
+        const teamBStats = teamStats.get(match.teamBId)
+
+        if (!teamAStats || !teamBStats) return
+
+        // Calculate total points for this match
+        let teamAPoints = 0
+        let teamBPoints = 0
+        
+        match.games.forEach(game => {
+          teamAPoints += game.scoreA
+          teamBPoints += game.scoreB
+        })
+
+        // Update overall stats
+        teamAStats.pointsFor += teamAPoints
+        teamAStats.pointsAgainst += teamBPoints
+        teamBStats.pointsFor += teamBPoints
+        teamBStats.pointsAgainst += teamAPoints
+
+        // Determine winner
+        if (teamAPoints > teamBPoints) {
+          teamAStats.wins += 1
+          teamBStats.losses += 1
+        } else if (teamBPoints > teamAPoints) {
+          teamBStats.wins += 1
+          teamAStats.losses += 1
+        }
+
+        // Update head-to-head stats
+        const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+        const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+
+        if (teamAPoints > teamBPoints) {
+          teamAHeadToHead.wins += 1
+          teamBHeadToHead.losses += 1
+        } else if (teamBPoints > teamAPoints) {
+          teamBHeadToHead.wins += 1
+          teamAHeadToHead.losses += 1
+        }
+
+        teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
+        teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
+
+        teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+        teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
+      })
+
+      // Calculate point differentials
+      teamStats.forEach(stats => {
+        stats.pointDiff = stats.pointsFor - stats.pointsAgainst
+      })
+
+      // Sort teams using tie-breaker rules
+      const standings = Array.from(teamStats.values()).sort((a, b) => {
+        // Tie-breaker 1: Match Wins
+        if (a.wins !== b.wins) {
+          return b.wins - a.wins
+        }
+
+        // Tie-breaker 2: Head-to-Head Point Differential
+        const headToHeadA = a.headToHead.get(b.teamId)
+        const headToHeadB = b.headToHead.get(a.teamId)
+        
+        if (headToHeadA && headToHeadB) {
+          if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
+            return headToHeadB.pointDiff - headToHeadA.pointDiff
+          }
+        }
+
+        // Tie-breaker 3: Overall Point Differential
+        if (a.pointDiff !== b.pointDiff) {
+          return b.pointDiff - a.pointDiff
+        }
+
+        // Tie-breaker 4: Points For (as final tie-breaker)
+        return b.pointsFor - a.pointsFor
+      })
+
+      return {
+        standings: standings.map((team, index) => ({
+          ...team,
+          rank: index + 1,
+          headToHead: Object.fromEntries(team.headToHead),
+        })),
+        totalMatches: divisionWithData.matches.length,
+        completedMatches: divisionWithData.matches.filter(m => m.games.length > 0).length,
+      }
+    }),
+
+  getPublicDivisionStage: publicProcedure
+    .input(z.object({ divisionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // Check that division belongs to a public tournament
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          tournament: {
+            select: {
+              id: true,
+              isPublicBoardEnabled: true,
+            },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      if (!division.tournament.isPublicBoardEnabled) {
+        throw new Error('Public board is disabled for this tournament')
+      }
+
+      // Get division with all necessary data
+      const divisionWithData = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        select: {
+          id: true,
+          name: true,
+          stage: true,
+          teams: {
+            select: {
+              id: true,
+              name: true,
+              poolId: true,
+              teamPlayers: {
+                select: {
+                  id: true,
+                  player: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          pools: {
+            select: { id: true, name: true, order: true }
+          },
+          matches: {
+            select: {
+              id: true,
+              teamAId: true,
+              teamBId: true,
+              roundIndex: true,
+              stage: true,
+              note: true,
+              poolId: true,
+              locked: true,
+              teamA: {
+                include: {
+                  pool: true,
+                  teamPlayers: {
+                    select: {
+                      id: true,
+                      player: {
+                        select: {
+                          id: true,
+                          firstName: true,
+                          lastName: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  pool: true,
+                  teamPlayers: {
+                    select: {
+                      id: true,
+                      player: {
+                        select: {
+                          id: true,
+                          firstName: true,
+                          lastName: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              games: true,
+            },
+          },
+        },
+      })
+
+      if (!divisionWithData) {
+        throw new Error('Division not found')
+      }
+
+      return divisionWithData
+    }),
+
   getBracketPublic: publicProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -216,11 +552,35 @@ export const publicRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: {
                 orderBy: { index: 'asc' }
               },
@@ -242,7 +602,7 @@ export const publicRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointDiff: 0,

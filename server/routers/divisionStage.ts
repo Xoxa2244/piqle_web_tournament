@@ -22,16 +22,22 @@ export const divisionStageRouter = createTRPCRouter({
 
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
-        select: {
-          id: true,
-          name: true,
-          stage: true,
+        include: {
           teams: {
-            select: { id: true, name: true, poolId: true }
+            include: {
+              teamPlayers: {
+                include: {
+                  player: {
+                    select: {
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
+                },
+              },
+            },
           },
-          pools: {
-            select: { id: true, name: true, order: true }
-          },
+          pools: true,
           matches: {
             select: {
               id: true,
@@ -44,12 +50,32 @@ export const divisionStageRouter = createTRPCRouter({
               locked: true,
               teamA: {
                 include: {
-                  pool: true
+                  pool: true,
+                  teamPlayers: {
+                    include: {
+                      player: {
+                        select: {
+                          firstName: true,
+                          lastName: true
+                        }
+                      }
+                    }
+                  }
                 }
               },
               teamB: {
                 include: {
-                  pool: true
+                  pool: true,
+                  teamPlayers: {
+                    include: {
+                      player: {
+                        select: {
+                          firstName: true,
+                          lastName: true
+                        }
+                      }
+                    }
+                  }
                 }
               },
               games: true,

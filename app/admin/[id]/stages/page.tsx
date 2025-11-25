@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
   ChevronLeft, 
@@ -29,11 +29,14 @@ import ScoreInputModal from '@/components/ScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
+import { getTeamDisplayName } from '@/lib/utils'
 
 export default function DivisionStageManagement() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
@@ -55,6 +58,15 @@ export default function DivisionStageManagement() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  
+  // Get access info for nav bar (must be before any conditional returns)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
@@ -78,12 +90,40 @@ export default function DivisionStageManagement() {
     })
   }, [tournament?.divisions])
 
-  // Automatically select first division if not selected
+  // Read division from URL params on mount and when URL changes
   useEffect(() => {
-    if (visibleDivisions.length > 0 && !selectedDivisionId) {
-      setSelectedDivisionId(visibleDivisions[0]?.id || '')
+    if (visibleDivisions.length === 0) return
+    
+    const divisionFromUrl = searchParams.get('division')
+    if (divisionFromUrl && visibleDivisions.some((d: any) => d.id === divisionFromUrl)) {
+      // Division from URL is valid - use it
+      if (selectedDivisionId !== divisionFromUrl) {
+        setSelectedDivisionId(divisionFromUrl)
+      }
+    } else if (!selectedDivisionId && visibleDivisions.length > 0) {
+      // No division in URL and no selected division - set first one and update URL
+      const firstDivisionId = visibleDivisions[0]?.id || ''
+      setSelectedDivisionId(firstDivisionId)
+      if (!divisionFromUrl) {
+        router.replace(`/admin/${tournamentId}/stages?division=${firstDivisionId}`, { scroll: false })
+      }
     }
-  }, [visibleDivisions, selectedDivisionId])
+  }, [searchParams, visibleDivisions])
+
+  // Update URL when division changes via selector (not from URL read)
+  useEffect(() => {
+    if (selectedDivisionId && visibleDivisions.length > 0) {
+      const divisionFromUrl = searchParams.get('division')
+      // Only update URL if it's different and division was not just set from URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        // Small delay to avoid race condition with URL reading
+        const timeoutId = setTimeout(() => {
+          router.replace(`/admin/${tournamentId}/stages?division=${selectedDivisionId}`, { scroll: false })
+        }, 0)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDivisionId, tournamentId, router])
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -576,21 +616,19 @@ export default function DivisionStageManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Top panel */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Left part - division information */}
           <div className="flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.back()}
-              className="flex items-center space-x-2"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Back</span>
-            </Button>
-            
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{division.name}</h1>
               <div className="flex items-center space-x-4 mt-1">
@@ -609,15 +647,7 @@ export default function DivisionStageManagement() {
 
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`)}
-              className="flex items-center space-x-2"
-            >
-              <BarChart3 className="h-4 w-4" />
-              <span>Dashboard</span>
-            </Button>
+            {/* Dashboard button hidden - available in navigation menu */}
             
             {/* Division switcher */}
             <div className="flex items-center space-x-2">
@@ -778,14 +808,7 @@ export default function DivisionStageManagement() {
                   </Button>
                 )}
                 
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`)}
-                  className="flex items-center space-x-2"
-                >
-                  <BarChart3 className="h-4 w-4" />
-                  <span>Dashboard</span>
-                </Button>
+                {/* Dashboard button hidden - available in navigation menu */}
               </div>
             </div>
 
@@ -855,16 +878,40 @@ export default function DivisionStageManagement() {
                                       <div key={roundIndex} className="space-y-2">
                                         <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                          {roundMatches.map((match) => (
+                                          {roundMatches.map((match) => {
+                                            const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                              `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                            ).filter(Boolean) || []
+                                            const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                              `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                            ).filter(Boolean) || []
+                                            
+                                            return (
                                             <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                                              <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-medium">
-                                                  {match.teamA.name}
+                                              <div className="mb-2">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <div className="text-sm font-medium">
+                                                    {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
+                                                  </div>
+                                                  <div className="text-sm text-gray-500">vs</div>
+                                                  <div className="text-sm font-medium">
+                                                    {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                  </div>
                                                 </div>
-                                                <div className="text-sm text-gray-500">vs</div>
-                                                <div className="text-sm font-medium">
-                                                  {match.teamB.name}
-                                                </div>
+                                                {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
+                                                  <div className="flex justify-between mt-0.5">
+                                                    <div className="text-xs text-gray-500">
+                                                      {teamAPlayers.map((player, idx) => (
+                                                        <div key={idx}>{player}</div>
+                                                      ))}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 text-right">
+                                                      {teamBPlayers.map((player, idx) => (
+                                                        <div key={idx}>{player}</div>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                )}
                                               </div>
                                               
                                               {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -873,7 +920,7 @@ export default function DivisionStageManagement() {
                                                     {match.games[0].scoreA} - {match.games[0].scoreB}
                                                   </div>
                                                   <div className="text-sm text-green-600 font-medium">
-                                                    Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                    Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                   </div>
                                                   {renderScoreActionButton(match)}
                                                   {renderLockedNote(match)}
@@ -885,7 +932,8 @@ export default function DivisionStageManagement() {
                                                 </div>
                                               )}
                                             </div>
-                                          ))}
+                                            )
+                                          })}
                                         </div>
                                       </div>
                                     )
@@ -912,16 +960,40 @@ export default function DivisionStageManagement() {
                                     <div key={roundIndex} className="space-y-2">
                                       <h5 className="text-sm font-medium text-gray-700">Round {index + 1}</h5>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {roundMatches.map((match) => (
+                                        {roundMatches.map((match) => {
+                                          const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                            `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                          ).filter(Boolean) || []
+                                          const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                            `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                          ).filter(Boolean) || []
+                                          
+                                          return (
                                           <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                              <div className="text-sm font-medium">
-                                                {match.teamA.name}
+                                            <div className="mb-2">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <div className="text-sm font-medium">
+                                                  {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
+                                                </div>
+                                                <div className="text-sm text-gray-500">vs</div>
+                                                <div className="text-sm font-medium">
+                                                  {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                </div>
                                               </div>
-                                              <div className="text-sm text-gray-500">vs</div>
-                                              <div className="text-sm font-medium">
-                                                {match.teamB.name}
-                                              </div>
+                                              {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
+                                                <div className="flex justify-between mt-0.5">
+                                                  <div className="text-xs text-gray-500">
+                                                    {teamAPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
+                                                  </div>
+                                                  <div className="text-xs text-gray-500 text-right">
+                                                    {teamBPlayers.map((player, idx) => (
+                                                      <div key={idx}>{player}</div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
                                             </div>
                                             
                                             {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -930,7 +1002,7 @@ export default function DivisionStageManagement() {
                                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                                 </div>
                                                 <div className="text-sm text-green-600 font-medium">
-                                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                                 </div>
                                                 {renderScoreActionButton(match)}
                                                 {renderLockedNote(match)}
@@ -942,7 +1014,8 @@ export default function DivisionStageManagement() {
                                               </div>
                                             )}
                                           </div>
-                                        ))}
+                                          )
+                                        })}
                                       </div>
                                     </div>
                                   )
@@ -1126,16 +1199,40 @@ export default function DivisionStageManagement() {
               {/* Play-In Pairings List */}
               {playInMatches.length > 0 && showPlayInMatches && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {playInMatches.map((match) => (
+                  {playInMatches.map((match) => {
+                    const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                      `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                    ).filter(Boolean) || []
+                    const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                      `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                    ).filter(Boolean) || []
+                    
+                    return (
                     <div key={match.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-medium">
-                          [{match.teamA.seed || '?'}] {match.teamA.name}
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-sm font-medium">
+                            [{match.teamA.seed || '?'}] {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
+                          </div>
+                          <div className="text-sm text-gray-500">vs</div>
+                          <div className="text-sm font-medium">
+                            [{match.teamB.seed || '?'}] {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">vs</div>
-                        <div className="text-sm font-medium">
-                          [{match.teamB.seed || '?'}] {match.teamB.name}
-                        </div>
+                        {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
+                          <div className="flex justify-between mt-0.5">
+                            <div className="text-xs text-gray-500">
+                              {teamAPlayers.map((player, idx) => (
+                                <div key={idx}>{player}</div>
+                              ))}
+                            </div>
+                            <div className="text-xs text-gray-500 text-right">
+                              {teamBPlayers.map((player, idx) => (
+                                <div key={idx}>{player}</div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
@@ -1144,7 +1241,7 @@ export default function DivisionStageManagement() {
                             {match.games[0].scoreA} - {match.games[0].scoreB}
                           </div>
                           <div className="text-sm text-green-600 font-medium">
-                            Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                            Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                           </div>
                           {renderScoreActionButton(match)}
                           {renderLockedNote(match)}
@@ -1156,7 +1253,8 @@ export default function DivisionStageManagement() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1350,15 +1448,42 @@ export default function DivisionStageManagement() {
                                   1st Place Match
                                 </div>
                               )}
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-sm font-medium">
-                                  {match.teamA.name}
-                                </div>
-                                <div className="text-sm text-gray-500">vs</div>
-                                <div className="text-sm font-medium">
-                                  {match.teamB.name}
-                                </div>
-                              </div>
+                              {(() => {
+                                const teamAPlayers = match.teamA?.teamPlayers?.map((tp: any) => 
+                                  `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                ).filter(Boolean) || []
+                                const teamBPlayers = match.teamB?.teamPlayers?.map((tp: any) => 
+                                  `${tp.player?.firstName || ''} ${tp.player?.lastName || ''}`.trim()
+                                ).filter(Boolean) || []
+                                
+                                return (
+                                  <div className="mb-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="text-sm font-medium">
+                                        {getTeamDisplayName(match.teamA, currentDivision?.teamKind)}
+                                      </div>
+                                      <div className="text-sm text-gray-500">vs</div>
+                                      <div className="text-sm font-medium">
+                                        {getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                      </div>
+                                    </div>
+                                    {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
+                                      <div className="flex justify-between mt-0.5">
+                                        <div className="text-xs text-gray-500">
+                                          {teamAPlayers.map((player, idx) => (
+                                            <div key={idx}>{player}</div>
+                                          ))}
+                                        </div>
+                                        <div className="text-xs text-gray-500 text-right">
+                                          {teamBPlayers.map((player, idx) => (
+                                            <div key={idx}>{player}</div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             
                             {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
                               <div className="text-center space-y-2">
@@ -1366,7 +1491,7 @@ export default function DivisionStageManagement() {
                                   {match.games[0].scoreA} - {match.games[0].scoreB}
                                 </div>
                                 <div className="text-sm text-green-600 font-medium">
-                                  Winner: {match.games[0].winner === 'A' ? match.teamA.name : match.teamB.name}
+                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                 </div>
                                 {renderScoreActionButton(match)}
                                 {renderLockedNote(match)}
@@ -1398,8 +1523,8 @@ export default function DivisionStageManagement() {
           onSubmit={(scoreA, scoreB) => {
             handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
           }}
-          teamAName={selectedMatch.teamA.name}
-          teamBName={selectedMatch.teamB.name}
+          teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
+          teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
           poolName={selectedMatch.teamA.pool?.name}
           isLoading={updateMatchResultMutation.isPending}
         />
@@ -1422,12 +1547,13 @@ export default function DivisionStageManagement() {
             onSubmit={handleSwapPlayoffTeams}
             matches={eliminationMatches.map(match => ({
               id: match.id,
-              teamA: { id: match.teamAId, name: match.teamA.name },
-              teamB: { id: match.teamBId, name: match.teamB.name }
+              teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+              teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
             }))}
             teams={playoffTeams.map(team => ({ id: team.id, name: team.name }))}
             isLoading={swapPlayoffTeamsMutation.isPending}
             title="Edit Play-off Pairs"
+            teamKind={currentDivision?.teamKind}
           />
         )
       })()}
@@ -1440,12 +1566,13 @@ export default function DivisionStageManagement() {
           onSubmit={handleSwapRRTeams}
           matches={rrMatches.map(match => ({
             id: match.id,
-            teamA: { id: match.teamAId, name: match.teamA.name },
-            teamB: { id: match.teamBId, name: match.teamB.name }
+            teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+            teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
           }))}
           teams={teams.map(team => ({ id: team.id, name: team.name }))}
           isLoading={swapPlayoffTeamsMutation.isPending}
           title="Edit RR Pairs"
+          teamKind={currentDivision?.teamKind}
         />
       )}
 
@@ -1466,12 +1593,13 @@ export default function DivisionStageManagement() {
             onSubmit={handleSwapPlayInTeams}
             matches={playInMatches.map(match => ({
               id: match.id,
-              teamA: { id: match.teamAId, name: match.teamA.name },
-              teamB: { id: match.teamBId, name: match.teamB.name }
+              teamA: { id: match.teamAId, name: getTeamDisplayName(match.teamA, currentDivision?.teamKind) },
+              teamB: { id: match.teamBId, name: getTeamDisplayName(match.teamB, currentDivision?.teamKind) }
             }))}
             teams={playInTeams.map(team => ({ id: team.id, name: team.name }))}
             isLoading={swapPlayoffTeamsMutation.isPending}
             title="Edit Play-In Pairs"
+            teamKind={currentDivision?.teamKind}
           />
         )
       })()}
