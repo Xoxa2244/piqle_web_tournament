@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon } from 'lucide-react'
 import Image from 'next/image'
-import Header from '@/components/Header'
+import { useSession } from 'next-auth/react'
 
 type FilterType = 'current' | 'past' | 'all'
 
@@ -56,9 +56,11 @@ function AvatarImage({
 }
 
 export default function PublicTournamentsPage() {
+  const { data: session } = useSession()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [filter, setFilter] = useState<FilterType>('current')
   const [searchQuery, setSearchQuery] = useState('')
+  const [avatarError, setAvatarError] = useState(false)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
   
   // Get ratings for all tournaments
@@ -153,15 +155,48 @@ export default function PublicTournamentsPage() {
 
   const publicTournaments = filteredTournaments
 
+  const hasValidAvatar = Boolean(session?.user?.image && 
+    session.user.image.trim() !== '' &&
+    (session.user.image.startsWith('http') || session.user.image.startsWith('data:')))
+  
+  const avatarSrc = session?.user?.image || ''
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
       {/* Header */}
-      <div className="bg-white border-b pt-16">
+      <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
-            <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
-            <p className="text-gray-600 mt-2">Select a tournament to view results</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
+                <p className="text-gray-600 mt-2">Select a tournament to view results</p>
+              </div>
+              {session && (
+                <Link
+                  href="/profile"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  {hasValidAvatar && !avatarError && avatarSrc ? (
+                    <Image
+                      src={avatarSrc}
+                      alt={session?.user?.name || 'Profile'}
+                      width={32}
+                      height={32}
+                      className="rounded-full object-cover"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                      <UserIcon className="h-5 w-5 text-gray-500" />
+                    </div>
+                  )}
+                  <span className="hidden sm:inline">
+                    {session?.user?.name || 'Profile'}
+                  </span>
+                </Link>
+              )}
+            </div>
             
             {/* Search Input */}
             <div className="mt-4">
