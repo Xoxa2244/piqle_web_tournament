@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '../trpc'
+import { getTeamDisplayName } from '../utils/teamDisplay'
 
 export const publicRouter = createTRPCRouter({
   listBoards: publicProcedure.query(async ({ ctx }) => {
@@ -248,12 +249,36 @@ export const publicRouter = createTRPCRouter({
       const divisionWithData = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             where: { stage: 'ROUND_ROBIN' },
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: true,
             },
           },
@@ -274,7 +299,7 @@ export const publicRouter = createTRPCRouter({
       divisionWithData.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, divisionWithData.teamKind),
           wins: 0,
           losses: 0,
           pointsFor: 0,
@@ -494,11 +519,35 @@ export const publicRouter = createTRPCRouter({
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
         include: {
-          teams: true,
+          teams: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
           matches: {
             include: {
-              teamA: true,
-              teamB: true,
+              teamA: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
+              teamB: {
+                include: {
+                  teamPlayers: {
+                    include: {
+                      player: true,
+                    },
+                  },
+                },
+              },
               games: {
                 orderBy: { index: 'asc' }
               },
@@ -520,7 +569,7 @@ export const publicRouter = createTRPCRouter({
       division.teams.forEach(team => {
         teamStats.set(team.id, {
           teamId: team.id,
-          teamName: team.name,
+          teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
           pointDiff: 0,
