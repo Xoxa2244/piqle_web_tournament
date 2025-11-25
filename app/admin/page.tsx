@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
 import { Eye, Search, X, User as UserIcon } from 'lucide-react'
+import ShareButton from '@/components/ShareButton'
 
 export default function AdminPage() {
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
@@ -190,8 +191,20 @@ export default function AdminPage() {
       {tournaments && tournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(tournaments as any[]).map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-xl font-semibold mb-2">{tournament.title}</h3>
+            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
+              {tournament.isPublicBoardEnabled && (
+                <div className="absolute top-4 right-4">
+                  <ShareButton
+                    url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
+                    title={tournament.title}
+                    iconOnly
+                    size="sm"
+                    variant="ghost"
+                    className="text-gray-500 hover:text-gray-700"
+                  />
+                </div>
+              )}
+              <h3 className="text-xl font-semibold mb-2 pr-10">{tournament.title}</h3>
               {tournament.description && (
                 <div className="mb-4">
                   <div
