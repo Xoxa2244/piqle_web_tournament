@@ -220,22 +220,22 @@ export default function ProfilePage() {
               <div className="relative">
                 {hasValidAvatar && !avatarError ? (
                   <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
-                    <Image
+                <Image
                       src={currentAvatar}
-                      alt={profile.name || 'User'}
-                      width={100}
-                      height={100}
+                  alt={profile.name || 'User'}
+                  width={100}
+                  height={100}
                       className="rounded-full object-cover"
                       onError={() => {
                         setAvatarError(true)
                       }}
-                    />
+                />
                   </div>
-                ) : (
+              ) : (
                   <div className="w-24 h-24 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border-2 border-gray-300">
                     <UserIcon className="h-14 w-14 text-gray-500" />
-                  </div>
-                )}
+                </div>
+              )}
                 {isEditing && (
                   <>
                     <button
