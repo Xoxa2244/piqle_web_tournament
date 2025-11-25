@@ -653,16 +653,54 @@ export function buildCompleteBracket(
     console.log('[buildCompleteBracket] Building bracket structure deterministically...')
     
     // Extract play-in winners from Play-In matches (if any)
-    const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string }> = []
+    // CRITICAL: Use the same validation and sorting logic as in Round 0 building
+    const playInWinners: Array<{ seed: number; teamId?: string; teamName?: string; matchIndex: number }> = []
     if (playInMatches && playInMatches.length > 0) {
-      playInMatches.forEach(match => {
-        if (match.winnerTeamId) {
-          const winnerTeam = teamMap.get(match.winnerTeamId)
+      // Validate and sort Play-In matches (same logic as in Round 0 building)
+      const E = totalTeams - bracketSize
+      const playInTeamCount = 2 * E
+      const playInStartSeed = totalTeams - playInTeamCount + 1
+      
+      const validPlayInMatches = playInMatches
+        .map((match, originalIndex) => {
+          const teamA = teamMap.get(match.teamAId)
+          const teamB = teamMap.get(match.teamBId)
+          
+          if (teamA && teamB && teamA.seed >= playInStartSeed && teamB.seed >= playInStartSeed) {
+            return { match, teamA, teamB, originalIndex }
+          }
+          return null
+        })
+        .filter((item): item is { match: typeof playInMatches[0]; teamA: { seed: number; teamId: string; teamName: string }; teamB: { seed: number; teamId: string; teamName: string }; originalIndex: number } => item !== null)
+      
+      // Sort by seed of teamA to maintain the correct order (same as when matches were created)
+      validPlayInMatches.sort((a, b) => a.teamA.seed - b.teamA.seed)
+      
+      // Extract winners in the correct order (matching the order of matches in Round 0)
+      validPlayInMatches.forEach(({ match, teamA, teamB }, matchIndex) => {
+        // Determine winner from winnerTeamId or games
+        let winnerTeamId: string | undefined = match.winnerTeamId
+        
+        // If no winnerTeamId, calculate from games
+        if (!winnerTeamId && match.games && match.games.length > 0) {
+          const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA || 0), 0)
+          const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB || 0), 0)
+          
+          if (totalScoreA > totalScoreB) {
+            winnerTeamId = match.teamAId
+          } else if (totalScoreB > totalScoreA) {
+            winnerTeamId = match.teamBId
+          }
+        }
+        
+        if (winnerTeamId) {
+          const winnerTeam = teamMap.get(winnerTeamId)
           if (winnerTeam) {
             playInWinners.push({
               seed: winnerTeam.seed,
               teamId: winnerTeam.teamId,
               teamName: winnerTeam.teamName,
+              matchIndex, // Preserve match index for correct mapping
             })
           }
         }
