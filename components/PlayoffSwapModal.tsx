@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface Team {
   id: string
@@ -22,6 +23,7 @@ interface PlayoffSwapModalProps {
   teams: Team[]
   isLoading?: boolean
   title?: string
+  teamKind?: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null
 }
 
 export default function PlayoffSwapModal({
@@ -32,6 +34,7 @@ export default function PlayoffSwapModal({
   teams,
   isLoading = false,
   title = 'Edit Playoff Pairs',
+  teamKind,
 }: PlayoffSwapModalProps) {
   const [swaps, setSwaps] = useState<Array<{ matchId: string; newTeamAId: string; newTeamBId: string }>>([])
 
@@ -63,7 +66,9 @@ export default function PlayoffSwapModal({
       if (pairStrings.has(pairStr)) {
         const teamA = teams.find(t => t.id === match.teamAId)
         const teamB = teams.find(t => t.id === match.teamBId)
-        errors.push(`Match ${idx + 1}: ${teamA?.name} vs ${teamB?.name} already exists`)
+        const teamAName = teamA ? getTeamDisplayName(teamA as any, teamKind) : 'Unknown'
+        const teamBName = teamB ? getTeamDisplayName(teamB as any, teamKind) : 'Unknown'
+        errors.push(`Match ${idx + 1}: ${teamAName} vs ${teamBName} already exists`)
       } else {
         pairStrings.add(pairStr)
       }
@@ -83,7 +88,8 @@ export default function PlayoffSwapModal({
       teamCounts.forEach((count, teamId) => {
         if (count > 1) {
           const team = teams.find(t => t.id === teamId)
-          errors.push(`${team?.name} appears in multiple matches (should appear only once)`)
+          const teamName = team ? getTeamDisplayName(team as any, teamKind) : 'Unknown'
+          errors.push(`${teamName} appears in multiple matches (should appear only once)`)
         }
       })
     }
@@ -160,7 +166,7 @@ export default function PlayoffSwapModal({
                     >
                       {teams.map((team) => (
                         <option key={team.id} value={team.id}>
-                          {team.name}
+                          {getTeamDisplayName(team as any, teamKind)}
                         </option>
                       ))}
                     </select>
@@ -177,7 +183,7 @@ export default function PlayoffSwapModal({
                     >
                       {teams.map((team) => (
                         <option key={team.id} value={team.id}>
-                          {team.name}
+                          {getTeamDisplayName(team as any, teamKind)}
                         </option>
                       ))}
                     </select>

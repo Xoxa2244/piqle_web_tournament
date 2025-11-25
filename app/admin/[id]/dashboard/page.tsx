@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface TeamStanding {
   teamId: string
@@ -54,6 +56,8 @@ interface PlayoffMatch {
 
 export default function DivisionDashboard() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
@@ -71,13 +75,45 @@ export default function DivisionDashboard() {
     { enabled: !!tournamentId }
   )
 
+  // Read division from URL params on mount and when URL changes
+  useEffect(() => {
+    if (!tournament || (tournament.divisions as any[]).length === 0) return
+    
+    const divisions = tournament.divisions as any[]
+    const divisionFromUrl = searchParams.get('division')
+    if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
+      // Division from URL is valid - use it
+      if (selectedDivisionId !== divisionFromUrl) {
+        setSelectedDivisionId(divisionFromUrl)
+      }
+    } else if (!selectedDivisionId && divisions.length > 0) {
+      // No division in URL and no selected division - set first one and update URL
+      const firstDivisionId = divisions[0]?.id || ''
+      setSelectedDivisionId(firstDivisionId)
+      if (!divisionFromUrl) {
+        router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+      }
+    }
+  }, [searchParams, tournament])
+
+  // Update URL when division changes via selector (not from URL read)
+  useEffect(() => {
+    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
+      const divisionFromUrl = searchParams.get('division')
+      // Only update URL if it's different and division was not just set from URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        // Small delay to avoid race condition with URL reading
+        const timeoutId = setTimeout(() => {
+          router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
+        }, 0)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDivisionId, tournamentId, router])
+
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
-  
-  if (currentDivision && !selectedDivisionId) {
-    setSelectedDivisionId(currentDivision.id)
-  }
 
   // Get standings for current division
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
@@ -210,15 +246,30 @@ export default function DivisionDashboard() {
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
-              <p className="text-gray-600">{tournament.title}</p>
               {/* Status badges hidden per user request */}
             </div>
             
@@ -372,7 +423,9 @@ export default function DivisionDashboard() {
                             </tr>
                           </thead>
                           <tbody>
-                            {standings.map((team: TeamStanding) => (
+                            {standings.map((team: TeamStanding) => {
+                              // teamName already comes from backend with helper applied
+                              return (
                               <tr key={team.teamId} className="border-b hover:bg-gray-50">
                                 <td className="py-2 font-medium">{team.rank}</td>
                                 <td className="py-2 font-medium">{team.teamName}</td>
@@ -402,7 +455,8 @@ export default function DivisionDashboard() {
                                   )}
                                 </td>
                               </tr>
-                            ))}
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -456,8 +510,8 @@ export default function DivisionDashboard() {
                                   <div className="text-xs text-gray-500 font-medium w-6">
                                     #{teamASeed || '?'}
                                   </div>
-                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA?.name || 'TBD'}>
-                                    {match.teamA?.name || 'TBD'}
+                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'A' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -487,8 +541,8 @@ export default function DivisionDashboard() {
                                     winner === 'B' ? 'text-gray-900' : 
                                     winner === 'A' ? 'text-gray-500' : 
                                     'text-gray-900'
-                                  }`} title={match.teamB?.name || 'TBD'}>
-                                    {match.teamB?.name || 'TBD'}
+                                  }`} title={match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'B' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -524,12 +578,12 @@ export default function DivisionDashboard() {
                       id: match.id,
                       teamA: match.teamA ? {
                         id: match.teamA.id,
-                        name: match.teamA.name,
+                        name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
                       } : null,
                       teamB: match.teamB ? {
                         id: match.teamB.id,
-                        name: match.teamB.name,
+                        name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
                       games: match.games || [],
