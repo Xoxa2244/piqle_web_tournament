@@ -255,7 +255,7 @@ export default function PublicTournamentsPage() {
         {publicTournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {publicTournaments.map((tournament) => (
-              <Card key={tournament.id} className="hover:shadow-lg transition-shadow relative">
+              <Card key={tournament.id} className="hover:shadow-lg transition-shadow relative flex flex-col h-full">
                 <div className="absolute top-4 right-4 z-10">
                   <ShareButton
                     url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
@@ -266,27 +266,31 @@ export default function PublicTournamentsPage() {
                     className="text-gray-500 hover:text-gray-700"
                   />
                 </div>
-                <CardHeader>
+                <CardHeader className="flex-shrink-0">
                   <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
-                  {tournament.description && (
-                    <div className="mt-2">
-                      <div
-                        className="text-gray-600 text-sm break-words line-clamp-3"
-                        dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
-                      />
-                      {tournament.description && tournament.description.split('\n').length > 3 && (
-                        <button
-                          onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
-                          className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          Show full description
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  <div className="mt-2 min-h-[4.5rem]">
+                    {tournament.description ? (
+                      <>
+                        <div
+                          className="text-gray-600 text-sm break-words line-clamp-3"
+                          dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
+                        />
+                        {tournament.description && tournament.description.split('\n').length > 3 && (
+                          <button
+                            onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Show full description
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-gray-400 text-sm italic">No description</div>
+                    )}
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 flex-grow flex flex-col">
                   {/* Tournament Info */}
                   <div className="space-y-2">
                     <div className="flex items-center text-sm text-gray-600">
@@ -311,14 +315,19 @@ export default function PublicTournamentsPage() {
 
                   {/* Divisions */}
                   {tournament.divisions.length > 0 && (
-                    <div>
+                    <div className="flex-shrink-0">
                       <h4 className="text-sm font-medium text-gray-900 mb-2">Divisions:</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {(tournament.divisions as any[]).map((division: any) => (
+                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                        {(tournament.divisions as any[]).slice(0, 8).map((division: any) => (
                           <Badge key={division.id} variant="secondary" className="text-xs">
                             {division.name}
                           </Badge>
                         ))}
+                        {tournament.divisions.length > 8 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{tournament.divisions.length - 8} more
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   )}
@@ -383,7 +392,7 @@ export default function PublicTournamentsPage() {
                   </div>
 
                   {/* View Results Button */}
-                  <div className="pt-2">
+                  <div className="pt-2 mt-auto flex-shrink-0">
                     <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
