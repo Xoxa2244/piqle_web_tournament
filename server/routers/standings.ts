@@ -1008,9 +1008,10 @@ export const standingsRouter = createTRPCRouter({
         playoff: playoffMatches.length,
       })
 
-      // Calculate standings from RR matches
-      console.log('[getBracket] Calculating standings from RR matches...')
-      const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointDiff: number }> = new Map()
+      // Calculate standings from RR matches using the same logic as calculateStandings
+      // CRITICAL: Use head-to-head tie-breaker to match Dashboard standings
+      console.log('[getBracket] Calculating standings from RR matches with head-to-head...')
+      const teamStats: Map<string, { teamId: string; teamName: string; wins: number; losses: number; pointsFor: number; pointsAgainst: number; pointDiff: number; headToHead: Map<string, { wins: number; losses: number; pointDiff: number }> }> = new Map()
       
       division.teams.forEach(team => {
         teamStats.set(team.id, {
@@ -1018,7 +1019,10 @@ export const standingsRouter = createTRPCRouter({
           teamName: getTeamDisplayName(team, division.teamKind),
           wins: 0,
           losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
           pointDiff: 0,
+          headToHead: new Map(),
         })
       })
       
@@ -1033,13 +1037,17 @@ export const standingsRouter = createTRPCRouter({
           return
         }
 
-        // Safely calculate scores - handle cases where games array might be empty
+        // Calculate total points for this match
         const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
         const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
 
-        teamAStats.pointDiff += totalScoreA - totalScoreB
-        teamBStats.pointDiff += totalScoreB - totalScoreA
+        // Update overall stats
+        teamAStats.pointsFor += totalScoreA
+        teamAStats.pointsAgainst += totalScoreB
+        teamBStats.pointsFor += totalScoreB
+        teamBStats.pointsAgainst += totalScoreA
 
+        // Determine winner/loser
         if (totalScoreA > totalScoreB) {
           teamAStats.wins += 1
           teamBStats.losses += 1
@@ -1047,16 +1055,61 @@ export const standingsRouter = createTRPCRouter({
           teamBStats.wins += 1
           teamAStats.losses += 1
         }
+
+        // Update head-to-head stats
+        const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+        const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+
+        if (totalScoreA > totalScoreB) {
+          teamAHeadToHead.wins += 1
+          teamBHeadToHead.losses += 1
+        } else if (totalScoreB > totalScoreA) {
+          teamBHeadToHead.wins += 1
+          teamAHeadToHead.losses += 1
+        }
+
+        teamAHeadToHead.pointDiff += (totalScoreA - totalScoreB)
+        teamBHeadToHead.pointDiff += (totalScoreB - totalScoreA)
+
+        teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+        teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
+      })
+
+      // Calculate point differentials
+      teamStats.forEach(stats => {
+        stats.pointDiff = stats.pointsFor - stats.pointsAgainst
       })
 
       console.log('[getBracket] Processing RR matches...')
+      // Sort teams using tie-breaker rules (same as calculateStandings)
       const standings = Array.from(teamStats.values())
         .sort((a, b) => {
-          if (a.wins !== b.wins) return b.wins - a.wins
-          return b.pointDiff - a.pointDiff
+          // Tie-breaker 1: Match Wins
+          if (a.wins !== b.wins) {
+            return b.wins - a.wins
+          }
+
+          // Tie-breaker 2: Head-to-Head Point Differential
+          const headToHeadA = a.headToHead.get(b.teamId)
+          const headToHeadB = b.headToHead.get(a.teamId)
+          
+          if (headToHeadA && headToHeadB) {
+            if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
+              return headToHeadB.pointDiff - headToHeadA.pointDiff
+            }
+          }
+
+          // Tie-breaker 3: Overall Point Differential
+          if (a.pointDiff !== b.pointDiff) {
+            return b.pointDiff - a.pointDiff
+          }
+
+          // Tie-breaker 4: Points For (as final tie-breaker)
+          return b.pointsFor - a.pointsFor
         })
         .map((stats, index) => ({
-          ...stats,
+          teamId: stats.teamId,
+          teamName: stats.teamName,
           seed: index + 1,
         }))
 
