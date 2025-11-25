@@ -732,7 +732,7 @@ export function buildCompleteBracket(
         const isRightPlayInPosition = needsPlayIn && rightSeed >= playInStartSeed && !rightTeam
         
         const leftIsBye = !isLeftPlayInPosition && (leftSeed > totalQualified || (leftSeed <= missing && !leftTeam))
-        const rightIsBye = !isRightPlayInPosition && (rightSeed > totalQualified || (rightSeed <= missing && !rightTeam)))
+        const rightIsBye = !isRightPlayInPosition && (rightSeed > totalQualified || (rightSeed <= missing && !rightTeam))
         
         // Always create match - structure must be consistent
         // If both sides are unknown and not BYE/Play-In, still create with TBD
