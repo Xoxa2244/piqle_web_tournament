@@ -621,24 +621,26 @@ export function buildCompleteBracket(
     }
     
     // Determine auto-qualified teams (upper seeds)
-    // CRITICAL: If Play-In matches exist but no winners yet, use ALL teams (as before Play-In generation)
-    // This preserves the structure that was built before Play-In generation
+    // CRITICAL: If Play-In matches exist, exclude teams that play in Play-In from auto-qualified
+    // This prevents duplicate teams in the bracket (teams in Play-In should not appear as auto-qualified)
     const hasPlayInMatches = playInMatches && playInMatches.length > 0
     const hasPlayInWinners = playInWinners.length > 0
     
     const upperSeeds: Array<{ seed: number; teamId?: string; teamName?: string }> = []
-    if (needsPlayIn && hasPlayInWinners) {
-      // Play-In winners are determined - use only auto-qualified teams
+    if (needsPlayIn) {
+      // Play-In is needed - exclude teams that go to Play-In from auto-qualified
       const E = totalTeams - bracketSize
       const playInTeamCount = 2 * E
+      const playInStartSeed = totalTeams - playInTeamCount + 1 // First seed that goes to Play-In
+      
       standings.forEach(team => {
-        if (team.seed <= totalTeams - playInTeamCount) {
+        // Only include teams that are NOT in Play-In (seeds 1 to totalTeams - playInTeamCount)
+        if (team.seed < playInStartSeed) {
           upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
         }
       })
     } else {
-      // All teams directly qualify (either no Play-In needed, or Play-In exists but no winners yet)
-      // When Play-In exists but no winners, use all teams to preserve pre-Play-In structure
+      // No Play-In needed - all teams directly qualify
       standings.forEach(team => {
         upperSeeds.push({ seed: team.seed, teamId: team.teamId, teamName: team.teamName })
       })
@@ -692,12 +694,9 @@ export function buildCompleteBracket(
     }
     
     // Calculate total qualified teams and missing (BYE slots)
-    // CRITICAL: If Play-In matches exist but no winners yet, structure should be identical
-    // to before Play-In generation - just show TBD for Play-In positions
-    // The totalQualified should be the same as before Play-In generation to maintain structure
-    const totalQualified = needsPlayIn && hasPlayInMatches && !hasPlayInWinners
-      ? totalTeams  // Before Play-In results: use totalTeams to maintain structure
-      : upperSeeds.length + playInWinners.length  // After Play-In results: use actual qualified teams
+    // Structure is always based on actual qualified teams (upperSeeds + playInWinners)
+    // If Play-In winners are not determined yet, those positions show as TBD
+    const totalQualified = upperSeeds.length + playInWinners.length
     const missing = bracketSize - totalQualified
       
       // CRITICAL: Always create matches for ALL pairs to maintain consistent structure
