@@ -95,7 +95,8 @@ export default function TournamentNavBar({
                 url={publicScoreboardUrl}
                 title={tournamentTitle}
                 size="sm"
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm font-medium border-0"
+                variant="outline"
+                className="px-3 py-1.5"
               />
             )}
             

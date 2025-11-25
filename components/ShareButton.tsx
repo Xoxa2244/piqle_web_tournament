@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { Share2, Check } from 'lucide-react'
+import { Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/use-toast'
 
 interface ShareButtonProps {
   url: string
@@ -21,33 +21,16 @@ export default function ShareButton({
   variant = 'outline',
   iconOnly = false
 }: ShareButtonProps) {
-  const [copied, setCopied] = useState(false)
+  const { toast } = useToast()
 
   const handleShare = async () => {
-    const shareData = {
-      title: title || 'Tournament',
-      text: title || 'Check out this tournament!',
-      url: url,
-    }
-
-    // Try Web Share API first (mobile/desktop with support)
-    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-      try {
-        await navigator.share(shareData)
-        return
-      } catch (error: any) {
-        // User cancelled or error occurred, fall back to copy
-        if (error.name !== 'AbortError') {
-          console.error('Error sharing:', error)
-        }
-      }
-    }
-
-    // Fallback: Copy to clipboard
+    // Always copy to clipboard and show toast
     try {
       await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      toast({
+        title: "Link copied!",
+        description: "Tournament link has been copied to clipboard.",
+      })
     } catch (error) {
       console.error('Failed to copy:', error)
       // Fallback for older browsers
@@ -59,10 +42,17 @@ export default function ShareButton({
       textArea.select()
       try {
         document.execCommand('copy')
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        toast({
+          title: "Link copied!",
+          description: "Tournament link has been copied to clipboard.",
+        })
       } catch (err) {
         console.error('Fallback copy failed:', err)
+        toast({
+          title: "Failed to copy",
+          description: "Could not copy link to clipboard.",
+          variant: "destructive",
+        })
       }
       document.body.removeChild(textArea)
     }
@@ -71,24 +61,13 @@ export default function ShareButton({
   // If className includes custom styles (like gradient), use button instead of Button component
   const useCustomButton = className.includes('bg-gradient') || className.includes('from-') || className.includes('to-')
   
-  const buttonContent = copied ? (
-    iconOnly ? (
-      <Check className="h-4 w-4" />
-    ) : (
-      <>
-        <Check className="h-4 w-4 mr-2" />
-        <span>Copied!</span>
-      </>
-    )
+  const buttonContent = iconOnly ? (
+    <Share2 className="h-4 w-4" />
   ) : (
-    iconOnly ? (
-      <Share2 className="h-4 w-4" />
-    ) : (
-      <>
-        <Share2 className="h-4 w-4 mr-2" />
-        <span>Share</span>
-      </>
-    )
+    <>
+      <Share2 className="h-4 w-4 mr-2" />
+      <span>Share</span>
+    </>
   )
 
   if (useCustomButton) {
@@ -96,7 +75,7 @@ export default function ShareButton({
       <button
         onClick={handleShare}
         className={`flex items-center ${className}`}
-        title={copied ? 'Copied!' : 'Share tournament'}
+        title="Share tournament"
       >
         {buttonContent}
       </button>
@@ -109,7 +88,7 @@ export default function ShareButton({
       variant={variant}
       size={size}
       className={className}
-      title={copied ? 'Copied!' : 'Share tournament'}
+      title="Share tournament"
     >
       {buttonContent}
     </Button>
