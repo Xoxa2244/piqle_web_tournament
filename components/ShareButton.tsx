@@ -10,6 +10,7 @@ interface ShareButtonProps {
   className?: string
   size?: 'sm' | 'default' | 'lg'
   variant?: 'default' | 'outline' | 'ghost'
+  iconOnly?: boolean
 }
 
 export default function ShareButton({ 
@@ -17,7 +18,8 @@ export default function ShareButton({
   title,
   className = '',
   size = 'default',
-  variant = 'outline'
+  variant = 'outline',
+  iconOnly = false
 }: ShareButtonProps) {
   const [copied, setCopied] = useState(false)
 
@@ -66,6 +68,41 @@ export default function ShareButton({
     }
   }
 
+  // If className includes custom styles (like gradient), use button instead of Button component
+  const useCustomButton = className.includes('bg-gradient') || className.includes('from-') || className.includes('to-')
+  
+  const buttonContent = copied ? (
+    iconOnly ? (
+      <Check className="h-4 w-4" />
+    ) : (
+      <>
+        <Check className="h-4 w-4 mr-2" />
+        <span>Copied!</span>
+      </>
+    )
+  ) : (
+    iconOnly ? (
+      <Share2 className="h-4 w-4" />
+    ) : (
+      <>
+        <Share2 className="h-4 w-4 mr-2" />
+        <span>Share</span>
+      </>
+    )
+  )
+
+  if (useCustomButton) {
+    return (
+      <button
+        onClick={handleShare}
+        className={`flex items-center ${className}`}
+        title={copied ? 'Copied!' : 'Share tournament'}
+      >
+        {buttonContent}
+      </button>
+    )
+  }
+
   return (
     <Button
       onClick={handleShare}
@@ -74,17 +111,7 @@ export default function ShareButton({
       className={className}
       title={copied ? 'Copied!' : 'Share tournament'}
     >
-      {copied ? (
-        <>
-          <Check className="h-4 w-4 mr-2" />
-          <span>Copied!</span>
-        </>
-      ) : (
-        <>
-          <Share2 className="h-4 w-4 mr-2" />
-          <span>Share</span>
-        </>
-      )}
+      {buttonContent}
     </Button>
   )
 }
