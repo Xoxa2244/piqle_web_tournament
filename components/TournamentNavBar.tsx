@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { 
   Settings,
   Users,
@@ -33,7 +33,10 @@ export default function TournamentNavBar({
   onEditTournamentClick
 }: TournamentNavBarProps) {
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
+  const divisionParam = searchParams.get('division')
+  const divisionQuery = divisionParam ? `?division=${divisionParam}` : ''
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
@@ -121,7 +124,8 @@ export default function TournamentNavBar({
               </Button>
             </Link>
             
-            <Link href={`/admin/${tournamentId}/teams`}>
+            {/* Teams button hidden - functionality not ready */}
+            {/* <Link href={`/admin/${tournamentId}/teams`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -130,9 +134,9 @@ export default function TournamentNavBar({
                 <Users className="w-4 h-4" />
                 <span>Teams</span>
               </Button>
-            </Link>
+            </Link> */}
             
-            <Link href={`/admin/${tournamentId}/stages`}>
+            <Link href={`/admin/${tournamentId}/stages${divisionQuery}`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -143,7 +147,7 @@ export default function TournamentNavBar({
               </Button>
             </Link>
             
-            <Link href={`/admin/${tournamentId}/dashboard`}>
+            <Link href={`/admin/${tournamentId}/dashboard${divisionQuery}`}>
               <Button 
                 variant="outline" 
                 size="sm"

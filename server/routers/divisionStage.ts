@@ -22,16 +22,22 @@ export const divisionStageRouter = createTRPCRouter({
 
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
-        select: {
-          id: true,
-          name: true,
-          stage: true,
+        include: {
           teams: {
-            select: { id: true, name: true, poolId: true }
+            include: {
+              teamPlayers: {
+                include: {
+                  player: {
+                    select: {
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
+                },
+              },
+            },
           },
-          pools: {
-            select: { id: true, name: true, order: true }
-          },
+          pools: true,
           matches: {
             select: {
               id: true,
@@ -374,6 +380,7 @@ async function calculateStandings(teams: any[], matches: any[]) {
       pointsFor: 0,
       pointsAgainst: 0,
       pointDiff: 0,
+      headToHead: new Map<string, { wins: number; losses: number; pointDiff: number }>(),
     })
   })
 
@@ -403,15 +410,54 @@ async function calculateStandings(teams: any[], matches: any[]) {
       teamBStats.wins += 1
       teamAStats.losses += 1
     }
+
+    // Update head-to-head stats
+    const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
+    const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
+
+    if (teamAPoints > teamBPoints) {
+      teamAHeadToHead.wins += 1
+      teamBHeadToHead.losses += 1
+    } else if (teamBPoints > teamAPoints) {
+      teamBHeadToHead.wins += 1
+      teamAHeadToHead.losses += 1
+    }
+
+    teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
+    teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
+
+    teamAStats.headToHead.set(match.teamBId, teamAHeadToHead)
+    teamBStats.headToHead.set(match.teamAId, teamBHeadToHead)
   })
 
   teamStats.forEach(stats => {
     stats.pointDiff = stats.pointsFor - stats.pointsAgainst
   })
 
+  // Sort teams using tie-breaker rules (same as calculateStandings in standings.ts)
   return Array.from(teamStats.values()).sort((a, b) => {
-    if (a.wins !== b.wins) return b.wins - a.wins
-    return b.pointDiff - a.pointDiff
+    // Tie-breaker 1: Match Wins
+    if (a.wins !== b.wins) {
+      return b.wins - a.wins
+    }
+
+    // Tie-breaker 2: Head-to-Head Point Differential
+    const headToHeadA = a.headToHead.get(b.teamId)
+    const headToHeadB = b.headToHead.get(a.teamId)
+    
+    if (headToHeadA && headToHeadB) {
+      if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
+        return headToHeadB.pointDiff - headToHeadA.pointDiff
+      }
+    }
+
+    // Tie-breaker 3: Overall Point Differential
+    if (a.pointDiff !== b.pointDiff) {
+      return b.pointDiff - a.pointDiff
+    }
+
+    // Tie-breaker 4: Points For (as final tie-breaker)
+    return b.pointsFor - a.pointsFor
   })
 }
 
