@@ -291,108 +291,111 @@ export default function PublicTournamentsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow flex flex-col">
-                  {/* Tournament Info */}
-                  <div className="space-y-2">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      <span>
-                        {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                    
-                    {tournament.venueName && (
+                  <div className="flex-grow">
+                    {/* Tournament Info */}
+                    <div className="space-y-2">
                       <div className="flex items-center text-sm text-gray-600">
-                        <MapPin className="h-4 w-4 mr-2" />
-                        <span>{tournament.venueName}</span>
+                        <Calendar className="h-4 w-4 mr-2" />
+                        <span>
+                          {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                      
+                      {tournament.venueName && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <MapPin className="h-4 w-4 mr-2" />
+                          <span>{tournament.venueName}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Users className="h-4 w-4 mr-2" />
+                        <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+
+                    {/* Divisions */}
+                    {tournament.divisions.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">Divisions:</h4>
+                        <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                          {(tournament.divisions as any[]).slice(0, 8).map((division: any) => (
+                            <Badge key={division.id} variant="secondary" className="text-xs">
+                              {division.name}
+                            </Badge>
+                          ))}
+                          {tournament.divisions.length > 8 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{tournament.divisions.length - 8} more
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     )}
-                    
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Users className="h-4 w-4 mr-2" />
-                      <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
-                    </div>
+
+                    {/* Entry Fee */}
+                    {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                      <div className="mt-4 flex items-center text-sm text-gray-600">
+                        <Trophy className="h-4 w-4 mr-2" />
+                        <span>Entry Fee: ${tournament.entryFee}</span>
+                      </div>
+                    )}
+
+                    {/* Tournament Director */}
+                    {tournament.user && (
+                      <div className="mt-4 pt-2 border-t border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs text-gray-500">Tournament Director:</span>
+                          <Link
+                            href={`/profile/${tournament.user.id}`}
+                            className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                          >
+                            <AvatarImage
+                              src={(tournament.user as { image?: string | null }).image}
+                              alt={tournament.user.name || tournament.user.email || 'TD'}
+                              userId={tournament.user.id}
+                              size={18}
+                            />
+                            <span className="text-xs font-medium group-hover:underline">
+                              {tournament.user.name || tournament.user.email}
+                            </span>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Divisions */}
-                  {tournament.divisions.length > 0 && (
-                    <div className="flex-shrink-0">
-                      <h4 className="text-sm font-medium text-gray-900 mb-2">Divisions:</h4>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                        {(tournament.divisions as any[]).slice(0, 8).map((division: any) => (
-                          <Badge key={division.id} variant="secondary" className="text-xs">
-                            {division.name}
-                          </Badge>
-                        ))}
-                        {tournament.divisions.length > 8 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{tournament.divisions.length - 8} more
-                          </Badge>
-                        )}
-                      </div>
+                  {/* Fixed bottom section: Like/Dislike and View Results */}
+                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
+                    {/* Like/Dislike Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRatingClick(tournament.id, 'LIKE')}
+                        disabled={toggleRating.isPending}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
+                          ratingsData?.[tournament.id]?.userRating === 'LIKE'
+                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <ThumbsUp className="h-4 w-4" />
+                        <span>{ratingsData?.[tournament.id]?.likes || tournament.likes || 0}</span>
+                      </button>
+                      <button
+                        onClick={() => handleRatingClick(tournament.id, 'DISLIKE')}
+                        disabled={toggleRating.isPending}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
+                          ratingsData?.[tournament.id]?.userRating === 'DISLIKE'
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <ThumbsDown className="h-4 w-4" />
+                        <span>{ratingsData?.[tournament.id]?.dislikes || tournament.dislikes || 0}</span>
+                      </button>
                     </div>
-                  )}
 
-                  {/* Entry Fee */}
-                  {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Trophy className="h-4 w-4 mr-2" />
-                      <span>Entry Fee: ${tournament.entryFee}</span>
-                    </div>
-                  )}
-
-                  {/* Tournament Director */}
-                  {tournament.user && (
-                    <div className="pt-2 border-t border-gray-200">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-gray-500">Tournament Director:</span>
-                        <Link
-                          href={`/profile/${tournament.user.id}`}
-                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
-                        >
-                          <AvatarImage
-                            src={(tournament.user as { image?: string | null }).image}
-                            alt={tournament.user.name || tournament.user.email || 'TD'}
-                            userId={tournament.user.id}
-                            size={18}
-                          />
-                          <span className="text-xs font-medium group-hover:underline">
-                            {tournament.user.name || tournament.user.email}
-                          </span>
-                        </Link>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Like/Dislike Buttons */}
-                  <div className="pt-2 border-t border-gray-200 flex items-center gap-2">
-                    <button
-                      onClick={() => handleRatingClick(tournament.id, 'LIKE')}
-                      disabled={toggleRating.isPending}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
-                        ratingsData?.[tournament.id]?.userRating === 'LIKE'
-                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      <ThumbsUp className="h-4 w-4" />
-                      <span>{ratingsData?.[tournament.id]?.likes || tournament.likes || 0}</span>
-                    </button>
-                    <button
-                      onClick={() => handleRatingClick(tournament.id, 'DISLIKE')}
-                      disabled={toggleRating.isPending}
-                      className={`flex items-center gap-1 px-2 py-1 rounded text-sm transition-colors ${
-                        ratingsData?.[tournament.id]?.userRating === 'DISLIKE'
-                          ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      <ThumbsDown className="h-4 w-4" />
-                      <span>{ratingsData?.[tournament.id]?.dislikes || tournament.dislikes || 0}</span>
-                    </button>
-                  </div>
-
-                  {/* View Results Button */}
-                  <div className="pt-2 mt-auto flex-shrink-0">
+                    {/* View Results Button */}
                     <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
