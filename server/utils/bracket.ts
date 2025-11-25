@@ -492,7 +492,7 @@ export function buildCompleteBracket(
   totalTeams: number,
   bracketSize: number,
   standings: Array<{ teamId: string; teamName: string; seed: number }>,
-  playInMatches?: Array<{ id: string; winnerTeamId?: string; teamAId: string; teamBId: string }>,
+  playInMatches?: Array<{ id: string; winnerTeamId?: string; teamAId: string; teamBId: string; games?: Array<{ scoreA: number; scoreB: number }> }>,
   existingPlayoffMatches?: Array<{ id: string; roundIndex: number; teamAId: string; teamBId: string; winnerId?: string; games?: Array<{ scoreA: number; scoreB: number }>; note?: string }>
 ): BracketMatch[] {
   console.log('[buildCompleteBracket] Starting with:', {
@@ -567,12 +567,29 @@ export function buildCompleteBracket(
               matchId: dbMatch.id,
             }
             
-            if (dbMatch.winnerTeamId) {
-              match.winnerTeamId = dbMatch.winnerTeamId
-              const winnerTeam = teamMap.get(dbMatch.winnerTeamId)
+            // Determine winner from winnerTeamId or games
+            let winnerTeamId: string | undefined = dbMatch.winnerTeamId
+            
+            // If no winnerTeamId, calculate from games
+            if (!winnerTeamId && (dbMatch as any).games && (dbMatch as any).games.length > 0) {
+              const games = (dbMatch as any).games
+              const totalScoreA = games.reduce((sum: number, game: any) => sum + (game.scoreA || 0), 0)
+              const totalScoreB = games.reduce((sum: number, game: any) => sum + (game.scoreB || 0), 0)
+              
+              if (totalScoreA > totalScoreB) {
+                winnerTeamId = dbMatch.teamAId
+              } else if (totalScoreB > totalScoreA) {
+                winnerTeamId = dbMatch.teamBId
+              }
+            }
+            
+            if (winnerTeamId) {
+              match.winnerTeamId = winnerTeamId
+              const winnerTeam = teamMap.get(winnerTeamId)
               if (winnerTeam) {
                 match.winnerSeed = winnerTeam.seed
                 match.winnerTeamName = winnerTeam.teamName
+                match.status = 'finished'
               }
             }
             

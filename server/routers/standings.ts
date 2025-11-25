@@ -1112,6 +1112,7 @@ export const standingsRouter = createTRPCRouter({
                     winnerTeamId: winnerId,
                     teamAId: match.teamAId!,
                     teamBId: match.teamBId!,
+                    games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
                   }
                 })
             : undefined
