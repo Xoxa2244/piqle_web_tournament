@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon } from 'lucide-react'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
+import ShareButton from '@/components/ShareButton'
 
 type FilterType = 'current' | 'past' | 'all'
 
@@ -371,13 +372,20 @@ export default function PublicTournamentsPage() {
                     </button>
                   </div>
 
-                  {/* View Results Button */}
-                  <div className="pt-2">
+                  {/* View Results Button and Share */}
+                  <div className="pt-2 space-y-2">
                     <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
                       </Button>
                     </Link>
+                    <ShareButton
+                      url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
+                      title={tournament.title}
+                      className="w-full"
+                      size="sm"
+                      variant="outline"
+                    />
                   </div>
                 </CardContent>
               </Card>
