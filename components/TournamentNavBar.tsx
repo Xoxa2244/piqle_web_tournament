@@ -14,6 +14,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import ShareButton from '@/components/ShareButton'
 
 interface TournamentNavBarProps {
   tournamentTitle?: string
@@ -22,6 +23,7 @@ interface TournamentNavBarProps {
   pendingRequestsCount?: number
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
+  publicScoreboardUrl?: string
 }
 
 export default function TournamentNavBar({
@@ -30,7 +32,8 @@ export default function TournamentNavBar({
   isOwner = false,
   pendingRequestsCount = 0,
   onPublicScoreboardClick,
-  onEditTournamentClick
+  onEditTournamentClick,
+  publicScoreboardUrl
 }: TournamentNavBarProps) {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -68,13 +71,24 @@ export default function TournamentNavBar({
             )}
             
             {onPublicScoreboardClick && (
-              <button
-                onClick={onPublicScoreboardClick}
-                className="flex items-center px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 text-sm font-medium"
-              >
-                <Globe className="w-3.5 h-3.5 mr-1.5" />
-                Public Scoreboard
-              </button>
+              <>
+                <button
+                  onClick={onPublicScoreboardClick}
+                  className="flex items-center px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 text-sm font-medium"
+                >
+                  <Globe className="w-3.5 h-3.5 mr-1.5" />
+                  Public Scoreboard
+                </button>
+                {publicScoreboardUrl && (
+                  <ShareButton
+                    url={publicScoreboardUrl}
+                    title={tournamentTitle}
+                    size="sm"
+                    variant="outline"
+                    className="px-3 py-1.5"
+                  />
+                )}
+              </>
             )}
             
             {isAdmin && onEditTournamentClick && (
