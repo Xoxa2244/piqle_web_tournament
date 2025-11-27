@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
+import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface TeamStanding {
   teamId: string
@@ -54,6 +56,8 @@ interface PlayoffMatch {
 
 export default function DivisionDashboard() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
@@ -65,21 +69,51 @@ export default function DivisionDashboard() {
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
 
-  const utils = trpc.useUtils()
-
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
 
+  // Read division from URL params on mount and when URL changes
+  useEffect(() => {
+    if (!tournament || (tournament.divisions as any[]).length === 0) return
+    
+    const divisions = tournament.divisions as any[]
+    const divisionFromUrl = searchParams.get('division')
+    if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
+      // Division from URL is valid - use it
+      if (selectedDivisionId !== divisionFromUrl) {
+        setSelectedDivisionId(divisionFromUrl)
+      }
+    } else if (!selectedDivisionId && divisions.length > 0) {
+      // No division in URL and no selected division - set first one and update URL
+      const firstDivisionId = divisions[0]?.id || ''
+      setSelectedDivisionId(firstDivisionId)
+      if (!divisionFromUrl) {
+        router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+      }
+    }
+  }, [searchParams, tournament])
+
+  // Update URL when division changes via selector (not from URL read)
+  useEffect(() => {
+    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
+      const divisionFromUrl = searchParams.get('division')
+      // Only update URL if it's different and division was not just set from URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        // Small delay to avoid race condition with URL reading
+        const timeoutId = setTimeout(() => {
+          router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
+        }, 0)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDivisionId, tournamentId, router])
+
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
-  
-  if (currentDivision && !selectedDivisionId) {
-    setSelectedDivisionId(currentDivision.id)
-  }
 
   // Get standings for current division
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
@@ -152,177 +186,6 @@ export default function DivisionDashboard() {
     })
   }
 
-  const handleExportCSV = useCallback(async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-    
-    if (!currentDivision?.id) {
-      alert('Please select a division')
-      return
-    }
-    
-    if (!tournament) {
-      alert('Tournament data not available')
-      return
-    }
-
-    if (!utils) {
-      alert('tRPC utils not available')
-      return
-    }
-
-    try {
-      
-      // Use utils.fetch method
-      const exportData = await utils.divisionStage.getMatchesForExport.fetch({
-        divisionId: currentDivision.id,
-      })
-
-      if (!exportData) {
-        alert('Failed to fetch match data')
-        return
-      }
-      
-      if (!exportData.matches || exportData.matches.length === 0) {
-        alert('No matches found to export')
-        return
-      }
-
-      // Determine match type based on teamKind
-      const matchType = exportData.teamKind === 'SINGLES_1v1' ? 'S' : 'D'
-      
-      // Format tournament name with division
-      const eventName = `${tournament.title} - ${exportData.name}`
-      
-      // Format date (use tournament start date or match date)
-      const formatDate = (date: Date | string) => {
-        const d = typeof date === 'string' ? new Date(date) : date
-        return d.toISOString().split('T')[0] // YYYY-MM-DD
-      }
-
-      // Helper function to escape CSV values
-      const escapeCSV = (value: string | number | null | undefined) => {
-        if (value === null || value === undefined || value === '') return ''
-        const str = String(value)
-        // Only quote if contains comma, quotes, or newline
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`
-        }
-        return str
-      }
-
-      // Helper function to format player name
-      const formatPlayerName = (firstName: string, lastName: string) => {
-        return `${firstName} ${lastName}`.trim()
-      }
-
-      // Create CSV rows for matches
-      const matchRows = exportData.matches.map((match: any) => {
-        const teamAPlayers = match.teamA.teamPlayers || []
-        const teamBPlayers = match.teamB.teamPlayers || []
-        
-        // Get players for team A
-        const playerA1 = teamAPlayers[0]?.player
-        const playerA2 = teamAPlayers[1]?.player
-        const playerB1 = teamBPlayers[0]?.player
-        const playerB2 = teamBPlayers[1]?.player
-
-        // Format games scores (up to 5 games)
-        const games = match.games || []
-        const gameScores: (string | number)[] = []
-        for (let i = 0; i < 5; i++) {
-          if (games[i]) {
-            gameScores.push(games[i].scoreA)
-            gameScores.push(games[i].scoreB)
-          } else {
-            gameScores.push('')
-            gameScores.push('')
-          }
-        }
-
-        // Match date - use match createdAt or tournament startDate
-        const matchDate = match.createdAt || exportData.tournament.startDate
-        
-        return [
-          '', // Empty column A
-          '', // Empty column B
-          '', // Empty column C
-          matchType, // matchType
-          eventName, // event
-          formatDate(matchDate), // date
-          playerA1 ? formatPlayerName(playerA1.firstName, playerA1.lastName) : '', // playerA1
-          '', // playerA1DuprId - leave empty for manual entry in DUPR
-          '', // playerA1ExternalId
-          playerA2 ? formatPlayerName(playerA2.firstName, playerA2.lastName) : '', // playerA2
-          '', // playerA2DuprId - leave empty for manual entry in DUPR
-          '', // playerA2ExternalId
-          playerB1 ? formatPlayerName(playerB1.firstName, playerB1.lastName) : '', // playerB1
-          '', // playerB1DuprId - leave empty for manual entry in DUPR
-          '', // playerB1ExternalId
-          playerB2 ? formatPlayerName(playerB2.firstName, playerB2.lastName) : '', // playerB2
-          '', // playerB2DuprId - leave empty for manual entry in DUPR
-          '', // playerB2ExternalId
-          '', // Empty column S
-          ...gameScores, // teamAGame1, teamBGame1, ..., teamAGame5, teamBGame5
-        ]
-      })
-
-      // Create CSV content following DUPR template format
-      const csvLines: string[] = []
-
-      // Add instruction rows (lines 1-9 from template)
-      csvLines.push(',,,Notes:,"Remove the rows that do not have match data (rows 1-10), including the header row, prior to import",,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,"Specify match type as ""S"" for singles or ""D"" for doubles",,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,Include your event name with division and any other details you\'d like to include,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,Date format should be YYYY-MM-DD,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,Player DUPR IDs must be an exact match. The DUPR ID can be copy/pasted from a player\'s profile.,,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,Player names do not need to be an exact match. Only the DUPR ID is used to validate a player.,,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,Leave the External ID column blank,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,"Do NOT delete blank columns (A, B, C, S)",,,,,,,,,,,,,,,,,,,,,,,,')
-      csvLines.push(',,,,,,,,,,,,,,,,,,,,,,,,,,,,')
-      
-      // Add header row (line 10) - first 3 columns must be empty
-      csvLines.push(',,,matchType,event,date,playerA1,playerA1DuprId,playerA1ExternalId,playerA2,playerA2DuprId,playerA2ExternalId,playerB1,playerB1DuprId,playerB1ExternalId,playerB2,playerB2DuprId,playerB2ExternalId,,teamAGame1,teamBGame1,teamAGame2,teamBGame2,teamAGame3,teamBGame3,teamAGame4,teamBGame4,teamAGame5,teamBGame5')
-      
-      // Add match rows - ensure proper CSV formatting
-      matchRows.forEach((row: any[]) => {
-        const formattedRow = row.map((cell: any) => {
-          if (cell === null || cell === undefined || cell === '') return ''
-          const str = String(cell)
-          // Quote values containing commas, quotes, or newlines
-          if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-            return `"${str.replace(/"/g, '""')}"`
-          }
-          return str
-        }).join(',')
-        csvLines.push(formattedRow)
-      })
-
-      const csvContent = csvLines.join('\n')
-
-      // Create blob and download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      
-      link.setAttribute('href', url)
-      link.setAttribute('download', `${exportData.name}_matches_${new Date().toISOString().split('T')[0]}.csv`)
-      link.style.visibility = 'hidden'
-      
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Export error:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Error exporting CSV: ${errorMessage}`)
-    }
-  }, [currentDivision, tournament, utils])
-
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
@@ -383,15 +246,30 @@ export default function DivisionDashboard() {
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+      />
+      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">Division Dashboard</h1>
-              <p className="text-gray-600">{tournament.title}</p>
               {/* Status badges hidden per user request */}
             </div>
             
@@ -522,11 +400,7 @@ export default function DivisionDashboard() {
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>Standings</CardTitle>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={handleExportCSV}
-                        >
+                        <Button variant="outline" size="sm">
                           <Download className="h-4 w-4 mr-2" />
                           Export CSV
                         </Button>
@@ -549,7 +423,9 @@ export default function DivisionDashboard() {
                             </tr>
                           </thead>
                           <tbody>
-                            {standings.map((team: TeamStanding) => (
+                            {standings.map((team: TeamStanding) => {
+                              // teamName already comes from backend with helper applied
+                              return (
                               <tr key={team.teamId} className="border-b hover:bg-gray-50">
                                 <td className="py-2 font-medium">{team.rank}</td>
                                 <td className="py-2 font-medium">{team.teamName}</td>
@@ -579,7 +455,8 @@ export default function DivisionDashboard() {
                                   )}
                                 </td>
                               </tr>
-                            ))}
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -633,8 +510,8 @@ export default function DivisionDashboard() {
                                   <div className="text-xs text-gray-500 font-medium w-6">
                                     #{teamASeed || '?'}
                                   </div>
-                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA?.name || 'TBD'}>
-                                    {match.teamA?.name || 'TBD'}
+                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'A' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -664,8 +541,8 @@ export default function DivisionDashboard() {
                                     winner === 'B' ? 'text-gray-900' : 
                                     winner === 'A' ? 'text-gray-500' : 
                                     'text-gray-900'
-                                  }`} title={match.teamB?.name || 'TBD'}>
-                                    {match.teamB?.name || 'TBD'}
+                                  }`} title={match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'B' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -701,12 +578,12 @@ export default function DivisionDashboard() {
                       id: match.id,
                       teamA: match.teamA ? {
                         id: match.teamA.id,
-                        name: match.teamA.name,
+                        name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
                       } : null,
                       teamB: match.teamB ? {
                         id: match.teamB.id,
-                        name: match.teamB.name,
+                        name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
                       games: match.games || [],

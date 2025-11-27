@@ -488,10 +488,54 @@ export const divisionRouter = createTRPCRouter({
       }
     }),
 
+  checkDivisionsHasData: tdProcedure
+    .input(z.object({
+      divisionId1: z.string(),
+      divisionId2: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Check if divisions have matches with scores entered
+      const [matches1, matches2] = await Promise.all([
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: input.divisionId1,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        }),
+        ctx.prisma.match.findMany({
+          where: {
+            divisionId: input.divisionId2,
+            stage: 'ROUND_ROBIN'
+          },
+          include: {
+            games: true
+          }
+        })
+      ])
+
+      // Check if any matches have scores entered (games with scoreA > 0 or scoreB > 0)
+      const hasData1 = matches1.some(match => 
+        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      )
+      const hasData2 = matches2.some(match => 
+        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      )
+
+      return {
+        hasData: hasData1 || hasData2,
+        division1HasData: hasData1,
+        division2HasData: hasData2
+      }
+    }),
+
   mergeDivisions: tdProcedure
     .input(z.object({
       divisionId1: z.string(),
       divisionId2: z.string(),
+      clearData: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
       // Get both divisions with all related data
@@ -554,6 +598,46 @@ export const divisionRouter = createTRPCRouter({
 
       if (division1.pairingMode !== division2.pairingMode) {
         throw new Error('Cannot merge divisions with different pairing modes')
+      }
+
+      // If clearData is true, delete all matches and games from both divisions
+      if (input.clearData) {
+        // Get all matches from both divisions
+        const [allMatches1, allMatches2] = await Promise.all([
+          ctx.prisma.match.findMany({
+            where: { divisionId: division1.id },
+            include: { games: true }
+          }),
+          ctx.prisma.match.findMany({
+            where: { divisionId: division2.id },
+            include: { games: true }
+          })
+        ])
+
+        // Delete all games first (foreign key constraint)
+        const allMatchIds = [...allMatches1.map(m => m.id), ...allMatches2.map(m => m.id)]
+        if (allMatchIds.length > 0) {
+          await ctx.prisma.game.deleteMany({
+            where: { matchId: { in: allMatchIds } }
+          })
+        }
+
+        // Delete all matches
+        if (allMatchIds.length > 0) {
+          await ctx.prisma.match.deleteMany({
+            where: { id: { in: allMatchIds } }
+          })
+        }
+
+        // Delete standings for both divisions
+        await ctx.prisma.standing.deleteMany({
+          where: {
+            OR: [
+              { divisionId: division1.id },
+              { divisionId: division2.id }
+            ]
+          }
+        })
       }
 
       // Determine merged division settings (use division1 as base)
@@ -676,6 +760,56 @@ export const divisionRouter = createTRPCRouter({
             poolId: match.poolId || null,
           }
         })
+      }
+
+      // Copy access permissions from source divisions to merged division
+      // Get all access records for both source divisions (including users with access to all divisions)
+      const sourceDivisionAccesses = await ctx.prisma.tournamentAccess.findMany({
+        where: {
+          tournamentId: division1.tournamentId,
+          OR: [
+            { divisionId: division1.id },
+            { divisionId: division2.id },
+            { divisionId: null }, // Users with access to all divisions
+          ],
+        },
+      })
+
+      // For each unique user with access to source divisions, grant access to merged division
+      const userIds = Array.from(new Set(sourceDivisionAccesses.map(a => a.userId)))
+      for (const userId of userIds) {
+        // Get the highest access level for this user from source divisions
+        const userAccesses = sourceDivisionAccesses.filter(a => a.userId === userId)
+        const highestAccessLevel = userAccesses.some(a => a.accessLevel === 'ADMIN') 
+          ? 'ADMIN' 
+          : 'SCORE_ONLY'
+        
+        // Check if user has access to all divisions (divisionId = null)
+        const hasAllDivisionsAccess = userAccesses.some(a => a.divisionId === null)
+        
+        // If user has access to all divisions, they automatically have access to merged division
+        // Otherwise, grant specific access to merged division
+        if (!hasAllDivisionsAccess) {
+          // Grant access to merged division
+          await ctx.prisma.tournamentAccess.upsert({
+            where: {
+              userId_tournamentId_divisionId: {
+                userId,
+                tournamentId: division1.tournamentId,
+                divisionId: mergedDivision.id,
+              },
+            },
+            create: {
+              userId,
+              tournamentId: division1.tournamentId,
+              divisionId: mergedDivision.id,
+              accessLevel: highestAccessLevel,
+            },
+            update: {
+              accessLevel: highestAccessLevel,
+            },
+          })
+        }
       }
 
       // Log the merge
@@ -1071,36 +1205,34 @@ export const divisionRouter = createTRPCRouter({
         })
       }
 
-      // Move Round Robin matches back to original divisions based on team composition
-      // Matches where both teams belong to division1 go to division1
-      // Matches where both teams belong to division2 go to division2
-      // Matches with teams from both divisions should be split (but this shouldn't happen in RR)
+      // Move Round Robin matches back to original divisions
+      // Each team must keep ALL its matches from the merged Round Robin
+      // A match should be copied to the division of EACH team that participated in it
       const rrMatches = mergedDivision.matches.filter(m => m.stage === 'ROUND_ROBIN')
 
-      const getPoolAssignmentForDivision = (match: typeof rrMatches[number], divisionId: string) => {
-        const teamAPool = teamPoolAssignments.get(match.teamAId)
-        const teamBPool = teamPoolAssignments.get(match.teamBId)
-        const teamsShareDivision =
-          teamDivisionAssignments.get(match.teamAId) === divisionId &&
-          teamDivisionAssignments.get(match.teamBId) === divisionId
-
-        if (teamsShareDivision && teamAPool && teamAPool === teamBPool) {
-          return teamAPool
-        }
-
-        return null
+      const getPoolAssignmentForDivision = (match: typeof rrMatches[number], divisionId: string, teamId: string) => {
+        const teamPool = teamPoolAssignments.get(teamId)
+        return teamPool || null
       }
 
       for (const match of rrMatches) {
         const teamADivisionId = teamDivisionAssignments.get(match.teamAId)
         const teamBDivisionId = teamDivisionAssignments.get(match.teamBId)
 
-        const targetDivisionIds =
-          teamADivisionId && teamBDivisionId && teamADivisionId === teamBDivisionId
-            ? [teamADivisionId]
-            : [division1.id, division2.id]
+        // Determine which divisions should receive this match
+        // Each team's division should have a copy of the match
+        const targetDivisions = new Set<string>()
+        
+        if (teamADivisionId) {
+          targetDivisions.add(teamADivisionId)
+        }
+        if (teamBDivisionId) {
+          targetDivisions.add(teamBDivisionId)
+        }
 
-        for (const targetDivisionId of Array.from(new Set(targetDivisionIds))) {
+        // If both teams are in the same division, create one match
+        // If teams are in different divisions, create a match in each division
+        for (const targetDivisionId of Array.from(targetDivisions)) {
           const clonedMatch = await ctx.prisma.match.create({
             data: {
               divisionId: targetDivisionId,
@@ -1109,7 +1241,10 @@ export const divisionRouter = createTRPCRouter({
               roundIndex: match.roundIndex,
               stage: match.stage,
               note: match.note,
-              poolId: getPoolAssignmentForDivision(match, targetDivisionId),
+              // Use pool of teamA if it's in this division, otherwise teamB's pool
+              poolId: targetDivisionId === teamADivisionId 
+                ? getPoolAssignmentForDivision(match, targetDivisionId, match.teamAId)
+                : getPoolAssignmentForDivision(match, targetDivisionId, match.teamBId),
               bestOfMode: match.bestOfMode,
               gamesCount: match.gamesCount,
               targetPoints: match.targetPoints,
@@ -1119,6 +1254,7 @@ export const divisionRouter = createTRPCRouter({
             }
           })
 
+          // Copy all games (results) for this match
           for (const game of match.games) {
             await ctx.prisma.game.create({
               data: {
@@ -1136,8 +1272,60 @@ export const divisionRouter = createTRPCRouter({
       await recalcDivisionStandings(division1.id, teams1)
       await recalcDivisionStandings(division2.id, teams2)
 
+      // Copy access permissions from merged division to both original divisions
+      // Get all access records for the merged division
+      const mergedDivisionAccesses = await ctx.prisma.tournamentAccess.findMany({
+        where: {
+          divisionId: input.mergedDivisionId,
+        },
+      })
+
+      // For each access record, create access for both original divisions
+      for (const access of mergedDivisionAccesses) {
+        // Create access for division1
+        await ctx.prisma.tournamentAccess.upsert({
+          where: {
+            userId_tournamentId_divisionId: {
+              userId: access.userId,
+              tournamentId: access.tournamentId,
+              divisionId: division1.id,
+            },
+          },
+          create: {
+            userId: access.userId,
+            tournamentId: access.tournamentId,
+            divisionId: division1.id,
+            accessLevel: access.accessLevel,
+          },
+          update: {
+            accessLevel: access.accessLevel,
+          },
+        })
+
+        // Create access for division2
+        await ctx.prisma.tournamentAccess.upsert({
+          where: {
+            userId_tournamentId_divisionId: {
+              userId: access.userId,
+              tournamentId: access.tournamentId,
+              divisionId: division2.id,
+            },
+          },
+          create: {
+            userId: access.userId,
+            tournamentId: access.tournamentId,
+            divisionId: division2.id,
+            accessLevel: access.accessLevel,
+          },
+          update: {
+            accessLevel: access.accessLevel,
+          },
+        })
+      }
+
       // Delete merged division (this will cascade delete any remaining matches if there are any)
       // But we've already moved all RR matches, so this should only delete the division itself
+      // Note: TournamentAccess records for merged division will be automatically deleted due to cascade
       await ctx.prisma.division.delete({
         where: { id: input.mergedDivisionId }
       })

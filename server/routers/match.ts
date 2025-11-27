@@ -220,6 +220,14 @@ export const matchRouter = createTRPCRouter({
         },
       })
 
+      // Delete all Play-In and Playoff matches when regenerating RR
+      await ctx.prisma.match.deleteMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: { in: ['PLAY_IN', 'ELIMINATION'] }
+        },
+      })
+
       // Generate new Round Robin (using same logic as in generateRR)
       const rounds: Array<{ teamA: any; teamB: any; roundIndex: number; poolId?: string | null }> = []
       let currentRoundIndex = 0

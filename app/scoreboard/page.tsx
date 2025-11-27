@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
@@ -9,8 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, MapPin, Users, Trophy, Eye } from 'lucide-react'
 
+type FilterType = 'current' | 'past' | 'all'
+
 export default function PublicTournamentsPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
+  const [filter, setFilter] = useState<FilterType>('current')
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   const truncateText = (text: string | null, maxLines: number = 3) => {
@@ -19,6 +22,37 @@ export default function PublicTournamentsPage() {
     if (lines.length <= maxLines) return text
     return lines.slice(0, maxLines).join('\n')
   }
+
+  // Helper function to check if tournament is past
+  // Rule: Tournament is past if endDate + 12 hours < next day (00:00)
+  const isTournamentPast = (endDate: Date): boolean => {
+    const endDateTime = new Date(endDate)
+    // Add 12 hours to end date
+    endDateTime.setHours(endDateTime.getHours() + 12)
+    
+    // Get next day at 00:00 (the "next date" mentioned in the rule)
+    const now = new Date()
+    const nextDay = new Date(now)
+    nextDay.setDate(nextDay.getDate() + 1)
+    nextDay.setHours(0, 0, 0, 0)
+    
+    // Tournament is past if endDate + 12 hours < next day
+    return endDateTime < nextDay
+  }
+
+  // Filter tournaments based on selected filter
+  const filteredTournaments = useMemo(() => {
+    if (!tournaments) return []
+    
+    if (filter === 'all') {
+      return tournaments
+    }
+    
+    return tournaments.filter(tournament => {
+      const isPast = isTournamentPast(new Date(tournament.endDate))
+      return filter === 'current' ? !isPast : isPast
+    })
+  }, [tournaments, filter])
 
   if (isLoading) {
     return (
@@ -31,7 +65,7 @@ export default function PublicTournamentsPage() {
     )
   }
 
-  const publicTournaments = tournaments || []
+  const publicTournaments = filteredTournaments
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,6 +75,40 @@ export default function PublicTournamentsPage() {
           <div className="py-6">
             <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
             <p className="text-gray-600 mt-2">Select a tournament to view results</p>
+            
+            {/* Filter Tabs */}
+            <div className="mt-4 flex gap-2 border-b border-gray-200">
+              <button
+                onClick={() => setFilter('current')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  filter === 'current'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Current Tournaments
+              </button>
+              <button
+                onClick={() => setFilter('past')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  filter === 'past'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Past Tournaments
+              </button>
+              <button
+                onClick={() => setFilter('all')}
+                className={`px-4 py-2 font-medium text-sm transition-colors ${
+                  filter === 'all'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All Tournaments
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -118,7 +186,7 @@ export default function PublicTournamentsPage() {
 
                   {/* View Results Button */}
                   <div className="pt-4 border-t border-gray-200">
-                    <Link href={tournament.publicSlug ? `/t/${tournament.publicSlug}` : `/scoreboard/${tournament.id}`}>
+                    <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         View Results
                       </Button>
