@@ -627,12 +627,12 @@ export const matchRouter = createTRPCRouter({
       // For MLP matches, check if all 4 games are completed and determine winner
       if (isMLP && match.games) {
         // Update game winner first
-        const updatedGameWinner = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
+        const updatedGameWinner: 'A' | 'B' | null = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
         
-        const allGames = match.games.map(g => 
+        const allGames: Array<{ scoreA: number; scoreB: number; winner: 'A' | 'B' | null }> = match.games.map(g => 
           g.id === game.id 
             ? { scoreA: input.scoreA, scoreB: input.scoreB, winner: updatedGameWinner }
-            : { scoreA: g.scoreA, scoreB: g.scoreB, winner: g.winner }
+            : { scoreA: g.scoreA, scoreB: g.scoreB, winner: g.winner as 'A' | 'B' | null }
         )
 
         const { winnerTeamId, needsTiebreaker } = calculateMLPMatchWinner(
