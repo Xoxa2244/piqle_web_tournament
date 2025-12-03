@@ -667,6 +667,9 @@ export const standingsRouter = createTRPCRouter({
             },
             orderBy: { roundIndex: 'asc' },
           },
+          tournament: {
+            select: { format: true },
+          },
         },
       })
 
