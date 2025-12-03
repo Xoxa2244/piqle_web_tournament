@@ -133,6 +133,16 @@ export function calculateMLPMatchWinner(
   teamBId: string
 ): { winnerTeamId: string | null; needsTiebreaker: boolean } {
   if (games.length !== 4) {
+    // Not all games created yet
+    return { winnerTeamId: null, needsTiebreaker: false }
+  }
+
+  // Check if all games are completed (have scores > 0)
+  const allGamesCompleted = games.every(game => 
+    (game.scoreA > 0 || game.scoreB > 0) && game.scoreA !== game.scoreB
+  )
+
+  if (!allGamesCompleted) {
     // Not all games completed yet
     return { winnerTeamId: null, needsTiebreaker: false }
   }

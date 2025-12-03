@@ -39,15 +39,7 @@ export const divisionStageRouter = createTRPCRouter({
           },
           pools: true,
           matches: {
-            select: {
-              id: true,
-              teamAId: true,
-              teamBId: true,
-              roundIndex: true,
-              stage: true,
-              note: true,
-              poolId: true,
-              locked: true,
+            include: {
               teamA: {
                 include: {
                   pool: true,
@@ -55,6 +47,7 @@ export const divisionStageRouter = createTRPCRouter({
                     include: {
                       player: {
                         select: {
+                          id: true,
                           firstName: true,
                           lastName: true
                         }
@@ -70,6 +63,7 @@ export const divisionStageRouter = createTRPCRouter({
                     include: {
                       player: {
                         select: {
+                          id: true,
                           firstName: true,
                           lastName: true
                         }
@@ -79,6 +73,7 @@ export const divisionStageRouter = createTRPCRouter({
                 }
               },
               games: true,
+              tiebreaker: true,
             },
           },
         },

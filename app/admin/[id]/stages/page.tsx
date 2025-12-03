@@ -27,6 +27,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
 import MLPScoreInputModal from '@/components/MLPScoreInputModal'
+import TiebreakerModal from '@/components/TiebreakerModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
@@ -42,6 +43,8 @@ export default function DivisionStageManagement() {
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [selectedMatch, setSelectedMatch] = useState<any>(null)
+  const [showTiebreakerModal, setShowTiebreakerModal] = useState(false)
+  const [selectedTiebreakerMatch, setSelectedTiebreakerMatch] = useState<any>(null)
   const [showRRMatches, setShowRRMatches] = useState(true)
   const [showPlayInMatches, setShowPlayInMatches] = useState(true)
   const [showPlayoffMatches, setShowPlayoffMatches] = useState(true)
@@ -423,9 +426,66 @@ export default function DivisionStageManagement() {
     setSelectedMatch(null)
   }
 
+  // Check if MLP match needs tiebreaker
+  const needsTiebreaker = (match: any) => {
+    if (!match) return false
+    const isMLP = tournament?.format === 'MLP'
+    const matchGamesCount = match.gamesCount || (match.games?.length || 0)
+    if (!isMLP || matchGamesCount !== 4) return false
+    
+    // Check if all 4 games are completed
+    if (!match.games || match.games.length !== 4) return false
+    const allGamesCompleted = match.games.every((g: any) => 
+      (g.scoreA > 0 || g.scoreB > 0) && g.scoreA !== g.scoreB
+    )
+    if (!allGamesCompleted) return false
+    
+    // Count wins
+    let teamAWins = 0
+    let teamBWins = 0
+    for (const game of match.games) {
+      if (game.winner === 'A') {
+        teamAWins++
+      } else if (game.winner === 'B') {
+        teamBWins++
+      } else {
+        if (game.scoreA > game.scoreB) {
+          teamAWins++
+        } else if (game.scoreB > game.scoreA) {
+          teamBWins++
+        }
+      }
+    }
+    
+    // If 2:2 and no winner and no tiebreaker yet, needs tiebreaker
+    return teamAWins === 2 && teamBWins === 2 && !match.winnerTeamId && !match.tiebreaker
+  }
+
+  const handleTiebreakerInput = (match: any) => {
+    setSelectedTiebreakerMatch(match)
+    setShowTiebreakerModal(true)
+  }
+
   const renderScoreActionButton = (match: any) => {
     const hasResult = match?.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
     const isLocked = Boolean(match?.locked)
+    const matchNeedsTiebreaker = needsTiebreaker(match)
+    
+    // If match needs tiebreaker, show tiebreaker button instead
+    if (matchNeedsTiebreaker) {
+      return (
+        <Button
+          size="sm"
+          variant="default"
+          onClick={() => handleTiebreakerInput(match)}
+          disabled={isLocked}
+          className="w-full bg-orange-600 hover:bg-orange-700"
+        >
+          Enter Tiebreaker
+        </Button>
+      )
+    }
+    
     const label = isLocked ? 'Scores Locked' : hasResult ? 'Change Score' : 'Enter Score'
     const variant = isLocked ? 'secondary' : hasResult ? 'outline' : 'default'
 
@@ -1656,6 +1716,45 @@ export default function DivisionStageManagement() {
           divisionId={selectedDivisionId}
         />
       )}
+
+      {/* Tiebreaker Modal */}
+      {showTiebreakerModal && selectedTiebreakerMatch && (() => {
+        const teamAPlayers = selectedTiebreakerMatch.teamA?.teamPlayers?.map((tp: any) => ({
+          id: tp.player?.id || '',
+          firstName: tp.player?.firstName || '',
+          lastName: tp.player?.lastName || '',
+        })).filter((p: any) => p.id) || []
+        
+        const teamBPlayers = selectedTiebreakerMatch.teamB?.teamPlayers?.map((tp: any) => ({
+          id: tp.player?.id || '',
+          firstName: tp.player?.firstName || '',
+          lastName: tp.player?.lastName || '',
+        })).filter((p: any) => p.id) || []
+
+        return (
+          <TiebreakerModal
+            isOpen={showTiebreakerModal}
+            onClose={() => {
+              setShowTiebreakerModal(false)
+              setSelectedTiebreakerMatch(null)
+            }}
+            matchId={selectedTiebreakerMatch.id}
+            teamAName={getTeamDisplayName(selectedTiebreakerMatch.teamA, currentDivision?.teamKind)}
+            teamBName={getTeamDisplayName(selectedTiebreakerMatch.teamB, currentDivision?.teamKind)}
+            teamAPlayers={teamAPlayers}
+            teamBPlayers={teamBPlayers}
+            existingTiebreaker={selectedTiebreakerMatch.tiebreaker ? {
+              teamAScore: selectedTiebreakerMatch.tiebreaker.teamAScore,
+              teamBScore: selectedTiebreakerMatch.tiebreaker.teamBScore,
+              sequence: selectedTiebreakerMatch.tiebreaker.sequence as any,
+            } : undefined}
+            onSuccess={() => {
+              refetchDivision()
+              refetchTournament()
+            }}
+          />
+        )
+      })()}
 
       {/* Regeneration confirmation modal */}
       {showRegenerateModal && (
