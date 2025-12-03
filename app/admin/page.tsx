@@ -6,7 +6,9 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Eye, Search, X } from 'lucide-react'
+import Image from 'next/image'
+import { Eye, Search, X, User as UserIcon } from 'lucide-react'
+import ShareButton from '@/components/ShareButton'
 
 export default function AdminPage() {
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
@@ -133,7 +135,40 @@ export default function AdminPage() {
                         <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
                         {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
                         {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
-                        <div>Organizer: {tournament.user.name || tournament.user.email}</div>
+                        {tournament.user && (
+                          <div className="flex items-center space-x-2">
+                            <span>Tournament Director:</span>
+                            {(tournament.user as { image?: string | null }).image ? (
+                              <Link
+                                href={`/profile/${tournament.user.id}`}
+                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                              >
+                                <Image
+                                  src={(tournament.user as { image?: string | null }).image!}
+                                  alt={tournament.user.name || tournament.user.email || 'TD'}
+                                  width={18}
+                                  height={18}
+                                  className="rounded-full object-cover"
+                                />
+                                <span className="font-medium group-hover:underline">
+                                  {tournament.user.name || tournament.user.email}
+                                </span>
+                              </Link>
+                            ) : (
+                              <Link
+                                href={`/profile/${tournament.user.id}`}
+                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                              >
+                                <div className="w-4.5 h-4.5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                                  <UserIcon className="h-3 w-3 text-gray-500" />
+                                </div>
+                                <span className="font-medium group-hover:underline">
+                                  {tournament.user.name || tournament.user.email}
+                                </span>
+                              </Link>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button
@@ -156,8 +191,20 @@ export default function AdminPage() {
       {tournaments && tournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(tournaments as any[]).map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-xl font-semibold mb-2">{tournament.title}</h3>
+            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
+              {tournament.isPublicBoardEnabled && (
+                <div className="absolute top-4 right-4">
+                  <ShareButton
+                    url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
+                    title={tournament.title}
+                    iconOnly
+                    size="sm"
+                    variant="ghost"
+                    className="text-gray-500 hover:text-gray-700"
+                  />
+                </div>
+              )}
+              <h3 className="text-xl font-semibold mb-2 pr-10">{tournament.title}</h3>
               {tournament.description && (
                 <div className="mb-4">
                   <div
@@ -184,6 +231,44 @@ export default function AdminPage() {
                   <div>Entry Fee: ${tournament.entryFee}</div>
                 )}
               </div>
+
+              {/* Tournament Director */}
+              {tournament.user && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">Tournament Director:</span>
+                    {(tournament.user as { image?: string | null }).image ? (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <Image
+                          src={(tournament.user as { image?: string | null }).image!}
+                          alt={tournament.user.name || tournament.user.email || 'TD'}
+                          width={20}
+                          height={20}
+                          className="rounded-full object-cover"
+                        />
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                          <UserIcon className="h-3 w-3 text-gray-500" />
+                        </div>
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
