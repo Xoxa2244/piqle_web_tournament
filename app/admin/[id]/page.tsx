@@ -202,6 +202,7 @@ export default function TournamentDetailPage() {
         pendingRequestsCount={pendingRequestsCount}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled ? `${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournamentId}` : undefined}
       />
 
       {/* Main Content */}

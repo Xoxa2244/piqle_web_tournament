@@ -262,6 +262,14 @@ export default function DivisionDashboard() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled ? `${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournamentId}` : undefined}
+        onPublicScoreboardClick={() => {
+          if (!tournament?.isPublicBoardEnabled) {
+            alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+            return
+          }
+          window.open(`/scoreboard/${tournamentId}`, '_blank')
+        }}
       />
       
       {/* Header */}
