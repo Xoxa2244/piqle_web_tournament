@@ -107,6 +107,9 @@ export const paymentRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Check admin access to tournament
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+
       if (!stripe) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
