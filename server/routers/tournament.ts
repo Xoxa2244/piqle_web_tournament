@@ -21,6 +21,7 @@ export const tournamentRouter = createTRPCRouter({
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().default(false),
       publicSlug: z.string().optional(),
+      format: z.enum(['SINGLE_ELIMINATION', 'MLP']).default('SINGLE_ELIMINATION'),
     }))
     .mutation(async ({ ctx, input }) => {
       // Generate unique publicSlug

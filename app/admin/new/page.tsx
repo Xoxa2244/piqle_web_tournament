@@ -19,6 +19,7 @@ export default function NewTournamentPage() {
     endDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
+    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP',
   })
 
   const createTournament = trpc.tournament.create.useMutation({
@@ -47,10 +48,11 @@ export default function NewTournamentPage() {
       endDate: formData.endDate,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      format: formData.format,
     })
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     setFormData(prev => ({
       ...prev,
@@ -171,6 +173,28 @@ export default function NewTournamentPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
               />
+            </div>
+
+            <div>
+              <label htmlFor="format" className="block text-sm font-medium text-gray-700 mb-2">
+                Tournament Format *
+              </label>
+              <select
+                id="format"
+                name="format"
+                value={formData.format}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="SINGLE_ELIMINATION">Single Elimination</option>
+                <option value="MLP">MLP Tournament</option>
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                {formData.format === 'MLP' 
+                  ? 'MLP format: 4-player teams (2F + 2M), 4 games per match, tiebreaker on 2:2'
+                  : 'Standard single elimination bracket with play-in matches'}
+              </p>
             </div>
 
             <div className="flex items-center">
