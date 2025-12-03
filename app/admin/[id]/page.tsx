@@ -67,7 +67,7 @@ export default function TournamentDetailPage() {
 
   const { data: paymentSettings } = trpc.payment.getSettings.useQuery(
     { tournamentId },
-    { enabled: !!isAdmin && !!tournament?.isPaid }
+    { enabled: !!isAdmin && !!tournamentId }
   )
 
   const initStripeAccount = trpc.payment.initStripeAccount.useMutation({
@@ -414,7 +414,7 @@ export default function TournamentDetailPage() {
               </CardContent>
             </Card>
 
-            {isAdmin && tournament.isPaid && (
+            {isAdmin && (tournament as any).isPaid && (
               <Card className="mt-6 border-0 shadow-xl bg-white/70 backdrop-blur-sm">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">

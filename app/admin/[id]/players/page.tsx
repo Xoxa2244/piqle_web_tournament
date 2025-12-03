@@ -67,7 +67,7 @@ export default function PlayersPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
-  const isPaidTournament = tournament?.isPaid
+  const isPaidTournament = (tournament as any)?.isPaid
   
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'

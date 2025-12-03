@@ -15,7 +15,10 @@ export const paymentRouter = createTRPCRouter({
 
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.tournamentId },
-        include: {
+        select: {
+          isPaid: true,
+          entryFee: true,
+          currency: true,
           paymentSetting: true,
         },
       })

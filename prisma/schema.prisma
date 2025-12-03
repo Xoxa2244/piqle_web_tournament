@@ -28,6 +28,7 @@ model User {
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
+  paymentsCreated          Payment[]                 @relation("PaymentsCreated")
 
   @@map("users")
 }
@@ -80,9 +81,10 @@ model Tournament {
   startDate               DateTime
   endDate                 DateTime
   entryFee                Decimal?                  @db.Decimal(10, 2)
+  isPaid                  Boolean                   @default(false)
+  currency                String                    @default("usd")
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
-  format                  TournamentFormat          @default(SINGLE_ELIMINATION)
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -94,6 +96,8 @@ model Tournament {
   rrGroups                RoundRobinGroup[]
   tournamentAccesses      TournamentAccess[]
   tournamentRatings       TournamentRating[]
+  paymentSetting          TournamentPaymentSetting?
+  payments                Payment[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
 
@@ -139,6 +143,7 @@ model Division {
   standings             Standing[]
   teams                 Team[]
   tournamentAccesses    TournamentAccess[]
+  payments              Payment[]
 
   @@map("divisions")
 }
@@ -201,6 +206,7 @@ model Team {
   teamPlayers TeamPlayer[]
   division    Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool        Pool?        @relation(fields: [poolId], references: [id])
+  payments    Payment[]
 
   @@map("teams")
 }
@@ -222,6 +228,7 @@ model Player {
   tournamentId String?      @map("tournament_id")
   tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   teamPlayers  TeamPlayer[]
+  payments     Payment[]
 
   @@map("players")
 }
@@ -443,6 +450,50 @@ model TournamentRating {
   @@map("tournament_ratings")
 }
 
+model TournamentPaymentSetting {
+  id                   String               @id @default(uuid())
+  tournamentId         String               @unique
+  stripeAccountId      String?
+  stripeAccountStatus  StripeAccountStatus  @default(PENDING)
+  paymentsEnabled      Boolean              @default(false)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  tournament           Tournament           @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@map("tournament_payment_settings")
+}
+
+model Payment {
+  id                     String            @id @default(uuid())
+  tournamentId           String
+  divisionId             String?
+  teamId                 String?
+  playerId               String?
+  amount                 Int
+  currency               String
+  applicationFeeAmount   Int               @default(0)
+  platformRevenue        Int               @default(0)
+  payoutAmount           Int               @default(0)
+  stripeCheckoutSessionId String?          @unique
+  stripePaymentIntentId  String?           @unique
+  status                 PaymentStatus     @default(PENDING)
+  metadata               Json?
+  createdByUserId        String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  tournament             Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division               Division?         @relation(fields: [divisionId], references: [id], onDelete: SetNull)
+  team                   Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  player                 Player?           @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  createdBy              User?             @relation("PaymentsCreated", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId])
+  @@index([divisionId])
+  @@index([teamId])
+  @@index([playerId])
+  @@map("payments")
+}
+
 enum UserRole {
   TD
   ASSISTANT
@@ -550,6 +601,20 @@ enum DivisionStage {
 enum RatingType {
   LIKE
   DISLIKE
+}
+
+enum StripeAccountStatus {
+  PENDING
+  REQUIRE_ONBOARDING
+  ACTIVE
+}
+
+enum PaymentStatus {
+  PENDING
+  REQUIRES_ACTION
+  SUCCEEDED
+  FAILED
+  REFUNDED
 }
 
 enum TournamentFormat {
