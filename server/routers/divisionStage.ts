@@ -75,15 +75,7 @@ export const divisionStageRouter = createTRPCRouter({
               games: {
                 orderBy: { index: 'asc' },
               },
-              tiebreaker: {
-                select: {
-                  id: true,
-                  teamAScore: true,
-                  teamBScore: true,
-                  winnerTeamId: true,
-                  sequence: true,
-                },
-              },
+              tiebreaker: true,
             },
           },
         },

@@ -470,19 +470,57 @@ export default function DivisionStageManagement() {
     const hasResult = match?.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
     const isLocked = Boolean(match?.locked)
     const matchNeedsTiebreaker = needsTiebreaker(match)
+    const hasTiebreaker = match?.tiebreaker !== null && match?.tiebreaker !== undefined
+    
+    // If match has tiebreaker, show button to edit tiebreaker
+    if (hasTiebreaker) {
+      return (
+        <div className="space-y-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleScoreInput(match)}
+            disabled={isLocked}
+            className="w-full"
+          >
+            Change Score
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => handleTiebreakerInput(match)}
+            disabled={isLocked}
+            className="w-full bg-orange-600 hover:bg-orange-700"
+          >
+            Edit Tiebreaker
+          </Button>
+        </div>
+      )
+    }
     
     // If match needs tiebreaker, show tiebreaker button instead
     if (matchNeedsTiebreaker) {
       return (
-        <Button
-          size="sm"
-          variant="default"
-          onClick={() => handleTiebreakerInput(match)}
-          disabled={isLocked}
-          className="w-full bg-orange-600 hover:bg-orange-700"
-        >
-          Enter Tiebreaker
-        </Button>
+        <div className="space-y-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleScoreInput(match)}
+            disabled={isLocked}
+            className="w-full"
+          >
+            Change Score
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => handleTiebreakerInput(match)}
+            disabled={isLocked}
+            className="w-full bg-orange-600 hover:bg-orange-700"
+          >
+            Enter Tiebreaker
+          </Button>
+        </div>
       )
     }
     
@@ -1546,23 +1584,89 @@ export default function DivisionStageManagement() {
                                 )
                               })()}
                             
-                            {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
-                              <div className="text-center space-y-2">
-                                <div className="text-lg font-bold">
-                                  {match.games[0].scoreA} - {match.games[0].scoreB}
+                            {(() => {
+                              const isMLP = tournament?.format === 'MLP'
+                              const matchGamesCount = match.gamesCount || (match.games?.length || 0)
+                              const isMLPMatch = isMLP && matchGamesCount === 4
+                              
+                              // For MLP matches, show all 4 games scores
+                              if (isMLPMatch && match.games && match.games.length === 4) {
+                                const allGamesCompleted = match.games.every((g: any) => 
+                                  (g.scoreA > 0 || g.scoreB > 0) && g.scoreA !== g.scoreB
+                                )
+                                
+                                if (allGamesCompleted) {
+                                  // Count wins
+                                  let teamAWins = 0
+                                  let teamBWins = 0
+                                  for (const game of match.games) {
+                                    if (game.winner === 'A') {
+                                      teamAWins++
+                                    } else if (game.winner === 'B') {
+                                      teamBWins++
+                                    } else {
+                                      if (game.scoreA > game.scoreB) {
+                                        teamAWins++
+                                      } else if (game.scoreB > game.scoreA) {
+                                        teamBWins++
+                                      }
+                                    }
+                                  }
+                                  
+                                  const needsTie = teamAWins === 2 && teamBWins === 2 && !match.winnerTeamId && !match.tiebreaker
+                                  
+                                  return (
+                                    <div className="text-center space-y-2">
+                                      <div className="text-sm font-medium text-gray-700 mb-1">
+                                        Games: {teamAWins} - {teamBWins}
+                                      </div>
+                                      {match.tiebreaker && (
+                                        <div className="text-xs text-orange-600 font-medium mb-1">
+                                          Tiebreaker: {match.tiebreaker.teamAScore} - {match.tiebreaker.teamBScore}
+                                        </div>
+                                      )}
+                                      {needsTie && (
+                                        <div className="text-xs text-orange-600 font-medium mb-1">
+                                          Tiebreaker required
+                                        </div>
+                                      )}
+                                      {match.winnerTeamId && (
+                                        <div className="text-sm text-green-600 font-medium">
+                                          Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                        </div>
+                                      )}
+                                      {renderScoreActionButton(match)}
+                                      {renderLockedNote(match)}
+                                    </div>
+                                  )
+                                }
+                              }
+                              
+                              // For non-MLP or incomplete matches, show standard display
+                              if (match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)) {
+                                return (
+                                  <div className="text-center space-y-2">
+                                    <div className="text-lg font-bold">
+                                      {match.games[0].scoreA} - {match.games[0].scoreB}
+                                    </div>
+                                    {match.winnerTeamId && (
+                                      <div className="text-sm text-green-600 font-medium">
+                                        Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                      </div>
+                                    )}
+                                    {renderScoreActionButton(match)}
+                                    {renderLockedNote(match)}
+                                  </div>
+                                )
+                              }
+                              
+                              return (
+                                <div className="text-center space-y-2">
+                                  {renderScoreActionButton(match)}
+                                  {renderLockedNote(match)}
                                 </div>
-                                <div className="text-sm text-green-600 font-medium">
-                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
-                                </div>
-                                {renderScoreActionButton(match)}
-                                {renderLockedNote(match)}
-                              </div>
-                            ) : (
-                              <div className="text-center space-y-2">
-                                {renderScoreActionButton(match)}
-                                {renderLockedNote(match)}
-                              </div>
-                            )}
+                              )
+                            })()}
                             </div>
                           )
                         })}

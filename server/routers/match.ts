@@ -639,10 +639,11 @@ export const matchRouter = createTRPCRouter({
         )
 
         // Update match winner (if determined) or clear if tiebreaker needed
+        // IMPORTANT: If tiebreaker is needed, do NOT set winnerTeamId - it will be set after tiebreaker is saved
         await ctx.prisma.match.update({
           where: { id: input.matchId },
           data: {
-            winnerTeamId: winnerTeamId || null,
+            winnerTeamId: needsTiebreaker ? null : (winnerTeamId || null),
           },
         })
 
