@@ -14,6 +14,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import ShareButton from '@/components/ShareButton'
 
 interface TournamentNavBarProps {
   tournamentTitle?: string
@@ -22,6 +23,7 @@ interface TournamentNavBarProps {
   pendingRequestsCount?: number
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
+  publicScoreboardUrl?: string
 }
 
 export default function TournamentNavBar({
@@ -30,7 +32,8 @@ export default function TournamentNavBar({
   isOwner = false,
   pendingRequestsCount = 0,
   onPublicScoreboardClick,
-  onEditTournamentClick
+  onEditTournamentClick,
+  publicScoreboardUrl
 }: TournamentNavBarProps) {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -85,6 +88,16 @@ export default function TournamentNavBar({
                 <Edit className="w-3.5 h-3.5 mr-1.5" />
                 Edit
               </button>
+            )}
+            
+            {publicScoreboardUrl && (
+              <ShareButton
+                url={publicScoreboardUrl}
+                title={tournamentTitle}
+                size="sm"
+                variant="outline"
+                className="px-3 py-1.5 rounded-lg transition-all duration-200 text-sm font-medium"
+              />
             )}
             
             <Link

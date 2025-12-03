@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { createMLPGames, calculateMLPMatchWinner } from '../utils/mlp'
 
 // Helper function to generate Round Robin for a specific set of teams
 function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolId?: string | null) {
@@ -139,10 +140,14 @@ export const matchRouter = createTRPCRouter({
         })))
       }
 
+      // Determine match settings based on tournament format
+      const isMLP = division.tournament.format === 'MLP'
+      const gamesCount = isMLP ? 4 : 1
+
       // Create matches in database
       const matches = await Promise.all(
-        rounds.map((round) =>
-          ctx.prisma.match.create({
+        rounds.map(async (round) => {
+          const match = await ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
               poolId: round.poolId, // Add poolId to match
@@ -151,13 +156,20 @@ export const matchRouter = createTRPCRouter({
               roundIndex: round.roundIndex,
               stage: 'ROUND_ROBIN',
               bestOfMode: 'FIXED_GAMES', // Default to fixed games mode
-              gamesCount: 1, // Default to 1 game per match
+              gamesCount, // 4 for MLP, 1 for single elimination
               targetPoints: 11, // Default to 11 points
               winBy: 2, // Default to win by 2
               locked: false,
             },
           })
-        )
+
+          // For MLP matches, create 4 games with auto-assigned players
+          if (isMLP) {
+            await createMLPGames(ctx.prisma, match.id, round.teamA.id, round.teamB.id)
+          }
+
+          return match
+        })
       )
 
       // Log the RR generation
@@ -199,7 +211,7 @@ export const matchRouter = createTRPCRouter({
             orderBy: { order: 'asc' }
           },
           tournament: {
-            select: { id: true },
+            select: { id: true, format: true },
           },
         },
       })
@@ -212,7 +224,21 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      // Delete all existing RR matches
+      // Delete all existing RR matches and their games
+      const existingMatches = await ctx.prisma.match.findMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: 'ROUND_ROBIN'
+        },
+      })
+
+      // Delete games first (foreign key constraint)
+      for (const match of existingMatches) {
+        await ctx.prisma.game.deleteMany({
+          where: { matchId: match.id },
+        })
+      }
+
       await ctx.prisma.match.deleteMany({
         where: { 
           divisionId: input.divisionId,
@@ -221,6 +247,19 @@ export const matchRouter = createTRPCRouter({
       })
 
       // Delete all Play-In and Playoff matches when regenerating RR
+      const existingPlayoffMatches = await ctx.prisma.match.findMany({
+        where: { 
+          divisionId: input.divisionId,
+          stage: { in: ['PLAY_IN', 'ELIMINATION'] }
+        },
+      })
+
+      for (const match of existingPlayoffMatches) {
+        await ctx.prisma.game.deleteMany({
+          where: { matchId: match.id },
+        })
+      }
+
       await ctx.prisma.match.deleteMany({
         where: { 
           divisionId: input.divisionId,
@@ -289,10 +328,14 @@ export const matchRouter = createTRPCRouter({
         })))
       }
 
+      // Determine match settings based on tournament format
+      const isMLP = division.tournament.format === 'MLP'
+      const gamesCount = isMLP ? 4 : 1
+
       // Create new matches in database
       const matches = await Promise.all(
-        rounds.map((round) =>
-          ctx.prisma.match.create({
+        rounds.map(async (round) => {
+          const match = await ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
               poolId: round.poolId, // Add poolId to match
@@ -301,13 +344,20 @@ export const matchRouter = createTRPCRouter({
               roundIndex: round.roundIndex,
               stage: 'ROUND_ROBIN',
               bestOfMode: 'FIXED_GAMES', // Default fixed games
-              gamesCount: 1, // Default 1 game per match
+              gamesCount, // 4 for MLP, 1 for single elimination
               targetPoints: 11, // Default to 11 points
               winBy: 2, // Default win by 2
               locked: false,
             },
           })
-        )
+
+          // For MLP matches, create 4 games with auto-assigned players
+          if (isMLP) {
+            await createMLPGames(ctx.prisma, match.id, round.teamA.id, round.teamB.id)
+          }
+
+          return match
+        })
       )
 
       // Log RR regeneration
@@ -513,10 +563,27 @@ export const matchRouter = createTRPCRouter({
         where: { id: input.matchId },
         include: {
           division: {
-            select: { tournamentId: true },
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
           },
           rrGroup: {
-            select: { tournamentId: true },
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
+          },
+          games: {
+            orderBy: { index: 'asc' },
+          },
+          teamA: {
+            select: { id: true },
+          },
+          teamB: {
+            select: { id: true },
           },
         },
       })
@@ -529,6 +596,10 @@ export const matchRouter = createTRPCRouter({
       if (!tournamentId) {
         throw new Error('Tournament not found')
       }
+
+      // Get tournament format
+      const tournamentFormat = match.division?.tournament?.format || match.rrGroup?.tournament?.format
+      const isMLP = tournamentFormat === 'MLP'
 
       // Update or create the game
       const game = await ctx.prisma.game.upsert({
@@ -551,6 +622,42 @@ export const matchRouter = createTRPCRouter({
           winner: input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null,
         },
       })
+
+      // For MLP matches, check if all 4 games are completed and determine winner
+      if (isMLP && match.games) {
+        const allGames = match.games.map(g => 
+          g.id === game.id 
+            ? { scoreA: input.scoreA, scoreB: input.scoreB, winner: game.winner }
+            : { scoreA: g.scoreA, scoreB: g.scoreB, winner: g.winner }
+        )
+
+        const { winnerTeamId, needsTiebreaker } = calculateMLPMatchWinner(
+          allGames,
+          match.teamA.id,
+          match.teamB.id
+        )
+
+        // Update match winner (if determined) or clear if tiebreaker needed
+        await ctx.prisma.match.update({
+          where: { id: input.matchId },
+          data: {
+            winnerTeamId: winnerTeamId || null,
+          },
+        })
+
+        // If tiebreaker is needed, we don't set winnerTeamId yet
+        // The tiebreaker will be saved separately and then winnerTeamId will be updated
+      } else if (!isMLP && match.games && match.games.length > 0) {
+        // For non-MLP matches, update winner based on single game
+        const updatedGame = match.games.find(g => g.id === game.id) || game
+        await ctx.prisma.match.update({
+          where: { id: input.matchId },
+          data: {
+            winnerTeamId: updatedGame.winner === 'A' ? match.teamA.id : 
+                          updatedGame.winner === 'B' ? match.teamB.id : null,
+          },
+        })
+      }
 
       // Log the score update
       await ctx.prisma.auditLog.create({
@@ -651,5 +758,101 @@ export const matchRouter = createTRPCRouter({
       })
 
       return updatedMatch
+    }),
+
+  saveTiebreaker: protectedProcedure
+    .input(z.object({
+      matchId: z.string(),
+      teamAScore: z.number(),
+      teamBScore: z.number(),
+      sequence: z.array(z.object({
+        order: z.number(),
+        teamAPlayerId: z.string().optional(),
+        teamBPlayerId: z.string().optional(),
+      })).nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const match = await ctx.prisma.match.findUnique({
+        where: { id: input.matchId },
+        include: {
+          division: {
+            include: {
+              tournament: {
+                select: { id: true, format: true },
+              },
+            },
+          },
+          teamA: {
+            select: { id: true },
+          },
+          teamB: {
+            select: { id: true },
+          },
+        },
+      })
+
+      if (!match) {
+        throw new Error('Match not found')
+      }
+
+      // Validate it's an MLP match
+      if (match.division?.tournament?.format !== 'MLP') {
+        throw new Error('Tiebreaker can only be saved for MLP matches')
+      }
+
+      // Validate scores are different
+      if (input.teamAScore === input.teamBScore) {
+        throw new Error('Tiebreaker cannot end in a tie')
+      }
+
+      // Determine winner
+      const winnerTeamId = input.teamAScore > input.teamBScore 
+        ? match.teamA.id 
+        : match.teamB.id
+
+      // Save or update tiebreaker
+      const tiebreaker = await ctx.prisma.tiebreaker.upsert({
+        where: { matchId: input.matchId },
+        create: {
+          matchId: input.matchId,
+          teamAScore: input.teamAScore,
+          teamBScore: input.teamBScore,
+          winnerTeamId,
+          sequence: input.sequence || null,
+        },
+        update: {
+          teamAScore: input.teamAScore,
+          teamBScore: input.teamBScore,
+          winnerTeamId,
+          sequence: input.sequence || null,
+        },
+      })
+
+      // Update match winner
+      await ctx.prisma.match.update({
+        where: { id: input.matchId },
+        data: {
+          winnerTeamId,
+        },
+      })
+
+      // Log the tiebreaker save
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: match.division.tournament.id,
+          action: 'SAVE_TIEBREAKER',
+          entityType: 'Tiebreaker',
+          entityId: tiebreaker.id,
+          payload: {
+            matchId: input.matchId,
+            teamAScore: input.teamAScore,
+            teamBScore: input.teamBScore,
+            winnerTeamId,
+          },
+        },
+      })
+
+      return tiebreaker
     }),
 })

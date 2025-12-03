@@ -15,8 +15,16 @@ export const teamPlayerRouter = createTRPCRouter({
         include: { 
           team: { 
             include: { 
-              division: true,
-              teamPlayers: true 
+              division: {
+                include: {
+                  tournament: {
+                    select: { format: true }
+                  }
+                }
+              },
+              teamPlayers: {
+                include: { player: true }
+              }
             } 
           },
           player: true 
@@ -26,8 +34,16 @@ export const teamPlayerRouter = createTRPCRouter({
       const targetTeam = await ctx.prisma.team.findUnique({
         where: { id: input.targetTeamId },
         include: { 
-          division: true,
-          teamPlayers: true 
+          division: {
+            include: {
+              tournament: {
+                select: { format: true }
+              }
+            }
+          },
+          teamPlayers: {
+            include: { player: true }
+          }
         },
       })
 
@@ -90,12 +106,64 @@ export const teamPlayerRouter = createTRPCRouter({
         }
       }
 
+      // Validate MLP team composition before moving
+      if (targetTeam.division.tournament.format === 'MLP') {
+        // Check player gender
+        if (!teamPlayer.player.gender || teamPlayer.player.gender === 'X') {
+          throw new Error('Player must have gender (M or F) set for MLP tournaments')
+        }
+
+        // Check target team composition after move
+        const futurePlayerCount = targetTeam.teamPlayers.length + 1 // +1 for the player being moved
+        const futureFemaleCount = targetTeam.teamPlayers.filter(tp => tp.player.gender === 'F').length + 
+                                   (teamPlayer.player.gender === 'F' ? 1 : 0)
+        const futureMaleCount = targetTeam.teamPlayers.filter(tp => tp.player.gender === 'M').length + 
+                                (teamPlayer.player.gender === 'M' ? 1 : 0)
+
+        if (futurePlayerCount > 4) {
+          throw new Error('MLP teams must have exactly 4 players')
+        }
+
+        if (futurePlayerCount === 4) {
+          if (futureFemaleCount !== 2 || futureMaleCount !== 2) {
+            throw new Error('MLP teams must have exactly 2 female (F) and 2 male (M) players')
+          }
+        }
+      }
+
       // Move the player to target team
       const updatedTeamPlayer = await ctx.prisma.teamPlayer.update({
         where: { id: input.teamPlayerId },
         data: { teamId: input.targetTeamId },
         include: { player: true },
       })
+
+      // Validate MLP team composition after move (for source team)
+      if (teamPlayer.team.division.tournament.format === 'MLP') {
+        const sourceTeamAfterMove = await ctx.prisma.team.findUnique({
+          where: { id: teamPlayer.teamId },
+          include: {
+            teamPlayers: {
+              include: { player: true },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        })
+
+        if (sourceTeamAfterMove && sourceTeamAfterMove.teamPlayers.length === 4) {
+          const femaleCount = sourceTeamAfterMove.teamPlayers.filter(tp => tp.player.gender === 'F').length
+          const maleCount = sourceTeamAfterMove.teamPlayers.filter(tp => tp.player.gender === 'M').length
+          
+          if (femaleCount !== 2 || maleCount !== 2) {
+            // Rollback: move player back
+            await ctx.prisma.teamPlayer.update({
+              where: { id: input.teamPlayerId },
+              data: { teamId: teamPlayer.teamId },
+            })
+            throw new Error('Moving this player would leave source team with invalid MLP composition (must be 2F + 2M)')
+          }
+        }
+      }
 
       // Log the move
       await ctx.prisma.auditLog.create({
@@ -236,7 +304,13 @@ export const teamPlayerRouter = createTRPCRouter({
       const team = await ctx.prisma.team.findUnique({
         where: { id: input.teamId },
         include: { 
-          division: true,
+          division: {
+            include: {
+              tournament: {
+                select: { format: true }
+              }
+            }
+          },
           teamPlayers: {
             include: { player: true },
             orderBy: { createdAt: 'asc' } // Maintain slot order
@@ -288,6 +362,13 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error(`Slot ${input.slotIndex + 1} is already occupied`)
       }
 
+      // Validate player gender for MLP tournaments
+      if (team.division.tournament.format === 'MLP') {
+        if (!player.gender || player.gender === 'X') {
+          throw new Error('Player must have gender (M or F) set for MLP tournaments')
+        }
+      }
+
       // Create team player
       const teamPlayer = await ctx.prisma.teamPlayer.create({
         data: {
@@ -296,6 +377,40 @@ export const teamPlayerRouter = createTRPCRouter({
         },
         include: { player: true },
       })
+
+      // Validate MLP team composition after adding player
+      if (team.division.tournament.format === 'MLP') {
+        const updatedTeam = await ctx.prisma.team.findUnique({
+          where: { id: input.teamId },
+          include: {
+            teamPlayers: {
+              include: { player: true },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        })
+
+        if (updatedTeam) {
+          const playerCount = updatedTeam.teamPlayers.length
+          const femaleCount = updatedTeam.teamPlayers.filter(tp => tp.player.gender === 'F').length
+          const maleCount = updatedTeam.teamPlayers.filter(tp => tp.player.gender === 'M').length
+
+          if (playerCount > 4) {
+            // Rollback: remove the player we just added
+            await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
+            throw new Error('MLP teams must have exactly 4 players')
+          }
+
+          if (playerCount === 4) {
+            // Validate final composition
+            if (femaleCount !== 2 || maleCount !== 2) {
+              // Rollback: remove the player we just added
+              await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
+              throw new Error('MLP teams must have exactly 2 female (F) and 2 male (M) players')
+            }
+          }
+        }
+      }
 
       // Log the addition
       await ctx.prisma.auditLog.create({
@@ -327,7 +442,13 @@ export const teamPlayerRouter = createTRPCRouter({
         include: { 
           team: { 
             include: { 
-              division: true,
+              division: {
+                include: {
+                  tournament: {
+                    select: { format: true }
+                  }
+                }
+              },
               teamPlayers: {
                 include: { player: true },
                 orderBy: { createdAt: 'asc' }
@@ -346,6 +467,20 @@ export const teamPlayerRouter = createTRPCRouter({
       const playerIndex = teamPlayer.team.teamPlayers.findIndex(tp => tp.id === input.teamPlayerId)
       if (playerIndex !== input.slotIndex) {
         throw new Error('Player is not in the specified slot')
+      }
+
+      // For MLP tournaments, check if removing this player would leave team invalid
+      if (teamPlayer.team.division.tournament.format === 'MLP') {
+        const currentPlayerCount = teamPlayer.team.teamPlayers.length
+        if (currentPlayerCount === 4) {
+          // Team is currently valid, removing a player is allowed (team can be incomplete during setup)
+          // But we should warn if team becomes invalid
+          const remainingPlayers = teamPlayer.team.teamPlayers.filter(tp => tp.id !== input.teamPlayerId)
+          const remainingFemaleCount = remainingPlayers.filter(tp => tp.player.gender === 'F').length
+          const remainingMaleCount = remainingPlayers.filter(tp => tp.player.gender === 'M').length
+          
+          // Allow removal, but team will need to be completed later
+        }
       }
 
       // Remove player from team
