@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import ScoreInputModal from '@/components/ScoreInputModal'
+import MLPScoreInputModal from '@/components/MLPScoreInputModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
@@ -1516,19 +1517,48 @@ export default function DivisionStageManagement() {
       </div>
 
       {/* Score input modal */}
-      {showScoreModal && selectedMatch && (
-        <ScoreInputModal
-          isOpen={showScoreModal}
-          onClose={handleScoreModalClose}
-          onSubmit={(scoreA, scoreB) => {
-            handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
-          }}
-          teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
-          teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
-          poolName={selectedMatch.teamA.pool?.name}
-          isLoading={updateMatchResultMutation.isPending}
-        />
-      )}
+      {showScoreModal && selectedMatch && (() => {
+        const isMLP = tournament?.format === 'MLP'
+        const matchGamesCount = selectedMatch.gamesCount || (selectedMatch.games?.length || 0)
+        const isMLPMatch = isMLP && matchGamesCount === 4
+
+        if (isMLPMatch) {
+          return (
+            <MLPScoreInputModal
+              isOpen={showScoreModal}
+              onClose={handleScoreModalClose}
+              matchId={selectedMatch.id}
+              teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
+              teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
+              poolName={selectedMatch.teamA.pool?.name}
+              existingGames={selectedMatch.games?.map((g: any) => ({
+                index: g.index,
+                scoreA: g.scoreA || 0,
+                scoreB: g.scoreB || 0,
+                gameType: g.gameType,
+              })) || []}
+              onSuccess={() => {
+                refetchDivision()
+                refetchTournament()
+              }}
+            />
+          )
+        }
+
+        return (
+          <ScoreInputModal
+            isOpen={showScoreModal}
+            onClose={handleScoreModalClose}
+            onSubmit={(scoreA, scoreB) => {
+              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
+            }}
+            teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
+            teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
+            poolName={selectedMatch.teamA.pool?.name}
+            isLoading={updateMatchResultMutation.isPending}
+          />
+        )
+      })()}
 
       {/* Playoff swap modal */}
       {showPlayoffSwapModal && (() => {

@@ -251,6 +251,17 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
     const roundsFromEnd = totalRounds - round + 1
     const teamsInRound = Math.pow(2, roundsFromEnd)
 
+    // For MLP format: Round 1 = Semi-Finals (2 matches), Round 2 = Final (1 match)
+    // Check if this is MLP format by checking if round 1 has exactly 2 matches and round 2 has 1 match
+    const round1Matches = matchesByRound.find(([r]) => r === 1)?.[1] || []
+    const round2Matches = matchesByRound.find(([r]) => r === 2)?.[1] || []
+    const isMLPFormat = round1Matches.length === 2 && round2Matches.length === 1 && totalRounds === 2
+
+    if (isMLPFormat) {
+      if (round === 1) return 'Semi-Finals'
+      if (round === 2) return 'Final'
+    }
+
     if (teamsInRound === 2) return 'Final'
     if (teamsInRound === 4) return 'Semi-Finals'
     if (teamsInRound === 8) return 'Quarter-Finals'
