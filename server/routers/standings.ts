@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
 import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
+import { buildMLPBracket } from '../utils/mlp'
 import { getTeamDisplayName } from '../utils/teamDisplay'
 
 interface TeamStats {
@@ -981,6 +982,12 @@ export const standingsRouter = createTRPCRouter({
                 },
               },
             },
+            tournament: {
+              select: { format: true },
+            },
+            pools: {
+              orderBy: { order: 'asc' },
+            },
           },
         })
 
@@ -988,6 +995,8 @@ export const standingsRouter = createTRPCRouter({
           console.error('[getBracket] Division not found:', input.divisionId)
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Division not found' })
         }
+
+        const isMLP = division.tournament.format === 'MLP'
 
         console.log('[getBracket] Division found:', {
           id: division.id,
@@ -1191,18 +1200,91 @@ export const standingsRouter = createTRPCRouter({
                 }))
             : undefined
           
-          // Build complete bracket (includes play-in round 0 and playoff rounds 1+)
-          // Always generate bracket structure, even if RR is not complete
-          // If RR is not complete, standings will be based on current state (or just seed numbers)
-          console.log('[getBracket] Calling buildCompleteBracket...', { isRRComplete })
-          allBracketMatches = buildCompleteBracket(
-            N,
-            B,
-            standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
-            playInMatchData,
-            playoffMatchData
-          )
-          console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
+          // Build bracket based on tournament format
+          if (isMLP) {
+            // MLP format: No play-in, only 4 teams (top-2 from each pool)
+            console.log('[getBracket] Building MLP bracket...')
+            
+            // Calculate standings per pool
+            const poolStandingsMap = new Map<string, Array<{ teamId: string; teamName: string; seed: number; wins: number; losses: number; pointsFor: number; pointsAgainst: number; pointDiff: number; headToHead: Map<string, { wins: number; losses: number; pointDiff: number }> }>>()
+            
+            // Initialize pool standings
+            division.pools.forEach(pool => {
+              poolStandingsMap.set(pool.id, [])
+            })
+            
+            // Group teams by pool and calculate standings per pool
+            Array.from(teamStats.values()).forEach(stats => {
+              const team = division.teams.find(t => t.id === stats.teamId)
+              if (team && team.poolId) {
+                const poolStandings = poolStandingsMap.get(team.poolId)
+                if (poolStandings) {
+                  poolStandings.push(stats)
+                }
+              }
+            })
+            
+            // Sort each pool's standings using tie-breaker rules
+            const poolStandings: Array<{
+              poolId: string
+              poolName: string
+              top2: Array<{ teamId: string; teamName: string; seed: number }>
+            }> = []
+            
+            poolStandingsMap.forEach((poolTeams, poolId) => {
+              const pool = division.pools.find(p => p.id === poolId)
+              if (!pool) return
+              
+              // Sort using same tie-breaker rules
+              const sorted = poolTeams.sort((a, b) => {
+                if (a.wins !== b.wins) return b.wins - a.wins
+                
+                const headToHeadA = a.headToHead.get(b.teamId)
+                const headToHeadB = b.headToHead.get(a.teamId)
+                if (headToHeadA && headToHeadB && headToHeadA.pointDiff !== headToHeadB.pointDiff) {
+                  return headToHeadB.pointDiff - headToHeadA.pointDiff
+                }
+                
+                if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff
+                return b.pointsFor - a.pointsFor
+              })
+              
+              // Get top 2
+              const top2 = sorted.slice(0, 2).map((team, index) => ({
+                teamId: team.teamId,
+                teamName: team.teamName,
+                seed: index + 1, // Seed within pool (1 or 2)
+              }))
+              
+              poolStandings.push({
+                poolId: pool.id,
+                poolName: pool.name,
+                top2,
+              })
+            })
+            
+            // Sort pools by order to ensure consistent pairing
+            poolStandings.sort((a, b) => {
+              const poolA = division.pools.find(p => p.id === a.poolId)
+              const poolB = division.pools.find(p => p.id === b.poolId)
+              return (poolA?.order || 0) - (poolB?.order || 0)
+            })
+            
+            // Build MLP bracket
+            allBracketMatches = buildMLPBracket(poolStandings, playoffMatchData)
+            console.log('[getBracket] MLP bracket built successfully:', allBracketMatches.length, 'matches')
+          } else {
+            // Single Elimination format: use standard bracket with play-in
+            console.log('[getBracket] Calling buildCompleteBracket...', { isRRComplete })
+            allBracketMatches = buildCompleteBracket(
+              N,
+              B,
+              standings.map(s => ({ teamId: s.teamId, teamName: s.teamName, seed: s.seed })),
+              playInMatchData,
+              playoffMatchData
+            )
+            console.log('[getBracket] Bracket built successfully:', allBracketMatches.length, 'matches')
+          }
         }
       } catch (error) {
         console.error('[getBracket] Error building complete bracket:', error)

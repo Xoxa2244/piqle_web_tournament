@@ -1,6 +1,7 @@
 // MLP Tournament utilities
 
 import { PrismaClient } from '@prisma/client'
+import type { BracketMatch } from './bracket'
 
 export interface MLPTeamPlayers {
   females: Array<{ id: string; firstName: string; lastName: string }>
@@ -167,5 +168,172 @@ export function calculateMLPMatchWinner(
 
   // Not all games completed or invalid state
   return { winnerTeamId: null, needsTiebreaker: false }
+}
+
+/**
+ * Build MLP bracket structure
+ * MLP format: No play-in, only 4 teams in elimination (top-2 from each pool)
+ * Semi-Final 1: Pool1-1 vs Pool2-2
+ * Semi-Final 2: Pool1-2 vs Pool2-1
+ * Final: Winner SF1 vs Winner SF2
+ */
+export function buildMLPBracket(
+  poolStandings: Array<{
+    poolId: string
+    poolName: string
+    top2: Array<{ teamId: string; teamName: string; seed: number }>
+  }>,
+  existingPlayoffMatches?: Array<{
+    id: string
+    roundIndex: number
+    teamAId: string
+    teamBId: string
+    winnerTeamId?: string
+    games?: Array<{ scoreA: number; scoreB: number }>
+    note?: string
+  }>
+): BracketMatch[] {
+  const allMatches: BracketMatch[] = []
+
+  // Validate: need exactly 2 pools with top-2 teams each
+  if (poolStandings.length !== 2) {
+    console.error('[buildMLPBracket] MLP requires exactly 2 pools, got:', poolStandings.length)
+    return []
+  }
+
+  const pool1 = poolStandings[0]
+  const pool2 = poolStandings[1]
+
+  if (pool1.top2.length < 2 || pool2.top2.length < 2) {
+    console.error('[buildMLPBracket] Each pool must have at least 2 teams in top-2')
+    return []
+  }
+
+  // Semi-Final 1: Pool1-1 vs Pool2-2
+  const sf1TeamA = pool1.top2[0] // Pool1-1
+  const sf1TeamB = pool2.top2[1] // Pool2-2
+
+  // Semi-Final 2: Pool1-2 vs Pool2-1
+  const sf2TeamA = pool1.top2[1] // Pool1-2
+  const sf2TeamB = pool2.top2[0] // Pool2-1
+
+  // Find existing semi-final matches from DB
+  const existingSF1 = existingPlayoffMatches?.find(
+    m => m.roundIndex === 1 && 
+    ((m.teamAId === sf1TeamA.teamId && m.teamBId === sf1TeamB.teamId) ||
+     (m.teamAId === sf1TeamB.teamId && m.teamBId === sf1TeamA.teamId))
+  )
+  const existingSF2 = existingPlayoffMatches?.find(
+    m => m.roundIndex === 1 && 
+    ((m.teamAId === sf2TeamA.teamId && m.teamBId === sf2TeamB.teamId) ||
+     (m.teamAId === sf2TeamB.teamId && m.teamBId === sf2TeamA.teamId))
+  )
+
+  // Create Semi-Final 1
+  const sf1Match: BracketMatch = {
+    id: existingSF1?.id || 'sf1',
+    round: 1,
+    position: 0,
+    left: {
+      seed: sf1TeamA.seed,
+      teamId: sf1TeamA.teamId,
+      teamName: sf1TeamA.teamName,
+      isBye: false,
+    },
+    right: {
+      seed: sf1TeamB.seed,
+      teamId: sf1TeamB.teamId,
+      teamName: sf1TeamB.teamName,
+      isBye: false,
+    },
+    status: existingSF1?.winnerTeamId ? 'finished' : 'scheduled',
+    winnerTeamId: existingSF1?.winnerTeamId,
+    winnerTeamName: existingSF1?.winnerTeamId 
+      ? (existingSF1.teamAId === existingSF1.winnerTeamId 
+          ? sf1TeamA.teamName 
+          : sf1TeamB.teamName)
+      : undefined,
+    matchId: existingSF1?.id,
+    games: existingSF1?.games,
+  }
+
+  // Create Semi-Final 2
+  const sf2Match: BracketMatch = {
+    id: existingSF2?.id || 'sf2',
+    round: 1,
+    position: 1,
+    left: {
+      seed: sf2TeamA.seed,
+      teamId: sf2TeamA.teamId,
+      teamName: sf2TeamA.teamName,
+      isBye: false,
+    },
+    right: {
+      seed: sf2TeamB.seed,
+      teamId: sf2TeamB.teamId,
+      teamName: sf2TeamB.teamName,
+      isBye: false,
+    },
+    status: existingSF2?.winnerTeamId ? 'finished' : 'scheduled',
+    winnerTeamId: existingSF2?.winnerTeamId,
+    winnerTeamName: existingSF2?.winnerTeamId 
+      ? (existingSF2.teamAId === existingSF2.winnerTeamId 
+          ? sf2TeamA.teamName 
+          : sf2TeamB.teamName)
+      : undefined,
+    matchId: existingSF2?.id,
+    games: existingSF2?.games,
+  }
+
+  allMatches.push(sf1Match, sf2Match)
+
+  // Link semi-finals to final
+  sf1Match.nextMatchId = 'final'
+  sf1Match.nextSlot = 'left'
+  sf2Match.nextMatchId = 'final'
+  sf2Match.nextSlot = 'right'
+
+  // Create Final: Winner SF1 vs Winner SF2
+  const finalTeamA = sf1Match.winnerTeamId 
+    ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamA : sf1TeamB)
+    : null
+  const finalTeamB = sf2Match.winnerTeamId 
+    ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamA : sf2TeamB)
+    : null
+
+  const existingFinal = existingPlayoffMatches?.find(
+    m => m.roundIndex === 2
+  )
+
+  const finalMatch: BracketMatch = {
+    id: existingFinal?.id || 'final',
+    round: 2,
+    position: 0,
+    left: {
+      seed: finalTeamA?.seed || 0,
+      teamId: finalTeamA?.teamId,
+      teamName: finalTeamA?.teamName,
+      isBye: !finalTeamA,
+    },
+    right: {
+      seed: finalTeamB?.seed || 0,
+      teamId: finalTeamB?.teamId,
+      teamName: finalTeamB?.teamName,
+      isBye: !finalTeamB,
+    },
+    status: existingFinal?.winnerTeamId ? 'finished' : (finalTeamA && finalTeamB ? 'scheduled' : 'scheduled'),
+    winnerTeamId: existingFinal?.winnerTeamId,
+    winnerTeamName: existingFinal?.winnerTeamId && finalTeamA && finalTeamB
+      ? (existingFinal.teamAId === existingFinal.winnerTeamId 
+          ? finalTeamA.teamName 
+          : finalTeamB.teamName)
+      : undefined,
+    matchId: existingFinal?.id,
+    games: existingFinal?.games,
+  }
+
+  allMatches.push(finalMatch)
+
+  return allMatches
 }
 
