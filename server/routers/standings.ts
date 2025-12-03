@@ -1759,7 +1759,7 @@ export const standingsRouter = createTRPCRouter({
               games: true,
             },
           },
-          tournament: { select: { id: true } },
+          tournament: { select: { id: true, format: true } },
         },
       })
 
