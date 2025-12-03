@@ -1630,7 +1630,7 @@ export default function DivisionStageManagement() {
                                           Tiebreaker required
                                         </div>
                                       )}
-                                      {match.winnerTeamId && (
+                                      {match.winnerTeamId && !needsTie && (
                                         <div className="text-sm text-green-600 font-medium">
                                           Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
                                         </div>

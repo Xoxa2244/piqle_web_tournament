@@ -626,9 +626,12 @@ export const matchRouter = createTRPCRouter({
 
       // For MLP matches, check if all 4 games are completed and determine winner
       if (isMLP && match.games) {
+        // Update game winner first
+        const updatedGameWinner = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
+        
         const allGames = match.games.map(g => 
           g.id === game.id 
-            ? { scoreA: input.scoreA, scoreB: input.scoreB, winner: game.winner }
+            ? { scoreA: input.scoreA, scoreB: input.scoreB, winner: updatedGameWinner }
             : { scoreA: g.scoreA, scoreB: g.scoreB, winner: g.winner }
         )
 
@@ -640,12 +643,27 @@ export const matchRouter = createTRPCRouter({
 
         // Update match winner (if determined) or clear if tiebreaker needed
         // IMPORTANT: If tiebreaker is needed, do NOT set winnerTeamId - it will be set after tiebreaker is saved
-        await ctx.prisma.match.update({
-          where: { id: input.matchId },
-          data: {
-            winnerTeamId: needsTiebreaker ? null : (winnerTeamId || null),
-          },
-        })
+        // Also clear tiebreaker if winner is determined (e.g., changed from 2-2 to 3-1)
+        if (needsTiebreaker) {
+          // If tiebreaker needed, clear winner but keep tiebreaker if it exists
+          await ctx.prisma.match.update({
+            where: { id: input.matchId },
+            data: {
+              winnerTeamId: null,
+            },
+          })
+        } else {
+          // If winner is determined, set winner and delete tiebreaker if it exists
+          await ctx.prisma.match.update({
+            where: { id: input.matchId },
+            data: {
+              winnerTeamId: winnerTeamId || null,
+              tiebreaker: {
+                delete: true, // Delete tiebreaker if it exists and winner is determined
+              },
+            },
+          })
+        }
 
         // If tiebreaker is needed, we don't set winnerTeamId yet
         // The tiebreaker will be saved separately and then winnerTeamId will be updated
