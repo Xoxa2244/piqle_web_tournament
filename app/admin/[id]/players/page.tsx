@@ -295,6 +295,7 @@ export default function PlayersPage() {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3 font-medium">Player Name</th>
+                  <th className="text-left p-3 font-medium">Gender</th>
                   <th className="text-left p-3 font-medium">Email</th>
                   <th className="text-left p-3 font-medium">DUPR ID</th>
                   <th className="text-left p-3 font-medium">DUPR Rating</th>
@@ -308,7 +309,7 @@ export default function PlayersPage() {
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-8 text-gray-500">
+                    <td colSpan={10} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -322,6 +323,13 @@ export default function PlayersPage() {
                         <div className="font-medium">
                           {player.firstName} {player.lastName}
                         </div>
+                      </td>
+                      <td className="p-3 text-sm text-gray-600">
+                        {player.gender ? (
+                          <Badge variant={player.gender === 'M' ? 'default' : player.gender === 'F' ? 'secondary' : 'outline'}>
+                            {player.gender === 'M' ? 'Male' : player.gender === 'F' ? 'Female' : 'Other'}
+                          </Badge>
+                        ) : '—'}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {player.email || '—'}
