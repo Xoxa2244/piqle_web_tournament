@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -51,6 +51,8 @@ interface Player {
 export default function PlayersPage() {
   const params = useParams()
   const tournamentId = params.id as string
+  const searchParams = useSearchParams()
+  const paymentStatus = searchParams.get('payment')
   
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
@@ -65,6 +67,7 @@ export default function PlayersPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+  const isPaidTournament = tournament?.isPaid
   
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
@@ -80,6 +83,20 @@ export default function PlayersPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
+
+  const createCheckoutSession = trpc.payment.createCheckoutSession.useMutation({
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      } else if (data.sessionId) {
+        alert('Checkout session создан, но URL отсутствует')
+      }
+    },
+    onError: (error) => {
+      console.error('Ошибка создания платежной сессии:', error)
+      alert(error.message)
+    },
+  })
 
   // Delete player mutation
   const deletePlayerMutation = trpc.player.delete.useMutation({
@@ -163,6 +180,15 @@ export default function PlayersPage() {
     deletePlayerMutation.mutate({ id: playerId })
   }
 
+  const handleCreatePaymentSession = (player: Player) => {
+    createCheckoutSession.mutate({
+      tournamentId,
+      playerId: player.id,
+      successPath: `/admin/${tournamentId}/players?payment=success`,
+      cancelPath: `/admin/${tournamentId}/players?payment=cancel`,
+    })
+  }
+
   const getPlayerDivision = (player: Player) => {
     const teamPlayer = player.teamPlayers[0]
     return teamPlayer ? teamPlayer.team.division.name : '—'
@@ -197,6 +223,16 @@ export default function PlayersPage() {
       />
       
       <div className="container mx-auto p-6">
+        {paymentStatus === 'success' && (
+          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            Оплата инициализирована. Статус игрока обновится после подтверждения Stripe.
+          </div>
+        )}
+        {paymentStatus === 'cancel' && (
+          <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
+            Оплата была отменена или не завершена. Попробуйте снова.
+          </div>
+        )}
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
@@ -351,6 +387,16 @@ export default function PlayersPage() {
                       <td className="p-3">
                         {isAdmin && (
                           <div className="flex items-center space-x-2">
+                            {isPaidTournament && !player.isPaid && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleCreatePaymentSession(player)}
+                                disabled={createCheckoutSession.isPending}
+                              >
+                                {createCheckoutSession.isPending ? 'Processing...' : 'Collect Payment'}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

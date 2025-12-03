@@ -68,6 +68,22 @@ npm run dev
 
 See `env.template` for required environment variables.
 
+### Stripe (платежи)
+
+Платёжная интеграция использует Stripe и требует следующих переменных в `.env.local`:
+
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — публичный ключ (тестовый или боевой).
+- `STRIPE_SECRET_KEY` — секретный ключ, используется только на сервере.
+- `STRIPE_WEBHOOK_SECRET` — секрет для проверки webhook-событий (`stripe listen`).
+- `STRIPE_CONNECT_CLIENT_ID` — идентификатор приложения Stripe Connect (Express).
+
+Для локальной отладки webhook-ов можно использовать Stripe CLI:
+
+```bash
+stripe login
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
 ## Deployment
 
 The project is configured for automatic deployment on Vercel when pushing to the main branch.

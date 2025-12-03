@@ -18,7 +18,9 @@ export default function NewTournamentPage() {
     startDate: '',
     endDate: '',
     entryFee: '',
+    currency: 'usd',
     isPublicBoardEnabled: false,
+    isPaid: false,
   })
 
   const createTournament = trpc.tournament.create.useMutation({
@@ -39,6 +41,11 @@ export default function NewTournamentPage() {
       return
     }
 
+    if (formData.isPaid && !formData.entryFee) {
+      alert('Введите стоимость участия для платного турнира')
+      return
+    }
+
     createTournament.mutate({
       title: formData.title,
       description: formData.description || undefined,
@@ -47,10 +54,12 @@ export default function NewTournamentPage() {
       endDate: formData.endDate,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      isPaid: formData.isPaid,
+      currency: formData.currency,
     })
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     setFormData(prev => ({
       ...prev,
@@ -156,7 +165,21 @@ export default function NewTournamentPage() {
               </div>
             </div>
 
-            <div>
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isPaid"
+                  name="isPaid"
+                  checked={formData.isPaid}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="isPaid" className="ml-2 block text-sm text-gray-700">
+                  Платный турнир (включает оплату через Stripe)
+                </label>
+              </div>
+
               <label htmlFor="entryFee" className="block text-sm font-medium text-gray-700 mb-2">
                 Entry Fee ($)
               </label>
@@ -170,7 +193,26 @@ export default function NewTournamentPage() {
                 step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
+                disabled={!formData.isPaid}
               />
+              <div>
+                <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-2">
+                  Валюта
+                </label>
+                <select
+                  id="currency"
+                  name="currency"
+                  value={formData.currency}
+                  onChange={handleChange}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 text-gray-600"
+                >
+                  <option value="usd">USD</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Поддержка других валют появится позже; сейчас используется USD.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center">

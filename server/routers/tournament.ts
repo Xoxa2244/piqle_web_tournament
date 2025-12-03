@@ -21,6 +21,8 @@ export const tournamentRouter = createTRPCRouter({
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().default(false),
       publicSlug: z.string().optional(),
+      isPaid: z.boolean().optional(),
+      currency: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Generate unique publicSlug
@@ -34,9 +36,17 @@ export const tournamentRouter = createTRPCRouter({
         counter++
       }
 
+      if (input.isPaid && (input.entryFee === undefined || input.entryFee === null)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Для платного турнира необходимо указать стоимость участия',
+        })
+      }
+
       const tournament = await ctx.prisma.tournament.create({
         data: {
           ...input,
+          currency: (input.currency ?? 'usd').toLowerCase(),
           userId: ctx.session.user.id,
           publicSlug,
         },
@@ -53,6 +63,16 @@ export const tournamentRouter = createTRPCRouter({
           payload: input,
         },
       })
+
+      if (tournament.isPaid) {
+        await ctx.prisma.tournamentPaymentSetting.create({
+          data: {
+            tournamentId: tournament.id,
+            stripeAccountStatus: 'PENDING',
+            paymentsEnabled: false,
+          },
+        })
+      }
 
       return tournament
     }),
@@ -181,15 +201,23 @@ export const tournamentRouter = createTRPCRouter({
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().optional(),
       publicSlug: z.string().optional(),
+      isPaid: z.boolean().optional(),
+      currency: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Check admin access
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id)
 
       const { id, ...data } = input
+      if (data.currency) {
+        data.currency = data.currency.toLowerCase()
+      }
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
         data,
+        include: {
+          paymentSetting: true,
+        },
       })
 
       // Log the update
@@ -203,6 +231,16 @@ export const tournamentRouter = createTRPCRouter({
           payload: data,
         },
       })
+
+      if (tournament.isPaid && !tournament.paymentSetting) {
+        await ctx.prisma.tournamentPaymentSetting.create({
+          data: {
+            tournamentId: tournament.id,
+            stripeAccountStatus: 'PENDING',
+            paymentsEnabled: false,
+          },
+        })
+      }
 
       return tournament
     }),

@@ -4,8 +4,9 @@ import { useParams } from 'next/navigation'
 import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { 
   Users, 
@@ -18,7 +19,9 @@ import {
   Upload,
   Globe,
   Edit,
-  Shield
+  Shield,
+  CreditCard,
+  DollarSign,
 } from 'lucide-react'
 import TournamentNavBar from '@/components/TournamentNavBar'
 
@@ -61,6 +64,23 @@ export default function TournamentDetailPage() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+
+  const { data: paymentSettings } = trpc.payment.getSettings.useQuery(
+    { tournamentId },
+    { enabled: !!isAdmin && !!tournament?.isPaid }
+  )
+
+  const initStripeAccount = trpc.payment.initStripeAccount.useMutation({
+    onSuccess: (data) => {
+      if (data.accountLinkUrl) {
+        window.location.href = data.accountLinkUrl
+      }
+    },
+    onError: (err) => {
+      console.error('Stripe onboarding error', err)
+      alert(err.message)
+    },
+  })
   
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -392,6 +412,57 @@ export default function TournamentDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {isAdmin && tournament.isPaid && (
+              <Card className="mt-6 border-0 shadow-xl bg-white/70 backdrop-blur-sm">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">
+                    <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mr-3">
+                      <CreditCard className="w-4 h-4 text-white" />
+                    </div>
+                    Stripe Payments
+                  </CardTitle>
+                  <CardDescription>
+                    Управление оплатами: комиссия 10 % удерживается автоматически.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      Статус аккаунта Stripe
+                    </div>
+                    <Badge variant={paymentSettings?.paymentSetting?.paymentsEnabled ? 'default' : 'secondary'}>
+                      {paymentSettings?.paymentSetting?.stripeAccountStatus || 'PENDING'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      Приём платежей
+                    </div>
+                    <Badge variant={paymentSettings?.paymentSetting?.paymentsEnabled ? 'default' : 'secondary'}>
+                      {paymentSettings?.paymentSetting?.paymentsEnabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4 flex items-start space-x-3">
+                    <DollarSign className="w-5 h-5 text-green-600 mt-0.5" />
+                    <div className="text-sm text-green-700">
+                      {paymentSettings?.entryFee
+                        ? `Стоимость участия: $${paymentSettings.entryFee.toString()}`
+                        : 'Стоимость участия не указана'}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => initStripeAccount.mutate({ tournamentId })}
+                    disabled={initStripeAccount.isPending}
+                  >
+                    {initStripeAccount.isPending ? 'Redirecting…' : 'Подключить / обновить Stripe'}
+                  </Button>
+                  <p className="text-xs text-slate-500">
+                    После завершения онбординга Stripe автоматически включит приём платежей. Вы всегда сможете повторно открыть онбординг, если нужно обновить данные.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
