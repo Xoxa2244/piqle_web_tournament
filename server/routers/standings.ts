@@ -1206,7 +1206,7 @@ export const standingsRouter = createTRPCRouter({
             console.log('[getBracket] Building MLP bracket...')
             
             // Calculate standings per pool
-            const poolStandingsMap = new Map<string, Array<{ teamId: string; teamName: string; seed: number; wins: number; losses: number; pointsFor: number; pointsAgainst: number; pointDiff: number; headToHead: Map<string, { wins: number; losses: number; pointDiff: number }> }>>()
+            const poolStandingsMap = new Map<string, Array<{ teamId: string; teamName: string; wins: number; losses: number; pointsFor: number; pointsAgainst: number; pointDiff: number; headToHead: Map<string, { wins: number; losses: number; pointDiff: number }> }>>()
             
             // Initialize pool standings
             division.pools.forEach(pool => {
