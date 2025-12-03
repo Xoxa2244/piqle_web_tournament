@@ -254,6 +254,7 @@ export const standingsRouter = createTRPCRouter({
         },
         include: {
           games: true,
+          tiebreaker: true,
         },
       })
 
@@ -324,9 +325,10 @@ export const standingsRouter = createTRPCRouter({
                 },
               },
               games: true,
+              tiebreaker: true,
             },
           },
-          tournament: { select: { id: true } },
+          tournament: { select: { id: true, format: true } },
         },
       })
 
@@ -443,11 +445,30 @@ export const standingsRouter = createTRPCRouter({
         teamBStats.pointsFor += teamBPoints
         teamBStats.pointsAgainst += teamAPoints
 
-        // Determine winner
-        if (teamAPoints > teamBPoints) {
+        // Determine winner - for MLP matches, use tiebreaker if exists, otherwise use match.winnerTeamId or games
+        const isMLP = division.tournament?.format === 'MLP'
+        let winnerTeamId: string | null = null
+        
+        if (isMLP && match.tiebreaker) {
+          // MLP match with tiebreaker - use tiebreaker winner
+          winnerTeamId = match.tiebreaker.winnerTeamId
+        } else if (match.winnerTeamId) {
+          // Use match winnerTeamId if set
+          winnerTeamId = match.winnerTeamId
+        } else {
+          // Fallback to games score
+          if (teamAPoints > teamBPoints) {
+            winnerTeamId = match.teamAId
+          } else if (teamBPoints > teamAPoints) {
+            winnerTeamId = match.teamBId
+          }
+        }
+
+        // Update wins/losses based on winner
+        if (winnerTeamId === match.teamAId) {
           teamAStats.wins += 1
           teamBStats.losses += 1
-        } else if (teamBPoints > teamAPoints) {
+        } else if (winnerTeamId === match.teamBId) {
           teamBStats.wins += 1
           teamAStats.losses += 1
         }
@@ -531,6 +552,7 @@ export const standingsRouter = createTRPCRouter({
         },
         include: {
           games: true,
+          tiebreaker: true,
         },
       })
 
@@ -641,6 +663,7 @@ export const standingsRouter = createTRPCRouter({
               teamA: true,
               teamB: true,
               games: true,
+              tiebreaker: true,
             },
             orderBy: { roundIndex: 'asc' },
           },
@@ -668,6 +691,27 @@ export const standingsRouter = createTRPCRouter({
 
       // Get winners from current round
       const winners = currentRoundMatches.map(match => {
+        // For MLP matches, check tiebreaker first
+        const isMLP = division.tournament?.format === 'MLP'
+        if (isMLP && match.tiebreaker) {
+          // Use tiebreaker winner
+          if (match.tiebreaker.winnerTeamId === match.teamAId) {
+            return match.teamA
+          } else if (match.tiebreaker.winnerTeamId === match.teamBId) {
+            return match.teamB
+          }
+        }
+        
+        // Use match.winnerTeamId if set
+        if (match.winnerTeamId) {
+          if (match.winnerTeamId === match.teamAId) {
+            return match.teamA
+          } else if (match.winnerTeamId === match.teamBId) {
+            return match.teamB
+          }
+        }
+        
+        // Fallback to game score
         const game = match.games?.[0]
         if (!game) throw new Error('No game found for completed match')
         
@@ -805,9 +849,10 @@ export const standingsRouter = createTRPCRouter({
               teamA: true,
               teamB: true,
               games: true,
+              tiebreaker: true,
             },
           },
-          tournament: { select: { id: true } },
+          tournament: { select: { id: true, format: true } },
         },
       })
 
@@ -844,22 +889,57 @@ export const standingsRouter = createTRPCRouter({
       })
 
       // Process Round Robin and Play-In matches
+      const isMLP = division.tournament?.format === 'MLP'
+      
       division.matches.forEach(match => {
         if (match.games.length === 0) return
 
-        const game = match.games[0]
+        // For MLP matches, sum all games; for others, use first game
+        let teamAPoints = 0
+        let teamBPoints = 0
+        
+        if (isMLP) {
+          match.games.forEach(game => {
+            teamAPoints += game.scoreA
+            teamBPoints += game.scoreB
+          })
+        } else {
+          const game = match.games[0]
+          teamAPoints = game.scoreA
+          teamBPoints = game.scoreB
+        }
+        
         const teamAStats = teamStats.get(match.teamAId)!
         const teamBStats = teamStats.get(match.teamBId)!
 
-        teamAStats.pointsFor += game.scoreA
-        teamAStats.pointsAgainst += game.scoreB
-        teamBStats.pointsFor += game.scoreB
-        teamBStats.pointsAgainst += game.scoreA
+        teamAStats.pointsFor += teamAPoints
+        teamAStats.pointsAgainst += teamBPoints
+        teamBStats.pointsFor += teamBPoints
+        teamBStats.pointsAgainst += teamAPoints
 
-        if (game.scoreA > game.scoreB) {
+        // Determine winner - for MLP matches, use tiebreaker if exists
+        let winnerTeamId: string | null = null
+        
+        if (isMLP && match.tiebreaker) {
+          // MLP match with tiebreaker - use tiebreaker winner
+          winnerTeamId = match.tiebreaker.winnerTeamId
+        } else if (match.winnerTeamId) {
+          // Use match winnerTeamId if set
+          winnerTeamId = match.winnerTeamId
+        } else {
+          // Fallback to games score
+          if (teamAPoints > teamBPoints) {
+            winnerTeamId = match.teamAId
+          } else if (teamBPoints > teamAPoints) {
+            winnerTeamId = match.teamBId
+          }
+        }
+
+        // Update wins/losses based on winner
+        if (winnerTeamId === match.teamAId) {
           teamAStats.wins++
           teamBStats.losses++
-        } else if (game.scoreB > game.scoreA) {
+        } else if (winnerTeamId === match.teamBId) {
           teamBStats.wins++
           teamAStats.losses++
         }
@@ -967,6 +1047,7 @@ export const standingsRouter = createTRPCRouter({
                 games: {
                   orderBy: { index: 'asc' }
                 },
+                tiebreaker: true,
               },
             },
             standings: {
@@ -1056,11 +1137,29 @@ export const standingsRouter = createTRPCRouter({
         teamBStats.pointsFor += totalScoreB
         teamBStats.pointsAgainst += totalScoreA
 
-        // Determine winner/loser
-        if (totalScoreA > totalScoreB) {
+        // Determine winner/loser - for MLP matches, use tiebreaker if exists
+        let winnerTeamId: string | null = null
+        
+        if (isMLP && match.tiebreaker) {
+          // MLP match with tiebreaker - use tiebreaker winner
+          winnerTeamId = match.tiebreaker.winnerTeamId
+        } else if (match.winnerTeamId) {
+          // Use match winnerTeamId if set
+          winnerTeamId = match.winnerTeamId
+        } else {
+          // Fallback to games score
+          if (totalScoreA > totalScoreB) {
+            winnerTeamId = match.teamAId
+          } else if (totalScoreB > totalScoreA) {
+            winnerTeamId = match.teamBId
+          }
+        }
+
+        // Update wins/losses based on winner
+        if (winnerTeamId === match.teamAId) {
           teamAStats.wins += 1
           teamBStats.losses += 1
-        } else if (totalScoreB > totalScoreA) {
+        } else if (winnerTeamId === match.teamBId) {
           teamBStats.wins += 1
           teamAStats.losses += 1
         }
@@ -1069,10 +1168,13 @@ export const standingsRouter = createTRPCRouter({
         const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
         const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
 
-        if (totalScoreA > totalScoreB) {
+        // Use winnerTeamId if determined, otherwise fallback to score
+        const h2hWinnerId = winnerTeamId || (totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : null))
+        
+        if (h2hWinnerId === match.teamAId) {
           teamAHeadToHead.wins += 1
           teamBHeadToHead.losses += 1
-        } else if (totalScoreB > totalScoreA) {
+        } else if (h2hWinnerId === match.teamBId) {
           teamBHeadToHead.wins += 1
           teamAHeadToHead.losses += 1
         }
@@ -1165,9 +1267,22 @@ export const standingsRouter = createTRPCRouter({
             ? playInMatches
                 .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
                 .map(match => {
-                  const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
-                  const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
-                  const winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                  // For MLP matches, check tiebreaker first
+                  const isMLP = division.tournament?.format === 'MLP'
+                  let winnerId: string | undefined = undefined
+                  
+                  if (isMLP && match.tiebreaker) {
+                    // Use tiebreaker winner
+                    winnerId = match.tiebreaker.winnerTeamId || undefined
+                  } else if (match.winnerTeamId) {
+                    // Use match.winnerTeamId if set
+                    winnerId = match.winnerTeamId
+                  } else {
+                    // Fallback to games score
+                    const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+                    const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+                    winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                  }
                   
                   return {
                     id: match.id,
@@ -1189,15 +1304,33 @@ export const standingsRouter = createTRPCRouter({
           const playoffMatchData = playoffMatches.length > 0
             ? playoffMatches
                 .filter(match => match.teamAId && match.teamBId) // Only include matches with both teams
-                .map(match => ({
-                  id: match.id,
-                  roundIndex: match.roundIndex || 0,
-                  teamAId: match.teamAId!,
-                  teamBId: match.teamBId!,
-                  winnerId: match.winnerTeamId || undefined,
-                  games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
-                  note: match.note || undefined, // Include note to filter out third place matches
-                }))
+                .map(match => {
+                  // For MLP matches, check tiebreaker first
+                  let winnerId: string | undefined = undefined
+                  
+                  if (isMLP && match.tiebreaker) {
+                    // Use tiebreaker winner
+                    winnerId = match.tiebreaker.winnerTeamId || undefined
+                  } else if (match.winnerTeamId) {
+                    // Use match.winnerTeamId if set
+                    winnerId = match.winnerTeamId
+                  } else {
+                    // Fallback to games score (for non-MLP or matches without tiebreaker)
+                    const totalScoreA = (match.games || []).reduce((sum, game) => sum + (game.scoreA || 0), 0)
+                    const totalScoreB = (match.games || []).reduce((sum, game) => sum + (game.scoreB || 0), 0)
+                    winnerId = totalScoreA > totalScoreB ? match.teamAId : (totalScoreB > totalScoreA ? match.teamBId : undefined)
+                  }
+                  
+                  return {
+                    id: match.id,
+                    roundIndex: match.roundIndex || 0,
+                    teamAId: match.teamAId!,
+                    teamBId: match.teamBId!,
+                    winnerId,
+                    games: (match.games || []).map(g => ({ scoreA: g.scoreA || 0, scoreB: g.scoreB || 0 })),
+                    note: match.note || undefined, // Include note to filter out third place matches
+                  }
+                })
             : undefined
           
           // Build bracket based on tournament format
@@ -1675,10 +1808,13 @@ export const standingsRouter = createTRPCRouter({
           teamA: true,
           teamB: true,
           games: true,
+          tiebreaker: true,
         },
       })
 
       // Process RR matches for standings
+      const isMLP = division.tournament?.format === 'MLP'
+      
       rrMatches.forEach(match => {
         const teamAStats = teamStats.get(match.teamAId)
         const teamBStats = teamStats.get(match.teamBId)
@@ -1693,10 +1829,29 @@ export const standingsRouter = createTRPCRouter({
         teamBStats.pointsFor += totalScoreB
         teamBStats.pointsAgainst += totalScoreA
 
-        if (totalScoreA > totalScoreB) {
+        // Determine winner - for MLP matches, use tiebreaker if exists
+        let winnerTeamId: string | null = null
+        
+        if (isMLP && match.tiebreaker) {
+          // MLP match with tiebreaker - use tiebreaker winner
+          winnerTeamId = match.tiebreaker.winnerTeamId
+        } else if (match.winnerTeamId) {
+          // Use match winnerTeamId if set
+          winnerTeamId = match.winnerTeamId
+        } else {
+          // Fallback to games score
+          if (totalScoreA > totalScoreB) {
+            winnerTeamId = match.teamAId
+          } else if (totalScoreB > totalScoreA) {
+            winnerTeamId = match.teamBId
+          }
+        }
+
+        // Update wins/losses based on winner
+        if (winnerTeamId === match.teamAId) {
           teamAStats.wins++
           teamBStats.losses++
-        } else {
+        } else if (winnerTeamId === match.teamBId) {
           teamBStats.wins++
           teamAStats.losses++
         }
