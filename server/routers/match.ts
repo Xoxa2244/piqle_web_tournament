@@ -213,9 +213,6 @@ export const matchRouter = createTRPCRouter({
           tournament: {
             select: { id: true, format: true },
           },
-          pools: {
-            orderBy: { order: 'asc' }
-          },
         },
       })
 
