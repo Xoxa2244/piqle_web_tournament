@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { createMLPGames, calculateMLPMatchWinner } from '../utils/mlp'
 
@@ -811,6 +812,8 @@ export const matchRouter = createTRPCRouter({
         : match.teamB.id
 
       // Save or update tiebreaker
+      const sequenceValue = input.sequence ? input.sequence as Prisma.InputJsonValue : Prisma.JsonNull
+      
       const tiebreaker = await ctx.prisma.tiebreaker.upsert({
         where: { matchId: input.matchId },
         create: {
@@ -818,13 +821,13 @@ export const matchRouter = createTRPCRouter({
           teamAScore: input.teamAScore,
           teamBScore: input.teamBScore,
           winnerTeamId,
-          sequence: input.sequence || null,
+          sequence: sequenceValue,
         },
         update: {
           teamAScore: input.teamAScore,
           teamBScore: input.teamBScore,
           winnerTeamId,
-          sequence: input.sequence || null,
+          sequence: sequenceValue,
         },
       })
 
