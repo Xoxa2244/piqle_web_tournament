@@ -2,7 +2,7 @@
 
 -- Payment status enum
 DO $$ BEGIN
-    CREATE TYPE "PaymentIntentStatus" AS ENUM ('PENDING', 'SUCCEEDED', 'FAILED', 'CANCELED');
+    CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'REQUIRES_ACTION', 'SUCCEEDED', 'FAILED', 'REFUNDED');
 EXCEPTION
     WHEN duplicate_object THEN NULL;
 END $$;
@@ -37,15 +37,15 @@ CREATE TABLE IF NOT EXISTS payments (
     "divisionId" TEXT REFERENCES divisions(id) ON DELETE SET NULL,
     "teamId" TEXT REFERENCES teams(id) ON DELETE SET NULL,
     "playerId" TEXT REFERENCES players(id) ON DELETE SET NULL,
-    amount NUMERIC(10, 2) NOT NULL,
+    amount INTEGER NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'usd',
-    status "PaymentIntentStatus" NOT NULL DEFAULT 'PENDING',
-    "stripePaymentIntentId" TEXT,
-    "stripeCheckoutSessionId" TEXT,
-    "applicationFeeAmount" NUMERIC(10, 2),
-    "payoutAmount" NUMERIC(10, 2),
-    "platformRevenue" NUMERIC(10, 2),
-    "createdByUserId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "stripePaymentIntentId" TEXT UNIQUE,
+    "stripeCheckoutSessionId" TEXT UNIQUE,
+    "applicationFeeAmount" INTEGER NOT NULL DEFAULT 0,
+    "payoutAmount" INTEGER NOT NULL DEFAULT 0,
+    "platformRevenue" INTEGER NOT NULL DEFAULT 0,
+    "createdByUserId" TEXT REFERENCES users(id) ON DELETE SET NULL,
     metadata JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW()
