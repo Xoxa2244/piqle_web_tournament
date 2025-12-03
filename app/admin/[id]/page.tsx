@@ -430,7 +430,7 @@ export default function TournamentDetailPage() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-slate-600">
-                      Статус аккаунта Stripe
+                      Stripe Account Status
                     </div>
                     <Badge variant={paymentSettings?.paymentSetting?.paymentsEnabled ? 'default' : 'secondary'}>
                       {paymentSettings?.paymentSetting?.stripeAccountStatus || 'PENDING'}
@@ -438,7 +438,7 @@ export default function TournamentDetailPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-slate-600">
-                      Приём платежей
+                      Payment Collection
                     </div>
                     <Badge variant={paymentSettings?.paymentSetting?.paymentsEnabled ? 'default' : 'secondary'}>
                       {paymentSettings?.paymentSetting?.paymentsEnabled ? 'Enabled' : 'Disabled'}
@@ -448,18 +448,18 @@ export default function TournamentDetailPage() {
                     <DollarSign className="w-5 h-5 text-green-600 mt-0.5" />
                     <div className="text-sm text-green-700">
                       {paymentSettings?.entryFee
-                        ? `Стоимость участия: $${paymentSettings.entryFee.toString()}`
-                        : 'Стоимость участия не указана'}
+                        ? `Entry Fee: $${paymentSettings.entryFee.toString()}`
+                        : 'Entry fee not specified'}
                     </div>
                   </div>
                   <Button
                     onClick={() => initStripeAccount.mutate({ tournamentId })}
                     disabled={initStripeAccount.isPending}
                   >
-                    {initStripeAccount.isPending ? 'Redirecting…' : 'Подключить / обновить Stripe'}
+                    {initStripeAccount.isPending ? 'Redirecting…' : 'Connect / Update Stripe'}
                   </Button>
                   <p className="text-xs text-slate-500">
-                    После завершения онбординга Stripe автоматически включит приём платежей. Вы всегда сможете повторно открыть онбординг, если нужно обновить данные.
+                    After completing Stripe onboarding, payment collection will be automatically enabled. You can always reopen onboarding to update your information.
                   </p>
                 </CardContent>
               </Card>

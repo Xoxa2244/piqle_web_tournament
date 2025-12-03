@@ -3,7 +3,7 @@ import Stripe from 'stripe'
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY
 
 if (!stripeSecretKey) {
-  console.warn('[Stripe] STRIPE_SECRET_KEY не задан, платежи будут недоступны.')
+  console.warn('[Stripe] STRIPE_SECRET_KEY is not set, payments will be unavailable.')
 }
 
 export const stripe = stripeSecretKey

@@ -42,7 +42,7 @@ export default function NewTournamentPage() {
     }
 
     if (formData.isPaid && !formData.entryFee) {
-      alert('Введите стоимость участия для платного турнира')
+      alert('Please enter entry fee for paid tournament')
       return
     }
 
@@ -176,7 +176,7 @@ export default function NewTournamentPage() {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <label htmlFor="isPaid" className="ml-2 block text-sm text-gray-700">
-                  Платный турнир (включает оплату через Stripe)
+                  Paid Tournament (enables Stripe payment collection)
                 </label>
               </div>
 
@@ -197,7 +197,7 @@ export default function NewTournamentPage() {
               />
               <div>
                 <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-2">
-                  Валюта
+                  Currency
                 </label>
                 <select
                   id="currency"
@@ -210,7 +210,7 @@ export default function NewTournamentPage() {
                   <option value="usd">USD</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Поддержка других валют появится позже; сейчас используется USD.
+                  Support for other currencies coming soon; currently using USD.
                 </p>
               </div>
             </div>

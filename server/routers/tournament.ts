@@ -39,7 +39,7 @@ export const tournamentRouter = createTRPCRouter({
       if (input.isPaid && (input.entryFee === undefined || input.entryFee === null)) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Для платного турнира необходимо указать стоимость участия',
+          message: 'Entry fee is required for paid tournaments',
         })
       }
 

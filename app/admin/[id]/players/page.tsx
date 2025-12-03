@@ -225,12 +225,12 @@ export default function PlayersPage() {
       <div className="container mx-auto p-6">
         {paymentStatus === 'success' && (
           <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            Оплата инициализирована. Статус игрока обновится после подтверждения Stripe.
+            Payment initiated. Player status will update after Stripe confirmation.
           </div>
         )}
         {paymentStatus === 'cancel' && (
           <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
-            Оплата была отменена или не завершена. Попробуйте снова.
+            Payment was cancelled or not completed. Please try again.
           </div>
         )}
         {/* Header */}

@@ -41,7 +41,7 @@ export const paymentRouter = createTRPCRouter({
       if (!stripe) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Stripe не настроен на сервере',
+          message: 'Stripe is not configured on server',
         })
       }
 
@@ -116,7 +116,7 @@ export const paymentRouter = createTRPCRouter({
       if (!stripe) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Stripe не настроен на сервере',
+          message: 'Stripe is not configured on server',
         })
       }
 
@@ -134,14 +134,14 @@ export const paymentRouter = createTRPCRouter({
       if (!tournament.isPaid || !tournament.entryFee) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Турнир не отмечен как платный',
+          message: 'Tournament is not marked as paid',
         })
       }
 
       if (!tournament.paymentSetting?.stripeAccountId) {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
-          message: 'Stripe-аккаунт турнира не настроен',
+          message: 'Tournament Stripe account is not configured',
         })
       }
 
