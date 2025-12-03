@@ -82,6 +82,7 @@ model Tournament {
   entryFee                Decimal?                  @db.Decimal(10, 2)
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
+  format                  TournamentFormat          @default(SINGLE_ELIMINATION)
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -301,6 +302,7 @@ model Match {
   updatedAt    DateTime         @updatedAt
   note         String?          @db.VarChar(255)
   games        Game[]
+  tiebreaker   Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
@@ -317,12 +319,27 @@ model Game {
   scoreA    Int         @default(0)
   scoreB    Int         @default(0)
   winner    GameWinner?
+  gameType  GameType? // For MLP: WOMEN, MEN, MIXED_1, MIXED_2
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   match     Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, index])
   @@map("games")
+}
+
+model Tiebreaker {
+  id           String   @id @default(uuid())
+  matchId      String   @unique
+  teamAScore   Int      @default(0)
+  teamBScore   Int      @default(0)
+  winnerTeamId String?
+  sequence     Json? // Array of { order, teamAPlayerId, teamBPlayerId } - optional
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("tiebreakers")
 }
 
 model Standing {
@@ -533,4 +550,16 @@ enum DivisionStage {
 enum RatingType {
   LIKE
   DISLIKE
+}
+
+enum TournamentFormat {
+  SINGLE_ELIMINATION
+  MLP
+}
+
+enum GameType {
+  WOMEN
+  MEN
+  MIXED_1
+  MIXED_2
 }
