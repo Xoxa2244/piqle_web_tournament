@@ -31,6 +31,7 @@ interface Player {
   email: string | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
+  gender: 'M' | 'F' | 'X' | null
   isPaid: boolean | null
   isWaitlist: boolean | null
   teamPlayers: Array<{
