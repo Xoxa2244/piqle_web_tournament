@@ -450,14 +450,15 @@ export const divisionStageRouter = createTRPCRouter({
       })
 
       // Use the same completion logic as in transitionToNextStage
-      const isMLP = division.tournament?.format === 'MLP'
+      // isMLP is already defined above (line 379), use division.tournament format if match.division is not available
+      const divisionIsMLP = division.tournament?.format === 'MLP'
       
       const completedMatches = currentStageMatches.filter(m => {
         if (!m.games || m.games.length === 0) return false
         
         // For MLP matches, check if all 4 games are completed
         const matchGamesCount = m.gamesCount || m.games.length
-        const isMLPMatch = isMLP && matchGamesCount === 4
+        const isMLPMatch = divisionIsMLP && matchGamesCount === 4
         
         if (isMLPMatch) {
           // MLP: match is completed if:
