@@ -627,14 +627,33 @@ export const matchRouter = createTRPCRouter({
 
       // For MLP matches, check if all 4 games are completed and determine winner
       if (isMLP && match.games) {
-        // Update game winner first
-        const updatedGameWinner: 'A' | 'B' | null = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
-        
-        const allGames: Array<{ scoreA: number; scoreB: number; winner: 'A' | 'B' | null }> = match.games.map(g => 
-          g.id === game.id 
-            ? { scoreA: input.scoreA, scoreB: input.scoreB, winner: updatedGameWinner }
-            : { scoreA: g.scoreA, scoreB: g.scoreB, winner: g.winner as 'A' | 'B' | null }
-        )
+        // Reload match with updated games to get fresh data
+        const updatedMatch = await ctx.prisma.match.findUnique({
+          where: { id: input.matchId },
+          include: {
+            games: {
+              orderBy: { index: 'asc' },
+            },
+            teamA: {
+              select: { id: true },
+            },
+            teamB: {
+              select: { id: true },
+            },
+            tiebreaker: true,
+          },
+        })
+
+        if (!updatedMatch || !updatedMatch.games) {
+          throw new Error('Match not found after game update')
+        }
+
+        // Calculate winner from all games with updated scores
+        const allGames: Array<{ scoreA: number; scoreB: number; winner: 'A' | 'B' | null }> = updatedMatch.games.map(g => ({
+          scoreA: g.scoreA,
+          scoreB: g.scoreB,
+          winner: g.winner as 'A' | 'B' | null,
+        }))
 
         const { winnerTeamId, needsTiebreaker } = calculateMLPMatchWinner(
           allGames,
