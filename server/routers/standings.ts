@@ -1640,12 +1640,15 @@ export const standingsRouter = createTRPCRouter({
               },
             },
           },
+          tournament: { select: { id: true, format: true } },
         },
       })
 
       if (!division) {
         throw new Error('Division not found')
       }
+
+      const isMLP = division.tournament?.format === 'MLP'
 
       const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
       const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
