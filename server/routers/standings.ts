@@ -763,6 +763,8 @@ export const standingsRouter = createTRPCRouter({
         throw new Error('Division not found')
       }
 
+      const isMLP = division.tournament?.format === 'MLP'
+
       // Find the current round (highest round with matches)
       const currentRound = Math.max(...division.matches.map(m => m.roundIndex), -1)
       
@@ -781,7 +783,6 @@ export const standingsRouter = createTRPCRouter({
       // Get winners from current round
       const winners = currentRoundMatches.map(match => {
         // For MLP matches, check tiebreaker first
-        const isMLP = division.tournament?.format === 'MLP'
         if (isMLP && match.tiebreaker) {
           // Use tiebreaker winner
           if (match.tiebreaker.winnerTeamId === match.teamAId) {
