@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Award } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -22,6 +22,14 @@ export default function ProfilePage() {
       refetch()
       setIsEditing(false)
       setIsUploadingAvatar(false)
+    },
+  })
+  const becomeTD = trpc.user.becomeTournamentDirector.useMutation({
+    onSuccess: () => {
+      refetch()
+    },
+    onError: (error) => {
+      alert(error.message)
     },
   })
 
@@ -283,6 +291,55 @@ export default function ProfilePage() {
                 <div className="mt-1 text-lg text-gray-900">
                   {profile.name || 'Not specified'}
                 </div>
+              )}
+            </div>
+
+            {/* Email */}
+            <div>
+              <Label>Email</Label>
+              <div className="mt-1 text-lg text-gray-900">
+                {profile.email}
+              </div>
+            </div>
+
+            {/* Role & Become TD */}
+            <div className="border-t border-gray-200 pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Role</Label>
+                  <div className="mt-1 text-lg font-semibold text-gray-900">
+                    {profile.role === 'TD' ? 'Tournament Director' : 
+                     profile.role === 'ASSISTANT' ? 'Assistant' : 
+                     'Player'}
+                  </div>
+                </div>
+                
+                {profile.role === 'PLAYER' && !isEditing && (
+                  <Button
+                    onClick={() => {
+                      if (confirm('Do you want to become a Tournament Director? This will allow you to create and manage tournaments.')) {
+                        becomeTD.mutate()
+                      }
+                    }}
+                    disabled={becomeTD.isPending}
+                    className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg"
+                  >
+                    <Award className="h-4 w-4 mr-2" />
+                    <span>Become a Tournament Director</span>
+                  </Button>
+                )}
+              </div>
+
+              {profile.role === 'PLAYER' && (
+                <p className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                  💡 <strong>Want to create tournaments?</strong> Upgrade to Tournament Director to create and manage your own tournaments.
+                </p>
+              )}
+
+              {profile.role === 'TD' && (
+                <p className="mt-3 text-sm text-green-700 bg-green-50 p-3 rounded-lg">
+                  ✅ You can create and manage tournaments. <Link href="/admin" className="underline font-medium">Go to TD Console</Link>
+                </p>
               )}
             </div>
 

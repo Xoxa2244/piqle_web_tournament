@@ -89,5 +89,36 @@ export const userRouter = createTRPCRouter({
 
       return updatedUser
     }),
+
+  becomeTournamentDirector: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      // Check if user is already a TD or ASSISTANT
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: { role: true },
+      })
+
+      if (user?.role === 'TD' || user?.role === 'ASSISTANT') {
+        throw new Error('You are already a Tournament Director or Assistant')
+      }
+
+      // Upgrade user to TD
+      const updatedUser = await ctx.prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: { role: 'TD' },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          image: true,
+          gender: true,
+          city: true,
+          duprLink: true,
+          role: true,
+        },
+      })
+
+      return updatedUser
+    }),
 })
 
