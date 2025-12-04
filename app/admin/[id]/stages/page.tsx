@@ -412,10 +412,11 @@ export default function DivisionStageManagement() {
 
   const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>) => {
     const game = games[0] // Take first game
+    if (!game) return // Safety check
     updateMatchResultMutation.mutate({
       matchId,
-      scoreA: game.scoreA,
-      scoreB: game.scoreB
+      scoreA: game.scoreA ?? null,
+      scoreB: game.scoreB ?? null
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
@@ -449,9 +450,9 @@ export default function DivisionStageManagement() {
       } else if (game.winner === 'B') {
         teamBWins++
       } else {
-        if (game.scoreA > game.scoreB) {
+        if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
           teamAWins++
-        } else if (game.scoreB > game.scoreA) {
+        } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
           teamBWins++
         }
       }
@@ -1697,8 +1698,8 @@ export default function DivisionStageManagement() {
               poolName={selectedMatch.teamA.pool?.name}
               existingGames={selectedMatch.games?.map((g: any) => ({
                 index: g.index,
-                scoreA: g.scoreA || 0,
-                scoreB: g.scoreB || 0,
+                scoreA: g.scoreA ?? null,
+                scoreB: g.scoreB ?? null,
                 gameType: g.gameType,
               })) || []}
               onSuccess={() => {
