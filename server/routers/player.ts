@@ -61,12 +61,15 @@ export const playerRouter = createTRPCRouter({
         })
       }
 
+      // Determine if tournament requires payment
+      const requiresPayment = tournament.entryFee && parseFloat(tournament.entryFee.toString()) > 0
+
       // Create player
       const player = await ctx.prisma.player.create({
         data: {
           ...playerData,
           tournamentId,
-          isPaid: !tournament.isPaid, // Auto-mark as paid if tournament is free
+          isPaid: !requiresPayment, // Auto-mark as paid only if tournament is free
           isWaitlist: false,
         },
       })
@@ -86,7 +89,7 @@ export const playerRouter = createTRPCRouter({
       return { 
         player, 
         tournament: {
-          isPaid: tournament.isPaid,
+          requiresPayment,
           entryFee: tournament.entryFee,
         }
       }

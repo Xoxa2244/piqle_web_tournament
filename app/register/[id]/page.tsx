@@ -35,11 +35,13 @@ export default function TournamentRegisterPage() {
 
   const registerMutation = trpc.player.register.useMutation({
     onSuccess: (data) => {
-      // If tournament is paid, redirect to payment
-      if (data.tournament.isPaid) {
-        router.push(`/admin/${tournamentId}/players?success=registered&paymentRequired=true`)
+      // If tournament requires payment, show message and redirect to scoreboard with payment info
+      if (data.tournament.requiresPayment) {
+        alert(`Registration successful! Entry fee of $${data.tournament.entryFee} is required. The tournament director will contact you for payment.`)
+        router.push(`/scoreboard/${tournamentId}?success=registered&paymentPending=true`)
       } else {
         // Free tournament - registration complete
+        alert('Registration successful! You are now registered for this tournament.')
         router.push(`/scoreboard/${tournamentId}?success=registered`)
       }
     },
