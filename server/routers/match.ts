@@ -723,6 +723,135 @@ export const matchRouter = createTRPCRouter({
         },
       })
 
+      // Check if this completes the current stage (similar to updateMatchResult)
+      if (match.divisionId) {
+        const division = await ctx.prisma.division.findUnique({
+          where: { id: match.divisionId },
+          include: {
+            matches: {
+              include: { 
+                games: true,
+                tiebreaker: true,
+              },
+            },
+            tournament: { select: { format: true } },
+          },
+        })
+
+        if (division) {
+          const currentStageMatches = division.matches.filter(m => {
+            if (!division.stage) return false
+            if (division.stage.startsWith('RR_')) return m.stage === 'ROUND_ROBIN'
+            if (division.stage.startsWith('PLAY_IN_')) return m.stage === 'PLAY_IN'
+            if (division.stage.startsWith('PO_') || division.stage.startsWith('FINAL_')) {
+              return m.stage === 'ELIMINATION'
+            }
+            return false
+          })
+
+          // Use the same completion logic as in transitionToNextStage
+          const divisionIsMLP = division.tournament?.format === 'MLP'
+          
+          const completedMatches = currentStageMatches.filter(m => {
+            if (!m.games || m.games.length === 0) return false
+            
+            // For MLP matches, check if all 4 games are completed
+            const matchGamesCount = m.gamesCount || m.games.length
+            const isMLPMatch = divisionIsMLP && matchGamesCount === 4
+            
+            if (isMLPMatch) {
+              // MLP: match is completed if:
+              // 1. There is a winnerTeamId (either directly or through tiebreaker), OR
+              // 2. All 4 games are completed and score is NOT 2-2 (i.e., 3-1 or 4-0)
+              
+              // Check if winner is determined (either directly or through tiebreaker)
+              const hasWinner = m.winnerTeamId !== null && m.winnerTeamId !== undefined
+              const hasTiebreakerWinner = m.tiebreaker && m.tiebreaker.winnerTeamId !== null && m.tiebreaker.winnerTeamId !== undefined
+              
+              if (hasWinner || hasTiebreakerWinner) {
+                // Match has a winner - it's completed
+                return true
+              }
+              
+              // If no winner yet, check if all 4 games are completed and count wins
+              if (m.games.length !== 4) return false
+              const allGamesCompleted = m.games.every(g => 
+                g.scoreA !== null && 
+                g.scoreA !== undefined && 
+                g.scoreB !== null && 
+                g.scoreB !== undefined &&
+                g.scoreA >= 0 &&
+                g.scoreB >= 0 &&
+                g.scoreA !== g.scoreB  // Games should not be tied
+              )
+              
+              if (!allGamesCompleted) {
+                // Not all games completed yet
+                return false
+              }
+              
+              // Count games won by each team
+              let teamAWins = 0
+              let teamBWins = 0
+              for (const game of m.games) {
+                if (game.winner === 'A') {
+                  teamAWins++
+                } else if (game.winner === 'B') {
+                  teamBWins++
+                } else {
+                  if (game.scoreA !== null && game.scoreB !== null) {
+                    if (game.scoreA > game.scoreB) {
+                      teamAWins++
+                    } else if (game.scoreB > game.scoreA) {
+                      teamBWins++
+                    }
+                  }
+                }
+              }
+              
+              // If score is 3-1 or 4-0, match is completed (winner can be determined from games)
+              if (teamAWins >= 3 || teamBWins >= 3) {
+                return true
+              }
+              
+              // If score is 2-2, match is NOT completed until tiebreaker is played
+              if (teamAWins === 2 && teamBWins === 2) {
+                return false
+              }
+              
+              // Invalid state (should not happen)
+              return false
+            } else {
+              // Non-MLP: at least one game with non-zero score
+              return m.games.some(g => 
+                (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || 
+                (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)
+              )
+            }
+          })
+
+          // If all matches in current stage are complete, trigger transition
+          if (completedMatches.length === currentStageMatches.length && currentStageMatches.length > 0) {
+            // Update stage to indicate completion
+            let completedStage = division.stage
+            if (completedStage) {
+              if (completedStage.endsWith('_SCHEDULED')) {
+                completedStage = completedStage.replace('_SCHEDULED', '_COMPLETE') as any
+              } else if (completedStage.endsWith('_IN_PROGRESS')) {
+                completedStage = completedStage.replace('_IN_PROGRESS', '_COMPLETE') as any
+              }
+            }
+
+            if (completedStage && completedStage !== division.stage) {
+              await ctx.prisma.division.update({
+                where: { id: match.divisionId },
+                data: { stage: completedStage as any },
+              })
+            }
+          }
+        }
+      }
+
       return game
     }),
 
@@ -906,6 +1035,135 @@ export const matchRouter = createTRPCRouter({
           },
         },
       })
+
+      // Check if this completes the current stage (similar to updateMatchResult and updateGameScore)
+      if (match.divisionId) {
+        const division = await ctx.prisma.division.findUnique({
+          where: { id: match.divisionId },
+          include: {
+            matches: {
+              include: { 
+                games: true,
+                tiebreaker: true,
+              },
+            },
+            tournament: { select: { format: true } },
+          },
+        })
+
+        if (division) {
+          const currentStageMatches = division.matches.filter(m => {
+            if (!division.stage) return false
+            if (division.stage.startsWith('RR_')) return m.stage === 'ROUND_ROBIN'
+            if (division.stage.startsWith('PLAY_IN_')) return m.stage === 'PLAY_IN'
+            if (division.stage.startsWith('PO_') || division.stage.startsWith('FINAL_')) {
+              return m.stage === 'ELIMINATION'
+            }
+            return false
+          })
+
+          // Use the same completion logic as in transitionToNextStage
+          const divisionIsMLP = division.tournament?.format === 'MLP'
+          
+          const completedMatches = currentStageMatches.filter(m => {
+            if (!m.games || m.games.length === 0) return false
+            
+            // For MLP matches, check if all 4 games are completed
+            const matchGamesCount = m.gamesCount || m.games.length
+            const isMLPMatch = divisionIsMLP && matchGamesCount === 4
+            
+            if (isMLPMatch) {
+              // MLP: match is completed if:
+              // 1. There is a winnerTeamId (either directly or through tiebreaker), OR
+              // 2. All 4 games are completed and score is NOT 2-2 (i.e., 3-1 or 4-0)
+              
+              // Check if winner is determined (either directly or through tiebreaker)
+              const hasWinner = m.winnerTeamId !== null && m.winnerTeamId !== undefined
+              const hasTiebreakerWinner = m.tiebreaker && m.tiebreaker.winnerTeamId !== null && m.tiebreaker.winnerTeamId !== undefined
+              
+              if (hasWinner || hasTiebreakerWinner) {
+                // Match has a winner - it's completed
+                return true
+              }
+              
+              // If no winner yet, check if all 4 games are completed and count wins
+              if (m.games.length !== 4) return false
+              const allGamesCompleted = m.games.every(g => 
+                g.scoreA !== null && 
+                g.scoreA !== undefined && 
+                g.scoreB !== null && 
+                g.scoreB !== undefined &&
+                g.scoreA >= 0 &&
+                g.scoreB >= 0 &&
+                g.scoreA !== g.scoreB  // Games should not be tied
+              )
+              
+              if (!allGamesCompleted) {
+                // Not all games completed yet
+                return false
+              }
+              
+              // Count games won by each team
+              let teamAWins = 0
+              let teamBWins = 0
+              for (const game of m.games) {
+                if (game.winner === 'A') {
+                  teamAWins++
+                } else if (game.winner === 'B') {
+                  teamBWins++
+                } else {
+                  if (game.scoreA !== null && game.scoreB !== null) {
+                    if (game.scoreA > game.scoreB) {
+                      teamAWins++
+                    } else if (game.scoreB > game.scoreA) {
+                      teamBWins++
+                    }
+                  }
+                }
+              }
+              
+              // If score is 3-1 or 4-0, match is completed (winner can be determined from games)
+              if (teamAWins >= 3 || teamBWins >= 3) {
+                return true
+              }
+              
+              // If score is 2-2, match is NOT completed until tiebreaker is played
+              if (teamAWins === 2 && teamBWins === 2) {
+                return false
+              }
+              
+              // Invalid state (should not happen)
+              return false
+            } else {
+              // Non-MLP: at least one game with non-zero score
+              return m.games.some(g => 
+                (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || 
+                (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)
+              )
+            }
+          })
+
+          // If all matches in current stage are complete, trigger transition
+          if (completedMatches.length === currentStageMatches.length && currentStageMatches.length > 0) {
+            // Update stage to indicate completion
+            let completedStage = division.stage
+            if (completedStage) {
+              if (completedStage.endsWith('_SCHEDULED')) {
+                completedStage = completedStage.replace('_SCHEDULED', '_COMPLETE') as any
+              } else if (completedStage.endsWith('_IN_PROGRESS')) {
+                completedStage = completedStage.replace('_IN_PROGRESS', '_COMPLETE') as any
+              }
+            }
+
+            if (completedStage && completedStage !== division.stage) {
+              await ctx.prisma.division.update({
+                where: { id: match.divisionId },
+                data: { stage: completedStage as any },
+              })
+            }
+          }
+        }
+      }
 
       return tiebreaker
     }),
