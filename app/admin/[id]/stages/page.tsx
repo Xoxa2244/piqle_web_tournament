@@ -1025,23 +1025,64 @@ export default function DivisionStageManagement() {
                                                 )}
                                               </div>
                                               
-                                              {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
-                                                <div className="text-center space-y-2">
-                                                  <div className="text-lg font-bold">
-                                                    {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                                              {(() => {
+                                                const isMLP = tournament?.format === 'MLP'
+                                                const matchGamesCount = match.gamesCount || (match.games?.length || 0)
+                                                const isMLPMatch = isMLP && matchGamesCount === 4
+                                                
+                                                // For MLP matches, show games won count
+                                                if (isMLPMatch && match.games && match.games.length === 4) {
+                                                  const { teamAWins, teamBWins } = countMLPGamesWon(match)
+                                                  const hasAnyScore = match.games.some((g: any) => 
+                                                    (g.scoreA !== null && g.scoreA !== undefined) || (g.scoreB !== null && g.scoreB !== undefined)
+                                                  )
+                                                  
+                                                  if (hasAnyScore) {
+                                                    return (
+                                                      <div className="text-center space-y-2">
+                                                        <div className="text-lg font-bold">
+                                                          Games: {teamAWins} - {teamBWins}
+                                                        </div>
+                                                        {match.tiebreaker && (
+                                                          <div className="text-xs text-orange-600 font-medium">
+                                                            Tiebreaker: {match.tiebreaker.teamAScore} - {match.tiebreaker.teamBScore}
+                                                          </div>
+                                                        )}
+                                                        {match.winnerTeamId && (
+                                                          <div className="text-sm text-green-600 font-medium">
+                                                            Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                          </div>
+                                                        )}
+                                                        {renderScoreActionButton(match)}
+                                                        {renderLockedNote(match)}
+                                                      </div>
+                                                    )
+                                                  }
+                                                }
+                                                
+                                                // For non-MLP matches, show first game score
+                                                if (match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))) {
+                                                  return (
+                                                    <div className="text-center space-y-2">
+                                                      <div className="text-lg font-bold">
+                                                        {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                                                      </div>
+                                                      <div className="text-sm text-green-600 font-medium">
+                                                        Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                      </div>
+                                                      {renderScoreActionButton(match)}
+                                                      {renderLockedNote(match)}
+                                                    </div>
+                                                  )
+                                                }
+                                                
+                                                return (
+                                                  <div className="text-center space-y-2">
+                                                    {renderScoreActionButton(match)}
+                                                    {renderLockedNote(match)}
                                                   </div>
-                                                  <div className="text-sm text-green-600 font-medium">
-                                                    Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
-                                                  </div>
-                                                  {renderScoreActionButton(match)}
-                                                  {renderLockedNote(match)}
-                                                </div>
-                                              ) : (
-                                                <div className="text-center space-y-2">
-                                                  {renderScoreActionButton(match)}
-                                                  {renderLockedNote(match)}
-                                                </div>
-                                              )}
+                                                )
+                                              })()}
                                             </div>
                                             )
                                           })}
