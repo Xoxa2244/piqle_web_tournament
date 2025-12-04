@@ -264,8 +264,8 @@ export default function DivisionStageManagement() {
     
     if (isMLPMatch) {
       // MLP: match is completed if:
-      // 1. All 4 games have non-null scores, OR
-      // 2. There is a winnerTeamId (which means match is resolved, either 3-1/4-0 or 2-2 with tiebreaker)
+      // 1. There is a winnerTeamId (either directly or through tiebreaker), OR
+      // 2. All 4 games are completed and score is NOT 2-2 (i.e., 3-1 or 4-0)
       
       // Check if winner is determined (either directly or through tiebreaker)
       const hasWinner = m.winnerTeamId !== null && m.winnerTeamId !== undefined
@@ -276,7 +276,7 @@ export default function DivisionStageManagement() {
         return true
       }
       
-      // If no winner yet, check if all 4 games are completed (non-null scores)
+      // If no winner yet, check if all 4 games are completed and count wins
       if (m.games.length !== 4) return false
       const allGamesCompleted = m.games.every(g => 
         g.scoreA !== null && 
@@ -284,11 +284,29 @@ export default function DivisionStageManagement() {
         g.scoreB !== null && 
         g.scoreB !== undefined &&
         g.scoreA >= 0 &&
-        g.scoreB >= 0
+        g.scoreB >= 0 &&
+        g.scoreA !== g.scoreB  // Games should not be tied
       )
       
-      // For MLP, if all games are completed but no winner, it means 2-2 and tiebreaker is needed
-      // In this case, match is NOT completed until tiebreaker is played
+      if (!allGamesCompleted) {
+        // Not all games completed yet
+        return false
+      }
+      
+      // Count games won by each team
+      const { teamAWins, teamBWins } = countMLPGamesWon(m)
+      
+      // If score is 3-1 or 4-0, match is completed (winner can be determined from games)
+      if (teamAWins >= 3 || teamBWins >= 3) {
+        return true
+      }
+      
+      // If score is 2-2, match is NOT completed until tiebreaker is played
+      if (teamAWins === 2 && teamBWins === 2) {
+        return false
+      }
+      
+      // Invalid state (should not happen)
       return false
     } else {
       // Non-MLP: at least one game with non-zero score
