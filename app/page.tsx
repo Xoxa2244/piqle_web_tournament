@@ -11,12 +11,12 @@ import { Calendar, MapPin, Users, Trophy, Eye, DollarSign } from 'lucide-react'
 import Link from 'next/link'
 import PublicHeader from '@/components/PublicHeader'
 
-type FilterType = 'current' | 'past' | 'all'
+type FilterType = 'upcoming' | 'in_progress' | 'past' | 'all'
 
 export default function HomePage() {
   const { data: session } = useSession()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const [filter, setFilter] = useState<FilterType>('current')
+  const [filter, setFilter] = useState<FilterType>('upcoming')
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   const truncateText = (text: string | null, maxLines: number = 3) => {
@@ -26,17 +26,22 @@ export default function HomePage() {
     return lines.slice(0, maxLines).join('\n')
   }
 
-  // Helper function to check if tournament is past
-  const isTournamentPast = (endDate: Date): boolean => {
-    const endDateTime = new Date(endDate)
-    endDateTime.setHours(endDateTime.getHours() + 12)
-    
+  // Helper function to determine tournament status
+  const getTournamentStatus = (startDate: Date, endDate: Date): 'upcoming' | 'in_progress' | 'past' => {
     const now = new Date()
-    const nextDay = new Date(now)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(0, 0, 0, 0)
+    const start = new Date(startDate)
+    const end = new Date(endDate)
     
-    return endDateTime < nextDay
+    // Add 12 hours buffer to end date
+    end.setHours(end.getHours() + 12)
+    
+    if (now < start) {
+      return 'upcoming'
+    } else if (now >= start && now <= end) {
+      return 'in_progress'
+    } else {
+      return 'past'
+    }
   }
 
   // Filter tournaments based on selected filter
@@ -48,8 +53,8 @@ export default function HomePage() {
     }
     
     return tournaments.filter(tournament => {
-      const isPast = isTournamentPast(new Date(tournament.endDate))
-      return filter === 'current' ? !isPast : isPast
+      const status = getTournamentStatus(new Date(tournament.startDate), new Date(tournament.endDate))
+      return status === filter
     })
   }, [tournaments, filter])
 
@@ -90,34 +95,44 @@ export default function HomePage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex gap-2 py-4">
               <button
-                onClick={() => setFilter('current')}
+                onClick={() => setFilter('upcoming')}
                 className={`px-4 py-2 font-medium text-sm transition-colors rounded-lg ${
-                  filter === 'current'
+                  filter === 'upcoming'
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                Current Tournaments
+                Upcoming (Register)
+              </button>
+              <button
+                onClick={() => setFilter('in_progress')}
+                className={`px-4 py-2 font-medium text-sm transition-colors rounded-lg ${
+                  filter === 'in_progress'
+                    ? 'bg-green-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                In Progress
               </button>
               <button
                 onClick={() => setFilter('past')}
                 className={`px-4 py-2 font-medium text-sm transition-colors rounded-lg ${
                   filter === 'past'
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-gray-600 text-white'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                Past Tournaments
+                Past
               </button>
               <button
                 onClick={() => setFilter('all')}
                 className={`px-4 py-2 font-medium text-sm transition-colors rounded-lg ${
                   filter === 'all'
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-purple-600 text-white'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                All Tournaments
+                All
               </button>
             </div>
           </div>
@@ -130,7 +145,24 @@ export default function HomePage() {
               {filteredTournaments.map((tournament) => (
                 <Card key={tournament.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
-                    <CardTitle className="text-xl">{tournament.title}</CardTitle>
+                    <div className="flex items-start justify-between mb-2">
+                      <CardTitle className="text-xl flex-1">{tournament.title}</CardTitle>
+                      {(() => {
+                        const status = getTournamentStatus(new Date(tournament.startDate), new Date(tournament.endDate))
+                        return (
+                          <Badge 
+                            variant={status === 'upcoming' ? 'default' : status === 'in_progress' ? 'default' : 'secondary'}
+                            className={
+                              status === 'upcoming' ? 'bg-green-600' :
+                              status === 'in_progress' ? 'bg-blue-600' :
+                              'bg-gray-600'
+                            }
+                          >
+                            {status === 'upcoming' ? 'Open' : status === 'in_progress' ? 'Live' : 'Ended'}
+                          </Badge>
+                        )
+                      })()}
+                    </div>
                     {tournament.description && (
                       <div className="mt-2">
                         <div
@@ -196,23 +228,42 @@ export default function HomePage() {
 
                     {/* Action Buttons */}
                     <div className="pt-4 border-t border-gray-200 space-y-2">
-                      {!session ? (
-                        <Button 
-                          className="w-full bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => {
-                            // TODO: Implement registration flow
-                            alert('Registration flow will be implemented soon!')
-                          }}
-                        >
-                          Register & Join Tournament
-                        </Button>
-                      ) : (
-                        <Link href={`/scoreboard/${tournament.id}`}>
-                          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                            View Results & Register
-                          </Button>
-                        </Link>
-                      )}
+                      {(() => {
+                        const status = getTournamentStatus(new Date(tournament.startDate), new Date(tournament.endDate))
+                        
+                        if (status === 'upcoming') {
+                          // Upcoming tournaments - show registration button
+                          if (!session) {
+                            return (
+                              <Button 
+                                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => {
+                                  window.location.href = `/auth/signin?callbackUrl=/register/${tournament.id}`
+                                }}
+                              >
+                                Sign In to Register
+                              </Button>
+                            )
+                          } else {
+                            return (
+                              <Link href={`/register/${tournament.id}`}>
+                                <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                                  Register & Join
+                                </Button>
+                              </Link>
+                            )
+                          }
+                        } else {
+                          // In progress or past - show results only
+                          return (
+                            <Link href={`/scoreboard/${tournament.id}`}>
+                              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                                View Results
+                              </Button>
+                            </Link>
+                          )
+                        }
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -223,8 +274,10 @@ export default function HomePage() {
               <Trophy className="h-12 w-12 mx-auto text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Tournaments Available</h3>
               <p className="text-gray-600">
-                {filter === 'current' 
-                  ? 'There are no current tournaments. Check back later!'
+                {filter === 'upcoming' 
+                  ? 'No upcoming tournaments available for registration. Check back soon!'
+                  : filter === 'in_progress'
+                  ? 'No tournaments currently in progress.'
                   : filter === 'past'
                   ? 'No past tournaments found.'
                   : 'No tournaments available at this time.'}
