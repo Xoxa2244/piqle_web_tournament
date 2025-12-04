@@ -102,8 +102,8 @@ export default function BracketPyramid({
       return { status: 'scheduled', text: 'Awaiting score' }
     }
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     if (totalScoreA > totalScoreB || totalScoreB > totalScoreA) {
       return { status: 'completed', text: 'Completed' }
@@ -115,8 +115,8 @@ export default function BracketPyramid({
   const getWinner = (match: Match) => {
     if (!match.games || match.games.length === 0) return null
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     if (totalScoreA > totalScoreB) return match.teamA
     if (totalScoreB > totalScoreA) return match.teamB
@@ -126,8 +126,8 @@ export default function BracketPyramid({
   const getScores = (match: Match) => {
     if (!match.games || match.games.length === 0) return { scoreA: null, scoreB: null }
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     return { scoreA: totalScoreA, scoreB: totalScoreB }
   }
