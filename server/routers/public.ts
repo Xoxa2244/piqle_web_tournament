@@ -715,8 +715,8 @@ export const publicRouter = createTRPCRouter({
 
           if (allPlayInComplete) {
             playInMatches.forEach(match => {
-              const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-              const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+              const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+              const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
               if (totalScoreA > totalScoreB) {
                 playInWinners.push({ id: match.teamAId, name: match.teamA.name })
               } else {
