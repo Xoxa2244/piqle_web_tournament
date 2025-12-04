@@ -15,7 +15,7 @@ interface BracketMatch {
   winnerTeamId?: string
   winnerTeamName?: string
   matchId?: string
-  games?: Array<{ scoreA: number; scoreB: number }>
+  games?: Array<{ scoreA: number | null; scoreB: number | null }>
 }
 
 interface SimpleBracketProps {
@@ -276,8 +276,14 @@ export default function SimpleBracket({ matches, onMatchClick }: SimpleBracketPr
       return { scoreA: null, scoreB: null }
     }
     
-    const totalScoreA = match.games.reduce((sum, g) => sum + (g.scoreA || 0), 0)
-    const totalScoreB = match.games.reduce((sum, g) => sum + (g.scoreB || 0), 0)
+    const totalScoreA = match.games.reduce((sum, g) => {
+      if (!g) return sum
+      return sum + ((g.scoreA ?? 0) || 0)
+    }, 0)
+    const totalScoreB = match.games.reduce((sum, g) => {
+      if (!g) return sum
+      return sum + ((g.scoreB ?? 0) || 0)
+    }, 0)
     
     return {
       scoreA: totalScoreA > 0 ? totalScoreA : null,
