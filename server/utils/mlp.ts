@@ -85,40 +85,46 @@ export async function createMLPGames(
   }
 
   // Create 4 games with null scores (empty until score is entered)
+  // Use Prisma.JsonNull for explicit null handling
   const games = [
     {
       matchId,
       index: 0,
       gameType: 'WOMEN' as const,
-      scoreA: null,
-      scoreB: null,
+      scoreA: null as any,
+      scoreB: null as any,
     },
     {
       matchId,
       index: 1,
       gameType: 'MEN' as const,
-      scoreA: null,
-      scoreB: null,
+      scoreA: null as any,
+      scoreB: null as any,
     },
     {
       matchId,
       index: 2,
       gameType: 'MIXED_1' as const,
-      scoreA: null,
-      scoreB: null,
+      scoreA: null as any,
+      scoreB: null as any,
     },
     {
       matchId,
       index: 3,
       gameType: 'MIXED_2' as const,
-      scoreA: null,
-      scoreB: null,
+      scoreA: null as any,
+      scoreB: null as any,
     },
   ]
 
-  await prisma.game.createMany({
-    data: games,
-  })
+  // Use create instead of createMany to handle null values properly
+  await Promise.all(
+    games.map(game =>
+      prisma.game.create({
+        data: game,
+      })
+    )
+  )
 }
 
 /**
