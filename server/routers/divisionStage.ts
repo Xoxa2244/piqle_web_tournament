@@ -270,6 +270,12 @@ export const divisionStageRouter = createTRPCRouter({
         include: {
           division: true,
           games: true,
+          teamA: {
+            select: { id: true },
+          },
+          teamB: {
+            select: { id: true },
+          },
         },
       })
 
@@ -286,6 +292,9 @@ export const divisionStageRouter = createTRPCRouter({
         await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, match.divisionId)
       }
 
+      // Calculate winner from scores
+      const gameWinner: 'A' | 'B' | null = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
+
       // Create or update game
       if (match.games.length === 0) {
         await ctx.prisma.game.create({
@@ -294,7 +303,7 @@ export const divisionStageRouter = createTRPCRouter({
             index: 0,
             scoreA: input.scoreA,
             scoreB: input.scoreB,
-            winner: input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null,
+            winner: gameWinner,
           },
         })
       } else {
@@ -303,10 +312,19 @@ export const divisionStageRouter = createTRPCRouter({
           data: {
             scoreA: input.scoreA,
             scoreB: input.scoreB,
-            winner: input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null,
+            winner: gameWinner,
           },
         })
       }
+
+      // Update match winner based on game result
+      await ctx.prisma.match.update({
+        where: { id: input.matchId },
+        data: {
+          winnerTeamId: gameWinner === 'A' ? match.teamA.id : 
+                        gameWinner === 'B' ? match.teamB.id : null,
+        },
+      })
 
       // Check if this completes the current stage
       if (!match.divisionId) {
