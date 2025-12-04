@@ -303,6 +303,9 @@ export const standingsRouter = createTRPCRouter({
               },
             },
           },
+          pools: {
+            orderBy: { order: 'asc' },
+          },
           matches: {
             where: { stage: 'ROUND_ROBIN' },
             include: {
