@@ -808,8 +808,10 @@ export const standingsRouter = createTRPCRouter({
 
       // Create next round matches in database
       const createdMatches = await Promise.all(
-        nextRoundMatches.map(match =>
-          ctx.prisma.match.create({
+        nextRoundMatches.map(async match => {
+          const gamesCount = isMLP ? 4 : 1
+          
+          const createdMatch = await ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
               teamAId: match.teamAId,
@@ -817,7 +819,7 @@ export const standingsRouter = createTRPCRouter({
               roundIndex: match.roundIndex,
               stage: match.stage,
               bestOfMode: 'FIXED_GAMES',
-              gamesCount: 1,
+              gamesCount,
               targetPoints: 11,
               winBy: 2,
               locked: false,
@@ -825,7 +827,14 @@ export const standingsRouter = createTRPCRouter({
               ...(match.isThirdPlace && { note: 'Third Place Match' }),
             },
           })
-        )
+          
+          // For MLP matches, create 4 games
+          if (isMLP) {
+            await createMLPGames(ctx.prisma, createdMatch.id, createdMatch.teamAId, createdMatch.teamBId)
+          }
+          
+          return createdMatch
+        })
       )
 
       // If this is the final round, mark division as ready for completion
