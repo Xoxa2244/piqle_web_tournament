@@ -232,12 +232,26 @@ export default function DivisionStageManagement() {
 
   // Calculate statistics
   const division = divisionData
+  
+  // DEBUG: Check divisionData
+  console.log('DEBUG divisionData:', {
+    divisionData: divisionData,
+    divisionDataIsUndefined: divisionData === undefined,
+    divisionDataIsNull: divisionData === null,
+    divisionDataMatches: divisionData?.matches,
+    divisionDataMatchesLength: divisionData?.matches?.length,
+    divisionDataMatchesType: Array.isArray(divisionData?.matches) ? 'array' : typeof divisionData?.matches,
+    divisionDataId: divisionData?.id,
+    divisionDataStage: divisionData?.stage,
+  })
+  
   const teams = division?.teams || []
   const matches = division?.matches || []
   
   // DEBUG: Check matches data before filtering
   console.log('DEBUG matches before filtering:', {
     matchesLength: matches.length,
+    matchesIsArray: Array.isArray(matches),
     firstMatch: matches[0] ? {
       id: matches[0].id,
       stage: matches[0].stage,
