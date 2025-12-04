@@ -795,21 +795,21 @@ export const matchRouter = createTRPCRouter({
       // Log the tiebreaker save
       const tournamentId = match.division?.tournament?.id
       if (tournamentId) {
-        await ctx.prisma.auditLog.create({
-          data: {
-            actorUserId: ctx.session.user.id,
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
             tournamentId,
-            action: 'SAVE_TIEBREAKER',
-            entityType: 'Tiebreaker',
-            entityId: tiebreaker.id,
-            payload: {
-              matchId: input.matchId,
-              teamAScore: input.teamAScore,
-              teamBScore: input.teamBScore,
-              winnerTeamId,
-            },
+          action: 'SAVE_TIEBREAKER',
+          entityType: 'Tiebreaker',
+          entityId: tiebreaker.id,
+          payload: {
+            matchId: input.matchId,
+            teamAScore: input.teamAScore,
+            teamBScore: input.teamBScore,
+            winnerTeamId,
           },
-        })
+        },
+      })
       }
 
       return tiebreaker

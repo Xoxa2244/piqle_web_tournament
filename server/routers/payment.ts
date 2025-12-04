@@ -28,6 +28,14 @@ export const paymentRouter = createTRPCRouter({
         where: { id: input.tournamentId },
         include: {
           paymentSetting: true,
+          user: {
+            select: {
+              id: true,
+              stripeAccountId: true,
+              stripeAccountStatus: true,
+              paymentsEnabled: true,
+            },
+          },
         },
       })
 
@@ -42,15 +50,15 @@ export const paymentRouter = createTRPCRouter({
         })
       }
 
-      // Check if Stripe is set up for this tournament
-      if (!tournament.paymentSetting?.stripeAccountId) {
+      // Check if TD has Stripe Connect set up (User-level, not Tournament-level)
+      if (!tournament.user.stripeAccountId) {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
           message: 'Payment system is not configured for this tournament. Please contact the tournament director.',
         })
       }
 
-      if (tournament.paymentSetting.stripeAccountStatus !== 'ACTIVE') {
+      if (tournament.user.stripeAccountStatus !== 'ACTIVE' || !tournament.user.paymentsEnabled) {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
           message: 'Payment system is not active for this tournament. Please contact the tournament director.',
@@ -80,7 +88,7 @@ export const paymentRouter = createTRPCRouter({
       const successUrl = `${baseAppUrl}/scoreboard/${input.tournamentId}?payment=success`
       const cancelUrl = `${baseAppUrl}/register/${input.tournamentId}?payment=cancelled`
 
-      // Create Checkout Session
+      // Create Checkout Session (using User's Stripe account, not Tournament-level)
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
@@ -100,7 +108,7 @@ export const paymentRouter = createTRPCRouter({
         payment_intent_data: {
           application_fee_amount: applicationFeeAmount,
           transfer_data: {
-            destination: tournament.paymentSetting.stripeAccountId,
+            destination: tournament.user.stripeAccountId!, // Use TD's Stripe account from User model
           },
           metadata: {
             tournamentId: input.tournamentId,

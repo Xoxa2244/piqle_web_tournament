@@ -18,6 +18,10 @@ model User {
   gender                   Gender?
   city                     String?
   duprLink                 String?
+  // Stripe Connect fields
+  stripeAccountId          String?
+  stripeAccountStatus      StripeAccountStatus?      @default(PENDING)
+  paymentsEnabled          Boolean                   @default(false)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   accounts                 Account[]

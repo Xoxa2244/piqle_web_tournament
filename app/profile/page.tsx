@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Award } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Award, CreditCard } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -27,9 +28,24 @@ export default function ProfilePage() {
   const becomeTD = trpc.user.becomeTournamentDirector.useMutation({
     onSuccess: () => {
       refetch()
+      refetchStripeSettings()
     },
     onError: (error) => {
       alert(error.message)
+    },
+  })
+
+  const { data: stripeSettings, refetch: refetchStripeSettings } = trpc.user.getStripeSettings.useQuery()
+
+  const initStripeConnect = trpc.user.initStripeConnect.useMutation({
+    onSuccess: (data) => {
+      if (data.accountLinkUrl) {
+        window.location.href = data.accountLinkUrl
+      }
+    },
+    onError: (err) => {
+      console.error('Stripe onboarding error', err)
+      alert(err.message)
     },
   })
 
@@ -342,6 +358,63 @@ export default function ProfilePage() {
                 </p>
               )}
             </div>
+
+            {/* Stripe Payments Section - Only for TD */}
+            {profile.role === 'TD' && !isEditing && (
+              <div className="border-t border-gray-200 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
+                    <CreditCard className="h-5 w-5 text-blue-600" />
+                    <Label className="text-base font-semibold">Stripe Payments</Label>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-700 font-medium">Account Status</div>
+                    <Badge 
+                      variant={stripeSettings?.paymentsEnabled ? 'default' : 'secondary'}
+                      className={stripeSettings?.paymentsEnabled ? 'bg-green-600' : ''}
+                    >
+                      {stripeSettings?.stripeAccountStatus || 'NOT_CONNECTED'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-700 font-medium">Payments Collection</div>
+                    <Badge variant={stripeSettings?.paymentsEnabled ? 'default' : 'secondary'}>
+                      {stripeSettings?.paymentsEnabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+
+                  {stripeSettings?.paymentsEnabled && (
+                    <div className="pt-2 border-t border-blue-200">
+                      <p className="text-sm text-green-700 font-medium">
+                        ✅ Ready to collect payments! Players can register and pay for your tournaments.
+                      </p>
+                    </div>
+                  )}
+
+                  {!stripeSettings?.paymentsEnabled && (
+                    <div className="pt-2 border-t border-blue-200">
+                      <p className="text-sm text-gray-600">
+                        💡 Connect your Stripe account to receive payments from tournament registrations. Platform fee: 10%.
+                      </p>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={() => initStripeConnect.mutate()}
+                    disabled={initStripeConnect.isPending}
+                    className="w-full mt-3"
+                  >
+                    {initStripeConnect.isPending ? 'Redirecting…' : 
+                     stripeSettings?.stripeAccountId ? 'Update Stripe Account' : 'Connect Stripe'}
+                  </Button>
+                </div>
+              </div>
+            )}
+            
 
             {/* Gender */}
             <div>
