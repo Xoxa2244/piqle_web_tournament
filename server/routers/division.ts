@@ -1108,8 +1108,8 @@ export const divisionRouter = createTRPCRouter({
             continue
           }
 
-          const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-          const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+          const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+          const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
 
           const teamAStats = teamStats.get(match.teamAId)
           const teamBStats = teamStats.get(match.teamBId)
