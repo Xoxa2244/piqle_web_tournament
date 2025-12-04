@@ -517,11 +517,11 @@ export const divisionRouter = createTRPCRouter({
       ])
 
       // Check if any matches have scores entered (games with scoreA > 0 or scoreB > 0)
-      const hasData1 = matches1.some(match => 
-        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      const hasData1 = matches1.some(match =>
+        match.games.length > 0 && match.games.some(game => (game.scoreA !== null && game.scoreA !== undefined && game.scoreA > 0) || (game.scoreB !== null && game.scoreB !== undefined && game.scoreB > 0))
       )
-      const hasData2 = matches2.some(match => 
-        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+      const hasData2 = matches2.some(match =>
+        match.games.length > 0 && match.games.some(game => (game.scoreA !== null && game.scoreA !== undefined && game.scoreA > 0) || (game.scoreB !== null && game.scoreB !== undefined && game.scoreB > 0))
       )
 
       return {
