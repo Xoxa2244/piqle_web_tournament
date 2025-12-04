@@ -140,17 +140,33 @@ export const divisionStageRouter = createTRPCRouter({
             const isMLPMatch = isMLP && matchGamesCount === 4
             
             if (isMLPMatch) {
-              // MLP: all 4 games must have non-null scores and not be tied
+              // MLP: match is completed if:
+              // 1. All 4 games have non-null scores, OR
+              // 2. There is a winnerTeamId (which means match is resolved, either 3-1/4-0 or 2-2 with tiebreaker)
+              
+              // Check if winner is determined (either directly or through tiebreaker)
+              const hasWinner = m.winnerTeamId !== null && m.winnerTeamId !== undefined
+              const hasTiebreakerWinner = m.tiebreaker && m.tiebreaker.winnerTeamId !== null && m.tiebreaker.winnerTeamId !== undefined
+              
+              if (hasWinner || hasTiebreakerWinner) {
+                // Match has a winner - it's completed
+                return true
+              }
+              
+              // If no winner yet, check if all 4 games are completed (non-null scores)
               if (m.games.length !== 4) return false
-              return m.games.every(g => 
+              const allGamesCompleted = m.games.every(g => 
                 g.scoreA !== null && 
                 g.scoreA !== undefined && 
                 g.scoreB !== null && 
                 g.scoreB !== undefined &&
-                g.scoreA !== g.scoreB &&
                 g.scoreA >= 0 &&
                 g.scoreB >= 0
               )
+              
+              // For MLP, if all games are completed but no winner, it means 2-2 and tiebreaker is needed
+              // In this case, match is NOT completed until tiebreaker is played
+              return false
             } else {
               // Non-MLP: at least one game with non-zero score
               return m.games.some(g => 
