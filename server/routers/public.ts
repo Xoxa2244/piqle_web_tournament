@@ -354,8 +354,8 @@ export const publicRouter = createTRPCRouter({
         let teamBPoints = 0
         
         match.games.forEach(game => {
-          teamAPoints += game.scoreA
-          teamBPoints += game.scoreB
+          teamAPoints += game.scoreA ?? 0
+          teamBPoints += game.scoreB ?? 0
         })
 
         // Update overall stats
