@@ -220,8 +220,13 @@ export const divisionStageRouter = createTRPCRouter({
           const N = standings.length
           const B = division.maxTeams || Math.min(16, N)
 
-          if (B < N && N < 2 * B) {
-            // Need play-in
+          // For MLP tournaments, skip Play-In and go directly to Play-Off
+          if (isMLP) {
+            // MLP: always go directly to Play-Off (no Play-In)
+            matchesToCreate = generatePlayoffMatches(standings, 0)
+            nextStage = 'PO_R1_SCHEDULED'
+          } else if (B < N && N < 2 * B) {
+            // Need play-in (only for non-MLP tournaments)
             const E = N - B
             const playInTeams = standings.slice(N - 2 * E)
             const autoQualified = standings.slice(0, N - 2 * E)

@@ -396,7 +396,9 @@ export default function DivisionStageManagement() {
     return 64                         // 33+ teams → bracket 64
   }
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = teamCount > targetBracketSize && teamCount < targetBracketSize * 2
+  // For MLP tournaments, Play-In is not used - always go directly to Play-Off
+  const isMLPTournament = tournament?.format === 'MLP'
+  const needsPlayIn = !isMLPTournament && teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
@@ -732,22 +734,23 @@ export default function DivisionStageManagement() {
   const canInputRRResults = rrMatches.length > 0 && currentStage === 'RR_IN_PROGRESS' && !hasLockedRRMatches
   const canRecalculateSeeding = completedRRMatches.length === rrMatches.length && currentStage === 'RR_COMPLETE'
   const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
-  const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
-  const canRegeneratePlayIn = playInMatches.length > 0
+  const canGeneratePlayIn = !isMLPTournament && completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
+  const canRegeneratePlayIn = !isMLPTournament && playInMatches.length > 0
   // Play-Off can be generated if:
-  // 1. All RR matches are completed AND (stage is RR_IN_PROGRESS or RR_COMPLETE) AND no Play-In needed
-  // 2. OR Play-In is complete
-  // 3. OR Play-In matches are all completed (if Play-In is needed)
+  // 1. For MLP: All RR matches are completed AND (stage is RR_IN_PROGRESS or RR_COMPLETE) AND no Play-Off matches yet
+  // 2. For non-MLP: All RR matches are completed AND (stage is RR_IN_PROGRESS or RR_COMPLETE) AND no Play-In needed
+  // 3. OR Play-In is complete
+  // 4. OR Play-In matches are all completed (if Play-In is needed)
   const canGeneratePlayoff = (
     (currentStage === 'RR_IN_PROGRESS' || currentStage === 'RR_COMPLETE') && 
     completedRRMatches.length === rrMatches.length && 
     rrMatches.length > 0 && 
-    !needsPlayIn && 
-    !eliminationMatches.length
+    !eliminationMatches.length &&
+    (isMLPTournament || !needsPlayIn)  // For MLP, always allow; for non-MLP, only if no Play-In needed
   ) || (
-    currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
+    !isMLPTournament && currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
   ) || (
-    needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
+    !isMLPTournament && needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
   )
 
   // Debug button availability
