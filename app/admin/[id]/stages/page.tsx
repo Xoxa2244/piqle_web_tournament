@@ -235,6 +235,21 @@ export default function DivisionStageManagement() {
   const teams = division?.teams || []
   const matches = division?.matches || []
   
+  // DEBUG: Check matches data before filtering
+  console.log('DEBUG matches before filtering:', {
+    matchesLength: matches.length,
+    firstMatch: matches[0] ? {
+      id: matches[0].id,
+      stage: matches[0].stage,
+      stageType: typeof matches[0].stage,
+      teamA: matches[0].teamA?.name,
+      teamB: matches[0].teamB?.name,
+    } : null,
+    allStages: matches.map(m => ({ id: m.id, stage: m.stage, stageType: typeof m.stage })),
+    matchesWithROUND_ROBIN: matches.filter(m => m.stage === 'ROUND_ROBIN').length,
+    matchesWithNullStage: matches.filter(m => m.stage === null || m.stage === undefined).length,
+  })
+  
   const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
