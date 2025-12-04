@@ -615,8 +615,8 @@ export const publicRouter = createTRPCRouter({
         
         if (!teamAStats || !teamBStats) return
 
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
 
         teamAStats.pointDiff += totalScoreA - totalScoreB
         teamBStats.pointDiff += totalScoreB - totalScoreA
