@@ -656,8 +656,8 @@ export const publicRouter = createTRPCRouter({
         
         if (playInMatches.length > 0) {
           playInBracket = playInMatches.map((match, index) => {
-            const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+            const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
             const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
             const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
 
