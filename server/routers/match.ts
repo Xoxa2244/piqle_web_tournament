@@ -556,8 +556,8 @@ export const matchRouter = createTRPCRouter({
     .input(z.object({
       matchId: z.string(),
       gameIndex: z.number(),
-      scoreA: z.number(),
-      scoreB: z.number(),
+      scoreA: z.number().nullable().optional(),
+      scoreB: z.number().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const match = await ctx.prisma.match.findUnique({
@@ -604,6 +604,12 @@ export const matchRouter = createTRPCRouter({
       const isMLP = tournamentFormat === 'MLP'
 
       // Update or create the game
+      // Calculate winner only if both scores are provided and not null
+      const winner = (input.scoreA !== null && input.scoreA !== undefined && 
+                      input.scoreB !== null && input.scoreB !== undefined)
+        ? (input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null)
+        : null
+
       const game = await ctx.prisma.game.upsert({
         where: {
           matchId_index: {
@@ -614,14 +620,14 @@ export const matchRouter = createTRPCRouter({
         create: {
           matchId: input.matchId,
           index: input.gameIndex,
-          scoreA: input.scoreA,
-          scoreB: input.scoreB,
-          winner: input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null,
+          scoreA: input.scoreA ?? null,
+          scoreB: input.scoreB ?? null,
+          winner: winner,
         },
         update: {
-          scoreA: input.scoreA,
-          scoreB: input.scoreB,
-          winner: input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null,
+          scoreA: input.scoreA ?? null,
+          scoreB: input.scoreB ?? null,
+          winner: winner,
         },
       })
 
@@ -649,7 +655,7 @@ export const matchRouter = createTRPCRouter({
         }
 
         // Calculate winner from all games with updated scores
-        const allGames: Array<{ scoreA: number; scoreB: number; winner: 'A' | 'B' | null }> = updatedMatch.games.map(g => ({
+        const allGames: Array<{ scoreA: number | null; scoreB: number | null; winner: 'A' | 'B' | null }> = updatedMatch.games.map(g => ({
           scoreA: g.scoreA,
           scoreB: g.scoreB,
           winner: g.winner as 'A' | 'B' | null,

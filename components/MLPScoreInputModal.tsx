@@ -56,8 +56,8 @@ export default function MLPScoreInputModal({
       existingGames.forEach(game => {
         if (game.index >= 0 && game.index < 4) {
           newGames[game.index] = {
-            scoreA: game.scoreA.toString(),
-            scoreB: game.scoreB.toString(),
+            scoreA: (game.scoreA !== null && game.scoreA !== undefined) ? game.scoreA.toString() : '',
+            scoreB: (game.scoreB !== null && game.scoreB !== undefined) ? game.scoreB.toString() : '',
           }
         }
       })
@@ -84,11 +84,30 @@ export default function MLPScoreInputModal({
 
   const handleGameSubmit = async (index: number) => {
     const game = games[index]
-    const scoreA = parseInt(game.scoreA)
-    const scoreB = parseInt(game.scoreB)
     
-    if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
-      alert('Please enter valid scores (non-negative numbers)')
+    // Allow empty scores (null)
+    const scoreA = game.scoreA.trim() === '' ? null : parseInt(game.scoreA)
+    const scoreB = game.scoreB.trim() === '' ? null : parseInt(game.scoreB)
+    
+    // If both are empty, set to null
+    if (scoreA === null && scoreB === null) {
+      try {
+        await updateGameScore.mutateAsync({
+          matchId,
+          gameIndex: index,
+          scoreA: null,
+          scoreB: null,
+        })
+        return
+      } catch (error) {
+        // Error is already handled in mutation's onError callback
+        return
+      }
+    }
+    
+    // If one is empty but not both, show error
+    if (scoreA === null || scoreB === null || isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
+      alert('Please enter valid scores (non-negative numbers) or leave both empty')
       return
     }
 
@@ -108,23 +127,28 @@ export default function MLPScoreInputModal({
   const handleSubmitAll = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validate all games
+    // Submit all games (allow empty/null scores)
     for (let i = 0; i < games.length; i++) {
       const game = games[i]
-      const scoreA = parseInt(game.scoreA)
-      const scoreB = parseInt(game.scoreB)
+      const scoreA = game.scoreA.trim() === '' ? null : parseInt(game.scoreA)
+      const scoreB = game.scoreB.trim() === '' ? null : parseInt(game.scoreB)
       
-      if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
-        alert(`Please enter valid scores for ${GAME_TYPES[i].label}`)
+      // If both are empty, set to null
+      if (scoreA === null && scoreB === null) {
+        await updateGameScore.mutateAsync({
+          matchId,
+          gameIndex: i,
+          scoreA: null,
+          scoreB: null,
+        })
+        continue
+      }
+      
+      // If one is filled, both must be valid numbers
+      if (scoreA === null || scoreB === null || isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
+        alert(`Please enter valid scores for ${GAME_TYPES[i].label} or leave both empty`)
         return
       }
-    }
-
-    // Submit all games
-    for (let i = 0; i < games.length; i++) {
-      const game = games[i]
-      const scoreA = parseInt(game.scoreA)
-      const scoreB = parseInt(game.scoreB)
       
       await updateGameScore.mutateAsync({
         matchId,
@@ -169,7 +193,12 @@ export default function MLPScoreInputModal({
           {GAME_TYPES.map((gameType, index) => {
             const game = games[index]
             const existingGame = existingGames.find(g => g.index === index)
-            const isCompleted = existingGame && (existingGame.scoreA > 0 || existingGame.scoreB > 0)
+            const isCompleted = existingGame && 
+              existingGame.scoreA !== null && 
+              existingGame.scoreA !== undefined &&
+              existingGame.scoreB !== null && 
+              existingGame.scoreB !== undefined &&
+              (existingGame.scoreA > 0 || existingGame.scoreB > 0)
             
             return (
               <div key={index} className="border rounded-lg p-4 space-y-3">
@@ -211,9 +240,9 @@ export default function MLPScoreInputModal({
                   </div>
                 </div>
                 
-                {isCompleted && (
+                {isCompleted && existingGame && (
                   <div className="text-xs text-gray-500">
-                    Current: {existingGame.scoreA} - {existingGame.scoreB}
+                    Current: {existingGame.scoreA ?? '-'} - {existingGame.scoreB ?? '-'}
                   </div>
                 )}
               </div>

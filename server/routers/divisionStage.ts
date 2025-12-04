@@ -131,7 +131,7 @@ export const divisionStageRouter = createTRPCRouter({
           // Check if RR is complete
           const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
           const completedRRMatches = rrMatches.filter(m => 
-            m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+            m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
           )
 
           if (completedRRMatches.length !== rrMatches.length) {
@@ -369,7 +369,7 @@ export const divisionStageRouter = createTRPCRouter({
       })
 
       const completedMatches = currentStageMatches.filter(m => 
-        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
       )
 
       // If all matches in current stage are complete, trigger transition
@@ -527,8 +527,8 @@ async function getPlayInWinners(playInMatches: any[], teams: any[]) {
   
   for (const match of playInMatches) {
     if (match.games.length > 0) {
-      const totalScoreA = match.games.reduce((sum: number, game: any) => sum + game.scoreA, 0)
-      const totalScoreB = match.games.reduce((sum: number, game: any) => sum + game.scoreB, 0)
+      const totalScoreA = match.games.reduce((sum: number, game: any) => sum + (game.scoreA ?? 0), 0)
+      const totalScoreB = match.games.reduce((sum: number, game: any) => sum + (game.scoreB ?? 0), 0)
       
       if (totalScoreA > totalScoreB) {
         winners.push(teams.find(t => t.id === match.teamAId))
@@ -546,8 +546,8 @@ async function getPlayoffWinners(roundMatches: any[], teams: any[]) {
   
   for (const match of roundMatches) {
     if (match.games.length > 0) {
-      const totalScoreA = match.games.reduce((sum: number, game: any) => sum + game.scoreA, 0)
-      const totalScoreB = match.games.reduce((sum: number, game: any) => sum + game.scoreB, 0)
+      const totalScoreA = match.games.reduce((sum: number, game: any) => sum + (game.scoreA ?? 0), 0)
+      const totalScoreB = match.games.reduce((sum: number, game: any) => sum + (game.scoreB ?? 0), 0)
       
       if (totalScoreA > totalScoreB) {
         winners.push(teams.find(t => t.id === match.teamAId))

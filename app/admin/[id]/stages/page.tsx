@@ -255,15 +255,15 @@ export default function DivisionStageManagement() {
   })
   
   const completedRRMatches = rrMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+    m.games && m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
   )
   
   const completedPlayInMatches = playInMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+    m.games && m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
   )
 
   const completedPlayoffMatches = eliminationMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+    m.games && m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
   )
 
   const hasRRResults = completedRRMatches.length > 0
@@ -344,7 +344,7 @@ export default function DivisionStageManagement() {
     
     // Check if all matches of current round are completed
     const allCompleted = currentRoundMatches.every(match => 
-      match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
+      match.games && match.games.length > 0 && (match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)
     )
     
     // Check if this is the final round (has both final and third place matches)
@@ -436,7 +436,7 @@ export default function DivisionStageManagement() {
     // Check if all 4 games are completed
     if (!match.games || match.games.length !== 4) return false
     const allGamesCompleted = match.games.every((g: any) => 
-      (g.scoreA > 0 || g.scoreB > 0) && g.scoreA !== g.scoreB
+      (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0) && g.scoreA !== g.scoreB
     )
     if (!allGamesCompleted) return false
     
@@ -1013,10 +1013,10 @@ export default function DivisionStageManagement() {
                                                 )}
                                               </div>
                                               
-                                              {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
+                                              {match.games && match.games.length > 0 && (match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0) ? (
                                                 <div className="text-center space-y-2">
                                                   <div className="text-lg font-bold">
-                                                    {match.games[0].scoreA} - {match.games[0].scoreB}
+                                                    {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
                                                   </div>
                                                   <div className="text-sm text-green-600 font-medium">
                                                     Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
@@ -1592,7 +1592,7 @@ export default function DivisionStageManagement() {
                               // For MLP matches, show all 4 games scores
                               if (isMLPMatch && match.games && match.games.length === 4) {
                                 const allGamesCompleted = match.games.every((g: any) => 
-                                  (g.scoreA > 0 || g.scoreB > 0) && g.scoreA !== g.scoreB
+                                  (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0) && g.scoreA !== g.scoreB
                                 )
                                 
                                 if (allGamesCompleted) {

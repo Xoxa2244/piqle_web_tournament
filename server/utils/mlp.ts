@@ -84,35 +84,35 @@ export async function createMLPGames(
     throw new Error(`Team B must have exactly 2 females and 2 males for MLP match`)
   }
 
-  // Create 4 games
+  // Create 4 games with null scores (empty until score is entered)
   const games = [
     {
       matchId,
       index: 0,
       gameType: 'WOMEN' as const,
-      scoreA: 0,
-      scoreB: 0,
+      scoreA: null,
+      scoreB: null,
     },
     {
       matchId,
       index: 1,
       gameType: 'MEN' as const,
-      scoreA: 0,
-      scoreB: 0,
+      scoreA: null,
+      scoreB: null,
     },
     {
       matchId,
       index: 2,
       gameType: 'MIXED_1' as const,
-      scoreA: 0,
-      scoreB: 0,
+      scoreA: null,
+      scoreB: null,
     },
     {
       matchId,
       index: 3,
       gameType: 'MIXED_2' as const,
-      scoreA: 0,
-      scoreB: 0,
+      scoreA: null,
+      scoreB: null,
     },
   ]
 
@@ -128,7 +128,7 @@ export async function createMLPGames(
  * - If 2:2 → needs tiebreaker
  */
 export function calculateMLPMatchWinner(
-  games: Array<{ scoreA: number; scoreB: number; winner: 'A' | 'B' | null }>,
+  games: Array<{ scoreA: number | null; scoreB: number | null; winner: 'A' | 'B' | null }>,
   teamAId: string,
   teamBId: string
 ): { winnerTeamId: string | null; needsTiebreaker: boolean } {
@@ -137,13 +137,17 @@ export function calculateMLPMatchWinner(
     return { winnerTeamId: null, needsTiebreaker: false }
   }
 
-  // Check if all games are completed (have scores > 0)
+  // Check if all games are completed (have non-null scores and not tied)
   const allGamesCompleted = games.every(game => 
-    (game.scoreA > 0 || game.scoreB > 0) && game.scoreA !== game.scoreB
+    game.scoreA !== null && 
+    game.scoreB !== null && 
+    game.scoreA !== game.scoreB &&
+    game.scoreA >= 0 &&
+    game.scoreB >= 0
   )
 
   if (!allGamesCompleted) {
-    // Not all games completed yet
+    // Not all games completed yet - some scores are still null or empty
     return { winnerTeamId: null, needsTiebreaker: false }
   }
 
@@ -157,11 +161,13 @@ export function calculateMLPMatchWinner(
     } else if (game.winner === 'B') {
       teamBWins++
     } else {
-      // Game not completed or tied - calculate from scores
-      if (game.scoreA > game.scoreB) {
-        teamAWins++
-      } else if (game.scoreB > game.scoreA) {
-        teamBWins++
+      // Calculate from scores (we know they're not null from check above)
+      if (game.scoreA !== null && game.scoreB !== null) {
+        if (game.scoreA > game.scoreB) {
+          teamAWins++
+        } else if (game.scoreB > game.scoreA) {
+          teamBWins++
+        }
       }
     }
   }
