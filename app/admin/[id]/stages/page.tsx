@@ -1603,7 +1603,15 @@ export default function DivisionStageManagement() {
         )}
 
         {/* Play-Off Block */}
-        <Card className={currentStage === 'RR_IN_PROGRESS' || (needsPlayIn && completedPlayInMatches.length !== playInMatches.length) ? 'opacity-50 pointer-events-none' : ''}>
+        <Card className={
+          // Block if:
+          // 1. RR is in progress AND not all matches completed (for both MLP and non-MLP)
+          // 2. OR Play-In is needed and not completed (only for non-MLP)
+          (currentStage === 'RR_IN_PROGRESS' && completedRRMatches.length !== rrMatches.length) || 
+          (!isMLPTournament && needsPlayIn && completedPlayInMatches.length !== playInMatches.length)
+            ? 'opacity-50 pointer-events-none' 
+            : ''
+        }>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center space-x-2">
