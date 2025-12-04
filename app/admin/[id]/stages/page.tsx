@@ -287,7 +287,9 @@ export default function DivisionStageManagement() {
     if (!m.games || m.games.length === 0) return false
     
     // For MLP matches, check if all 4 games are completed
-    const isMLP = tournament?.format === 'MLP'
+    // Get tournament format safely
+    const tournamentFormat = tournament?.format
+    const isMLP = tournamentFormat === 'MLP'
     const matchGamesCount = m.gamesCount || m.games.length
     const isMLPMatch = isMLP && matchGamesCount === 4
     
