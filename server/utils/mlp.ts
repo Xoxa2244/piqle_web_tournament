@@ -194,16 +194,17 @@ export function calculateMLPMatchWinner(
 
 /**
  * Build MLP bracket structure
- * MLP format: No play-in, only 4 teams in elimination (top-2 from each pool)
- * Semi-Final 1: Pool1-1 vs Pool2-2
- * Semi-Final 2: Pool1-2 vs Pool2-1
- * Final: Winner SF1 vs Winner SF2
+ * Supports 1 or 2 pools:
+ * - 1 pool: Top 4 teams (#1 vs #4, #2 vs #3)
+ * - 2 pools: Top 2 from each pool (A1 vs B2, B1 vs A2)
+ * Includes optional 3rd place match
  */
 export function buildMLPBracket(
   poolStandings: Array<{
     poolId: string
     poolName: string
-    top2: Array<{ teamId: string; teamName: string; seed: number }>
+    top2?: Array<{ teamId: string; teamName: string; seed: number }>
+    top4?: Array<{ teamId: string; teamName: string; seed: number }>
   }>,
   existingPlayoffMatches?: Array<{
     id: string
@@ -213,46 +214,231 @@ export function buildMLPBracket(
     winnerTeamId?: string
     games?: Array<{ scoreA: number; scoreB: number }>
     note?: string
-  }>
+  }>,
+  includeThirdPlace: boolean = true
 ): BracketMatch[] {
   const allMatches: BracketMatch[] = []
 
-  // Validate: need exactly 2 pools with top-2 teams each
-  if (poolStandings.length !== 2) {
-    console.error('[buildMLPBracket] MLP requires exactly 2 pools, got:', poolStandings.length)
-    return []
+  // Case 1: Single pool - top 4 teams
+  if (poolStandings.length === 1) {
+    const pool = poolStandings[0]
+    const top4 = pool.top4 || []
+    
+    if (top4.length < 4) {
+      console.error('[buildMLPBracket] Single pool requires at least 4 teams in top-4, got:', top4.length)
+      return []
+    }
+
+    // SF1: #1 vs #4
+    const sf1TeamA = top4[0] // #1
+    const sf1TeamB = top4[3] // #4
+
+    // SF2: #2 vs #3
+    const sf2TeamA = top4[1] // #2
+    const sf2TeamB = top4[2] // #3
+
+    // Find existing semi-final matches
+    const existingSF1 = existingPlayoffMatches?.find(
+      m => m.roundIndex === 1 && 
+      ((m.teamAId === sf1TeamA.teamId && m.teamBId === sf1TeamB.teamId) ||
+       (m.teamAId === sf1TeamB.teamId && m.teamBId === sf1TeamA.teamId)) &&
+      m.note !== 'Third Place Match'
+    )
+    const existingSF2 = existingPlayoffMatches?.find(
+      m => m.roundIndex === 1 && 
+      ((m.teamAId === sf2TeamA.teamId && m.teamBId === sf2TeamB.teamId) ||
+       (m.teamAId === sf2TeamB.teamId && m.teamBId === sf2TeamA.teamId)) &&
+      m.note !== 'Third Place Match'
+    )
+
+    // Create Semi-Final 1
+    const sf1Match: BracketMatch = {
+      id: existingSF1?.id || 'sf1',
+      round: 1,
+      position: 0,
+      left: {
+        seed: sf1TeamA.seed,
+        teamId: sf1TeamA.teamId,
+        teamName: sf1TeamA.teamName,
+        isBye: false,
+      },
+      right: {
+        seed: sf1TeamB.seed,
+        teamId: sf1TeamB.teamId,
+        teamName: sf1TeamB.teamName,
+        isBye: false,
+      },
+      status: existingSF1?.winnerTeamId ? 'finished' : 'scheduled',
+      winnerTeamId: existingSF1?.winnerTeamId,
+      winnerTeamName: existingSF1?.winnerTeamId 
+        ? (existingSF1.teamAId === existingSF1.winnerTeamId 
+            ? sf1TeamA.teamName 
+            : sf1TeamB.teamName)
+        : undefined,
+      matchId: existingSF1?.id,
+      games: existingSF1?.games,
+    }
+
+    // Create Semi-Final 2
+    const sf2Match: BracketMatch = {
+      id: existingSF2?.id || 'sf2',
+      round: 1,
+      position: 1,
+      left: {
+        seed: sf2TeamA.seed,
+        teamId: sf2TeamA.teamId,
+        teamName: sf2TeamA.teamName,
+        isBye: false,
+      },
+      right: {
+        seed: sf2TeamB.seed,
+        teamId: sf2TeamB.teamId,
+        teamName: sf2TeamB.teamName,
+        isBye: false,
+      },
+      status: existingSF2?.winnerTeamId ? 'finished' : 'scheduled',
+      winnerTeamId: existingSF2?.winnerTeamId,
+      winnerTeamName: existingSF2?.winnerTeamId 
+        ? (existingSF2.teamAId === existingSF2.winnerTeamId 
+            ? sf2TeamA.teamName 
+            : sf2TeamB.teamName)
+        : undefined,
+      matchId: existingSF2?.id,
+      games: existingSF2?.games,
+    }
+
+    allMatches.push(sf1Match, sf2Match)
+
+    // Link semi-finals to final
+    sf1Match.nextMatchId = 'final'
+    sf1Match.nextSlot = 'left'
+    sf2Match.nextMatchId = 'final'
+    sf2Match.nextSlot = 'right'
+
+    // Create Final: Winner SF1 vs Winner SF2
+    const finalTeamA = sf1Match.winnerTeamId 
+      ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamA : sf1TeamB)
+      : null
+    const finalTeamB = sf2Match.winnerTeamId 
+      ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamA : sf2TeamB)
+      : null
+
+    const existingFinal = existingPlayoffMatches?.find(
+      m => m.roundIndex === 2 && m.note !== 'Third Place Match'
+    )
+
+    const finalMatch: BracketMatch = {
+      id: existingFinal?.id || 'final',
+      round: 2,
+      position: 0,
+      left: {
+        seed: finalTeamA?.seed || 0,
+        teamId: finalTeamA?.teamId,
+        teamName: finalTeamA?.teamName,
+        isBye: !finalTeamA,
+      },
+      right: {
+        seed: finalTeamB?.seed || 0,
+        teamId: finalTeamB?.teamId,
+        teamName: finalTeamB?.teamName,
+        isBye: !finalTeamB,
+      },
+      status: existingFinal?.winnerTeamId ? 'finished' : (finalTeamA && finalTeamB ? 'scheduled' : 'scheduled'),
+      winnerTeamId: existingFinal?.winnerTeamId,
+      winnerTeamName: existingFinal?.winnerTeamId && finalTeamA && finalTeamB
+        ? (existingFinal.teamAId === existingFinal.winnerTeamId 
+            ? finalTeamA.teamName 
+            : finalTeamB.teamName)
+        : undefined,
+      matchId: existingFinal?.id,
+      games: existingFinal?.games,
+    }
+
+    allMatches.push(finalMatch)
+
+    // Create 3rd Place Match: Losers of SF1 and SF2
+    if (includeThirdPlace) {
+      const thirdPlaceTeamA = sf1Match.winnerTeamId 
+        ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamB : sf1TeamA)
+        : null
+      const thirdPlaceTeamB = sf2Match.winnerTeamId 
+        ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamB : sf2TeamA)
+        : null
+
+      const existingThirdPlace = existingPlayoffMatches?.find(
+        m => m.roundIndex === 2 && m.note === 'Third Place Match'
+      )
+
+      if (thirdPlaceTeamA && thirdPlaceTeamB) {
+        const thirdPlaceMatch: BracketMatch = {
+          id: existingThirdPlace?.id || 'third-place',
+          round: 2,
+          position: 1,
+          left: {
+            seed: thirdPlaceTeamA.seed,
+            teamId: thirdPlaceTeamA.teamId,
+            teamName: thirdPlaceTeamA.teamName,
+            isBye: false,
+          },
+          right: {
+            seed: thirdPlaceTeamB.seed,
+            teamId: thirdPlaceTeamB.teamId,
+            teamName: thirdPlaceTeamB.teamName,
+            isBye: false,
+          },
+          status: existingThirdPlace?.winnerTeamId ? 'finished' : 'scheduled',
+          winnerTeamId: existingThirdPlace?.winnerTeamId,
+          winnerTeamName: existingThirdPlace?.winnerTeamId
+            ? (existingThirdPlace.teamAId === existingThirdPlace.winnerTeamId 
+                ? thirdPlaceTeamA.teamName 
+                : thirdPlaceTeamB.teamName)
+            : undefined,
+          matchId: existingThirdPlace?.id,
+          games: existingThirdPlace?.games,
+        }
+        allMatches.push(thirdPlaceMatch)
+      }
+    }
+
+    return allMatches
   }
 
-  const pool1 = poolStandings[0]
-  const pool2 = poolStandings[1]
+  // Case 2: Two pools - top 2 from each pool
+  if (poolStandings.length === 2) {
+    const pool1 = poolStandings[0]
+    const pool2 = poolStandings[1]
+    const top2Pool1 = pool1.top2 || []
+    const top2Pool2 = pool2.top2 || []
 
-  if (pool1.top2.length < 2 || pool2.top2.length < 2) {
-    console.error('[buildMLPBracket] Each pool must have at least 2 teams in top-2')
-    return []
-  }
+    if (top2Pool1.length < 2 || top2Pool2.length < 2) {
+      console.error('[buildMLPBracket] Each pool must have at least 2 teams in top-2')
+      return []
+    }
 
-  // Semi-Final 1: Pool1-1 vs Pool2-2
-  const sf1TeamA = pool1.top2[0] // Pool1-1
-  const sf1TeamB = pool2.top2[1] // Pool2-2
+    // SF1: A1 vs B2
+    const sf1TeamA = top2Pool1[0] // A1
+    const sf1TeamB = top2Pool2[1] // B2
 
-  // Semi-Final 2: Pool1-2 vs Pool2-1
-  const sf2TeamA = pool1.top2[1] // Pool1-2
-  const sf2TeamB = pool2.top2[0] // Pool2-1
+    // SF2: B1 vs A2
+    const sf2TeamA = top2Pool2[0] // B1
+    const sf2TeamB = top2Pool1[1] // A2
 
-  // Find existing semi-final matches from DB
-  const existingSF1 = existingPlayoffMatches?.find(
-    m => m.roundIndex === 1 && 
-    ((m.teamAId === sf1TeamA.teamId && m.teamBId === sf1TeamB.teamId) ||
-     (m.teamAId === sf1TeamB.teamId && m.teamBId === sf1TeamA.teamId))
-  )
-  const existingSF2 = existingPlayoffMatches?.find(
-    m => m.roundIndex === 1 && 
-    ((m.teamAId === sf2TeamA.teamId && m.teamBId === sf2TeamB.teamId) ||
-     (m.teamAId === sf2TeamB.teamId && m.teamBId === sf2TeamA.teamId))
-  )
+    // Find existing semi-final matches
+    const existingSF1 = existingPlayoffMatches?.find(
+      m => m.roundIndex === 1 && 
+      ((m.teamAId === sf1TeamA.teamId && m.teamBId === sf1TeamB.teamId) ||
+       (m.teamAId === sf1TeamB.teamId && m.teamBId === sf1TeamA.teamId)) &&
+      m.note !== 'Third Place Match'
+    )
+    const existingSF2 = existingPlayoffMatches?.find(
+      m => m.roundIndex === 1 && 
+      ((m.teamAId === sf2TeamA.teamId && m.teamBId === sf2TeamB.teamId) ||
+       (m.teamAId === sf2TeamB.teamId && m.teamBId === sf2TeamA.teamId)) &&
+      m.note !== 'Third Place Match'
+    )
 
-  // Create Semi-Final 1
-  const sf1Match: BracketMatch = {
+    // Create Semi-Final 1
+    const sf1Match: BracketMatch = {
     id: existingSF1?.id || 'sf1',
     round: 1,
     position: 0,
@@ -307,55 +493,197 @@ export function buildMLPBracket(
     games: existingSF2?.games,
   }
 
-  allMatches.push(sf1Match, sf2Match)
+    allMatches.push(sf1Match, sf2Match)
 
-  // Link semi-finals to final
-  sf1Match.nextMatchId = 'final'
-  sf1Match.nextSlot = 'left'
-  sf2Match.nextMatchId = 'final'
-  sf2Match.nextSlot = 'right'
+    // Link semi-finals to final
+    sf1Match.nextMatchId = 'final'
+    sf1Match.nextSlot = 'left'
+    sf2Match.nextMatchId = 'final'
+    sf2Match.nextSlot = 'right'
 
-  // Create Final: Winner SF1 vs Winner SF2
-  const finalTeamA = sf1Match.winnerTeamId 
-    ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamA : sf1TeamB)
-    : null
-  const finalTeamB = sf2Match.winnerTeamId 
-    ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamA : sf2TeamB)
-    : null
+    // Create Final: Winner SF1 vs Winner SF2
+    const finalTeamA = sf1Match.winnerTeamId 
+      ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamA : sf1TeamB)
+      : null
+    const finalTeamB = sf2Match.winnerTeamId 
+      ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamA : sf2TeamB)
+      : null
 
-  const existingFinal = existingPlayoffMatches?.find(
-    m => m.roundIndex === 2
-  )
+    const existingFinal = existingPlayoffMatches?.find(
+      m => m.roundIndex === 2 && m.note !== 'Third Place Match'
+    )
 
-  const finalMatch: BracketMatch = {
-    id: existingFinal?.id || 'final',
-    round: 2,
-    position: 0,
-    left: {
-      seed: finalTeamA?.seed || 0,
-      teamId: finalTeamA?.teamId,
-      teamName: finalTeamA?.teamName,
-      isBye: !finalTeamA,
-    },
-    right: {
-      seed: finalTeamB?.seed || 0,
-      teamId: finalTeamB?.teamId,
-      teamName: finalTeamB?.teamName,
-      isBye: !finalTeamB,
-    },
-    status: existingFinal?.winnerTeamId ? 'finished' : (finalTeamA && finalTeamB ? 'scheduled' : 'scheduled'),
-    winnerTeamId: existingFinal?.winnerTeamId,
-    winnerTeamName: existingFinal?.winnerTeamId && finalTeamA && finalTeamB
-      ? (existingFinal.teamAId === existingFinal.winnerTeamId 
-          ? finalTeamA.teamName 
-          : finalTeamB.teamName)
-      : undefined,
-    matchId: existingFinal?.id,
-    games: existingFinal?.games,
+    const finalMatch: BracketMatch = {
+      id: existingFinal?.id || 'final',
+      round: 2,
+      position: 0,
+      left: {
+        seed: finalTeamA?.seed || 0,
+        teamId: finalTeamA?.teamId,
+        teamName: finalTeamA?.teamName,
+        isBye: !finalTeamA,
+      },
+      right: {
+        seed: finalTeamB?.seed || 0,
+        teamId: finalTeamB?.teamId,
+        teamName: finalTeamB?.teamName,
+        isBye: !finalTeamB,
+      },
+      status: existingFinal?.winnerTeamId ? 'finished' : (finalTeamA && finalTeamB ? 'scheduled' : 'scheduled'),
+      winnerTeamId: existingFinal?.winnerTeamId,
+      winnerTeamName: existingFinal?.winnerTeamId && finalTeamA && finalTeamB
+        ? (existingFinal.teamAId === existingFinal.winnerTeamId 
+            ? finalTeamA.teamName 
+            : finalTeamB.teamName)
+        : undefined,
+      matchId: existingFinal?.id,
+      games: existingFinal?.games,
+    }
+
+    allMatches.push(finalMatch)
+
+    // Create 3rd Place Match: Losers of SF1 and SF2
+    if (includeThirdPlace) {
+      const thirdPlaceTeamA = sf1Match.winnerTeamId 
+        ? (sf1Match.winnerTeamId === sf1TeamA.teamId ? sf1TeamB : sf1TeamA)
+        : null
+      const thirdPlaceTeamB = sf2Match.winnerTeamId 
+        ? (sf2Match.winnerTeamId === sf2TeamA.teamId ? sf2TeamB : sf2TeamA)
+        : null
+
+      const existingThirdPlace = existingPlayoffMatches?.find(
+        m => m.roundIndex === 2 && m.note === 'Third Place Match'
+      )
+
+      if (thirdPlaceTeamA && thirdPlaceTeamB) {
+        const thirdPlaceMatch: BracketMatch = {
+          id: existingThirdPlace?.id || 'third-place',
+          round: 2,
+          position: 1,
+          left: {
+            seed: thirdPlaceTeamA.seed,
+            teamId: thirdPlaceTeamA.teamId,
+            teamName: thirdPlaceTeamA.teamName,
+            isBye: false,
+          },
+          right: {
+            seed: thirdPlaceTeamB.seed,
+            teamId: thirdPlaceTeamB.teamId,
+            teamName: thirdPlaceTeamB.teamName,
+            isBye: false,
+          },
+          status: existingThirdPlace?.winnerTeamId ? 'finished' : 'scheduled',
+          winnerTeamId: existingThirdPlace?.winnerTeamId,
+          winnerTeamName: existingThirdPlace?.winnerTeamId
+            ? (existingThirdPlace.teamAId === existingThirdPlace.winnerTeamId 
+                ? thirdPlaceTeamA.teamName 
+                : thirdPlaceTeamB.teamName)
+            : undefined,
+          matchId: existingThirdPlace?.id,
+          games: existingThirdPlace?.games,
+        }
+        allMatches.push(thirdPlaceMatch)
+      }
+    }
+
+    return allMatches
   }
 
-  allMatches.push(finalMatch)
+  // Invalid case
+  console.error('[buildMLPBracket] Invalid pool count (must be 1 or 2):', poolStandings.length)
+  return []
+}
 
-  return allMatches
+/**
+ * Generate MLP Play-Off matches for database creation
+ * Returns array of match data objects ready for Prisma create
+ */
+export function generateMLPPlayoffMatches(
+  poolStandings: Array<{
+    poolId: string
+    poolName: string
+    top2?: Array<{ teamId: string; teamName: string; seed: number }>
+    top4?: Array<{ teamId: string; teamName: string; seed: number }>
+  }>,
+  includeThirdPlace: boolean = true
+): Array<{
+  teamAId: string
+  teamBId: string
+  roundIndex: number
+  stage: 'ELIMINATION'
+  note?: string
+}> {
+  const matches: Array<{
+    teamAId: string
+    teamBId: string
+    roundIndex: number
+    stage: 'ELIMINATION'
+    note?: string
+  }> = []
+
+  // Case 1: Single pool - top 4 teams
+  if (poolStandings.length === 1) {
+    const pool = poolStandings[0]
+    const top4 = pool.top4 || []
+    
+    if (top4.length < 4) {
+      console.error('[generateMLPPlayoffMatches] Single pool requires at least 4 teams in top-4, got:', top4.length)
+      return []
+    }
+
+    // SF1: #1 vs #4
+    matches.push({
+      teamAId: top4[0].teamId, // #1
+      teamBId: top4[3].teamId, // #4
+      roundIndex: 1,
+      stage: 'ELIMINATION',
+    })
+
+    // SF2: #2 vs #3
+    matches.push({
+      teamAId: top4[1].teamId, // #2
+      teamBId: top4[2].teamId, // #3
+      roundIndex: 1,
+      stage: 'ELIMINATION',
+    })
+
+    // Final and 3rd place will be generated after semi-finals complete
+    // They are not created here because we don't know winners yet
+  }
+  // Case 2: Two pools - top 2 from each pool
+  else if (poolStandings.length === 2) {
+    const pool1 = poolStandings[0]
+    const pool2 = poolStandings[1]
+    const top2Pool1 = pool1.top2 || []
+    const top2Pool2 = pool2.top2 || []
+
+    if (top2Pool1.length < 2 || top2Pool2.length < 2) {
+      console.error('[generateMLPPlayoffMatches] Each pool must have at least 2 teams in top-2')
+      return []
+    }
+
+    // SF1: A1 vs B2
+    matches.push({
+      teamAId: top2Pool1[0].teamId, // A1
+      teamBId: top2Pool2[1].teamId, // B2
+      roundIndex: 1,
+      stage: 'ELIMINATION',
+    })
+
+    // SF2: B1 vs A2
+    matches.push({
+      teamAId: top2Pool2[0].teamId, // B1
+      teamBId: top2Pool1[1].teamId, // A2
+      roundIndex: 1,
+      stage: 'ELIMINATION',
+    })
+
+    // Final and 3rd place will be generated after semi-finals complete
+  } else {
+    console.error('[generateMLPPlayoffMatches] Invalid pool count (must be 1 or 2):', poolStandings.length)
+    return []
+  }
+
+  return matches
 }
 

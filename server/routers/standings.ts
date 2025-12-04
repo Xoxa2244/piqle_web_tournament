@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure, publicProcedure } from '../trpc'
 import { buildCompleteBracket, type BracketMatch } from '../utils/bracket'
-import { buildMLPBracket } from '../utils/mlp'
+import { buildMLPBracket, generateMLPPlayoffMatches, createMLPGames } from '../utils/mlp'
 import { getTeamDisplayName } from '../utils/teamDisplay'
 
 interface TeamStats {
@@ -590,8 +590,11 @@ export const standingsRouter = createTRPCRouter({
 
       // Create matches in database
       const createdMatches = await Promise.all(
-        matches.map(match =>
-          ctx.prisma.match.create({
+        matches.map(match => {
+          // For MLP matches, create 4 games
+          const gamesCount = isMLP ? 4 : 1
+          
+          return ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
               teamAId: match.teamAId,
@@ -599,14 +602,22 @@ export const standingsRouter = createTRPCRouter({
               roundIndex: match.roundIndex,
               stage: match.stage,
               bestOfMode: 'FIXED_GAMES',
-              gamesCount: 1,
+              gamesCount,
               targetPoints: 11,
               winBy: 2,
               locked: false,
+              note: match.note || null,
             },
           })
-        )
+        })
       )
+
+      // For MLP matches, create 4 games for each match
+      if (isMLP) {
+        for (const createdMatch of createdMatches) {
+          await createMLPGames(ctx.prisma, createdMatch.id, createdMatch.teamAId, createdMatch.teamBId)
+        }
+      }
 
       // Update division stage based on what was generated
       let nextStage = 'PO_R1_SCHEDULED'
@@ -1364,8 +1375,11 @@ export const standingsRouter = createTRPCRouter({
             const poolStandings: Array<{
               poolId: string
               poolName: string
-              top2: Array<{ teamId: string; teamName: string; seed: number }>
+              top2?: Array<{ teamId: string; teamName: string; seed: number }>
+              top4?: Array<{ teamId: string; teamName: string; seed: number }>
             }> = []
+            
+            const poolCount = division.pools.length
             
             poolStandingsMap.forEach((poolTeams, poolId) => {
               const pool = division.pools.find(p => p.id === poolId)
@@ -1385,18 +1399,33 @@ export const standingsRouter = createTRPCRouter({
                 return b.pointsFor - a.pointsFor
               })
               
-              // Get top 2
-              const top2 = sorted.slice(0, 2).map((team, index) => ({
-                teamId: team.teamId,
-                teamName: team.teamName,
-                seed: index + 1, // Seed within pool (1 or 2)
-              }))
-              
-              poolStandings.push({
-                poolId: pool.id,
-                poolName: pool.name,
-                top2,
-              })
+              if (poolCount === 1) {
+                // Single pool: get top 4
+                const top4 = sorted.slice(0, 4).map((team, index) => ({
+                  teamId: team.teamId,
+                  teamName: team.teamName,
+                  seed: index + 1, // Seed within pool (1, 2, 3, or 4)
+                }))
+                
+                poolStandings.push({
+                  poolId: pool.id,
+                  poolName: pool.name,
+                  top4,
+                })
+              } else {
+                // Two pools: get top 2
+                const top2 = sorted.slice(0, 2).map((team, index) => ({
+                  teamId: team.teamId,
+                  teamName: team.teamName,
+                  seed: index + 1, // Seed within pool (1 or 2)
+                }))
+                
+                poolStandings.push({
+                  poolId: pool.id,
+                  poolName: pool.name,
+                  top2,
+                })
+              }
             })
             
             // Sort pools by order to ensure consistent pairing
