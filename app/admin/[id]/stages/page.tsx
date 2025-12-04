@@ -344,7 +344,7 @@ export default function DivisionStageManagement() {
     
     // Check if all matches of current round are completed
     const allCompleted = currentRoundMatches.every(match => 
-      match.games && match.games.length > 0 && (match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)
+        match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))
     )
     
     // Check if this is the final round (has both final and third place matches)
@@ -1014,7 +1014,7 @@ export default function DivisionStageManagement() {
                                                 )}
                                               </div>
                                               
-                                              {match.games && match.games.length > 0 && (match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0) ? (
+                                              {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
                                                 <div className="text-center space-y-2">
                                                   <div className="text-lg font-bold">
                                                     {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
