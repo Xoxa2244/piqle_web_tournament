@@ -427,6 +427,32 @@ export default function DivisionStageManagement() {
     setSelectedMatch(null)
   }
 
+  // Count games won by each team in MLP match
+  const countMLPGamesWon = (match: any): { teamAWins: number; teamBWins: number } => {
+    let teamAWins = 0
+    let teamBWins = 0
+    
+    if (!match.games || match.games.length === 0) {
+      return { teamAWins: 0, teamBWins: 0 }
+    }
+    
+    for (const game of match.games) {
+      if (game.winner === 'A') {
+        teamAWins++
+      } else if (game.winner === 'B') {
+        teamBWins++
+      } else {
+        if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
+          teamAWins++
+        } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
+          teamBWins++
+        }
+      }
+    }
+    
+    return { teamAWins, teamBWins }
+  }
+
   // Check if MLP match needs tiebreaker
   const needsTiebreaker = (match: any) => {
     if (!match) return false
@@ -441,22 +467,7 @@ export default function DivisionStageManagement() {
     )
     if (!allGamesCompleted) return false
     
-    // Count wins
-    let teamAWins = 0
-    let teamBWins = 0
-    for (const game of match.games) {
-      if (game.winner === 'A') {
-        teamAWins++
-      } else if (game.winner === 'B') {
-        teamBWins++
-      } else {
-        if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
-          teamAWins++
-        } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
-          teamBWins++
-        }
-      }
-    }
+    const { teamAWins, teamBWins } = countMLPGamesWon(match)
     
     // If 2:2 and no winner and no tiebreaker yet, needs tiebreaker
     return teamAWins === 2 && teamBWins === 2 && !match.winnerTeamId && !match.tiebreaker
@@ -1096,23 +1107,64 @@ export default function DivisionStageManagement() {
                                               )}
                                             </div>
                                             
-                                            {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
-                                              <div className="text-center space-y-2">
-                                                <div className="text-lg font-bold">
-                                                  {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                                            {(() => {
+                                              const isMLP = tournament?.format === 'MLP'
+                                              const matchGamesCount = match.gamesCount || (match.games?.length || 0)
+                                              const isMLPMatch = isMLP && matchGamesCount === 4
+                                              
+                                              // For MLP matches, show games won count
+                                              if (isMLPMatch && match.games && match.games.length === 4) {
+                                                const { teamAWins, teamBWins } = countMLPGamesWon(match)
+                                                const hasAnyScore = match.games.some((g: any) => 
+                                                  (g.scoreA !== null && g.scoreA !== undefined) || (g.scoreB !== null && g.scoreB !== undefined)
+                                                )
+                                                
+                                                if (hasAnyScore) {
+                                                  return (
+                                                    <div className="text-center space-y-2">
+                                                      <div className="text-lg font-bold">
+                                                        Games: {teamAWins} - {teamBWins}
+                                                      </div>
+                                                      {match.tiebreaker && (
+                                                        <div className="text-xs text-orange-600 font-medium">
+                                                          Tiebreaker: {match.tiebreaker.teamAScore} - {match.tiebreaker.teamBScore}
+                                                        </div>
+                                                      )}
+                                                      {match.winnerTeamId && (
+                                                        <div className="text-sm text-green-600 font-medium">
+                                                          Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                        </div>
+                                                      )}
+                                                      {renderScoreActionButton(match)}
+                                                      {renderLockedNote(match)}
+                                                    </div>
+                                                  )
+                                                }
+                                              }
+                                              
+                                              // For non-MLP matches, show first game score
+                                              if (match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))) {
+                                                return (
+                                                  <div className="text-center space-y-2">
+                                                    <div className="text-lg font-bold">
+                                                      {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                                                    </div>
+                                                    <div className="text-sm text-green-600 font-medium">
+                                                      Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                                    </div>
+                                                    {renderScoreActionButton(match)}
+                                                    {renderLockedNote(match)}
+                                                  </div>
+                                                )
+                                              }
+                                              
+                                              return (
+                                                <div className="text-center space-y-2">
+                                                  {renderScoreActionButton(match)}
+                                                  {renderLockedNote(match)}
                                                 </div>
-                                                <div className="text-sm text-green-600 font-medium">
-                                                  Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
-                                                </div>
-                                                {renderScoreActionButton(match)}
-                                                {renderLockedNote(match)}
-                                              </div>
-                                            ) : (
-                                              <div className="text-center space-y-2">
-                                                {renderScoreActionButton(match)}
-                                                {renderLockedNote(match)}
-                                              </div>
-                                            )}
+                                              )
+                                            })()}
                                           </div>
                                           )
                                         })}
@@ -1335,23 +1387,64 @@ export default function DivisionStageManagement() {
                         )}
                       </div>
                       
-                      {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
-                        <div className="text-center space-y-2">
-                          <div className="text-lg font-bold">
-                            {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                      {(() => {
+                        const isMLP = tournament?.format === 'MLP'
+                        const matchGamesCount = match.gamesCount || (match.games?.length || 0)
+                        const isMLPMatch = isMLP && matchGamesCount === 4
+                        
+                        // For MLP matches, show games won count
+                        if (isMLPMatch && match.games && match.games.length === 4) {
+                          const { teamAWins, teamBWins } = countMLPGamesWon(match)
+                          const hasAnyScore = match.games.some((g: any) => 
+                            (g.scoreA !== null && g.scoreA !== undefined) || (g.scoreB !== null && g.scoreB !== undefined)
+                          )
+                          
+                          if (hasAnyScore) {
+                            return (
+                              <div className="text-center space-y-2">
+                                <div className="text-lg font-bold">
+                                  Games: {teamAWins} - {teamBWins}
+                                </div>
+                                {match.tiebreaker && (
+                                  <div className="text-xs text-orange-600 font-medium">
+                                    Tiebreaker: {match.tiebreaker.teamAScore} - {match.tiebreaker.teamBScore}
+                                  </div>
+                                )}
+                                {match.winnerTeamId && (
+                                  <div className="text-sm text-green-600 font-medium">
+                                    Winner: {match.winnerTeamId === match.teamAId ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                                  </div>
+                                )}
+                                {renderScoreActionButton(match)}
+                                {renderLockedNote(match)}
+                              </div>
+                            )
+                          }
+                        }
+                        
+                        // For non-MLP matches, show first game score
+                        if (match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))) {
+                          return (
+                            <div className="text-center space-y-2">
+                              <div className="text-lg font-bold">
+                                {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
+                              </div>
+                              <div className="text-sm text-green-600 font-medium">
+                                Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
+                              </div>
+                              {renderScoreActionButton(match)}
+                              {renderLockedNote(match)}
+                            </div>
+                          )
+                        }
+                        
+                        return (
+                          <div className="text-center space-y-2">
+                            {renderScoreActionButton(match)}
+                            {renderLockedNote(match)}
                           </div>
-                          <div className="text-sm text-green-600 font-medium">
-                            Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
-                          </div>
-                          {renderScoreActionButton(match)}
-                          {renderLockedNote(match)}
-                        </div>
-                      ) : (
-                        <div className="text-center space-y-2">
-                          {renderScoreActionButton(match)}
-                          {renderLockedNote(match)}
-                        </div>
-                      )}
+                        )
+                      })()}
                     </div>
                     )
                   })}
