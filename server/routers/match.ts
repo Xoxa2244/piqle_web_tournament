@@ -586,6 +586,7 @@ export const matchRouter = createTRPCRouter({
           teamB: {
             select: { id: true },
           },
+          tiebreaker: true,
         },
       })
 
@@ -654,14 +655,20 @@ export const matchRouter = createTRPCRouter({
           })
         } else {
           // If winner is determined, set winner and delete tiebreaker if it exists
+          const updateData: any = {
+            winnerTeamId: winnerTeamId || null,
+          }
+          
+          // Only delete tiebreaker if it exists
+          if (match.tiebreaker) {
+            updateData.tiebreaker = {
+              delete: true,
+            }
+          }
+          
           await ctx.prisma.match.update({
             where: { id: input.matchId },
-            data: {
-              winnerTeamId: winnerTeamId || null,
-              tiebreaker: {
-                delete: true, // Delete tiebreaker if it exists and winner is determined
-              },
-            },
+            data: updateData,
           })
         }
 
