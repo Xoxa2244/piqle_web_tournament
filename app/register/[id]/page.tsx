@@ -33,12 +33,27 @@ export default function TournamentRegisterPage() {
     { enabled: !!tournamentId }
   )
 
+  const createCheckout = trpc.payment.createRegistrationCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      }
+    },
+    onError: (error) => {
+      // If Stripe is not configured, show message and redirect to scoreboard
+      alert(`Registration successful! Entry fee payment is pending. ${error.message}`)
+      router.push(`/scoreboard/${tournamentId}?success=registered&paymentPending=true`)
+    },
+  })
+
   const registerMutation = trpc.player.register.useMutation({
     onSuccess: (data) => {
-      // If tournament requires payment, show message and redirect to scoreboard with payment info
+      // If tournament requires payment, create Stripe checkout
       if (data.tournament.requiresPayment) {
-        alert(`Registration successful! Entry fee of $${data.tournament.entryFee} is required. The tournament director will contact you for payment.`)
-        router.push(`/scoreboard/${tournamentId}?success=registered&paymentPending=true`)
+        createCheckout.mutate({
+          tournamentId,
+          playerId: data.player.id,
+        })
       } else {
         // Free tournament - registration complete
         alert('Registration successful! You are now registered for this tournament.')
