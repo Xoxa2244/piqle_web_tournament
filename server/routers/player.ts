@@ -1,7 +1,97 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { TRPCError } from '@trpc/server'
 
 export const playerRouter = createTRPCRouter({
+  // Self-registration endpoint (for players)
+  register: protectedProcedure
+    .input(z.object({
+      tournamentId: z.string(),
+      firstName: z.string().min(1, 'First name is required'),
+      lastName: z.string().min(1, 'Last name is required'),
+      email: z.string().email('Valid email is required'),
+      gender: z.enum(['M', 'F', 'X']),
+      duprRating: z.number().min(0).max(5).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { tournamentId, ...playerData } = input
+
+      // Check if tournament exists and is public
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: tournamentId },
+        select: {
+          id: true,
+          title: true,
+          isPublicBoardEnabled: true,
+          isPaid: true,
+          entryFee: true,
+          startDate: true,
+          endDate: true,
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      // Check if tournament is still accepting registrations (upcoming)
+      const now = new Date()
+      if (new Date(tournament.startDate) < now) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Registration closed. Tournament has already started.',
+        })
+      }
+
+      // Check if player already registered
+      const existingPlayer = await ctx.prisma.player.findFirst({
+        where: {
+          tournamentId,
+          email: input.email,
+        },
+      })
+
+      if (existingPlayer) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'You are already registered for this tournament',
+        })
+      }
+
+      // Create player
+      const player = await ctx.prisma.player.create({
+        data: {
+          ...playerData,
+          tournamentId,
+          isPaid: !tournament.isPaid, // Auto-mark as paid if tournament is free
+          isWaitlist: false,
+        },
+      })
+
+      // Log the registration
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId,
+          action: 'CREATE',
+          entityType: 'Player',
+          entityId: player.id,
+          payload: { ...input, selfRegistered: true },
+        },
+      })
+
+      return { 
+        player, 
+        tournament: {
+          isPaid: tournament.isPaid,
+          entryFee: tournament.entryFee,
+        }
+      }
+    }),
+
   create: tdProcedure
     .input(z.object({
       tournamentId: z.string(),
