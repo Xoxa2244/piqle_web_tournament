@@ -127,35 +127,56 @@ export default function MLPScoreInputModal({
   const handleSubmitAll = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Submit all games (allow empty/null scores)
+    // Submit all games - save only games with valid scores or both empty
+    // Skip games where only one score is filled (incomplete)
     for (let i = 0; i < games.length; i++) {
       const game = games[i]
-      const scoreA = game.scoreA.trim() === '' ? null : parseInt(game.scoreA)
-      const scoreB = game.scoreB.trim() === '' ? null : parseInt(game.scoreB)
+      const scoreAStr = game.scoreA.trim()
+      const scoreBStr = game.scoreB.trim()
       
-      // If both are empty, set to null
+      const scoreA = scoreAStr === '' ? null : parseInt(scoreAStr)
+      const scoreB = scoreBStr === '' ? null : parseInt(scoreBStr)
+      
+      // If both are empty, set to null (clear the game)
       if (scoreA === null && scoreB === null) {
-        await updateGameScore.mutateAsync({
-          matchId,
-          gameIndex: i,
-          scoreA: null,
-          scoreB: null,
-        })
+        try {
+          await updateGameScore.mutateAsync({
+            matchId,
+            gameIndex: i,
+            scoreA: null,
+            scoreB: null,
+          })
+        } catch (error) {
+          console.error(`Error saving game ${i}:`, error)
+        }
         continue
       }
       
-      // If one is filled, both must be valid numbers
-      if (scoreA === null || scoreB === null || isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
-        alert(`Please enter valid scores for ${GAME_TYPES[i].label} or leave both empty`)
-        return
+      // If one is filled but not both, skip this game (don't save incomplete data)
+      if (scoreA === null || scoreB === null) {
+        // Skip - don't save incomplete scores
+        continue
       }
       
-      await updateGameScore.mutateAsync({
-        matchId,
-        gameIndex: i,
-        scoreA,
-        scoreB,
-      })
+      // Both are filled - validate they are valid numbers
+      if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
+        // Skip invalid scores - don't block saving other games
+        console.warn(`Invalid scores for ${GAME_TYPES[i].label}, skipping`)
+        continue
+      }
+      
+      // Both scores are valid - save them
+      try {
+        await updateGameScore.mutateAsync({
+          matchId,
+          gameIndex: i,
+          scoreA,
+          scoreB,
+        })
+      } catch (error) {
+        console.error(`Error saving game ${i}:`, error)
+        // Continue with other games even if one fails
+      }
     }
 
     onSuccess?.()
@@ -215,13 +236,12 @@ export default function MLPScoreInputModal({
                       {teamAName}
                     </label>
                     <input
-                      type="number"
+                      type="text"
                       value={game.scoreA}
                       onChange={(e) => handleGameChange(index, 'scoreA', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Score"
-                      min="0"
-                      required
+                      pattern="[0-9]*"
                     />
                   </div>
                   <div>
@@ -229,13 +249,12 @@ export default function MLPScoreInputModal({
                       {teamBName}
                     </label>
                     <input
-                      type="number"
+                      type="text"
                       value={game.scoreB}
                       onChange={(e) => handleGameChange(index, 'scoreB', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Score"
-                      min="0"
-                      required
+                      pattern="[0-9]*"
                     />
                   </div>
                 </div>
