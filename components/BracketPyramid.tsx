@@ -18,7 +18,7 @@ interface Match {
   id: string
   teamA: Team | null
   teamB: Team | null
-  games: Array<{ scoreA: number; scoreB: number }>
+  games: Array<{ scoreA: number | null; scoreB: number | null }>
   roundIndex: number
   stage: string
 }
