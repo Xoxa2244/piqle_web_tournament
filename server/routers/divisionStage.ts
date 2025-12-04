@@ -268,7 +268,13 @@ export const divisionStageRouter = createTRPCRouter({
       const match = await ctx.prisma.match.findUnique({
         where: { id: input.matchId },
         include: {
-          division: true,
+          division: {
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
+          },
           games: true,
           teamA: {
             select: { id: true },
@@ -291,6 +297,9 @@ export const divisionStageRouter = createTRPCRouter({
       if (match.divisionId) {
         await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, match.divisionId)
       }
+
+      // Check if this is an MLP tournament
+      const isMLP = match.division?.tournament?.format === 'MLP'
 
       // Calculate winner from scores
       const gameWinner: 'A' | 'B' | null = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
@@ -317,14 +326,19 @@ export const divisionStageRouter = createTRPCRouter({
         })
       }
 
-      // Update match winner based on game result
-      await ctx.prisma.match.update({
-        where: { id: input.matchId },
-        data: {
-          winnerTeamId: gameWinner === 'A' ? match.teamA.id : 
-                        gameWinner === 'B' ? match.teamB.id : null,
-        },
-      })
+      // For MLP tournaments, winner is determined by updateGameScore after all 4 games are completed
+      // For non-MLP tournaments, update winner immediately based on single game
+      if (!isMLP) {
+        // Update match winner based on game result (only for non-MLP)
+        await ctx.prisma.match.update({
+          where: { id: input.matchId },
+          data: {
+            winnerTeamId: gameWinner === 'A' ? match.teamA.id : 
+                          gameWinner === 'B' ? match.teamB.id : null,
+          },
+        })
+      }
+      // For MLP: winnerTeamId will be set by updateGameScore after all 4 games are completed
 
       // Check if this completes the current stage
       if (!match.divisionId) {
