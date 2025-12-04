@@ -130,9 +130,35 @@ export const divisionStageRouter = createTRPCRouter({
         case 'RR_IN_PROGRESS':
           // Check if RR is complete
           const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
-          const completedRRMatches = rrMatches.filter(m => 
-            m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
-          )
+          const isMLP = division.tournament?.format === 'MLP'
+          
+          const completedRRMatches = rrMatches.filter(m => {
+            if (!m.games || m.games.length === 0) return false
+            
+            // For MLP matches, check if all 4 games are completed
+            const matchGamesCount = m.gamesCount || m.games.length
+            const isMLPMatch = isMLP && matchGamesCount === 4
+            
+            if (isMLPMatch) {
+              // MLP: all 4 games must have non-null scores and not be tied
+              if (m.games.length !== 4) return false
+              return m.games.every(g => 
+                g.scoreA !== null && 
+                g.scoreA !== undefined && 
+                g.scoreB !== null && 
+                g.scoreB !== undefined &&
+                g.scoreA !== g.scoreB &&
+                g.scoreA >= 0 &&
+                g.scoreB >= 0
+              )
+            } else {
+              // Non-MLP: at least one game with non-zero score
+              return m.games.some(g => 
+                (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || 
+                (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)
+              )
+            }
+          })
 
           if (completedRRMatches.length !== rrMatches.length) {
             throw new Error('Round Robin is not complete. Please enter all RR results.')

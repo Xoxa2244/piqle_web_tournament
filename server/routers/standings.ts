@@ -1326,9 +1326,33 @@ export const standingsRouter = createTRPCRouter({
       console.log('[getBracket] Standings calculated:', standings.length)
 
       // Check if RR is complete
-      const completedRRMatches = rrMatches.filter(m => 
-        (m.games || []).length > 0 && (m.games || []).some(g => (g.scoreA || 0) > 0 || (g.scoreB || 0) > 0)
-      )
+      const completedRRMatches = rrMatches.filter(m => {
+        if (!m.games || m.games.length === 0) return false
+        
+        // For MLP matches, check if all 4 games are completed
+        const matchGamesCount = m.gamesCount || m.games.length
+        const isMLPMatch = isMLP && matchGamesCount === 4
+        
+        if (isMLPMatch) {
+          // MLP: all 4 games must have non-null scores and not be tied
+          if (m.games.length !== 4) return false
+          return m.games.every(g => 
+            g.scoreA !== null && 
+            g.scoreA !== undefined && 
+            g.scoreB !== null && 
+            g.scoreB !== undefined &&
+            g.scoreA !== g.scoreB &&
+            g.scoreA >= 0 &&
+            g.scoreB >= 0
+          )
+        } else {
+          // Non-MLP: at least one game with non-zero score
+          return m.games.some(g => 
+            (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || 
+            (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)
+          )
+        }
+      })
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
       
       console.log('[getBracket] RR completion status:', {
