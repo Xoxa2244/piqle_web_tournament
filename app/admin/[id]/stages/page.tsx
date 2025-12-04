@@ -467,7 +467,7 @@ export default function DivisionStageManagement() {
   }
 
   const renderScoreActionButton = (match: any) => {
-    const hasResult = match?.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)
+    const hasResult = match?.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))
     const isLocked = Boolean(match?.locked)
     const matchNeedsTiebreaker = needsTiebreaker(match)
     const hasTiebreaker = match?.tiebreaker !== null && match?.tiebreaker !== undefined
@@ -1095,10 +1095,10 @@ export default function DivisionStageManagement() {
                                               )}
                                             </div>
                                             
-                                            {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
+                                            {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
                                               <div className="text-center space-y-2">
                                                 <div className="text-lg font-bold">
-                                                  {match.games[0].scoreA} - {match.games[0].scoreB}
+                                                  {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
                                                 </div>
                                                 <div className="text-sm text-green-600 font-medium">
                                                   Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
@@ -1334,10 +1334,10 @@ export default function DivisionStageManagement() {
                         )}
                       </div>
                       
-                      {match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0) ? (
+                      {match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0)) ? (
                         <div className="text-center space-y-2">
                           <div className="text-lg font-bold">
-                            {match.games[0].scoreA} - {match.games[0].scoreB}
+                            {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
                           </div>
                           <div className="text-sm text-green-600 font-medium">
                             Winner: {match.games[0].winner === 'A' ? getTeamDisplayName(match.teamA, currentDivision?.teamKind) : getTeamDisplayName(match.teamB, currentDivision?.teamKind)}
@@ -1643,11 +1643,11 @@ export default function DivisionStageManagement() {
                               }
                               
                               // For non-MLP or incomplete matches, show standard display
-                              if (match.games && match.games.length > 0 && (match.games[0].scoreA > 0 || match.games[0].scoreB > 0)) {
+                              if (match.games && match.games.length > 0 && match.games[0] && ((match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0) || (match.games[0].scoreB !== null && match.games[0].scoreB !== undefined && match.games[0].scoreB > 0))) {
                                 return (
                                   <div className="text-center space-y-2">
                                     <div className="text-lg font-bold">
-                                      {match.games[0].scoreA} - {match.games[0].scoreB}
+                                      {match.games[0].scoreA ?? '-'} - {match.games[0].scoreB ?? '-'}
                                     </div>
                                     {match.winnerTeamId && (
                                       <div className="text-sm text-green-600 font-medium">
