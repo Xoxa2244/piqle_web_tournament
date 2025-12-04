@@ -248,6 +248,32 @@ export default function DivisionStageManagement() {
   const teams = division?.teams || []
   const matches = division?.matches || []
   
+  // Count games won by each team in MLP match (defined early to avoid "before initialization" error)
+  const countMLPGamesWon = (match: any): { teamAWins: number; teamBWins: number } => {
+    let teamAWins = 0
+    let teamBWins = 0
+    
+    if (!match.games || match.games.length === 0) {
+      return { teamAWins: 0, teamBWins: 0 }
+    }
+    
+    for (const game of match.games) {
+      if (game.winner === 'A') {
+        teamAWins++
+      } else if (game.winner === 'B') {
+        teamBWins++
+      } else {
+        if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
+          teamAWins++
+        } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
+          teamBWins++
+        }
+      }
+    }
+    
+    return { teamAWins, teamBWins }
+  }
+  
   // DEBUG: Check matches data before filtering
   console.log('DEBUG matches before filtering:', {
     matchesLength: matches.length,
