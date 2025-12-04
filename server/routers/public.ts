@@ -641,7 +641,7 @@ export const publicRouter = createTRPCRouter({
         }))
 
       const completedRRMatches = rrMatches.filter(m => 
-        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
       )
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
 
