@@ -707,8 +707,8 @@ export const publicRouter = createTRPCRouter({
 
         if (playInMatches.length > 0) {
           const completedPlayIn = playInMatches.filter(m => {
-            const totalScoreA = m.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = m.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const totalScoreA = m.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+            const totalScoreB = m.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
             return m.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
           })
           const allPlayInComplete = completedPlayIn.length === playInMatches.length
