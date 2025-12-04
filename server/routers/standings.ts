@@ -277,7 +277,7 @@ export const standingsRouter = createTRPCRouter({
         completedMatches: completedMatches.length,
         totalMatches: playInMatches.length,
         incompleteMatches: playInMatches.filter(match => 
-          match.games.length === 0 || !match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+          match.games.length === 0 || !match.games.some(game => (game.scoreA !== null && game.scoreA !== undefined && game.scoreA > 0) || (game.scoreB !== null && game.scoreB !== undefined && game.scoreB > 0))
         ),
       }
     }),
