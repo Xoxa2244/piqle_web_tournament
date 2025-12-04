@@ -141,11 +141,11 @@ export default function HomePage() {
         {/* Tournaments List */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {filteredTournaments.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 md:items-stretch">
               {filteredTournaments.map((tournament) => {
                 const status = getTournamentStatus(new Date(tournament.startDate), new Date(tournament.endDate))
                 return (
-                <Card key={tournament.id} className="group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border-0 shadow-lg bg-white overflow-hidden">
+                <Card key={tournament.id} className="group hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border-0 shadow-lg bg-white overflow-hidden flex flex-col">
                   {/* Status Banner */}
                   <div className={`h-2 ${
                     status === 'upcoming' ? 'bg-gradient-to-r from-green-500 to-green-600' :
@@ -184,22 +184,23 @@ export default function HomePage() {
                       </div>
                     )}
                   </CardHeader>
-                  <CardContent className="space-y-5">
-                    {/* Entry Fee - Prominent */}
-                    {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
-                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center text-green-700">
-                            <DollarSign className="h-5 w-5 mr-2" />
-                            <span className="text-sm font-medium">Entry Fee</span>
+                  <CardContent className="space-y-5 flex-grow flex flex-col">
+                    <div className="space-y-5 flex-grow">
+                      {/* Entry Fee - Prominent */}
+                      {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center text-green-700">
+                              <DollarSign className="h-5 w-5 mr-2" />
+                              <span className="text-sm font-medium">Entry Fee</span>
+                            </div>
+                            <span className="text-2xl font-bold text-green-700">${tournament.entryFee}</span>
                           </div>
-                          <span className="text-2xl font-bold text-green-700">${tournament.entryFee}</span>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Tournament Info */}
-                    <div className="space-y-3">
+                      {/* Tournament Info */}
+                      <div className="space-y-3">
                       <div className="flex items-center text-sm text-gray-700">
                         <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
                           <Calendar className="h-4 w-4 text-blue-600" />
@@ -226,25 +227,26 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* Divisions */}
-                    {tournament.divisions.length > 0 && (
-                      <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Divisions</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {(tournament.divisions as any[]).map((division: any) => (
-                            <span 
-                              key={division.id} 
-                              className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm"
-                            >
-                              {division.name}
-                            </span>
-                          ))}
+                      {/* Divisions */}
+                      {tournament.divisions.length > 0 && (
+                        <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Divisions</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {(tournament.divisions as any[]).map((division: any) => (
+                              <span 
+                                key={division.id} 
+                                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 shadow-sm"
+                              >
+                                {division.name}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-4 border-t-2 border-gray-100">
+                    <div className="pt-4 border-t-2 border-gray-100 mt-auto">
                       {status === 'upcoming' ? (
                         // Upcoming tournaments - show registration button
                         !session ? (
