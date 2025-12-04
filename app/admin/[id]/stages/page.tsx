@@ -1605,9 +1605,9 @@ export default function DivisionStageManagement() {
                                     } else if (game.winner === 'B') {
                                       teamBWins++
                                     } else {
-                                      if (game.scoreA > game.scoreB) {
+                                      if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
                                         teamAWins++
-                                      } else if (game.scoreB > game.scoreA) {
+                                      } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
                                         teamBWins++
                                       }
                                     }
