@@ -681,7 +681,7 @@ export const standingsRouter = createTRPCRouter({
               targetPoints: 11,
               winBy: 2,
               locked: false,
-              note: match.note || null,
+              note: (match as any).note || null,
             },
           })
         })
