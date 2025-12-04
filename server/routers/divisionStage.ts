@@ -113,7 +113,7 @@ export const divisionStageRouter = createTRPCRouter({
               games: true,
             },
           },
-          tournament: { select: { id: true } },
+          tournament: { select: { id: true, format: true } },
         },
       })
 
