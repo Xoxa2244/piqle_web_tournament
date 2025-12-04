@@ -567,25 +567,97 @@ export const standingsRouter = createTRPCRouter({
       }
 
       const matches = []
+      const isMLP = division.tournament?.format === 'MLP'
 
-      if (N === B) {
-        // No play-in needed, direct playoffs
-        const playoffMatches = generateSingleEliminationMatches(standings, 0)
-        matches.push(...playoffMatches)
-      } else if (B < N && N < 2 * B) {
-        // Play-in needed
-        const E = N - B
-        const playInTeams = standings.slice(N - 2 * E) // Bottom 2E teams
-        const autoQualified = standings.slice(0, N - 2 * E) // Top teams auto-qualify
+      // MLP format: special logic for Play-Off generation
+      if (isMLP) {
+        // MLP: No play-in, generate Play-Off based on pool structure
+        const poolCount = division.pools.length
 
-        // Generate play-in matches
-        const playInMatches = generatePlayInMatches(playInTeams, 0)
-        matches.push(...playInMatches)
+        if (poolCount === 1) {
+          // Single pool: top 4 teams
+          if (standings.length < 4) {
+            throw new Error(`MLP single pool requires at least 4 teams, got ${standings.length}`)
+          }
 
-        // DO NOT generate playoff matches yet - they will be generated after play-in completion
-        // This prevents premature playoff generation before play-in results are known
+          const top4 = standings.slice(0, 4).map((team, index) => ({
+            teamId: team.teamId,
+            teamName: team.teamName,
+            seed: index + 1,
+          }))
+
+          const poolStandings = [{
+            poolId: division.pools[0].id,
+            poolName: division.pools[0].name,
+            top4,
+          }]
+
+          const mlpMatches = generateMLPPlayoffMatches(poolStandings, true)
+          matches.push(...mlpMatches)
+        } else if (poolCount === 2) {
+          // Two pools: top 2 from each pool
+          const poolStandings: Array<{
+            poolId: string
+            poolName: string
+            top2: Array<{ teamId: string; teamName: string; seed: number }>
+          }> = []
+
+          for (const pool of division.pools) {
+            const poolTeams = standings.filter(team => {
+              const teamObj = division.teams.find(t => t.id === team.teamId)
+              return teamObj?.poolId === pool.id
+            })
+
+            if (poolTeams.length < 2) {
+              throw new Error(`Pool ${pool.name} must have at least 2 teams, got ${poolTeams.length}`)
+            }
+
+            const top2 = poolTeams.slice(0, 2).map((team, index) => ({
+              teamId: team.teamId,
+              teamName: team.teamName,
+              seed: index + 1, // Seed within pool (1 or 2)
+            }))
+
+            poolStandings.push({
+              poolId: pool.id,
+              poolName: pool.name,
+              top2,
+            })
+          }
+
+          // Sort pools by order to ensure consistent pairing
+          poolStandings.sort((a, b) => {
+            const poolA = division.pools.find(p => p.id === a.poolId)
+            const poolB = division.pools.find(p => p.id === b.poolId)
+            return (poolA?.order || 0) - (poolB?.order || 0)
+          })
+
+          const mlpMatches = generateMLPPlayoffMatches(poolStandings, true)
+          matches.push(...mlpMatches)
+        } else {
+          throw new Error(`MLP format requires 1 or 2 pools, got ${poolCount}`)
+        }
       } else {
-        throw new Error(`Invalid team count ${N} for bracket size ${B}`)
+        // Single Elimination format: standard logic
+        if (N === B) {
+          // No play-in needed, direct playoffs
+          const playoffMatches = generateSingleEliminationMatches(standings, 0)
+          matches.push(...playoffMatches)
+        } else if (B < N && N < 2 * B) {
+          // Play-in needed
+          const E = N - B
+          const playInTeams = standings.slice(N - 2 * E) // Bottom 2E teams
+          const autoQualified = standings.slice(0, N - 2 * E) // Top teams auto-qualify
+
+          // Generate play-in matches
+          const playInMatches = generatePlayInMatches(playInTeams, 0)
+          matches.push(...playInMatches)
+
+          // DO NOT generate playoff matches yet - they will be generated after play-in completion
+          // This prevents premature playoff generation before play-in results are known
+        } else {
+          throw new Error(`Invalid team count ${N} for bracket size ${B}`)
+        }
       }
 
       // Create matches in database
