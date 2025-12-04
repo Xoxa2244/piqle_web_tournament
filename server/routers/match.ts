@@ -388,6 +388,22 @@ export const matchRouter = createTRPCRouter({
   fillRandomResults: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      // Get division to check tournament format
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          tournament: {
+            select: { format: true }
+          }
+        }
+      })
+
+      if (!division) {
+        throw new Error('Division not found')
+      }
+
+      const isMLP = division.tournament?.format === 'MLP'
+
       // Get all RR matches for division
       const matches = await ctx.prisma.match.findMany({
         where: { 
@@ -395,7 +411,15 @@ export const matchRouter = createTRPCRouter({
           stage: 'ROUND_ROBIN'
         },
         include: {
-          games: true
+          games: {
+            orderBy: { index: 'asc' }
+          },
+          teamA: {
+            select: { id: true }
+          },
+          teamB: {
+            select: { id: true }
+          }
         }
       })
 
@@ -403,13 +427,13 @@ export const matchRouter = createTRPCRouter({
         throw new Error('No Round Robin matches found for this division')
       }
 
-      // Function to generate random score
+      // Function to generate random score (minimum 1 point difference, no ties)
       const generateRandomScore = () => {
         let scoreA, scoreB
         do {
           scoreA = Math.floor(Math.random() * 30) + 1 // 1-30
           scoreB = Math.floor(Math.random() * 30) + 1 // 1-30
-        } while (Math.abs(scoreA - scoreB) < 3) // Minimum 3 point difference
+        } while (scoreA === scoreB || Math.abs(scoreA - scoreB) < 1) // No ties, minimum 1 point difference
         
         return { scoreA, scoreB }
       }
@@ -422,51 +446,139 @@ export const matchRouter = createTRPCRouter({
           continue
         }
 
-        // Check if results already exist
-        const hasResults = match.games && match.games.length > 0 && match.games[0] && match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0
-        
-        if (!hasResults) {
-          const { scoreA, scoreB } = generateRandomScore()
-          const winner = scoreA > scoreB ? 'A' : 'B'
+        if (isMLP) {
+          // For MLP: fill all 4 games
+          const matchGamesCount = match.gamesCount || 4
+          const existingGames = match.games || []
           
-          // Create or update game
-          if (match.games && match.games.length > 0) {
-            // Update existing game
-            await ctx.prisma.game.update({
-              where: { id: match.games[0].id },
+          // Check if all games already have results
+          const allGamesHaveResults = existingGames.length === matchGamesCount && 
+            existingGames.every(g => 
+              g.scoreA !== null && 
+              g.scoreA !== undefined && 
+              g.scoreB !== null && 
+              g.scoreB !== undefined &&
+              g.scoreA > 0 &&
+              g.scoreB > 0
+            )
+          
+          if (!allGamesHaveResults) {
+            // Fill all 4 games with random scores
+            const gameResults = []
+            
+            for (let i = 0; i < matchGamesCount; i++) {
+              const { scoreA, scoreB } = generateRandomScore()
+              const winner = scoreA > scoreB ? 'A' : 'B'
+              
+              // Find or create game
+              const existingGame = existingGames.find(g => g.index === i)
+              
+              if (existingGame) {
+                // Update existing game
+                await ctx.prisma.game.update({
+                  where: { id: existingGame.id },
+                  data: {
+                    scoreA,
+                    scoreB,
+                    winner: winner as 'A' | 'B'
+                  }
+                })
+              } else {
+                // Create new game
+                await ctx.prisma.game.create({
+                  data: {
+                    matchId: match.id,
+                    index: i,
+                    scoreA,
+                    scoreB,
+                    winner: winner as 'A' | 'B'
+                  }
+                })
+              }
+              
+              gameResults.push({ index: i, scoreA, scoreB, winner })
+            }
+            
+            // Calculate match winner from all games
+            const allGames = await ctx.prisma.game.findMany({
+              where: { matchId: match.id },
+              orderBy: { index: 'asc' }
+            })
+            
+            const gamesData = allGames.map(g => ({
+              scoreA: g.scoreA,
+              scoreB: g.scoreB,
+              winner: g.winner as 'A' | 'B' | null
+            }))
+            
+            const { winnerTeamId, needsTiebreaker } = calculateMLPMatchWinner(
+              gamesData,
+              match.teamA.id,
+              match.teamB.id
+            )
+            
+            // Update match winner (or set to null if tiebreaker needed)
+            await ctx.prisma.match.update({
+              where: { id: match.id },
               data: {
-                scoreA,
-                scoreB,
-                winner: winner as 'A' | 'B'
+                winnerTeamId: needsTiebreaker ? null : winnerTeamId
               }
             })
-          } else {
-            // Create new game
-            await ctx.prisma.game.create({
-              data: {
-                matchId: match.id,
-                index: 0,
-                scoreA,
-                scoreB,
-                winner: winner as 'A' | 'B'
-              }
+            
+            results.push({
+              matchId: match.id,
+              games: gameResults,
+              needsTiebreaker
             })
           }
+        } else {
+          // For Single Elimination: fill only one game (existing logic)
+          // Check if results already exist
+          const hasResults = match.games && match.games.length > 0 && match.games[0] && match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0
           
-          // Update match winner
-          await ctx.prisma.match.update({
-            where: { id: match.id },
-            data: {
-              winnerTeamId: winner === 'A' ? match.teamAId : match.teamBId
+          if (!hasResults) {
+            const { scoreA, scoreB } = generateRandomScore()
+            const winner = scoreA > scoreB ? 'A' : 'B'
+            
+            // Create or update game
+            if (match.games && match.games.length > 0) {
+              // Update existing game
+              await ctx.prisma.game.update({
+                where: { id: match.games[0].id },
+                data: {
+                  scoreA,
+                  scoreB,
+                  winner: winner as 'A' | 'B'
+                }
+              })
+            } else {
+              // Create new game
+              await ctx.prisma.game.create({
+                data: {
+                  matchId: match.id,
+                  index: 0,
+                  scoreA,
+                  scoreB,
+                  winner: winner as 'A' | 'B'
+                }
+              })
             }
-          })
-          
-          results.push({
-            matchId: match.id,
-            scoreA,
-            scoreB,
-            winner
-          })
+            
+            // Update match winner
+            await ctx.prisma.match.update({
+              where: { id: match.id },
+              data: {
+                winnerTeamId: winner === 'A' ? match.teamAId : match.teamBId
+              }
+            })
+            
+            results.push({
+              matchId: match.id,
+              scoreA,
+              scoreB,
+              winner
+            })
+          }
         }
       }
 
