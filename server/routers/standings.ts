@@ -147,8 +147,8 @@ export const standingsRouter = createTRPCRouter({
         let teamBPoints = 0
 
         match.games.forEach(game => {
-          teamAPoints += game.scoreA
-          teamBPoints += game.scoreB
+          teamAPoints += game.scoreA ?? 0
+          teamBPoints += game.scoreB ?? 0
         })
 
         // Update overall stats if team belongs to this division
@@ -268,7 +268,7 @@ export const standingsRouter = createTRPCRouter({
       }
 
       const completedMatches = playInMatches.filter(match => 
-        match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+        match.games.length > 0 && match.games.some(game => (game.scoreA !== null && game.scoreA !== undefined && game.scoreA > 0) || (game.scoreB !== null && game.scoreB !== undefined && game.scoreB > 0))
       )
 
       return {
@@ -435,8 +435,8 @@ export const standingsRouter = createTRPCRouter({
         let teamBPoints = 0
         
         match.games.forEach(game => {
-          teamAPoints += game.scoreA
-          teamBPoints += game.scoreB
+          teamAPoints += game.scoreA ?? 0
+          teamBPoints += game.scoreB ?? 0
         })
 
         // Update overall stats
@@ -558,7 +558,7 @@ export const standingsRouter = createTRPCRouter({
 
       if (playInMatches.length > 0) {
         const completedPlayInMatches = playInMatches.filter(match => 
-          match.games.length > 0 && match.games.some(game => game.scoreA > 0 || game.scoreB > 0)
+          match.games.length > 0 && match.games.some(game => (game.scoreA !== null && game.scoreA !== undefined && game.scoreA > 0) || (game.scoreB !== null && game.scoreB !== undefined && game.scoreB > 0))
         )
 
         if (completedPlayInMatches.length !== playInMatches.length) {
@@ -685,7 +685,7 @@ export const standingsRouter = createTRPCRouter({
       
       // Check if all matches in current round are completed
       const allCompleted = currentRoundMatches.every(match => 
-        match.games && match.games.length > 0 && match.games[0].scoreA > 0
+        match.games && match.games.length > 0 && match.games[0] && match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0
       )
       
       if (!allCompleted) {
@@ -719,9 +719,9 @@ export const standingsRouter = createTRPCRouter({
         if (!game) throw new Error('No game found for completed match')
         
         // Determine winner by score instead of relying on game.winner field
-        if (game.scoreA > game.scoreB) {
+        if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
           return match.teamA
-        } else if (game.scoreB > game.scoreA) {
+        } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
           return match.teamB
         } else {
           throw new Error('Match cannot have a tie score')
@@ -764,9 +764,9 @@ export const standingsRouter = createTRPCRouter({
           if (!game) throw new Error('No game found for completed match')
           
           // Determine loser by score
-          if (game.scoreA > game.scoreB) {
+          if (game.scoreA !== null && game.scoreB !== null && game.scoreA > game.scoreB) {
             return match.teamB
-          } else if (game.scoreB > game.scoreA) {
+          } else if (game.scoreA !== null && game.scoreB !== null && game.scoreB > game.scoreA) {
             return match.teamA
           } else {
             throw new Error('Match cannot have a tie score')
@@ -903,13 +903,13 @@ export const standingsRouter = createTRPCRouter({
         
         if (isMLP) {
           match.games.forEach(game => {
-            teamAPoints += game.scoreA
-            teamBPoints += game.scoreB
+            teamAPoints += game.scoreA ?? 0
+            teamBPoints += game.scoreB ?? 0
           })
         } else {
           const game = match.games[0]
-          teamAPoints = game.scoreA
-          teamBPoints = game.scoreB
+          teamAPoints = game.scoreA ?? 0
+          teamBPoints = game.scoreB ?? 0
         }
         
         const teamAStats = teamStats.get(match.teamAId)!
@@ -1531,8 +1531,8 @@ export const standingsRouter = createTRPCRouter({
         
         if (!teamAStats || !teamBStats) return
 
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
 
         teamAStats.pointDiff += totalScoreA - totalScoreB
         teamBStats.pointDiff += totalScoreB - totalScoreA
@@ -1557,7 +1557,7 @@ export const standingsRouter = createTRPCRouter({
         }))
 
       const completedRRMatches = rrMatches.filter(m => 
-        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
       )
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
 
@@ -1778,7 +1778,7 @@ export const standingsRouter = createTRPCRouter({
       // Check if all play-in matches are completed
       const playInMatches = division.matches.filter(m => m.stage === 'PLAY_IN')
       const completedPlayInMatches = playInMatches.filter(match => 
-        match.games && match.games.length > 0 && match.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        match.games && match.games.length > 0 && match.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
       )
 
       if (completedPlayInMatches.length !== playInMatches.length) {
@@ -1824,8 +1824,8 @@ export const standingsRouter = createTRPCRouter({
         
         if (!teamAStats || !teamBStats) return
 
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
 
         teamAStats.pointsFor += totalScoreA
         teamAStats.pointsAgainst += totalScoreB
@@ -1874,8 +1874,8 @@ export const standingsRouter = createTRPCRouter({
       // Get play-in winners
       const playInWinners = []
       for (const match of playInMatches) {
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
         
         if (totalScoreA > totalScoreB) {
           playInWinners.push(match.teamA)

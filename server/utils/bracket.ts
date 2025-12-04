@@ -995,8 +995,8 @@ export function buildCompleteBracket(
                 structureMatch.status = 'finished'
               } else if (dbMatch.games && dbMatch.games.length > 0) {
                 structureMatch.games = dbMatch.games
-                const totalScoreA = dbMatch.games.reduce((sum, g) => sum + g.scoreA, 0)
-                const totalScoreB = dbMatch.games.reduce((sum, g) => sum + g.scoreB, 0)
+                const totalScoreA = dbMatch.games.reduce((sum, g) => sum + (g.scoreA ?? 0), 0)
+                const totalScoreB = dbMatch.games.reduce((sum, g) => sum + (g.scoreB ?? 0), 0)
                 
                 if (totalScoreA > 0 || totalScoreB > 0) {
                   structureMatch.status = totalScoreA > totalScoreB || totalScoreB > totalScoreA ? 'finished' : 'in_progress'
