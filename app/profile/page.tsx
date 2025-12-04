@@ -49,6 +49,17 @@ export default function ProfilePage() {
     },
   })
 
+  const syncStripeStatus = trpc.user.syncStripeStatus.useMutation({
+    onSuccess: () => {
+      refetchStripeSettings()
+      alert('Stripe status synced successfully!')
+    },
+    onError: (err) => {
+      console.error('Stripe sync error', err)
+      alert(err.message)
+    },
+  })
+
   const [isEditing, setIsEditing] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -403,14 +414,27 @@ export default function ProfilePage() {
                     </div>
                   )}
 
-                  <Button
-                    onClick={() => initStripeConnect.mutate()}
-                    disabled={initStripeConnect.isPending}
-                    className="w-full mt-3"
-                  >
-                    {initStripeConnect.isPending ? 'Redirecting…' : 
-                     stripeSettings?.stripeAccountId ? 'Update Stripe Account' : 'Connect Stripe'}
-                  </Button>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      onClick={() => initStripeConnect.mutate()}
+                      disabled={initStripeConnect.isPending}
+                      className="flex-1"
+                    >
+                      {initStripeConnect.isPending ? 'Redirecting…' : 
+                       stripeSettings?.stripeAccountId ? 'Update Stripe Account' : 'Connect Stripe'}
+                    </Button>
+                    
+                    {stripeSettings?.stripeAccountId && (
+                      <Button
+                        onClick={() => syncStripeStatus.mutate()}
+                        disabled={syncStripeStatus.isPending}
+                        variant="outline"
+                        className="flex-shrink-0"
+                      >
+                        {syncStripeStatus.isPending ? 'Syncing...' : 'Sync Status'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

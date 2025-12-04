@@ -221,5 +221,48 @@ export const userRouter = createTRPCRouter({
         accountLinkUrl: accountLink.url,
       }
     }),
+
+  // Sync Stripe account status from Stripe
+  syncStripeStatus: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      if (!stripe) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Stripe is not configured on server',
+        })
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: {
+          id: true,
+          stripeAccountId: true,
+        },
+      })
+
+      if (!user || !user.stripeAccountId) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Stripe account not found',
+        })
+      }
+
+      // Fetch account status from Stripe
+      const account = await stripe.accounts.retrieve(user.stripeAccountId)
+
+      // Update user status in database
+      await ctx.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          stripeAccountStatus: account.charges_enabled ? 'ACTIVE' : 'REQUIRE_ONBOARDING',
+          paymentsEnabled: account.charges_enabled,
+        },
+      })
+
+      return {
+        stripeAccountStatus: account.charges_enabled ? 'ACTIVE' : 'REQUIRE_ONBOARDING',
+        paymentsEnabled: account.charges_enabled,
+      }
+    }),
 })
 

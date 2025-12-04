@@ -36,6 +36,17 @@ export async function POST(request: Request) {
     switch (event.type) {
       case 'account.updated': {
         const account = event.data.object as Stripe.Account
+        
+        // Update User-level Stripe account status
+        await prisma.user.updateMany({
+          where: { stripeAccountId: account.id },
+          data: {
+            stripeAccountStatus: account.charges_enabled ? 'ACTIVE' : 'REQUIRE_ONBOARDING',
+            paymentsEnabled: account.charges_enabled,
+          },
+        })
+        
+        // Also update legacy TournamentPaymentSetting for backward compatibility
         await prisma.tournamentPaymentSetting.updateMany({
           where: { stripeAccountId: account.id },
           data: {
