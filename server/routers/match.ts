@@ -423,7 +423,7 @@ export const matchRouter = createTRPCRouter({
         }
 
         // Check if results already exist
-        const hasResults = match.games && match.games.length > 0 && match.games[0].scoreA > 0
+        const hasResults = match.games && match.games.length > 0 && match.games[0] && match.games[0].scoreA !== null && match.games[0].scoreA !== undefined && match.games[0].scoreA > 0
         
         if (!hasResults) {
           const { scoreA, scoreB } = generateRandomScore()
