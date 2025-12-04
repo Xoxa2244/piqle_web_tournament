@@ -638,8 +638,8 @@ export const matchRouter = createTRPCRouter({
 
         const { winnerTeamId, needsTiebreaker } = calculateMLPMatchWinner(
           allGames,
-          match.teamA.id,
-          match.teamB.id
+          updatedMatch.teamA.id,
+          updatedMatch.teamB.id
         )
 
         // Update match winner (if determined) or clear if tiebreaker needed
@@ -660,7 +660,7 @@ export const matchRouter = createTRPCRouter({
           }
           
           // Only delete tiebreaker if it exists
-          if (match.tiebreaker) {
+          if (updatedMatch.tiebreaker) {
             updateData.tiebreaker = {
               delete: true,
             }

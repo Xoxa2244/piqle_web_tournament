@@ -41,6 +41,7 @@ export default function MLPScoreInputModal({
 
   const updateGameScore = trpc.match.updateGameScore.useMutation({
     onSuccess: () => {
+      // Call onSuccess after each game score update to refresh data
       onSuccess?.()
     },
     onError: (error) => {
@@ -91,12 +92,17 @@ export default function MLPScoreInputModal({
       return
     }
 
-    await updateGameScore.mutateAsync({
-      matchId,
-      gameIndex: index,
-      scoreA,
-      scoreB,
-    })
+    try {
+      await updateGameScore.mutateAsync({
+        matchId,
+        gameIndex: index,
+        scoreA,
+        scoreB,
+      })
+      // onSuccess is already called in mutation's onSuccess callback
+    } catch (error) {
+      // Error is already handled in mutation's onError callback
+    }
   }
 
   const handleSubmitAll = async (e: React.FormEvent) => {
