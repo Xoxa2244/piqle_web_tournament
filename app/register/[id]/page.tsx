@@ -21,7 +21,7 @@ export default function TournamentRegisterPage() {
     firstName: '',
     lastName: '',
     email: '',
-    gender: '' as 'M' | 'F' | 'X' | '',
+    gender: '' as 'M' | 'F' | '',
     duprRating: '',
   })
 
@@ -209,14 +209,13 @@ export default function TournamentRegisterPage() {
                 <select
                   id="gender"
                   value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'M' | 'F' | 'X' })}
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'M' | 'F' })}
                   required
                   className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="">Select Gender</option>
                   <option value="M">Male</option>
                   <option value="F">Female</option>
-                  <option value="X">Other</option>
                 </select>
               </div>
 

@@ -10,7 +10,7 @@ export const playerRouter = createTRPCRouter({
       firstName: z.string().min(1, 'First name is required'),
       lastName: z.string().min(1, 'Last name is required'),
       email: z.string().email('Valid email is required'),
-      gender: z.enum(['M', 'F', 'X']),
+      gender: z.enum(['M', 'F']),
       duprRating: z.number().min(0).max(5).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
