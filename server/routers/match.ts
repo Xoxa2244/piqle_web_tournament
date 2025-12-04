@@ -556,8 +556,8 @@ export const matchRouter = createTRPCRouter({
     .input(z.object({
       matchId: z.string(),
       gameIndex: z.number(),
-      scoreA: z.number().nullable().optional(),
-      scoreB: z.number().nullable().optional(),
+      scoreA: z.union([z.number(), z.null()]).optional(),
+      scoreB: z.union([z.number(), z.null()]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const match = await ctx.prisma.match.findUnique({

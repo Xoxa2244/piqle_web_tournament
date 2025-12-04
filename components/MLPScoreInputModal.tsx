@@ -143,8 +143,8 @@ export default function MLPScoreInputModal({
           await updateGameScore.mutateAsync({
             matchId,
             gameIndex: i,
-            scoreA: null,
-            scoreB: null,
+            scoreA: null as any,
+            scoreB: null as any,
           })
         } catch (error) {
           console.error(`Error saving game ${i}:`, error)
@@ -170,8 +170,8 @@ export default function MLPScoreInputModal({
         await updateGameScore.mutateAsync({
           matchId,
           gameIndex: i,
-          scoreA,
-          scoreB,
+          scoreA: scoreA as number,
+          scoreB: scoreB as number,
         })
       } catch (error) {
         console.error(`Error saving game ${i}:`, error)
