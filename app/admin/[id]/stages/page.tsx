@@ -734,7 +734,21 @@ export default function DivisionStageManagement() {
   const canRegenerateRR = rrMatches.length > 0 // Can regenerate if RR matches exist
   const canGeneratePlayIn = completedRRMatches.length === rrMatches.length && rrMatches.length > 0 && needsPlayIn && !playInMatches.length
   const canRegeneratePlayIn = playInMatches.length > 0
-  const canGeneratePlayoff = (currentStage === 'PLAY_IN_COMPLETE' || (currentStage === 'RR_COMPLETE' && !needsPlayIn) || (needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0)) && !eliminationMatches.length
+  // Play-Off can be generated if:
+  // 1. All RR matches are completed AND (stage is RR_IN_PROGRESS or RR_COMPLETE) AND no Play-In needed
+  // 2. OR Play-In is complete
+  // 3. OR Play-In matches are all completed (if Play-In is needed)
+  const canGeneratePlayoff = (
+    (currentStage === 'RR_IN_PROGRESS' || currentStage === 'RR_COMPLETE') && 
+    completedRRMatches.length === rrMatches.length && 
+    rrMatches.length > 0 && 
+    !needsPlayIn && 
+    !eliminationMatches.length
+  ) || (
+    currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
+  ) || (
+    needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
+  )
 
   // Debug button availability
   console.log('Button availability debug:', {
