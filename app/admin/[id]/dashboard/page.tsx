@@ -594,10 +594,18 @@ export default function DivisionDashboard() {
                         name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
-                      games: match.games || [],
+                      games: (match.games || []).map(g => ({
+                        scoreA: g.scoreA,
+                        scoreB: g.scoreB,
+                        winner: g.winner as 'A' | 'B' | null | undefined
+                      })),
                       roundIndex: match.roundIndex,
                       stage: match.stage,
-                      note: (match as any).note
+                      note: (match as any).note,
+                      tiebreaker: (match as any).tiebreaker,
+                      winnerTeamId: (match as any).winnerTeamId,
+                      gamesCount: (match as any).gamesCount,
+                      isMLP: tournament?.format === 'MLP'
                     }))}
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
@@ -668,10 +676,18 @@ export default function DivisionDashboard() {
                             name: match.teamB.name,
                             seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                           } : null,
-                          games: match.games || [],
+                          games: (match.games || []).map(g => ({
+                            scoreA: g.scoreA,
+                            scoreB: g.scoreB,
+                            winner: g.winner as 'A' | 'B' | null | undefined
+                          })),
                           roundIndex: match.roundIndex,
                           stage: match.stage,
-                          note: (match as any).note
+                          note: (match as any).note,
+                          tiebreaker: (match as any).tiebreaker,
+                          winnerTeamId: (match as any).winnerTeamId,
+                          gamesCount: (match as any).gamesCount,
+                          isMLP: tournament?.format === 'MLP'
                         }))}
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {
