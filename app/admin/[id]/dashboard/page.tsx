@@ -77,9 +77,9 @@ export default function DivisionDashboard() {
 
   // Read division from URL params on mount and when URL changes
   useEffect(() => {
-    if (!tournament || (tournament.divisions as any[]).length === 0) return
+    if (!tournament || ((tournament as any).divisions as any[]).length === 0) return
     
-    const divisions = tournament.divisions as any[]
+    const divisions = (tournament as any).divisions as any[]
     const divisionFromUrl = searchParams.get('division')
     if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
       // Division from URL is valid - use it
@@ -98,7 +98,7 @@ export default function DivisionDashboard() {
 
   // Update URL when division changes via selector (not from URL read)
   useEffect(() => {
-    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
+    if (selectedDivisionId && tournament && ((tournament as any).divisions as any[]).length > 0) {
       const divisionFromUrl = searchParams.get('division')
       // Only update URL if it's different and division was not just set from URL
       if (divisionFromUrl !== selectedDivisionId) {
@@ -194,7 +194,7 @@ export default function DivisionDashboard() {
     return <div className="flex items-center justify-center min-h-screen">Tournament not found</div>
   }
 
-  if (tournament.divisions.length === 0) {
+  if ((tournament as any).divisions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen px-4">
         <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -301,8 +301,8 @@ export default function DivisionDashboard() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const divisions = tournament.divisions as any[]
+                  const currentIndex = ((tournament as any).divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
+                  const divisions = (tournament as any).divisions as any[]
                   const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
                   setSelectedDivisionId(divisions[prevIndex].id)
                 }}
@@ -315,7 +315,7 @@ export default function DivisionDashboard() {
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {(tournament.divisions as any[]).map((division: any) => (
+                {((tournament as any).divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
                     {division.name}
                   </option>
@@ -326,8 +326,8 @@ export default function DivisionDashboard() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const currentIndex = (tournament.divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
-                  const divisions = tournament.divisions as any[]
+                  const currentIndex = ((tournament as any).divisions as any[]).findIndex((d: any) => d.id === selectedDivisionId)
+                  const divisions = (tournament as any).divisions as any[]
                   const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
                   setSelectedDivisionId(divisions[nextIndex].id)
                 }}
