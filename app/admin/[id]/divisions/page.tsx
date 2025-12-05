@@ -660,7 +660,7 @@ export default function DivisionsPage() {
   )
   
   // Get divisions for team creation
-  const divisions = tournament?.divisions || []
+  const divisions = (tournament as any)?.divisions || []
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
@@ -668,8 +668,8 @@ export default function DivisionsPage() {
   
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
-    if (!tournament?.divisions) return []
-    const divisions = tournament.divisions as any[]
+    if (!(tournament as any)?.divisions) return []
+    const divisions = (tournament as any).divisions as any[]
     const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
     
     return divisions.filter((div: any) => {
@@ -686,16 +686,16 @@ export default function DivisionsPage() {
       })
       return !wasMerged
     })
-  }, [tournament?.divisions])
+  }, [(tournament as any)?.divisions])
 
   // Sync local divisions with fetched data (filtered)
   useEffect(() => {
     if (visibleDivisions.length > 0) {
       setLocalDivisions(visibleDivisions as Division[])
-    } else if (tournament?.divisions) {
-      setLocalDivisions(tournament.divisions)
+    } else if ((tournament as any)?.divisions) {
+      setLocalDivisions((tournament as any).divisions)
     }
-  }, [visibleDivisions, tournament?.divisions])
+  }, [visibleDivisions, (tournament as any)?.divisions])
   
   // Sync local availablePlayers with fetched data
   useEffect(() => {
@@ -852,8 +852,8 @@ export default function DivisionsPage() {
 
   const rollbackTeamMove = () => {
     // Revert to server data
-    if (tournament?.divisions) {
-      setLocalDivisions(tournament.divisions)
+    if ((tournament as any)?.divisions) {
+      setLocalDivisions((tournament as any).divisions)
     }
   }
 
@@ -1405,7 +1405,7 @@ export default function DivisionsPage() {
     )
   }
 
-  if (tournament.divisions.length === 0) {
+  if ((tournament as any).divisions.length === 0) {
     return (
       <>
         <div className="min-h-screen bg-gray-50">

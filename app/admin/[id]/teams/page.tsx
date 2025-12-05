@@ -127,7 +127,7 @@ export default function TeamsPage() {
   })
 
   // Get divisions and teams from tournament
-  const divisions = tournament?.divisions || []
+  const divisions = (tournament as any)?.divisions || []
   
   // Get all teams from all divisions and add division reference
   const teams = (divisions as any[]).flatMap((division: any) => 

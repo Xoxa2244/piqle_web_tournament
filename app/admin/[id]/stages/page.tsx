@@ -74,8 +74,8 @@ export default function DivisionStageManagement() {
 
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
-    if (!tournament?.divisions) return []
-    const divisions = tournament.divisions as any[]
+    if (!(tournament as any)?.divisions) return []
+    const divisions = (tournament as any).divisions as any[]
     const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
     
     return divisions.filter((div: any) => {
@@ -92,7 +92,7 @@ export default function DivisionStageManagement() {
       })
       return !wasMerged
     })
-  }, [tournament?.divisions])
+  }, [(tournament as any)?.divisions])
 
   // Read division from URL params on mount and when URL changes
   useEffect(() => {
@@ -402,7 +402,7 @@ export default function DivisionStageManagement() {
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
+  const currentDivision = ((tournament as any)?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
@@ -794,7 +794,7 @@ export default function DivisionStageManagement() {
   }
 
   // Check if user has access to any divisions
-  if (tournament.divisions.length === 0) {
+  if ((tournament as any).divisions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen px-4">
         <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">

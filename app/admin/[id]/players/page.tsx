@@ -94,7 +94,7 @@ export default function PlayersPage() {
   })
 
   // Get divisions and teams from tournament
-  const divisions = tournament?.divisions || []
+  const divisions = (tournament as any)?.divisions || []
   
   // Get all teams from all divisions for filter
   const teams = (divisions as any[]).flatMap((division: any) => division.teams || [])
