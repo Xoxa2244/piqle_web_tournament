@@ -13,7 +13,7 @@ import { tournamentAccessRouter } from './tournamentAccess'
 import { superadminRouter } from './superadmin'
 import { userRouter } from './user'
 import { ratingRouter } from './rating'
-// import { paymentRouter } from './payment' // TODO: Uncomment when Payment model is added
+import { paymentRouter } from './payment'
 import { dashboardRouter } from './dashboard'
 
 export const appRouter = createTRPCRouter({
@@ -31,7 +31,7 @@ export const appRouter = createTRPCRouter({
   superadmin: superadminRouter,
   user: userRouter,
   rating: ratingRouter,
-  // payment: paymentRouter, // TODO: Uncomment when Payment model is added
+  payment: paymentRouter,
   dashboard: dashboardRouter,
 })
 
