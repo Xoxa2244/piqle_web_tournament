@@ -161,6 +161,15 @@ function DivisionDashboardContent() {
     },
   })
 
+  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
     setScoreModal({
       isOpen: true,
@@ -253,14 +262,6 @@ function DivisionDashboardContent() {
   const hasPlayIn = needsPlayIn
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
-
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   return (
     <div className="min-h-screen bg-gray-50">

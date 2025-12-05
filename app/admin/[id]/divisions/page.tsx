@@ -651,7 +651,16 @@ export default function DivisionsPage() {
     { enabled: !!tournamentId }
   )
   
-  // Check if user has admin access (defined later, avoid redeclaration)
+  // Check if user has admin access (must be before conditional returns to avoid hooks violations)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner) - MUST be before conditional returns
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -1358,17 +1367,6 @@ export default function DivisionsPage() {
   if (!tournament) {
     return <div>Loading...</div>
   }
-
-  // Check if user has admin access (owner or ADMIN access level)
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-
-  // Get pending access requests count (only for owner)
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   // Check if user has access to any divisions
   // Check if user has admin access to manage divisions
