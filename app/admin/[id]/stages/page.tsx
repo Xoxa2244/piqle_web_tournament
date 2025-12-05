@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
@@ -35,7 +35,7 @@ import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
 
-export default function DivisionStageManagement() {
+function DivisionStageManagementContent() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
@@ -2145,5 +2145,21 @@ export default function DivisionStageManagement() {
         </div>
       )}
     </div>
+  )
+}
+
+// Wrapper with Suspense to prevent hydration errors
+export default function DivisionStageManagement() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <DivisionStageManagementContent />
+    </Suspense>
   )
 }

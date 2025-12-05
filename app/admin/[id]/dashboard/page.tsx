@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,7 +54,7 @@ interface PlayoffMatch {
   stage: string
 }
 
-export default function DivisionDashboard() {
+function DivisionDashboardContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -734,5 +734,21 @@ export default function DivisionDashboard() {
         />
       )}
     </div>
+  )
+}
+
+// Wrapper with Suspense to prevent hydration errors
+export default function DivisionDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <DivisionDashboardContent />
+    </Suspense>
   )
 }
