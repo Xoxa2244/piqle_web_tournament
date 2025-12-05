@@ -32,7 +32,6 @@ model User {
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
-  paymentsCreated          Payment[]                 @relation("PaymentsCreated")
 
   @@map("users")
 }
