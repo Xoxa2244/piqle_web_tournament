@@ -396,17 +396,6 @@ function DivisionDashboardContent() {
                           </div>
                         )}
                       </div>
-                      
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm font-medium">Tournament Info</span>
-                        </div>
-                        <div className="text-xs text-gray-600 space-y-1">
-                          <p>Round Robin format</p>
-                          <p>Best of 3 games</p>
-                          <p>Win by 2 points</p>
-                        </div>
-                      </div>
                     </CardContent>
                   </Card>
                 </div>
