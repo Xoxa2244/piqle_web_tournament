@@ -11,6 +11,11 @@ import interactionPlugin from '@fullcalendar/interaction'
 import { Calendar, ArrowLeft, Trophy, Users, MapPin } from 'lucide-react'
 import Link from 'next/link'
 
+// Import FullCalendar styles
+import '@fullcalendar/core/index.css'
+import '@fullcalendar/daygrid/index.css'
+import '@fullcalendar/timegrid/index.css'
+
 export default function CalendarPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
