@@ -192,8 +192,6 @@ export const tournamentRouter = createTRPCRouter({
       startDate: z.string().transform((str) => new Date(str)).optional(),
       endDate: z.string().transform((str) => new Date(str)).optional(),
       entryFee: z.number().optional(),
-      isPaid: z.boolean().optional(),
-      currency: z.string().length(3).optional(),
       isPublicBoardEnabled: z.boolean().optional(),
       publicSlug: z.string().optional(),
     }))
@@ -204,10 +202,7 @@ export const tournamentRouter = createTRPCRouter({
       const { id, ...data } = input
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
-        data: updateData,
-        include: {
-          paymentSetting: true,
-        },
+        data,
       })
 
       // Log the update
