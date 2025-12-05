@@ -112,8 +112,8 @@ export default function DivisionDashboard() {
   }, [selectedDivisionId, tournamentId, router])
 
   // Set first division as default
-  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
-                          (tournament?.divisions as any[])?.[0]
+  const currentDivision = ((tournament as any)?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
+                          ((tournament as any)?.divisions as any[])?.[0]
 
   // Get standings for current division
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
