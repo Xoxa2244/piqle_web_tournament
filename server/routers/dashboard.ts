@@ -15,9 +15,7 @@ export const dashboardRouter = createTRPCRouter({
         title: true,
         startDate: true,
         endDate: true,
-        isPaid: true,
         entryFee: true,
-        currency: true,
         _count: {
           select: {
             players: true,
@@ -287,7 +285,6 @@ export const dashboardRouter = createTRPCRouter({
           endDate: true,
           venueName: true,
           venueAddress: true,
-          isPaid: true,
           entryFee: true,
           _count: {
             select: {
