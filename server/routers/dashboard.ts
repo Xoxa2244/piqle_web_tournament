@@ -46,63 +46,17 @@ export const dashboardRouter = createTRPCRouter({
     // Total players across all tournaments
     const totalPlayers = tournaments.reduce((sum, t) => sum + t._count.players, 0)
 
-    // Get payments stats
-    const payments = await ctx.prisma.payment.findMany({
-      where: {
-        tournament: {
-          userId,
-        },
-        status: 'SUCCEEDED',
-      },
-      select: {
-        amount: true,
-        applicationFeeAmount: true,
-        payoutAmount: true,
-        createdAt: true,
-      },
-    })
-
-    // Calculate revenue
-    const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0)
-    const platformFees = payments.reduce((sum, p) => sum + p.applicationFeeAmount, 0)
-    
-    // Calculate Stripe processing fees (2.9% + $0.30 per transaction)
-    const stripeProcessingFees = payments.reduce((sum, p) => {
-      const feePercent = Math.round(p.amount * 0.029) // 2.9%
-      const feeFixed = 30 // $0.30 in cents
-      return sum + feePercent + feeFixed
-    }, 0)
-    
-    const netRevenue = payments.reduce((sum, p) => sum + p.payoutAmount, 0)
-    const finalPayout = netRevenue - stripeProcessingFees // What TD actually gets
-
-    // Revenue this month
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthPayments = payments.filter((p) => p.createdAt >= startOfMonth)
-    const monthRevenue = monthPayments.reduce((sum, p) => sum + p.payoutAmount, 0)
-    const monthStripeFees = monthPayments.reduce((sum, p) => {
-      const feePercent = Math.round(p.amount * 0.029)
-      const feeFixed = 30
-      return sum + feePercent + feeFixed
-    }, 0)
-    const monthFinalPayout = monthRevenue - monthStripeFees
-
-    // Get pending payouts (payments for active/upcoming tournaments)
-    // tournaments where endDate is in the future
-    const pendingPayouts = await ctx.prisma.payment.aggregate({
-      where: {
-        tournament: {
-          userId,
-          endDate: {
-            gte: now,
-          },
-        },
-        status: 'SUCCEEDED',
-      },
-      _sum: {
-        payoutAmount: true,
-      },
-    })
+    // TODO: Uncomment when Payment model is added
+    // Payment stats temporarily disabled (Payment model doesn't exist in Dev)
+    const totalRevenue = 0
+    const platformFees = 0
+    const stripeProcessingFees = 0
+    const netRevenue = 0
+    const finalPayout = 0
+    const monthRevenue = 0
+    const monthStripeFees = 0
+    const monthFinalPayout = 0
+    const pendingPayouts = { _sum: { payoutAmount: 0 } }
 
     return {
       tournaments: {
@@ -165,38 +119,9 @@ export const dashboardRouter = createTRPCRouter({
         take: input.limit,
       })
 
-      // Get recent payments
-      const recentPayments = await ctx.prisma.payment.findMany({
-        where: {
-          tournament: {
-            userId,
-          },
-        },
-        select: {
-          id: true,
-          amount: true,
-          payoutAmount: true,
-          status: true,
-          createdAt: true,
-          tournament: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-          player: {
-            select: {
-              firstName: true,
-              lastName: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: input.limit,
-      })
+      // TODO: Payment activities disabled (Payment model doesn't exist in Dev)
+      // Get recent payments - temporarily disabled
+      const recentPayments: any[] = []
 
       // Combine and sort by date
       const activities: Array<{
@@ -217,23 +142,6 @@ export const dashboardRouter = createTRPCRouter({
               tournamentId: p.tournament!.id,
               tournamentTitle: p.tournament!.title,
               isPaid: p.isPaid,
-            },
-          })),
-        ...recentPayments
-          .filter((p) => p.tournament)
-          .map((p) => ({
-            id: p.id,
-            type: 'payment' as const,
-            timestamp: p.createdAt,
-            data: {
-              amount: p.amount,
-              payoutAmount: p.payoutAmount,
-              status: p.status,
-              tournamentId: p.tournament!.id,
-              tournamentTitle: p.tournament!.title,
-              playerName: p.player
-                ? `${p.player.firstName} ${p.player.lastName}`
-                : 'Unknown',
             },
           })),
       ]
@@ -334,6 +242,7 @@ export const dashboardRouter = createTRPCRouter({
     }),
 
   // Get Revenue Chart Data (monthly)
+  // TODO: Uncomment when Payment model is added
   getRevenueChart: tdProcedure
     .input(
       z.object({
@@ -341,61 +250,8 @@ export const dashboardRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id
-
-      const now = new Date()
-      const startDate = new Date(now.getFullYear(), now.getMonth() - input.months + 1, 1)
-
-      const payments = await ctx.prisma.payment.findMany({
-        where: {
-          tournament: {
-            userId,
-          },
-          status: 'SUCCEEDED',
-          createdAt: {
-            gte: startDate,
-          },
-        },
-        select: {
-          amount: true,
-          applicationFeeAmount: true,
-          payoutAmount: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: 'asc',
-        },
-      })
-
-      // Group by month
-      const monthlyData: Record<
-        string,
-        { total: number; platformFee: number; net: number }
-      > = {}
-
-      payments.forEach((payment) => {
-        const monthKey = `${payment.createdAt.getFullYear()}-${String(
-          payment.createdAt.getMonth() + 1
-        ).padStart(2, '0')}`
-
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { total: 0, platformFee: 0, net: 0 }
-        }
-
-        monthlyData[monthKey].total += payment.amount
-        monthlyData[monthKey].platformFee += payment.applicationFeeAmount
-        monthlyData[monthKey].net += payment.payoutAmount
-      })
-
-      // Format for chart
-      const chartData = Object.entries(monthlyData).map(([month, data]) => ({
-        month,
-        total: data.total,
-        platformFee: data.platformFee,
-        net: data.net,
-      }))
-
-      return chartData
+      // Payment model doesn't exist in Dev - return empty array
+      return []
     }),
 })
 
