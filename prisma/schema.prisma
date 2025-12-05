@@ -18,6 +18,10 @@ model User {
   gender                   Gender?
   city                     String?
   duprLink                 String?
+  // Stripe Connect fields
+  stripeAccountId          String?                   @map("stripeAccountId")
+  stripeAccountStatus      StripeAccountStatus?      @default(PENDING) @map("stripeAccountStatus")
+  paymentsEnabled          Boolean                   @default(false) @map("paymentsEnabled")
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   accounts                 Account[]
@@ -28,6 +32,7 @@ model User {
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
+  paymentsCreated          Payment[]                 @relation("PaymentsCreated")
 
   @@map("users")
 }
@@ -447,6 +452,14 @@ enum UserRole {
   PLAYER
   TD
   ASSISTANT
+}
+
+enum StripeAccountStatus {
+  PENDING
+  REQUIRE_ONBOARDING
+  ACTIVE
+  RESTRICTED
+  DISABLED
 }
 
 enum AccessLevel {
