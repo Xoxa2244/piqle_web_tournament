@@ -67,13 +67,27 @@ export const dashboardRouter = createTRPCRouter({
     // Calculate revenue
     const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0)
     const platformFees = payments.reduce((sum, p) => sum + p.applicationFeeAmount, 0)
+    
+    // Calculate Stripe processing fees (2.9% + $0.30 per transaction)
+    const stripeProcessingFees = payments.reduce((sum, p) => {
+      const feePercent = Math.round(p.amount * 0.029) // 2.9%
+      const feeFixed = 30 // $0.30 in cents
+      return sum + feePercent + feeFixed
+    }, 0)
+    
     const netRevenue = payments.reduce((sum, p) => sum + p.payoutAmount, 0)
+    const finalPayout = netRevenue - stripeProcessingFees // What TD actually gets
 
     // Revenue this month
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthRevenue = payments
-      .filter((p) => p.createdAt >= startOfMonth)
-      .reduce((sum, p) => sum + p.payoutAmount, 0)
+    const monthPayments = payments.filter((p) => p.createdAt >= startOfMonth)
+    const monthRevenue = monthPayments.reduce((sum, p) => sum + p.payoutAmount, 0)
+    const monthStripeFees = monthPayments.reduce((sum, p) => {
+      const feePercent = Math.round(p.amount * 0.029)
+      const feeFixed = 30
+      return sum + feePercent + feeFixed
+    }, 0)
+    const monthFinalPayout = monthRevenue - monthStripeFees
 
     // Get pending payouts (payments for active/upcoming tournaments)
     // tournaments where endDate is in the future
@@ -106,7 +120,11 @@ export const dashboardRouter = createTRPCRouter({
         total: totalRevenue,
         net: netRevenue,
         platformFees,
+        stripeProcessingFees,
+        finalPayout,
         thisMonth: monthRevenue,
+        thisMonthStripeFees: monthStripeFees,
+        thisMonthFinalPayout: monthFinalPayout,
         pendingPayouts: pendingPayouts._sum.payoutAmount || 0,
       },
     }

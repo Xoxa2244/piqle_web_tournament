@@ -136,7 +136,7 @@ export default function TDDashboard() {
                     <dt className="text-sm font-medium text-gray-500 truncate">This Month</dt>
                     <dd className="flex items-baseline">
                       <div className="text-2xl font-semibold text-gray-900">
-                        ${((overview?.revenue.thisMonth || 0) / 100).toFixed(2)}
+                        ${((overview?.revenue.thisMonthFinalPayout || 0) / 100).toFixed(2)}
                       </div>
                     </dd>
                   </dl>
@@ -145,7 +145,7 @@ export default function TDDashboard() {
             </div>
             <div className="bg-gray-50 px-5 py-3">
               <div className="text-sm text-gray-500">
-                Net revenue (after fees)
+                After all fees (Piqle + Stripe)
               </div>
             </div>
           </div>
@@ -294,7 +294,7 @@ export default function TDDashboard() {
               <h2 className="text-lg font-medium text-gray-900">Revenue Overview</h2>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
                   <div className="text-sm font-medium text-gray-500">Total Revenue</div>
                   <div className="mt-2 text-3xl font-semibold text-gray-900">
@@ -303,18 +303,38 @@ export default function TDDashboard() {
                   <div className="mt-2 text-sm text-gray-500">All time</div>
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-500">Your Earnings</div>
-                  <div className="mt-2 text-3xl font-semibold text-green-600">
-                    ${((overview?.revenue.net || 0) / 100).toFixed(2)}
+                  <div className="text-sm font-medium text-gray-500">Platform Fees</div>
+                  <div className="mt-2 text-3xl font-semibold text-orange-600">
+                    -${((overview?.revenue.platformFees || 0) / 100).toFixed(2)}
                   </div>
-                  <div className="mt-2 text-sm text-gray-500">After platform fees</div>
+                  <div className="mt-2 text-sm text-gray-500">10% Piqle commission</div>
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-500">Platform Fees</div>
-                  <div className="mt-2 text-3xl font-semibold text-gray-600">
-                    ${((overview?.revenue.platformFees || 0) / 100).toFixed(2)}
+                  <div className="text-sm font-medium text-gray-500">Stripe Fees</div>
+                  <div className="mt-2 text-3xl font-semibold text-red-600">
+                    -${((overview?.revenue.stripeProcessingFees || 0) / 100).toFixed(2)}
                   </div>
-                  <div className="mt-2 text-sm text-gray-500">10% commission</div>
+                  <div className="mt-2 text-sm text-gray-500">~2.9% + $0.30/txn</div>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-gray-500">Net Payout</div>
+                  <div className="mt-2 text-3xl font-semibold text-green-600">
+                    ${((overview?.revenue.finalPayout || 0) / 100).toFixed(2)}
+                  </div>
+                  <div className="mt-2 text-sm text-gray-500">You receive</div>
+                </div>
+              </div>
+              
+              {/* Breakdown explanation */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Calculation:</span>
+                  <span className="text-gray-900 font-mono">
+                    ${((overview?.revenue.total || 0) / 100).toFixed(2)} 
+                    {' '}- ${((overview?.revenue.platformFees || 0) / 100).toFixed(2)}
+                    {' '}- ${((overview?.revenue.stripeProcessingFees || 0) / 100).toFixed(2)}
+                    {' '}= ${((overview?.revenue.finalPayout || 0) / 100).toFixed(2)}
+                  </span>
                 </div>
               </div>
             </div>
