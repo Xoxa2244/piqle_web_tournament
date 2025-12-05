@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
@@ -62,7 +62,13 @@ export default function PublicTournamentsPage() {
   const [filter, setFilter] = useState<FilterType>('current')
   const [searchQuery, setSearchQuery] = useState('')
   const [avatarError, setAvatarError] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
   
   // Get ratings for all tournaments
   const tournamentIds = useMemo(() => {
@@ -256,16 +262,18 @@ export default function PublicTournamentsPage() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {publicTournaments.map((tournament) => (
               <Card key={tournament.id} className="hover:shadow-lg transition-shadow relative flex flex-col h-full">
-                <div className="absolute top-4 right-4 z-10">
-                  <ShareButton
-                    url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
-                    title={tournament.title}
-                    iconOnly
-                    size="sm"
-                    variant="ghost"
-                    className="text-gray-500 hover:text-gray-700"
-                  />
-                </div>
+                {baseUrl && (
+                  <div className="absolute top-4 right-4 z-10">
+                    <ShareButton
+                      url={`${baseUrl}/scoreboard/${tournament.id}`}
+                      title={tournament.title}
+                      iconOnly
+                      size="sm"
+                      variant="ghost"
+                      className="text-gray-500 hover:text-gray-700"
+                    />
+                  </div>
+                )}
                 <CardHeader className="flex-shrink-0">
                   <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
                   <div className="mt-2 min-h-[4.5rem]">

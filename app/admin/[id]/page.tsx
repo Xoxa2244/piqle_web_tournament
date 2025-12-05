@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,6 +27,12 @@ export default function TournamentDetailPage() {
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
   const [tournamentForm, setTournamentForm] = useState({
     title: '',
     description: '',
@@ -202,7 +208,7 @@ export default function TournamentDetailPage() {
         pendingRequestsCount={pendingRequestsCount}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled ? `${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournamentId}` : undefined}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
       />
 
       {/* Main Content */}
