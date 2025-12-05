@@ -62,12 +62,18 @@ export default function DivisionDashboard() {
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
     teamAName: string
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -264,7 +270,7 @@ export default function DivisionDashboard() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled ? `${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournamentId}` : undefined}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         onPublicScoreboardClick={() => {
           if (!tournament?.isPublicBoardEnabled) {
             alert('Public Scoreboard is not available. Please enable it in tournament settings.')
