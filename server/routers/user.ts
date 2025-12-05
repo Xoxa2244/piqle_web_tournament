@@ -195,6 +195,11 @@ export const userRouter = createTRPCRouter({
             card_payments: { requested: true },
             transfers: { requested: true },
           },
+          business_type: 'individual',
+          business_profile: {
+            mcc: '7941', // Sports Clubs/Fields - категория для спортивных мероприятий
+            product_description: 'Pickleball tournament entry fees',
+          },
         })
 
         stripeAccountId = account.id
@@ -215,6 +220,10 @@ export const userRouter = createTRPCRouter({
         refresh_url: `${baseAppUrl}/profile?stripe=refresh`,
         return_url: `${baseAppUrl}/profile?stripe=success`,
         type: 'account_onboarding',
+        collection_options: {
+          fields: 'eventually_due', // Собираем только критически важные поля сейчас
+          future_requirements: 'include', // Остальное можно добавить позже
+        },
       })
 
       return {
