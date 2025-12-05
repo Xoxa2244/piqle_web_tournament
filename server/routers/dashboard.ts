@@ -189,33 +189,37 @@ export const dashboardRouter = createTRPCRouter({
         timestamp: Date
         data: any
       }> = [
-        ...recentPlayers.map((p) => ({
-          id: p.id,
-          type: 'registration' as const,
-          timestamp: p.createdAt,
-          data: {
-            playerName: `${p.firstName} ${p.lastName}`,
-            playerEmail: p.email,
-            tournamentId: p.tournament.id,
-            tournamentTitle: p.tournament.title,
-            isPaid: p.isPaid,
-          },
-        })),
-        ...recentPayments.map((p) => ({
-          id: p.id,
-          type: 'payment' as const,
-          timestamp: p.createdAt,
-          data: {
-            amount: p.amount,
-            payoutAmount: p.payoutAmount,
-            status: p.status,
-            tournamentId: p.tournament.id,
-            tournamentTitle: p.tournament.title,
-            playerName: p.player
-              ? `${p.player.firstName} ${p.player.lastName}`
-              : 'Unknown',
-          },
-        })),
+        ...recentPlayers
+          .filter((p) => p.tournament)
+          .map((p) => ({
+            id: p.id,
+            type: 'registration' as const,
+            timestamp: p.createdAt,
+            data: {
+              playerName: `${p.firstName} ${p.lastName}`,
+              playerEmail: p.email,
+              tournamentId: p.tournament!.id,
+              tournamentTitle: p.tournament!.title,
+              isPaid: p.isPaid,
+            },
+          })),
+        ...recentPayments
+          .filter((p) => p.tournament)
+          .map((p) => ({
+            id: p.id,
+            type: 'payment' as const,
+            timestamp: p.createdAt,
+            data: {
+              amount: p.amount,
+              payoutAmount: p.payoutAmount,
+              status: p.status,
+              tournamentId: p.tournament!.id,
+              tournamentTitle: p.tournament!.title,
+              playerName: p.player
+                ? `${p.player.firstName} ${p.player.lastName}`
+                : 'Unknown',
+            },
+          })),
       ]
 
       // Sort by timestamp and limit
