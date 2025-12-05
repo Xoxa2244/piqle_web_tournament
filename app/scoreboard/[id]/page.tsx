@@ -360,14 +360,6 @@ export default function PublicCoursePage() {
                           </tbody>
                         </table>
                       </div>
-                      
-                      {/* Tournament Info */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                          <span>Teams: {standings.length}</span>
-                          <span>Status: {isRRComplete ? 'Complete' : 'In Progress'}</span>
-                        </div>
-                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -574,14 +566,6 @@ export default function PublicCoursePage() {
                             ))}
                           </tbody>
                         </table>
-                      </div>
-                      
-                      {/* Tournament Info */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                          <span>Teams: {standings.length}</span>
-                          <span>Status: {isRRComplete ? 'Complete' : 'In Progress'}</span>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
