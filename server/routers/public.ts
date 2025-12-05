@@ -354,8 +354,8 @@ export const publicRouter = createTRPCRouter({
         let teamBPoints = 0
         
         match.games.forEach(game => {
-          teamAPoints += game.scoreA
-          teamBPoints += game.scoreB
+          teamAPoints += game.scoreA ?? 0
+          teamBPoints += game.scoreB ?? 0
         })
 
         // Update overall stats
@@ -615,8 +615,8 @@ export const publicRouter = createTRPCRouter({
         
         if (!teamAStats || !teamBStats) return
 
-        const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-        const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+        const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+        const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
 
         teamAStats.pointDiff += totalScoreA - totalScoreB
         teamBStats.pointDiff += totalScoreB - totalScoreA
@@ -641,7 +641,7 @@ export const publicRouter = createTRPCRouter({
         }))
 
       const completedRRMatches = rrMatches.filter(m => 
-        m.games.length > 0 && m.games.some(g => g.scoreA > 0 || g.scoreB > 0)
+        m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
       )
       const isRRComplete = completedRRMatches.length === rrMatches.length && rrMatches.length > 0
 
@@ -656,8 +656,8 @@ export const publicRouter = createTRPCRouter({
         
         if (playInMatches.length > 0) {
           playInBracket = playInMatches.map((match, index) => {
-            const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+            const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
             const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
             const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
 
@@ -707,16 +707,16 @@ export const publicRouter = createTRPCRouter({
 
         if (playInMatches.length > 0) {
           const completedPlayIn = playInMatches.filter(m => {
-            const totalScoreA = m.games.reduce((sum, game) => sum + game.scoreA, 0)
-            const totalScoreB = m.games.reduce((sum, game) => sum + game.scoreB, 0)
+            const totalScoreA = m.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+            const totalScoreB = m.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
             return m.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
           })
           const allPlayInComplete = completedPlayIn.length === playInMatches.length
 
           if (allPlayInComplete) {
             playInMatches.forEach(match => {
-              const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-              const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+              const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+              const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
               if (totalScoreA > totalScoreB) {
                 playInWinners.push({ id: match.teamAId, name: match.teamA.name })
               } else {
@@ -741,8 +741,8 @@ export const publicRouter = createTRPCRouter({
           if (!existingMatchesByRound.has(round)) {
             existingMatchesByRound.set(round, [])
           }
-          const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-          const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+          const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+          const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
           const isCompleted = match.games.length > 0 && (totalScoreA > 0 || totalScoreB > 0)
           const winner = isCompleted ? (totalScoreA > totalScoreB ? match.teamA : match.teamB) : null
           

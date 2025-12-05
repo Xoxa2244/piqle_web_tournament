@@ -1,139 +1,48 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useSession } from 'next-auth/react'
-import { trpc } from '@/lib/trpc'
-import { formatDescription } from '@/lib/formatDescription'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Calendar, MapPin, Users, Trophy, Eye, DollarSign } from 'lucide-react'
 import Link from 'next/link'
 import PublicHeader from '@/components/PublicHeader'
 
 type FilterType = 'upcoming' | 'in_progress' | 'past' | 'all'
 
 export default function HomePage() {
-  const { data: session } = useSession()
-  const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const [filter, setFilter] = useState<FilterType>('upcoming')
-  const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
-
-  const truncateText = (text: string | null, maxLines: number = 3) => {
-    if (!text) return ''
-    const lines = text.split('\n')
-    if (lines.length <= maxLines) return text
-    return lines.slice(0, maxLines).join('\n')
-  }
-
-  // Helper function to determine tournament status
-  const getTournamentStatus = (startDate: Date, endDate: Date): 'upcoming' | 'in_progress' | 'past' => {
-    const now = new Date()
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    
-    // Add 12 hours buffer to end date
-    end.setHours(end.getHours() + 12)
-    
-    if (now < start) {
-      return 'upcoming'
-    } else if (now >= start && now <= end) {
-      return 'in_progress'
-    } else {
-      return 'past'
-    }
-  }
-
-  // Filter tournaments based on selected filter
-  const filteredTournaments = useMemo(() => {
-    if (!tournaments) return []
-    
-    if (filter === 'all') {
-      return tournaments
-    }
-    
-    return tournaments.filter(tournament => {
-      const status = getTournamentStatus(new Date(tournament.startDate), new Date(tournament.endDate))
-      return status === filter
-    })
-  }, [tournaments, filter])
-
-  if (isLoading) {
-    return (
-      <>
-        <PublicHeader />
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading tournaments...</p>
-          </div>
-        </div>
-      </>
-    )
-  }
 
   return (
-    <>
-      <PublicHeader />
-      <div className="min-h-screen bg-gray-50">
-        {/* Hero Section */}
-        <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white py-16">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h1 className="text-5xl font-extrabold mb-4 tracking-tight">
-                Pickleball Tournaments
-              </h1>
-              <p className="text-xl text-blue-50 font-light">
-                Find and join tournaments near you
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            Piqle Tournament Management
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Tournament management and scoreboard system
+          </p>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="bg-white border-b shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex gap-3 py-5 overflow-x-auto">
-              <button
-                onClick={() => setFilter('upcoming')}
-                className={`px-6 py-2.5 font-semibold text-sm transition-all duration-200 rounded-lg whitespace-nowrap ${
-                  filter === 'upcoming'
-                    ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-md shadow-green-200'
-                    : 'text-gray-600 hover:bg-gray-50 border border-gray-200'
-                }`}
-              >
-                🟢 Upcoming
-              </button>
-              <button
-                onClick={() => setFilter('in_progress')}
-                className={`px-6 py-2.5 font-semibold text-sm transition-all duration-200 rounded-lg whitespace-nowrap ${
-                  filter === 'in_progress'
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md shadow-blue-200'
-                    : 'text-gray-600 hover:bg-gray-50 border border-gray-200'
-                }`}
-              >
-                🔵 Live Now
-              </button>
-              <button
-                onClick={() => setFilter('past')}
-                className={`px-6 py-2.5 font-semibold text-sm transition-all duration-200 rounded-lg whitespace-nowrap ${
-                  filter === 'past'
-                    ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-md shadow-gray-200'
-                    : 'text-gray-600 hover:bg-gray-50 border border-gray-200'
-                }`}
-              >
-                ⚫ Past
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-6 py-2.5 font-semibold text-sm transition-all duration-200 rounded-lg whitespace-nowrap ${
-                  filter === 'all'
-                    ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-md shadow-purple-200'
-                    : 'text-gray-600 hover:bg-gray-50 border border-gray-200'
-                }`}
-              >
-                🌐 All
-              </button>
+        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-semibold mb-4">Quick Links</h2>
+              <div className="space-y-3">
+                <Link
+                  href="/admin"
+                  className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  Tournament Director Console
+                </Link>
+                <Link
+                  href="/auth/signin"
+                  className="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  Sign In / Register
+                </Link>
+                <Link
+                  href="/scoreboard"
+                  className="block w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  Public Scoreboard
+                </Link>
+              </div>
             </div>
           </div>
         </div>

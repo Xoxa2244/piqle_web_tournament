@@ -226,6 +226,8 @@ export default function DivisionDashboard() {
   const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
   const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
 
+  const isMLP = tournament?.format === 'MLP'
+
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
   // Calculate Play-In logic based on team count and target bracket size
@@ -239,7 +241,7 @@ export default function DivisionDashboard() {
   }
   
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
@@ -427,7 +429,7 @@ export default function DivisionDashboard() {
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
                               <th className="text-center py-2">H2H Diff</th>
-                              <th className="text-center py-2">Status</th>
+                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -447,21 +449,23 @@ export default function DivisionDashboard() {
                                   </span>
                                 </td>
                                 <td className="py-2 text-center">—</td>
-                                <td className="py-2 text-center">
-                                  {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Auto-qualified
-                                    </Badge>
-                                  ) : hasPlayIn ? (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                      Play-in
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Qualified
-                                    </Badge>
-                                  )}
-                                </td>
+                                {!isMLP && (
+                                  <td className="py-2 text-center">
+                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Auto-qualified
+                                      </Badge>
+                                    ) : hasPlayIn ? (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                                        Play-in
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Qualified
+                                      </Badge>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                               )
                             })}
@@ -594,10 +598,18 @@ export default function DivisionDashboard() {
                         name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
-                      games: match.games || [],
+                      games: (match.games || []).map(g => ({
+                        scoreA: g.scoreA,
+                        scoreB: g.scoreB,
+                        winner: g.winner as 'A' | 'B' | null | undefined
+                      })),
                       roundIndex: match.roundIndex,
                       stage: match.stage,
-                      note: (match as any).note
+                      note: (match as any).note,
+                      tiebreaker: (match as any).tiebreaker,
+                      winnerTeamId: (match as any).winnerTeamId,
+                      gamesCount: (match as any).gamesCount,
+                      isMLP: tournament?.format === 'MLP'
                     }))}
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
@@ -668,10 +680,18 @@ export default function DivisionDashboard() {
                             name: match.teamB.name,
                             seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                           } : null,
-                          games: match.games || [],
+                          games: (match.games || []).map(g => ({
+                            scoreA: g.scoreA,
+                            scoreB: g.scoreB,
+                            winner: g.winner as 'A' | 'B' | null | undefined
+                          })),
                           roundIndex: match.roundIndex,
                           stage: match.stage,
-                          note: (match as any).note
+                          note: (match as any).note,
+                          tiebreaker: (match as any).tiebreaker,
+                          winnerTeamId: (match as any).winnerTeamId,
+                          gamesCount: (match as any).gamesCount,
+                          isMLP: tournament?.format === 'MLP'
                         }))}
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {

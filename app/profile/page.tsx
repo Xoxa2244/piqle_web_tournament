@@ -8,8 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Award, CreditCard } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -23,40 +22,6 @@ export default function ProfilePage() {
       refetch()
       setIsEditing(false)
       setIsUploadingAvatar(false)
-    },
-  })
-  const becomeTD = trpc.user.becomeTournamentDirector.useMutation({
-    onSuccess: () => {
-      refetch()
-      refetchStripeSettings()
-    },
-    onError: (error) => {
-      alert(error.message)
-    },
-  })
-
-  const { data: stripeSettings, refetch: refetchStripeSettings } = trpc.user.getStripeSettings.useQuery()
-
-  const initStripeConnect = trpc.user.initStripeConnect.useMutation({
-    onSuccess: (data) => {
-      if (data.accountLinkUrl) {
-        window.location.href = data.accountLinkUrl
-      }
-    },
-    onError: (err) => {
-      console.error('Stripe onboarding error', err)
-      alert(err.message)
-    },
-  })
-
-  const syncStripeStatus = trpc.user.syncStripeStatus.useMutation({
-    onSuccess: () => {
-      refetchStripeSettings()
-      alert('Stripe status synced successfully!')
-    },
-    onError: (err) => {
-      console.error('Stripe sync error', err)
-      alert(err.message)
     },
   })
 
@@ -320,125 +285,6 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
-
-            {/* Email */}
-            <div>
-              <Label>Email</Label>
-              <div className="mt-1 text-lg text-gray-900">
-                {profile.email}
-              </div>
-            </div>
-
-            {/* Role & Become TD */}
-            <div className="border-t border-gray-200 pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Role</Label>
-                  <div className="mt-1 text-lg font-semibold text-gray-900">
-                    {profile.role === 'TD' ? 'Tournament Director' : 
-                     profile.role === 'ASSISTANT' ? 'Assistant' : 
-                     'Player'}
-                  </div>
-                </div>
-                
-                {profile.role === 'PLAYER' && !isEditing && (
-                  <Button
-                    onClick={() => {
-                      if (confirm('Do you want to become a Tournament Director? This will allow you to create and manage tournaments.')) {
-                        becomeTD.mutate()
-                      }
-                    }}
-                    disabled={becomeTD.isPending}
-                    className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg"
-                  >
-                    <Award className="h-4 w-4 mr-2" />
-                    <span>Become a Tournament Director</span>
-                  </Button>
-                )}
-              </div>
-
-              {profile.role === 'PLAYER' && (
-                <p className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                  💡 <strong>Want to create tournaments?</strong> Upgrade to Tournament Director to create and manage your own tournaments.
-                </p>
-              )}
-
-              {profile.role === 'TD' && (
-                <p className="mt-3 text-sm text-green-700 bg-green-50 p-3 rounded-lg">
-                  ✅ You can create and manage tournaments. <Link href="/admin" className="underline font-medium">Go to TD Console</Link>
-                </p>
-              )}
-            </div>
-
-            {/* Stripe Payments Section - Only for TD */}
-            {profile.role === 'TD' && !isEditing && (
-              <div className="border-t border-gray-200 pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-2">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                    <Label className="text-base font-semibold">Stripe Payments</Label>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-700 font-medium">Account Status</div>
-                    <Badge 
-                      variant={stripeSettings?.paymentsEnabled ? 'default' : 'secondary'}
-                      className={stripeSettings?.paymentsEnabled ? 'bg-green-600' : ''}
-                    >
-                      {stripeSettings?.stripeAccountStatus || 'NOT_CONNECTED'}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-700 font-medium">Payments Collection</div>
-                    <Badge variant={stripeSettings?.paymentsEnabled ? 'default' : 'secondary'}>
-                      {stripeSettings?.paymentsEnabled ? 'Enabled' : 'Disabled'}
-                    </Badge>
-                  </div>
-
-                  {stripeSettings?.paymentsEnabled && (
-                    <div className="pt-2 border-t border-blue-200">
-                      <p className="text-sm text-green-700 font-medium">
-                        ✅ Ready to collect payments! Players can register and pay for your tournaments.
-                      </p>
-                    </div>
-                  )}
-
-                  {!stripeSettings?.paymentsEnabled && (
-                    <div className="pt-2 border-t border-blue-200">
-                      <p className="text-sm text-gray-600">
-                        💡 Connect your Stripe account to receive payments from tournament registrations. Platform fee: 10%.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 mt-3">
-                    <Button
-                      onClick={() => initStripeConnect.mutate()}
-                      disabled={initStripeConnect.isPending}
-                      className="flex-1"
-                    >
-                      {initStripeConnect.isPending ? 'Redirecting…' : 
-                       stripeSettings?.stripeAccountId ? 'Update Stripe Account' : 'Connect Stripe'}
-                    </Button>
-                    
-                    {stripeSettings?.stripeAccountId && (
-                      <Button
-                        onClick={() => syncStripeStatus.mutate()}
-                        disabled={syncStripeStatus.isPending}
-                        variant="outline"
-                        className="flex-shrink-0"
-                      >
-                        {syncStripeStatus.isPending ? 'Syncing...' : 'Sync Status'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            
 
             {/* Gender */}
             <div>

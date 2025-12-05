@@ -18,9 +18,8 @@ export default function NewTournamentPage() {
     startDate: '',
     endDate: '',
     entryFee: '',
-    isPaid: false,
-    currency: 'usd',
     isPublicBoardEnabled: false,
+    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP',
   })
 
   const createTournament = trpc.tournament.create.useMutation({
@@ -41,11 +40,6 @@ export default function NewTournamentPage() {
       return
     }
 
-    if (formData.isPaid && !formData.entryFee) {
-      alert('Please enter entry fee for paid tournament')
-      return
-    }
-
     createTournament.mutate({
       title: formData.title,
       description: formData.description || undefined,
@@ -53,9 +47,8 @@ export default function NewTournamentPage() {
       startDate: formData.startDate,
       endDate: formData.endDate,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
-      isPaid: formData.isPaid,
-      currency: formData.currency,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      format: formData.format,
     })
   }
 
@@ -165,21 +158,7 @@ export default function NewTournamentPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="isPaid"
-                  name="isPaid"
-                  checked={formData.isPaid}
-                  onChange={handleChange}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="isPaid" className="ml-2 block text-sm text-gray-700">
-                  Paid Tournament (enables Stripe payment collection)
-                </label>
-              </div>
-
+            <div>
               <label htmlFor="entryFee" className="block text-sm font-medium text-gray-700 mb-2">
                 Entry Fee ($)
               </label>
@@ -193,26 +172,29 @@ export default function NewTournamentPage() {
                 step="0.01"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="0.00"
-                disabled={!formData.isPaid}
               />
-              <div>
-                <label htmlFor="currency" className="block text-sm font-medium text-gray-700 mb-2">
-                  Currency
-                </label>
-                <select
-                  id="currency"
-                  name="currency"
-                  value={formData.currency}
-                  onChange={handleChange}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100 text-gray-600"
-                >
-                  <option value="usd">USD</option>
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Support for other currencies coming soon; currently using USD.
-                </p>
-              </div>
+            </div>
+
+            <div>
+              <label htmlFor="format" className="block text-sm font-medium text-gray-700 mb-2">
+                Tournament Format *
+              </label>
+              <select
+                id="format"
+                name="format"
+                value={formData.format}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="SINGLE_ELIMINATION">Single Elimination</option>
+                <option value="MLP">MLP Tournament</option>
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                {formData.format === 'MLP' 
+                  ? 'MLP format: 4-player teams (2F + 2M), 4 games per match, tiebreaker on 2:2'
+                  : 'Standard single elimination bracket with play-in matches'}
+              </p>
             </div>
 
             <div className="flex items-center">

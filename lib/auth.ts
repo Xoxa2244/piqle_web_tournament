@@ -68,14 +68,6 @@ export const authOptions: NextAuthOptions = {
     async session({ session, user }) {
       if (session?.user && user?.id) {
         session.user.id = user.id
-        // Add role to session for client-side access
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { role: true },
-        })
-        if (dbUser) {
-          session.user.role = dbUser.role
-        }
       }
       return session
     },

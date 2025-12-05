@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,6 +31,7 @@ interface Player {
   email: string | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
+  gender: 'M' | 'F' | 'X' | null
   isPaid: boolean | null
   isWaitlist: boolean | null
   teamPlayers: Array<{
@@ -51,8 +52,6 @@ interface Player {
 export default function PlayersPage() {
   const params = useParams()
   const tournamentId = params.id as string
-  const searchParams = useSearchParams()
-  const paymentStatus = searchParams.get('payment')
   
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
@@ -67,7 +66,6 @@ export default function PlayersPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
-  const isPaidTournament = (tournament as any)?.isPaid
   
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
@@ -83,20 +81,6 @@ export default function PlayersPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
-
-  const createCheckoutSession = trpc.payment.createCheckoutSession.useMutation({
-    onSuccess: (data) => {
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl
-      } else if (data.sessionId) {
-        alert('Checkout session создан, но URL отсутствует')
-      }
-    },
-    onError: (error) => {
-      console.error('Ошибка создания платежной сессии:', error)
-      alert(error.message)
-    },
-  })
 
   // Delete player mutation
   const deletePlayerMutation = trpc.player.delete.useMutation({
@@ -180,15 +164,6 @@ export default function PlayersPage() {
     deletePlayerMutation.mutate({ id: playerId })
   }
 
-  const handleCreatePaymentSession = (player: Player) => {
-    createCheckoutSession.mutate({
-      tournamentId,
-      playerId: player.id,
-      successPath: `/admin/${tournamentId}/players?payment=success`,
-      cancelPath: `/admin/${tournamentId}/players?payment=cancel`,
-    })
-  }
-
   const getPlayerDivision = (player: Player) => {
     const teamPlayer = player.teamPlayers[0]
     return teamPlayer ? teamPlayer.team.division.name : '—'
@@ -223,16 +198,6 @@ export default function PlayersPage() {
       />
       
       <div className="container mx-auto p-6">
-        {paymentStatus === 'success' && (
-          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            Payment initiated. Player status will update after Stripe confirmation.
-          </div>
-        )}
-        {paymentStatus === 'cancel' && (
-          <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
-            Payment was cancelled or not completed. Please try again.
-          </div>
-        )}
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
@@ -331,6 +296,7 @@ export default function PlayersPage() {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3 font-medium">Player Name</th>
+                  <th className="text-left p-3 font-medium">Gender</th>
                   <th className="text-left p-3 font-medium">Email</th>
                   <th className="text-left p-3 font-medium">DUPR ID</th>
                   <th className="text-left p-3 font-medium">DUPR Rating</th>
@@ -344,7 +310,7 @@ export default function PlayersPage() {
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-8 text-gray-500">
+                    <td colSpan={10} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -358,6 +324,13 @@ export default function PlayersPage() {
                         <div className="font-medium">
                           {player.firstName} {player.lastName}
                         </div>
+                      </td>
+                      <td className="p-3 text-sm text-gray-600">
+                        {player.gender ? (
+                          <Badge variant={player.gender === 'M' ? 'default' : player.gender === 'F' ? 'secondary' : 'outline'}>
+                            {player.gender === 'M' ? 'Male' : player.gender === 'F' ? 'Female' : 'Other'}
+                          </Badge>
+                        ) : '—'}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {player.email || '—'}
@@ -387,16 +360,6 @@ export default function PlayersPage() {
                       <td className="p-3">
                         {isAdmin && (
                           <div className="flex items-center space-x-2">
-                            {isPaidTournament && !player.isPaid && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleCreatePaymentSession(player)}
-                                disabled={createCheckoutSession.isPending}
-                              >
-                                {createCheckoutSession.isPending ? 'Processing...' : 'Collect Payment'}
-                              </Button>
-                            )}
                             <Button
                               variant="ghost"
                               size="sm"

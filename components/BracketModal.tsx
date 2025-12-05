@@ -178,6 +178,9 @@ export default function BracketModal({
               {bracketData?.needsPlayIn && (
                 <p className="text-sm text-gray-500 mt-1">Play-In + Play-Off</p>
               )}
+              {!bracketData?.needsPlayIn && allMatches && allMatches.length > 0 && allMatches[0]?.round === 1 && allMatches.filter(m => m.round === 1).length === 2 && (
+                <p className="text-sm text-gray-500 mt-1">MLP Tournament Format</p>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-2">

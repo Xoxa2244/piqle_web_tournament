@@ -23,6 +23,7 @@ export const tournamentRouter = createTRPCRouter({
       currency: z.string().length(3).optional(),
       isPublicBoardEnabled: z.boolean().default(false),
       publicSlug: z.string().optional(),
+      format: z.enum(['SINGLE_ELIMINATION', 'MLP']).default('SINGLE_ELIMINATION'),
     }))
     .mutation(async ({ ctx, input }) => {
       // Generate unique publicSlug
@@ -36,19 +37,9 @@ export const tournamentRouter = createTRPCRouter({
         counter++
       }
 
-      if (input.isPaid && (input.entryFee === undefined || input.entryFee === null)) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Entry fee is required for paid tournaments',
-        })
-      }
-
-      const { currency, ...data } = input
-
       const tournament = await ctx.prisma.tournament.create({
         data: {
-          ...data,
-          currency: currency ? currency.toLowerCase() : 'usd',
+          ...input,
           userId: ctx.session.user.id,
           publicSlug,
         },
@@ -220,11 +211,7 @@ export const tournamentRouter = createTRPCRouter({
       // Check admin access
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id)
 
-      const { id, currency, ...data } = input
-      const updateData = {
-        ...data,
-        ...(currency ? { currency: currency.toLowerCase() } : {}),
-      }
+      const { id, ...data } = input
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
         data: updateData,

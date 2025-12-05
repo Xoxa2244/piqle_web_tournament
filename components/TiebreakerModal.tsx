@@ -146,26 +146,7 @@ export default function TiebreakerModal({
               <label className="block text-sm font-medium text-gray-700">
                 Player Sequence (Optional)
               </label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addSlot}
-                >
-                  + Add Slot
-                </Button>
-                {numSlots > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={removeSlot}
-                  >
-                    - Remove Slot
-                  </Button>
-                )}
-              </div>
+              {/* Hide add/remove slot buttons as requested */}
             </div>
             <p className="text-xs text-gray-500 mb-3">
               Optionally record the sequence of players in the tiebreaker.
