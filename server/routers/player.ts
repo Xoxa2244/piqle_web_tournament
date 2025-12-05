@@ -23,7 +23,6 @@ export const playerRouter = createTRPCRouter({
           id: true,
           title: true,
           isPublicBoardEnabled: true,
-          isPaid: true,
           entryFee: true,
           startDate: true,
           endDate: true,
