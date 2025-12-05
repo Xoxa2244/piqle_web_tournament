@@ -181,17 +181,6 @@ export default function PublicCoursePage() {
                 Tournament Results: {tournament.title}
               </h1>
             </div>
-            
-            {/* Show Bracket Button */}
-            {isRRComplete && currentDivision && (
-              <button
-                onClick={() => setShowBracketModal(true)}
-                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors mr-4"
-              >
-                <Trophy className="h-4 w-4" />
-                <span>Show Bracket</span>
-              </button>
-            )}
 
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
