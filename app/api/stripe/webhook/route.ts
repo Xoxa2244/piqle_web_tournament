@@ -47,86 +47,17 @@ export async function POST(request: Request) {
         })
         break
       }
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session
-        const checkoutSessionId = session.id
-
-        const payment = await prisma.payment.findUnique({
-          where: { stripeCheckoutSessionId: checkoutSessionId },
-        })
-
-        if (!payment) {
-          break
-        }
-
-        const paymentIntentId =
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent?.id
-
-        let paymentIntent: Stripe.PaymentIntent | null = null
-        if (paymentIntentId) {
-          paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId)
-        }
-
-        const amountReceived =
-          paymentIntent?.amount_received ?? session.amount_total ?? payment.amount
-        const applicationFee =
-          paymentIntent?.application_fee_amount ??
-          calculatePlatformFeeAmount(amountReceived ?? payment.amount)
-
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            status: 'SUCCEEDED',
-            stripePaymentIntentId: paymentIntentId ?? payment.stripePaymentIntentId,
-            amount: amountReceived ?? payment.amount,
-            applicationFeeAmount: applicationFee,
-            platformRevenue: applicationFee,
-            payoutAmount: (amountReceived ?? payment.amount) - applicationFee,
-            updatedAt: new Date(),
-          },
-        })
-
-        if (payment.playerId) {
-          await prisma.player.update({
-            where: { id: payment.playerId },
-            data: { isPaid: true },
-          })
-        }
-
-        break
-      }
-      case 'payment_intent.payment_failed': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent
-        const payment = await prisma.payment.findUnique({
-          where: { stripePaymentIntentId: paymentIntent.id },
-        })
-        if (payment) {
-          await prisma.payment.update({
-            where: { id: payment.id },
-            data: { status: 'FAILED' },
-          })
-        }
-        break
-      }
-      case 'charge.refunded':
-      case 'charge.refund.updated': {
-        const charge = event.data.object as Stripe.Charge
-        const paymentIntentId =
-          typeof charge.payment_intent === 'string'
-            ? charge.payment_intent
-            : charge.payment_intent?.id
-        if (!paymentIntentId) {
-          break
-        }
-
-        await prisma.payment.updateMany({
-          where: { stripePaymentIntentId: paymentIntentId },
-          data: { status: 'REFUNDED' },
-        })
-        break
-      }
+      // TODO: Uncomment when Payment model is added to schema
+      // case 'checkout.session.completed': {
+      //   const session = event.data.object as Stripe.Checkout.Session
+      //   const checkoutSessionId = session.id
+      //   const payment = await prisma.payment.findUnique({
+      //     where: { stripeCheckoutSessionId: checkoutSessionId },
+      //   })
+      //   if (!payment) break
+      //   // ... payment processing
+      //   break
+      // }
       default:
         break
     }
