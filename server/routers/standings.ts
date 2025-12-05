@@ -1343,11 +1343,18 @@ export const standingsRouter = createTRPCRouter({
             return b.wins - a.wins
           }
 
-          // Tie-breaker 2: Head-to-Head Point Differential
+          // Tie-breaker 2: Head-to-Head (for two teams with same wins)
           const headToHeadA = a.headToHead.get(b.teamId)
           const headToHeadB = b.headToHead.get(a.teamId)
           
           if (headToHeadA && headToHeadB) {
+            // First check: who won the head-to-head match (for two teams)
+            if (headToHeadA.wins > headToHeadB.wins) {
+              return -1  // A is higher (won against B)
+            } else if (headToHeadB.wins > headToHeadA.wins) {
+              return 1   // B is higher (won against A)
+            }
+            // If head-to-head match was tied or can't determine, use pointDiff
             if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
               return headToHeadB.pointDiff - headToHeadA.pointDiff
             }
