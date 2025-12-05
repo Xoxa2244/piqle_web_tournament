@@ -161,7 +161,6 @@ export const tournamentRouter = createTRPCRouter({
             },
           },
           prizes: true,
-          paymentSetting: true,
         },
       })
       
