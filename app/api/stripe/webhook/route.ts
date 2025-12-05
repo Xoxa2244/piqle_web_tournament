@@ -45,15 +45,6 @@ export async function POST(request: Request) {
             paymentsEnabled: account.charges_enabled,
           },
         })
-        
-        // Also update legacy TournamentPaymentSetting for backward compatibility
-        await prisma.tournamentPaymentSetting.updateMany({
-          where: { stripeAccountId: account.id },
-          data: {
-            stripeAccountStatus: account.charges_enabled ? 'ACTIVE' : 'REQUIRE_ONBOARDING',
-            paymentsEnabled: account.charges_enabled,
-          },
-        })
         break
       }
       case 'checkout.session.completed': {
