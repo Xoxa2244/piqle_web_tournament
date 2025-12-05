@@ -57,16 +57,7 @@ export const tournamentRouter = createTRPCRouter({
         },
       })
 
-      // Create payment settings if tournament is paid
-      if (tournament.isPaid) {
-        await ctx.prisma.tournamentPaymentSetting.create({
-          data: {
-            tournamentId: tournament.id,
-            stripeAccountStatus: 'PENDING',
-            paymentsEnabled: false,
-          },
-        })
-      }
+      // TODO: Payment settings creation disabled (Payment model doesn't exist in Dev)
 
       return tournament
     }),
