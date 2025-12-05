@@ -70,7 +70,6 @@ export const dashboardRouter = createTRPCRouter({
     const netRevenue = payments.reduce((sum, p) => sum + p.payoutAmount, 0)
 
     // Revenue this month
-    const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
     const monthRevenue = payments
       .filter((p) => p.createdAt >= startOfMonth)
