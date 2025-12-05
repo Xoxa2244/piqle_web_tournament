@@ -15,7 +15,6 @@ export const dashboardRouter = createTRPCRouter({
         title: true,
         startDate: true,
         endDate: true,
-        status: true,
         isPaid: true,
         entryFee: true,
         currency: true,
@@ -27,15 +26,23 @@ export const dashboardRouter = createTRPCRouter({
       },
     })
 
+    // Determine status based on dates
+    const now = new Date()
+    const getTournamentStatus = (tournament: { startDate: Date; endDate: Date }) => {
+      if (now > tournament.endDate) return 'COMPLETED'
+      if (now >= tournament.startDate && now <= tournament.endDate) return 'IN_PROGRESS'
+      return 'UPCOMING'
+    }
+
     // Count by status
     const activeTournaments = tournaments.filter(
-      (t) => t.status === 'IN_PROGRESS'
+      (t) => getTournamentStatus(t) === 'IN_PROGRESS'
     ).length
     const upcomingTournaments = tournaments.filter(
-      (t) => t.status === 'REGISTRATION' || t.status === 'DRAFT'
+      (t) => getTournamentStatus(t) === 'UPCOMING'
     ).length
     const completedTournaments = tournaments.filter(
-      (t) => t.status === 'COMPLETED'
+      (t) => getTournamentStatus(t) === 'COMPLETED'
     ).length
 
     // Total players across all tournaments
@@ -70,12 +77,13 @@ export const dashboardRouter = createTRPCRouter({
       .reduce((sum, p) => sum + p.payoutAmount, 0)
 
     // Get pending payouts (payments for active/upcoming tournaments)
+    // tournaments where endDate is in the future
     const pendingPayouts = await ctx.prisma.payment.aggregate({
       where: {
         tournament: {
           userId,
-          status: {
-            in: ['REGISTRATION', 'IN_PROGRESS'],
+          endDate: {
+            gte: now,
           },
         },
         status: 'SUCCEEDED',
@@ -256,11 +264,10 @@ export const dashboardRouter = createTRPCRouter({
           title: true,
           startDate: true,
           endDate: true,
-          status: true,
-          location: true,
+          venueName: true,
+          venueAddress: true,
           isPaid: true,
           entryFee: true,
-          registrationDeadline: true,
           _count: {
             select: {
               players: true,
@@ -272,14 +279,22 @@ export const dashboardRouter = createTRPCRouter({
         },
       })
 
+      // Determine status based on dates
+      const now = new Date()
+      const getTournamentStatus = (tournament: { startDate: Date; endDate: Date }) => {
+        if (now > tournament.endDate) return 'COMPLETED'
+        if (now >= tournament.startDate && now <= tournament.endDate) return 'IN_PROGRESS'
+        return 'REGISTRATION'
+      }
+
       // Format for calendar
       const events = tournaments.flatMap((tournament) => {
         const baseEvent = {
           id: tournament.id,
           title: tournament.title,
           tournamentId: tournament.id,
-          location: tournament.location,
-          status: tournament.status,
+          location: tournament.venueName || tournament.venueAddress || undefined,
+          status: getTournamentStatus(tournament),
           playersCount: tournament._count.players,
         }
 
@@ -293,18 +308,6 @@ export const dashboardRouter = createTRPCRouter({
           end: tournament.endDate || tournament.startDate,
           allDay: true,
         })
-
-        // Registration deadline event
-        if (tournament.registrationDeadline) {
-          events.push({
-            ...baseEvent,
-            type: 'registration_deadline',
-            title: `🔒 ${tournament.title} - Reg Closes`,
-            start: tournament.registrationDeadline,
-            end: tournament.registrationDeadline,
-            allDay: true,
-          })
-        }
 
         return events
       })
