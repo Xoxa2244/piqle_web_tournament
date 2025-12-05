@@ -509,18 +509,22 @@ export const standingsRouter = createTRPCRouter({
           teamAStats.losses += 1
         }
 
-        // Update head-to-head stats
+        // Update head-to-head stats (use winnerTeamId for wins/losses, same as calculateStandings)
         const teamAHeadToHead = teamAStats.headToHead.get(match.teamBId) || { wins: 0, losses: 0, pointDiff: 0 }
         const teamBHeadToHead = teamBStats.headToHead.get(match.teamAId) || { wins: 0, losses: 0, pointDiff: 0 }
 
-        if (teamAPoints > teamBPoints) {
+        // Use winnerTeamId for head-to-head wins/losses (not point comparison)
+        const h2hWinnerId = winnerTeamId || (teamAPoints > teamBPoints ? match.teamAId : (teamBPoints > teamAPoints ? match.teamBId : null))
+        
+        if (h2hWinnerId === match.teamAId) {
           teamAHeadToHead.wins += 1
           teamBHeadToHead.losses += 1
-        } else if (teamBPoints > teamAPoints) {
+        } else if (h2hWinnerId === match.teamBId) {
           teamBHeadToHead.wins += 1
           teamAHeadToHead.losses += 1
         }
 
+        // Update pointDiff for head-to-head (difference in total points)
         teamAHeadToHead.pointDiff += (teamAPoints - teamBPoints)
         teamBHeadToHead.pointDiff += (teamBPoints - teamAPoints)
 
@@ -533,18 +537,25 @@ export const standingsRouter = createTRPCRouter({
         stats.pointDiff = stats.pointsFor - stats.pointsAgainst
       })
 
-      // Sort teams using tie-breaker rules
+      // Sort teams using tie-breaker rules (same logic as calculateStandings)
       const standings = Array.from(teamStats.values()).sort((a, b) => {
         // Tie-breaker 1: Match Wins
         if (a.wins !== b.wins) {
           return b.wins - a.wins
         }
 
-        // Tie-breaker 2: Head-to-Head Point Differential
+        // Tie-breaker 2: Head-to-Head (for two teams with same wins)
         const headToHeadA = a.headToHead.get(b.teamId)
         const headToHeadB = b.headToHead.get(a.teamId)
         
         if (headToHeadA && headToHeadB) {
+          // First check: who won the head-to-head match (for two teams)
+          if (headToHeadA.wins > headToHeadB.wins) {
+            return -1  // A is higher (won against B)
+          } else if (headToHeadB.wins > headToHeadA.wins) {
+            return 1   // B is higher (won against A)
+          }
+          // If head-to-head match was tied or can't determine, use pointDiff
           if (headToHeadA.pointDiff !== headToHeadB.pointDiff) {
             return headToHeadB.pointDiff - headToHeadA.pointDiff
           }
