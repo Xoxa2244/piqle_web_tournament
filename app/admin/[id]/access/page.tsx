@@ -205,7 +205,7 @@ export default function AccessManagementPage() {
     setRequestSelectedDivisionIds([])
   }
 
-  const divisions = tournament?.divisions || []
+  const divisions = (tournament as any)?.divisions || []
 
   // Filter out divisions that are part of a merged division
   // Only show merged divisions and standalone divisions (not those that were merged)
