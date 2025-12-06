@@ -889,8 +889,53 @@ export const standingsRouter = createTRPCRouter({
 
       // If this is the semi-final round (2 teams), create third place match
       if (winners.length === 2) {
-        // Get losers from semi-finals
+        // Get losers from semi-finals (use same logic as winners to determine loser)
         const semiFinalLosers = currentRoundMatches.map(match => {
+          // For MLP matches, check tiebreaker first
+          if (isMLP && match.tiebreaker) {
+            // Use tiebreaker winner to determine loser
+            if (match.tiebreaker.winnerTeamId === match.teamAId) {
+              return match.teamB  // Loser is teamB
+            } else if (match.tiebreaker.winnerTeamId === match.teamBId) {
+              return match.teamA  // Loser is teamA
+            }
+          }
+          
+          // Use match.winnerTeamId if set
+          if (match.winnerTeamId) {
+            if (match.winnerTeamId === match.teamAId) {
+              return match.teamB  // Loser is teamB
+            } else if (match.winnerTeamId === match.teamBId) {
+              return match.teamA  // Loser is teamA
+            }
+          }
+          
+          // Fallback to game score (for MLP, this should use games won, not first game score)
+          // For MLP, count games won
+          if (isMLP && match.games && match.games.length === 4) {
+            let teamAWins = 0
+            let teamBWins = 0
+            
+            match.games.forEach(game => {
+              if (game.scoreA !== null && game.scoreB !== null) {
+                if (game.scoreA > game.scoreB) {
+                  teamAWins++
+                } else if (game.scoreB > game.scoreA) {
+                  teamBWins++
+                }
+              }
+            })
+            
+            if (teamAWins > teamBWins) {
+              return match.teamB  // Loser is teamB
+            } else if (teamBWins > teamAWins) {
+              return match.teamA  // Loser is teamA
+            } else {
+              throw new Error('MLP match cannot have a tie (2-2 requires tiebreaker)')
+            }
+          }
+          
+          // For non-MLP matches, use first game score
           const game = match.games?.[0]
           if (!game) throw new Error('No game found for completed match')
           
