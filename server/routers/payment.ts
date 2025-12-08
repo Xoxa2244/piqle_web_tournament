@@ -121,8 +121,21 @@ export const paymentRouter = createTRPCRouter({
         cancel_url: cancelUrl,
       })
 
-      // TODO: Create payment record when Payment model is added to schema
-      // For now, payment is processed but not tracked in database
+      // Create payment record
+      await ctx.prisma.payment.create({
+        data: {
+          tournamentId: input.tournamentId,
+          playerId: input.playerId,
+          amount: amountInCents,
+          currency: STRIPE_CURRENCY_DEFAULT,
+          applicationFeeAmount,
+          platformRevenue: applicationFeeAmount,
+          payoutAmount: amountInCents - applicationFeeAmount,
+          stripeCheckoutSessionId: session.id,
+          status: 'PENDING',
+          createdByUserId: ctx.session.user.id,
+        },
+      })
 
       return {
         checkoutUrl: session.url,
