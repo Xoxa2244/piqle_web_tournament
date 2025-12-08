@@ -61,9 +61,11 @@
     "react-dom": "^18.3.1",
     "react-easy-crop": "^5.5.5",
     "react-hook-form": "^7.48.2",
+    "react-svg-pan-zoom": "^3.13.1",
     "react-tournament-bracket": "^0.2.4",
     "reactflow": "^11.11.4",
     "stripe": "^20.0.0",
+    "styled-components": "^6.1.19",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.22.4"
