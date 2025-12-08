@@ -18,11 +18,11 @@ model User {
   gender                   Gender?
   city                     String?
   duprLink                 String?
-  duprId                   String?
-  duprAccessToken          String?
-  duprRefreshToken         String?
-  duprRatingSingles        Decimal?                  @db.Decimal(4, 2)
-  duprRatingDoubles        Decimal?                  @db.Decimal(4, 2)
+  duprId                   String?                   @map("dupr_id")
+  duprAccessToken          String?                   @map("dupr_access_token")
+  duprRefreshToken         String?                   @map("dupr_refresh_token")
+  duprRatingSingles        Decimal?                  @map("dupr_rating_singles") @db.Decimal(4, 2)
+  duprRatingDoubles        Decimal?                  @map("dupr_rating_doubles") @db.Decimal(4, 2)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   accounts                 Account[]
