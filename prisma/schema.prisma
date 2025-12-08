@@ -32,6 +32,7 @@ model User {
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
+  paymentsCreated          Payment[]                 @relation("PaymentsCreated")
 
   @@map("users")
 }
@@ -100,6 +101,7 @@ model Tournament {
   tournamentRatings       TournamentRating[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
+  payments                Payment[]
 
   @@map("tournaments")
 }
@@ -143,6 +145,7 @@ model Division {
   standings             Standing[]
   teams                 Team[]
   tournamentAccesses    TournamentAccess[]
+  payments              Payment[]
 
   @@map("divisions")
 }
@@ -205,6 +208,7 @@ model Team {
   teamPlayers TeamPlayer[]
   division    Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool        Pool?        @relation(fields: [poolId], references: [id])
+  payments    Payment[]
 
   @@map("teams")
 }
@@ -226,6 +230,7 @@ model Player {
   tournamentId String?      @map("tournament_id")
   tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   teamPlayers  TeamPlayer[]
+  payments     Payment[]
 
   @@map("players")
 }
@@ -447,6 +452,34 @@ model TournamentRating {
   @@map("tournament_ratings")
 }
 
+model Payment {
+  id                       String        @id @default(uuid())
+  tournamentId             String        @map("tournament_id")
+  divisionId               String?       @map("division_id")
+  teamId                   String?       @map("team_id")
+  playerId                 String?       @map("player_id")
+  amount                   Int
+  currency                 String        @default("usd")
+  applicationFeeAmount     Int           @map("application_fee_amount")
+  platformRevenue          Int           @map("platform_revenue")
+  payoutAmount             Int           @map("payout_amount")
+  stripeCheckoutSessionId  String?       @unique @map("stripe_checkout_session_id")
+  stripePaymentIntentId    String?       @map("stripe_payment_intent_id")
+  status                   PaymentStatus @default(PENDING)
+  metadata                 Json?
+  createdByUserId          String        @map("created_by_user_id")
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division   Division?  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  team       Team?      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player     Player?    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation("PaymentsCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
 enum UserRole {
   PLAYER
   TD
@@ -459,6 +492,14 @@ enum StripeAccountStatus {
   ACTIVE
   RESTRICTED
   DISABLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
 }
 
 enum AccessLevel {
