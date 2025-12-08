@@ -3,7 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
@@ -22,6 +22,12 @@ export default function AdminPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [baseUrl, setBaseUrl] = useState<string>('')
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
   
   // Search tournaments
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
@@ -192,10 +198,10 @@ export default function AdminPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(tournaments as any[]).map((tournament: any) => (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
-              {tournament.isPublicBoardEnabled && (
+              {tournament.isPublicBoardEnabled && baseUrl && (
                 <div className="absolute top-4 right-4">
                   <ShareButton
-                    url={`${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournament.id}`}
+                    url={`${baseUrl}/scoreboard/${tournament.id}`}
                     title={tournament.title}
                     iconOnly
                     size="sm"

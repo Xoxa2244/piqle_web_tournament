@@ -151,8 +151,10 @@ export default function PublicCoursePage() {
     return 64                         // 33+ teams → bracket 64
   }
   
+  const isMLP = tournament?.format === 'MLP'
+
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
@@ -179,17 +181,6 @@ export default function PublicCoursePage() {
                 Tournament Results: {tournament.title}
               </h1>
             </div>
-            
-            {/* Show Bracket Button */}
-            {isRRComplete && currentDivision && (
-              <button
-                onClick={() => setShowBracketModal(true)}
-                className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors mr-4"
-              >
-                <Trophy className="h-4 w-4" />
-                <span>Show Bracket</span>
-              </button>
-            )}
 
             {/* Division Switcher */}
             <div className="flex items-center space-x-2">
@@ -319,7 +310,7 @@ export default function PublicCoursePage() {
                               <th className="text-center py-2">PF</th>
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
-                              <th className="text-center py-2">Status</th>
+                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -336,33 +327,27 @@ export default function PublicCoursePage() {
                                     {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
                                   </span>
                                 </td>
-                                <td className="py-2 text-center">
-                                  {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Auto-qualified
-                                    </Badge>
-                                  ) : hasPlayIn ? (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                      Play-in
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Qualified
-                                    </Badge>
-                                  )}
-                                </td>
+                                {!isMLP && (
+                                  <td className="py-2 text-center">
+                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Auto-qualified
+                                      </Badge>
+                                    ) : hasPlayIn ? (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                                        Play-in
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Qualified
+                                      </Badge>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                      </div>
-                      
-                      {/* Tournament Info */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                          <span>Teams: {standings.length}</span>
-                          <span>Status: {isRRComplete ? 'Complete' : 'In Progress'}</span>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -370,7 +355,7 @@ export default function PublicCoursePage() {
               </div>
 
               {/* Play-In Section */}
-              {hasPlayIn && (
+              {hasPlayIn && !isMLP && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -509,9 +494,9 @@ export default function PublicCoursePage() {
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className={`grid w-full ${isMLP ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>
+                  {!isMLP && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
                   <TabsTrigger value="bracket">Bracket</TabsTrigger>
                 </TabsList>
                 
@@ -532,7 +517,7 @@ export default function PublicCoursePage() {
                               <th className="text-center py-2">PF</th>
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
-                              <th className="text-center py-2">Status</th>
+                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -549,33 +534,27 @@ export default function PublicCoursePage() {
                                     {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
                                   </span>
                                 </td>
-                                <td className="py-2 text-center">
-                                  {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                    <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                                      Auto
-                                    </Badge>
-                                  ) : hasPlayIn ? (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
-                                      Play-in
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                                      Qualified
-                                    </Badge>
-                                  )}
-                                </td>
+                                {!isMLP && (
+                                  <td className="py-2 text-center">
+                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
+                                      <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                        Auto
+                                      </Badge>
+                                    ) : hasPlayIn ? (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
+                                        Play-in
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                        Qualified
+                                      </Badge>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                      </div>
-                      
-                      {/* Tournament Info */}
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                          <span>Teams: {standings.length}</span>
-                          <span>Status: {isRRComplete ? 'Complete' : 'In Progress'}</span>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>

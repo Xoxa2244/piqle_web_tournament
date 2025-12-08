@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,7 +54,7 @@ interface PlayoffMatch {
   stage: string
 }
 
-export default function DivisionDashboard() {
+function DivisionDashboardContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -62,12 +62,18 @@ export default function DivisionDashboard() {
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
     teamAName: string
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
 
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
@@ -154,6 +160,15 @@ export default function DivisionDashboard() {
       alert(`Error: ${error.message}`)
     },
   })
+
+  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
     setScoreModal({
@@ -248,14 +263,6 @@ export default function DivisionDashboard() {
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
 
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
@@ -264,7 +271,7 @@ export default function DivisionDashboard() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled ? `${typeof window !== 'undefined' ? window.location.origin : 'https://dtest.piqle.io'}/scoreboard/${tournamentId}` : undefined}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         onPublicScoreboardClick={() => {
           if (!tournament?.isPublicBoardEnabled) {
             alert('Public Scoreboard is not available. Please enable it in tournament settings.')
@@ -388,17 +395,6 @@ export default function DivisionDashboard() {
                             </div>
                           </div>
                         )}
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm font-medium">Tournament Info</span>
-                        </div>
-                        <div className="text-xs text-gray-600 space-y-1">
-                          <p>Round Robin format</p>
-                          <p>Best of 3 games</p>
-                          <p>Win by 2 points</p>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -728,5 +724,21 @@ export default function DivisionDashboard() {
         />
       )}
     </div>
+  )
+}
+
+// Wrapper with Suspense to prevent hydration errors
+export default function DivisionDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <DivisionDashboardContent />
+    </Suspense>
   )
 }
