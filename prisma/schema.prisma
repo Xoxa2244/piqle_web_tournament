@@ -454,22 +454,22 @@ model TournamentRating {
 
 model Payment {
   id                       String        @id @default(uuid())
-  tournamentId             String        @map("tournament_id")
-  divisionId               String?       @map("division_id")
-  teamId                   String?       @map("team_id")
-  playerId                 String?       @map("player_id")
+  tournamentId             String
+  divisionId               String?
+  teamId                   String?
+  playerId                 String?
   amount                   Int
   currency                 String        @default("usd")
-  applicationFeeAmount     Int           @map("application_fee_amount")
-  platformRevenue          Int           @map("platform_revenue")
-  payoutAmount             Int           @map("payout_amount")
-  stripeCheckoutSessionId  String?       @unique @map("stripe_checkout_session_id")
-  stripePaymentIntentId    String?       @unique @map("stripe_payment_intent_id")
+  applicationFeeAmount     Int
+  platformRevenue          Int
+  payoutAmount             Int
+  stripeCheckoutSessionId  String?       @unique
+  stripePaymentIntentId    String?       @unique
   status                   PaymentStatus @default(PENDING)
   metadata                 Json?
-  createdByUserId          String        @map("created_by_user_id")
-  createdAt                DateTime      @default(now()) @map("created_at")
-  updatedAt                DateTime      @updatedAt @map("updated_at")
+  createdByUserId          String
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   division   Division?  @relation(fields: [divisionId], references: [id], onDelete: Cascade)
