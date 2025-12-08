@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
+import DUPRLoginModal from '@/components/DUPRLoginModal'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -31,6 +32,8 @@ export default function ProfilePage() {
   const [avatarError, setAvatarError] = useState(false)
   const [showCropper, setShowCropper] = useState(false)
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
+  const [showDUPRModal, setShowDUPRModal] = useState(false)
+  const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     gender: '' as 'M' | 'F' | 'X' | '',
@@ -51,6 +54,48 @@ export default function ProfilePage() {
       setAvatarError(false)
     }
   }, [profile, isEditing])
+
+  const handleDUPRSuccess = async (data: {
+    duprId: string
+    userToken: string
+    refreshToken: string
+    stats?: {
+      rating?: number
+      singlesRating?: number
+      doublesRating?: number
+      name?: string
+    }
+  }) => {
+    setIsLinkingDUPR(true)
+    try {
+      const response = await fetch('/api/dupr/link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          duprId: data.duprId,
+          accessToken: data.userToken,
+          refreshToken: data.refreshToken,
+          stats: data.stats,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to link DUPR account')
+      }
+
+      // Refresh profile data
+      await refetch()
+      setShowDUPRModal(false)
+    } catch (error) {
+      console.error('Error linking DUPR:', error)
+      alert('Failed to link DUPR account. Please try again.')
+    } finally {
+      setIsLinkingDUPR(false)
+    }
+  }
 
   const handleEdit = () => {
     if (profile) {
@@ -340,11 +385,42 @@ export default function ProfilePage() {
                   disabled
                 />
               ) : (
-                <div className="mt-1 text-lg text-gray-400">
-                  {profile.duprLink ? (
-                    <span className="opacity-50">{profile.duprLink}</span>
+                <div className="mt-1">
+                  {profile.duprLinked && profile.duprId ? (
+                    <div className="space-y-1">
+                      <div className="text-lg text-gray-900">
+                        Linked: <span className="font-medium">{profile.duprId}</span>
+                      </div>
+                      {(profile.duprRatingSingles || profile.duprRatingDoubles) && (
+                        <div className="text-sm text-gray-600">
+                          Rating:{' '}
+                          {profile.duprRatingSingles && (
+                            <span>Singles: {typeof profile.duprRatingSingles === 'string' 
+                              ? parseFloat(profile.duprRatingSingles).toFixed(2)
+                              : Number(profile.duprRatingSingles).toFixed(2)}</span>
+                          )}
+                          {profile.duprRatingSingles && profile.duprRatingDoubles && ' • '}
+                          {profile.duprRatingDoubles && (
+                            <span>Doubles: {typeof profile.duprRatingDoubles === 'string'
+                              ? parseFloat(profile.duprRatingDoubles).toFixed(2)
+                              : Number(profile.duprRatingDoubles).toFixed(2)}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    'Not specified'
+                    <div className="flex items-center space-x-3">
+                      <span className="text-lg text-gray-400">Not linked</span>
+                      <Button
+                        onClick={() => setShowDUPRModal(true)}
+                        disabled={isLinkingDUPR}
+                        size="sm"
+                        className="flex items-center space-x-2"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        <span>Connect DUPR</span>
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
@@ -386,6 +462,13 @@ export default function ProfilePage() {
             aspectRatio={1}
           />
         )}
+
+        {/* DUPR Login Modal */}
+        <DUPRLoginModal
+          isOpen={showDUPRModal}
+          onClose={() => setShowDUPRModal(false)}
+          onSuccess={handleDUPRSuccess}
+        />
       </div>
     </div>
   )

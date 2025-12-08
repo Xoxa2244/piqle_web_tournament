@@ -16,6 +16,9 @@ export const userRouter = createTRPCRouter({
           gender: true,
           city: true,
           duprLink: true,
+          duprId: true,
+          duprRatingSingles: true,
+          duprRatingDoubles: true,
           role: true,
         },
       })
@@ -24,7 +27,10 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
-      return user
+      return {
+        ...user,
+        duprLinked: !!user.duprId,
+      }
     }),
 
   getProfileById: publicProcedure

@@ -18,6 +18,11 @@ model User {
   gender                   Gender?
   city                     String?
   duprLink                 String?
+  duprId                   String?
+  duprAccessToken          String?
+  duprRefreshToken         String?
+  duprRatingSingles        Decimal?                  @db.Decimal(4, 2)
+  duprRatingDoubles        Decimal?                  @db.Decimal(4, 2)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   accounts                 Account[]
@@ -316,8 +321,8 @@ model Game {
   id        String      @id @default(uuid())
   matchId   String
   index     Int
-  scoreA    Int?        // Nullable - empty until score is entered
-  scoreB    Int?        // Nullable - empty until score is entered
+  scoreA    Int? // Nullable - empty until score is entered
+  scoreB    Int? // Nullable - empty until score is entered
   winner    GameWinner?
   gameType  GameType? // For MLP: WOMEN, MEN, MIXED_1, MIXED_2
   createdAt DateTime    @default(now())
