@@ -204,25 +204,51 @@ export default function BracketPyramid({
   }
 
   const getPlacementTeams = () => {
-    const finalMatch = matches.find(m => m.roundIndex === maxRound)
+    // Find Final Match (exclude Third Place Match)
+    const finalMatch = matches.find(m => 
+      m.roundIndex === maxRound && (m as any).note !== 'Third Place Match'
+    )
+    
+    // Find Third Place Match separately
+    const thirdPlaceMatch = matches.find(m => 
+      m.roundIndex === maxRound && (m as any).note === 'Third Place Match'
+    )
+    
     const semiFinalMatches = matches.filter(m => m.roundIndex === maxRound - 1)
     
     if (!finalMatch || semiFinalMatches.length === 0) return { secondPlace: null, thirdPlace: null }
     
+    // 2nd Place = loser of Final Match
     const finalWinner = getWinner(finalMatch)
-    const finalLoser = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
+    const secondPlace = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
     
-    // Find semi-final losers
-    const semiFinalLosers = semiFinalMatches
-      .map(match => {
-        const winner = getWinner(match)
-        return winner === match.teamA ? match.teamB : match.teamA
-      })
-      .filter(team => team !== null)
+    // 3rd Place = loser of Third Place Match (if match exists and is completed)
+    let thirdPlace: Team | null = null
+    if (thirdPlaceMatch) {
+      const thirdPlaceWinner = getWinner(thirdPlaceMatch)
+      if (thirdPlaceWinner) {
+        // Match is completed - loser is the other team
+        thirdPlace = thirdPlaceWinner === thirdPlaceMatch.teamA 
+          ? thirdPlaceMatch.teamB 
+          : thirdPlaceMatch.teamA
+      }
+    }
+    
+    // Fallback: if Third Place Match doesn't exist or isn't completed, use semi-final losers
+    if (!thirdPlace) {
+      const semiFinalLosers = semiFinalMatches
+        .map(match => {
+          const winner = getWinner(match)
+          return winner === match.teamA ? match.teamB : match.teamA
+        })
+        .filter(team => team !== null)
+      
+      thirdPlace = semiFinalLosers.length > 0 ? semiFinalLosers[0] : null
+    }
     
     return {
-      secondPlace: finalLoser,
-      thirdPlace: semiFinalLosers.length > 0 ? semiFinalLosers[0] : null
+      secondPlace,
+      thirdPlace
     }
   }
 
