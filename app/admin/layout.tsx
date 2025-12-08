@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon } from 'lucide-react'
+import { User as UserIcon, LayoutDashboard, Trophy, Home as HomeIcon } from 'lucide-react'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -34,18 +34,27 @@ export default function AdminLayout({
               <Link href="/admin" className="text-xl font-bold text-gray-900">
                 Piqle Admin
               </Link>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-1">
+                <Link
+                  href="/dashboard"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  <span>Dashboard</span>
+                </Link>
                 <Link
                   href="/admin"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                 >
-                  Tournaments
+                  <Trophy className="h-4 w-4" />
+                  <span>Tournaments</span>
                 </Link>
                 <Link
                   href="/"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                 >
-                  Home
+                  <HomeIcon className="h-4 w-4" />
+                  <span>Home</span>
                 </Link>
                 {/* Profile Link */}
                 <Link
