@@ -49,9 +49,9 @@ export const tdProcedure = t.procedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: 'UNAUTHORIZED' })
   }
 
-  // For now, tdProcedure just checks authentication
-  // Tournament ownership/access will be checked in individual endpoints
-  // This ensures user is logged in and has an ID
+  if (ctx.session?.user?.role !== 'TD') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'TD access required' })
+  }
 
   return next({
     ctx: {

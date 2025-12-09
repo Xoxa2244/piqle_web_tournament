@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
 import Image from 'next/image'
 import { User as UserIcon, LayoutDashboard, Trophy, Home as HomeIcon } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -15,10 +16,21 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const [avatarError, setAvatarError] = useState(false)
   const handleLogout = useCallback(async () => {
     await signOut({ callbackUrl: '/auth/signin' })
   }, [])
+
+  // Guard: only TD can access admin
+  useEffect(() => {
+    if (session && session.user?.role && session.user.role !== 'TD') {
+      router.replace('/scoreboard')
+    }
+    if (session === null) {
+      router.replace('/auth/signin')
+    }
+  }, [session, router])
 
   const hasValidAvatar = Boolean(session?.user?.image && 
     session.user.image.trim() !== '' &&
