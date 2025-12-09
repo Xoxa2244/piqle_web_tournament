@@ -37,14 +37,16 @@ export async function POST(req: NextRequest) {
     let duprRatingDoubles: number | null = null
 
     try {
-      // Use production API: https://api.dupr.gg/swagger-ui/index.html#/Public/getBasicInfo
+      // Use production API: /user/{version}/{id}
+      // According to Swagger: This API provides details like full name, singles and doubles ratings
       // Note: Use user's access token, not partner token
       const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
-      const response = await fetch(`${duprApiUrl}/api/v1.0/public/getBasicInfo`, {
+      const response = await fetch(`${duprApiUrl}/user/v1.0/${user.duprId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${user.duprAccessToken}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
       })
 
@@ -53,7 +55,8 @@ export async function POST(req: NextRequest) {
         console.log('DUPR API response (refresh):', JSON.stringify(apiData, null, 2))
         
         // Extract ratings from API response
-        // Format may vary, check common field names
+        // According to Swagger: response contains singles and doubles ratings
+        // Check various possible field names and structures
         if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
           duprRatingSingles = parseFloat(String(apiData.singlesRating))
         }
@@ -61,20 +64,28 @@ export async function POST(req: NextRequest) {
           duprRatingDoubles = parseFloat(String(apiData.doublesRating))
         }
         
-        // Also check nested structures
-        if (!duprRatingSingles && apiData.ratings?.singles) {
+        // Check for nested ratings object
+        if (!duprRatingSingles && apiData.ratings?.singles !== undefined && apiData.ratings?.singles !== null) {
           duprRatingSingles = parseFloat(String(apiData.ratings.singles))
         }
-        if (!duprRatingDoubles && apiData.ratings?.doubles) {
+        if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined && apiData.ratings?.doubles !== null) {
           duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
         }
         
-        // Check stats object if present
-        if (!duprRatingSingles && apiData.stats?.singlesRating) {
+        // Check for nested stats object
+        if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined && apiData.stats?.singlesRating !== null) {
           duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
         }
-        if (!duprRatingDoubles && apiData.stats?.doublesRating) {
+        if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined && apiData.stats?.doublesRating !== null) {
           duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
+        }
+        
+        // Check for direct rating fields (if API returns them directly)
+        if (!duprRatingSingles && apiData.singles !== undefined && apiData.singles !== null) {
+          duprRatingSingles = parseFloat(String(apiData.singles))
+        }
+        if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
+          duprRatingDoubles = parseFloat(String(apiData.doubles))
         }
       } else {
         const errorText = await response.text()
