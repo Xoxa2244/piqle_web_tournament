@@ -13,7 +13,7 @@ import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import ShareButton from '@/components/ShareButton'
 
-type FilterType = 'current' | 'past' | 'all'
+type FilterType = 'all' | 'upcoming' | 'live' | 'past'
 
 // Helper component for avatar display
 function AvatarImage({ 
@@ -59,7 +59,7 @@ function AvatarImage({
 export default function PublicTournamentsPage() {
   const { data: session } = useSession()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const [filter, setFilter] = useState<FilterType>('current')
+  const [filter, setFilter] = useState<FilterType>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [avatarError, setAvatarError] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
@@ -98,21 +98,13 @@ export default function PublicTournamentsPage() {
     return lines.slice(0, maxLines).join('\n')
   }
 
-  // Helper function to check if tournament is past
-  // Rule: Tournament is past if endDate + 12 hours < next day (00:00)
-  const isTournamentPast = (endDate: Date): boolean => {
-    const endDateTime = new Date(endDate)
-    // Add 12 hours to end date
-    endDateTime.setHours(endDateTime.getHours() + 12)
-    
-    // Get next day at 00:00 (the "next date" mentioned in the rule)
+  const getStatus = (tournament: any) => {
     const now = new Date()
-    const nextDay = new Date(now)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(0, 0, 0, 0)
-    
-    // Tournament is past if endDate + 12 hours < next day
-    return endDateTime < nextDay
+    const start = new Date(tournament.startDate)
+    const end = new Date(tournament.endDate)
+    if (end < now) return 'past'
+    if (start <= now && end >= now) return 'live'
+    return 'upcoming'
   }
 
   // Filter tournaments based on selected filter and search query
@@ -128,12 +120,9 @@ export default function PublicTournamentsPage() {
       )
     }
     
-    // Apply time filter
+    // Apply status filter
     if (filter !== 'all') {
-      filtered = filtered.filter(tournament => {
-        const isPast = isTournamentPast(new Date(tournament.endDate))
-        return filter === 'current' ? !isPast : isPast
-      })
+      filtered = filtered.filter((tournament) => getStatus(tournament) === filter)
     }
     
     return filtered
@@ -220,37 +209,25 @@ export default function PublicTournamentsPage() {
             </div>
             
             {/* Filter Tabs */}
-            <div className="mt-4 flex gap-2 border-b border-gray-200">
-              <button
-                onClick={() => setFilter('current')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'current'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Current Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('past')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'past'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Past Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'all'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                All Tournaments
-              </button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {([
+                { key: 'all', label: 'All' },
+                { key: 'upcoming', label: 'Upcoming (registration open)' },
+                { key: 'live', label: 'Live (results only)' },
+                { key: 'past', label: 'Past (results only)' },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilter(tab.key)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    filter === tab.key
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -260,8 +237,15 @@ export default function PublicTournamentsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {publicTournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {publicTournaments.map((tournament) => (
-              <Card key={tournament.id} className="hover:shadow-lg transition-shadow relative flex flex-col h-full">
+        {publicTournaments.map((tournament) => {
+          const status = getStatus(tournament)
+          const statusConfig: Record<string, { label: string; color: string }> = {
+            upcoming: { label: 'Upcoming', color: 'bg-blue-100 text-blue-700' },
+            live: { label: 'Live', color: 'bg-green-100 text-green-700' },
+            past: { label: 'Completed', color: 'bg-gray-200 text-gray-700' },
+          }
+          return (
+          <Card key={tournament.id} className="hover:shadow-lg transition-shadow relative flex flex-col h-full">
                 {baseUrl && (
                   <div className="absolute top-4 right-4 z-10">
                     <ShareButton
@@ -274,8 +258,15 @@ export default function PublicTournamentsPage() {
                     />
                   </div>
                 )}
-                <CardHeader className="flex-shrink-0">
-                  <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
+            <CardHeader className="flex-shrink-0">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-xl pr-2">{tournament.title}</CardTitle>
+                <span
+                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${statusConfig[status].color}`}
+                >
+                  {statusConfig[status].label}
+                </span>
+              </div>
                   <div className="mt-2 min-h-[4.5rem]">
                     {tournament.description ? (
                       <>
@@ -373,13 +364,18 @@ export default function PublicTournamentsPage() {
                     )}
                   </div>
 
-                  {/* Fixed bottom section: Like/Dislike and View Results */}
+                  {/* Fixed bottom section: CTA + rating */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
-                    {/* Register CTA for upcoming tournaments (works even without divisions) */}
-                    {new Date(tournament.startDate) > new Date() && (
+                    {status === 'upcoming' ? (
                       <Link href={`/register/${tournament.id}`}>
                         <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
                           Register / Join
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Link href={`/scoreboard/${tournament.id}`}>
+                        <Button variant="outline" className="w-full">
+                          View Results
                         </Button>
                       </Link>
                     )}
@@ -411,17 +407,10 @@ export default function PublicTournamentsPage() {
                         <span>{ratingsData?.[tournament.id]?.dislikes || tournament.dislikes || 0}</span>
                       </button>
                     </div>
-
-                    {/* View Results Button */}
-                    <Link href={`/scoreboard/${tournament.id}`}>
-                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        View Results
-                      </Button>
-                    </Link>
                   </div>
                 </CardContent>
               </Card>
-            ))}
+          )})}
           </div>
         ) : (
           <div className="text-center py-12">
