@@ -9,6 +9,7 @@ interface DUPRLoginModalProps {
   onClose: () => void
   onSuccess: (data: {
     duprId: string
+    numericId?: number
     userToken: string
     refreshToken: string
     stats?: {
@@ -67,18 +68,25 @@ export default function DUPRLoginModal({
       const data = event.data || event
 
       // Check if this is a DUPR login response
-      // DUPR may send data in different formats, so we check multiple possibilities
-      const duprId = data.duprId || data.dupr_id || data.id
+      // According to DUPR docs: event.id is numeric ID, event.duprId is string ID (like YG7RP4)
+      const numericId = data.id || data.userId // Numeric ID for API calls
+      const duprId = data.duprId || data.dupr_id // String ID for display (like YG7RP4)
       const userToken = data.userToken || data.accessToken || data.access_token
       const refreshToken = data.refreshToken || data.refresh_token
 
-      if (duprId && userToken && refreshToken) {
-        console.log('DUPR login successful:', { duprId, hasToken: !!userToken })
+      // We need at least duprId (string) or numericId, plus tokens
+      if ((duprId || numericId) && userToken && refreshToken) {
+        console.log('DUPR login successful:', { 
+          duprId: duprId || 'N/A', 
+          numericId: numericId || 'N/A',
+          hasToken: !!userToken 
+        })
         console.log('DUPR full data received:', JSON.stringify(data, null, 2))
         console.log('DUPR stats:', data.stats)
         
         onSuccess({
-          duprId: String(duprId),
+          duprId: duprId ? String(duprId) : (numericId ? String(numericId) : ''),
+          numericId: numericId ? Number(numericId) : undefined,
           userToken: String(userToken),
           refreshToken: String(refreshToken),
           stats: data.stats || {

@@ -15,11 +15,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { duprId, accessToken, refreshToken, stats } = body
+    const { duprId, numericId, accessToken, refreshToken, stats } = body
 
-    if (!duprId || !accessToken || !refreshToken) {
+    if ((!duprId && !numericId) || !accessToken || !refreshToken) {
       return NextResponse.json(
-        { error: 'Missing required fields: duprId, accessToken, refreshToken' },
+        { error: 'Missing required fields: duprId or numericId, accessToken, refreshToken' },
         { status: 400 }
       )
     }
@@ -143,7 +143,8 @@ export async function POST(req: NextRequest) {
         id: session.user.id,
       },
       data: {
-        duprId,
+        duprId: duprId || undefined,
+        duprNumericId: numericId ? numericId : undefined,
         duprAccessToken: accessToken,
         duprRefreshToken: refreshToken,
         duprRatingSingles: duprRatingSingles ? duprRatingSingles : null,

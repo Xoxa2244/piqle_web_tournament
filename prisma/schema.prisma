@@ -19,6 +19,7 @@ model User {
   city                     String?
   duprLink                 String?
   duprId                   String?                   @map("dupr_id")
+  duprNumericId            Int?                      @map("dupr_numeric_id")
   duprAccessToken          String?                   @map("dupr_access_token")
   duprRefreshToken         String?                   @map("dupr_refresh_token")
   duprRatingSingles        Decimal?                  @map("dupr_rating_singles") @db.Decimal(4, 2)

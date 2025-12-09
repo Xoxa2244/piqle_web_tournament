@@ -58,6 +58,7 @@ export default function ProfilePage() {
 
   const handleDUPRSuccess = async (data: {
     duprId: string
+    numericId?: number
     userToken: string
     refreshToken: string
     stats?: {
@@ -76,6 +77,7 @@ export default function ProfilePage() {
         },
         body: JSON.stringify({
           duprId: data.duprId,
+          numericId: data.numericId,
           accessToken: data.userToken,
           refreshToken: data.refreshToken,
           stats: data.stats,

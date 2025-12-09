@@ -20,12 +20,13 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         duprId: true,
+        duprNumericId: true,
         duprAccessToken: true,
         duprRefreshToken: true,
       },
     })
 
-    if (!user || !user.duprId || !user.duprAccessToken) {
+    if (!user || (!user.duprId && !user.duprNumericId) || !user.duprAccessToken) {
       return NextResponse.json(
         { error: 'DUPR account not linked or tokens missing' },
         { status: 400 }
@@ -37,70 +38,69 @@ export async function POST(req: NextRequest) {
     let duprRatingDoubles: number | null = null
 
     try {
-      // Use production API: /user/{version}/{id}
-      // According to Swagger: This API provides details like full name, singles and doubles ratings
+      // Use production API
+      // According to Swagger: /user/{version}/{id} requires numeric ID (integer)
+      // Also try /Public/getBasicInfo which might work with just access token
       // Note: Use user's access token, not partner token
-      // Try different base URLs - DUPR might use different domains for different endpoints
-      const baseUrls = [
-        process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://prod.mydupr.com',
-        'https://api.dupr.gg',
-        'https://api.prod.mydupr.com',
-      ]
+      const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
       
-      // Try different endpoint variations
-      // Based on DUPR email showing /api/match/1.0/create, structure might be /api/{resource}/{version}/{action}
-      const endpoints = [
-        `/api/user/v1.0/${user.duprId}`,
-        `/api/user/1.0/${user.duprId}`, // Try without 'v' prefix
-        `/user/v1.0/${user.duprId}`,
-        `/user/1.0/${user.duprId}`, // Try without 'v' prefix
-        `/api/v1.0/user/${user.duprId}`,
-        `/api/1.0/user/${user.duprId}`, // Try without 'v' prefix
-        `/user/v1.0/${user.duprId}/details`,
-        `/api/user/v1.0/${user.duprId}/details`,
-      ]
+      // Build endpoints - prefer numeric ID if available
+      const userId = user.duprNumericId || user.duprId
+      const endpoints = user.duprNumericId
+        ? [
+            // Try with numeric ID first (most likely to work according to Swagger)
+            `/user/v1.0/${user.duprNumericId}`,
+            `/api/user/v1.0/${user.duprNumericId}`,
+            `/user/1.0/${user.duprNumericId}`,
+            `/api/user/1.0/${user.duprNumericId}`,
+            // Also try Public endpoint (might work with just token)
+            `/Public/getBasicInfo`,
+            `/api/v1.0/public/getBasicInfo`,
+          ]
+        : [
+            // Fallback to string ID or Public endpoint if numeric not available
+            `/Public/getBasicInfo`,
+            `/api/v1.0/public/getBasicInfo`,
+            `/user/v1.0/${user.duprId}`,
+            `/api/user/v1.0/${user.duprId}`,
+          ]
       
       let response: Response | null = null
       let lastError: string = ''
       let successfulUrl: string | null = null
       
-      // Try all combinations of base URLs and endpoints
-      for (const baseUrl of baseUrls) {
-        for (const endpoint of endpoints) {
-          const url = `${baseUrl}${endpoint}`
-          console.log(`Trying DUPR API: ${url}`, {
-            duprId: user.duprId,
-            hasToken: !!user.duprAccessToken,
-            tokenLength: user.duprAccessToken?.length || 0,
+      // Try all endpoints
+      for (const endpoint of endpoints) {
+        const url = `${duprApiUrl}${endpoint}`
+        console.log(`Trying DUPR API: ${url}`, {
+          duprId: user.duprId,
+          numericId: user.duprNumericId,
+          hasToken: !!user.duprAccessToken,
+          tokenLength: user.duprAccessToken?.length || 0,
+        })
+        
+        try {
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${user.duprAccessToken}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
           })
           
-          try {
-            response = await fetch(url, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${user.duprAccessToken}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-            })
-            
-            if (response.ok) {
-              console.log(`Success with URL: ${url}`)
-              successfulUrl = url
-              break
-            } else {
-              const errorText = await response.text()
-              console.log(`URL ${url} failed: ${response.status} - ${errorText.substring(0, 200)}`)
-              lastError = `${response.status}: ${errorText.substring(0, 200)}`
-            }
-          } catch (error: any) {
-            console.log(`URL ${url} error:`, error.message)
-            lastError = error.message
+          if (response.ok) {
+            console.log(`Success with URL: ${url}`)
+            successfulUrl = url
+            break
+          } else {
+            const errorText = await response.text()
+            console.log(`URL ${url} failed: ${response.status} - ${errorText.substring(0, 200)}`)
+            lastError = `${response.status}: ${errorText.substring(0, 200)}`
           }
-        }
-        
-        if (response && response.ok) {
-          break
+        } catch (error: any) {
+          console.log(`URL ${url} error:`, error.message)
+          lastError = error.message
         }
       }
       
