@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw, Unlink } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -35,6 +35,7 @@ export default function ProfilePage() {
   const [showDUPRModal, setShowDUPRModal] = useState(false)
   const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
   const [isRefreshingRatings, setIsRefreshingRatings] = useState(false)
+  const [isUnlinkingDUPR, setIsUnlinkingDUPR] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     gender: '' as 'M' | 'F' | 'X' | '',
@@ -122,6 +123,35 @@ export default function ProfilePage() {
       alert(error.message || 'Failed to refresh DUPR ratings. Please try again.')
     } finally {
       setIsRefreshingRatings(false)
+    }
+  }
+
+  const handleUnlinkDUPR = async () => {
+    if (!confirm('Are you sure you want to unlink your DUPR account? You will need to reconnect it to use DUPR features.')) {
+      return
+    }
+
+    setIsUnlinkingDUPR(true)
+    try {
+      const response = await fetch('/api/dupr/unlink', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to unlink DUPR account')
+      }
+
+      // Refresh profile data
+      await refetch()
+    } catch (error: any) {
+      console.error('Error unlinking DUPR:', error)
+      alert(error.message || 'Failed to unlink DUPR account. Please try again.')
+    } finally {
+      setIsUnlinkingDUPR(false)
     }
   }
 
