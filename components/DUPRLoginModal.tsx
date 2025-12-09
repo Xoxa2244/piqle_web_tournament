@@ -47,10 +47,10 @@ export default function DUPRLoginModal({
       })
 
       // Verify origin for security (adjust to DUPR's actual domain)
-      // For UAT: https://uat.dupr.gg
+      // Production: https://dupr.gg
       const allowedOrigins = [
-        'https://uat.dupr.gg',
         'https://dupr.gg',
+        'https://uat.dupr.gg', // Keep for backward compatibility
         'http://localhost:3000', // For local testing if needed
       ]
 
@@ -100,7 +100,7 @@ export default function DUPRLoginModal({
   if (!isOpen) return null
 
   const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
-  const duprLoginUrl = `https://uat.dupr.gg/login-external-app/${clientKey}`
+  const duprLoginUrl = `https://dupr.gg/login-external-app/${clientKey}`
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
