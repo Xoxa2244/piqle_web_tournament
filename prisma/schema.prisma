@@ -13,7 +13,7 @@ model User {
   name                     String?
   image                    String?
   emailVerified            DateTime?
-  role                     UserRole                  @default(TD)
+  role                     UserRole                  @default(PLAYER)
   isActive                 Boolean                   @default(true)
   gender                   Gender?
   city                     String?

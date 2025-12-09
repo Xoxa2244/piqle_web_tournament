@@ -62,8 +62,8 @@ export const authOptions: NextAuthOptions = {
       if (url && url.startsWith(baseUrl)) {
         return url
       }
-      // Default to /admin
-      return `${baseUrl}/admin`
+      // Default to public tournaments list (players first)
+      return `${baseUrl}/scoreboard`
     },
     async session({ session, user }) {
       if (session?.user && user?.id) {
