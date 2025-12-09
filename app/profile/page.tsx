@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -34,6 +34,7 @@ export default function ProfilePage() {
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
   const [showDUPRModal, setShowDUPRModal] = useState(false)
   const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
+  const [isRefreshingRatings, setIsRefreshingRatings] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     gender: '' as 'M' | 'F' | 'X' | '',
@@ -94,6 +95,31 @@ export default function ProfilePage() {
       alert('Failed to link DUPR account. Please try again.')
     } finally {
       setIsLinkingDUPR(false)
+    }
+  }
+
+  const handleRefreshRatings = async () => {
+    setIsRefreshingRatings(true)
+    try {
+      const response = await fetch('/api/dupr/refresh-ratings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to refresh ratings')
+      }
+
+      // Refresh profile data
+      await refetch()
+    } catch (error: any) {
+      console.error('Error refreshing ratings:', error)
+      alert(error.message || 'Failed to refresh DUPR ratings. Please try again.')
+    } finally {
+      setIsRefreshingRatings(false)
     }
   }
 
@@ -411,26 +437,45 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* DUPR Singles Rating */}
-            {profile.duprLinked && profile.duprRatingSingles !== null && (
-              <div>
-                <Label>DUPR Singles Rating</Label>
-                <div className="mt-1 text-lg text-gray-900">
-                  {typeof profile.duprRatingSingles === 'string' 
-                    ? parseFloat(profile.duprRatingSingles).toFixed(2)
-                    : Number(profile.duprRatingSingles).toFixed(2)}
-                </div>
-              </div>
-            )}
+            {/* DUPR Ratings Section */}
+            {profile.duprLinked && (
+              <div className="space-y-4">
+                {/* DUPR Singles Rating */}
+                {profile.duprRatingSingles !== null && (
+                  <div>
+                    <Label>DUPR Singles Rating</Label>
+                    <div className="mt-1 text-lg text-gray-900">
+                      {typeof profile.duprRatingSingles === 'string' 
+                        ? parseFloat(profile.duprRatingSingles).toFixed(2)
+                        : Number(profile.duprRatingSingles).toFixed(2)}
+                    </div>
+                  </div>
+                )}
 
-            {/* DUPR Doubles Rating */}
-            {profile.duprLinked && profile.duprRatingDoubles !== null && (
-              <div>
-                <Label>DUPR Doubles Rating</Label>
-                <div className="mt-1 text-lg text-gray-900">
-                  {typeof profile.duprRatingDoubles === 'string'
-                    ? parseFloat(profile.duprRatingDoubles).toFixed(2)
-                    : Number(profile.duprRatingDoubles).toFixed(2)}
+                {/* DUPR Doubles Rating */}
+                {profile.duprRatingDoubles !== null && (
+                  <div>
+                    <Label>DUPR Doubles Rating</Label>
+                    <div className="mt-1 text-lg text-gray-900">
+                      {typeof profile.duprRatingDoubles === 'string'
+                        ? parseFloat(profile.duprRatingDoubles).toFixed(2)
+                        : Number(profile.duprRatingDoubles).toFixed(2)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Refresh Ratings Button */}
+                <div>
+                  <Button
+                    onClick={handleRefreshRatings}
+                    disabled={isRefreshingRatings}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center space-x-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRefreshingRatings ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshingRatings ? 'Updating...' : 'Update Ratings'}</span>
+                  </Button>
                 </div>
               </div>
             )}
