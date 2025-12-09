@@ -42,10 +42,13 @@ export async function POST(req: NextRequest) {
       // According to Swagger: /user/{version}/{id} requires numeric ID (integer)
       // Also try /Public/getBasicInfo which might work with just access token
       // Note: Use user's access token, not partner token
-      const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
+      // Try both api.dupr.gg and prod.mydupr.com
+      const baseUrls = [
+        'https://api.dupr.gg',
+        'https://prod.mydupr.com',
+      ]
       
       // Build endpoints - prefer numeric ID if available
-      const userId = user.duprNumericId || user.duprId
       const endpoints = user.duprNumericId
         ? [
             // Try with numeric ID first (most likely to work according to Swagger)
@@ -69,38 +72,44 @@ export async function POST(req: NextRequest) {
       let lastError: string = ''
       let successfulUrl: string | null = null
       
-      // Try all endpoints
-      for (const endpoint of endpoints) {
-        const url = `${duprApiUrl}${endpoint}`
-        console.log(`Trying DUPR API: ${url}`, {
-          duprId: user.duprId,
-          numericId: user.duprNumericId,
-          hasToken: !!user.duprAccessToken,
-          tokenLength: user.duprAccessToken?.length || 0,
-        })
-        
-        try {
-          response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${user.duprAccessToken}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
+      // Try all combinations of base URLs and endpoints
+      for (const baseUrl of baseUrls) {
+        for (const endpoint of endpoints) {
+          const url = `${baseUrl}${endpoint}`
+          console.log(`Trying DUPR API: ${url}`, {
+            duprId: user.duprId,
+            numericId: user.duprNumericId,
+            hasToken: !!user.duprAccessToken,
+            tokenLength: user.duprAccessToken?.length || 0,
           })
           
-          if (response.ok) {
-            console.log(`Success with URL: ${url}`)
-            successfulUrl = url
-            break
-          } else {
-            const errorText = await response.text()
-            console.log(`URL ${url} failed: ${response.status} - ${errorText.substring(0, 200)}`)
-            lastError = `${response.status}: ${errorText.substring(0, 200)}`
+          try {
+            response = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${user.duprAccessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+            })
+            
+            if (response.ok) {
+              console.log(`Success with URL: ${url}`)
+              successfulUrl = url
+              break
+            } else {
+              const errorText = await response.text()
+              console.log(`URL ${url} failed: ${response.status} - ${errorText.substring(0, 200)}`)
+              lastError = `${response.status}: ${errorText.substring(0, 200)}`
+            }
+          } catch (error: any) {
+            console.log(`URL ${url} error:`, error.message)
+            lastError = error.message
           }
-        } catch (error: any) {
-          console.log(`URL ${url} error:`, error.message)
-          lastError = error.message
+        }
+        
+        if (response && response.ok) {
+          break
         }
       }
       
@@ -159,16 +168,12 @@ export async function POST(req: NextRequest) {
         if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
           duprRatingDoubles = parseFloat(String(apiData.doubles))
         }
-        // If token expired, return error
-        if (response?.status === 401) {
-          return NextResponse.json(
-            { error: 'DUPR token expired. Please reconnect your DUPR account.' },
-            { status: 401 }
-          )
-        }
-        
+      } else {
+        // This should not happen as we check above, but just in case
+        const errorText = lastError || (response ? await response.text() : 'No response')
+        console.warn('Response not OK after successful check. This should not happen.')
         return NextResponse.json(
-          { error: `Failed to fetch ratings from DUPR. Tried multiple endpoints. Last error: ${lastError || 'Unknown error'}` },
+          { error: `Failed to fetch ratings from DUPR. Unexpected error: ${errorText}` },
           { status: response?.status || 500 }
         )
       }
