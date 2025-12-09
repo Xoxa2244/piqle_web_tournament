@@ -47,10 +47,12 @@ export default function DUPRLoginModal({
       })
 
       // Verify origin for security (adjust to DUPR's actual domain)
-      // Production: https://dupr.gg
+      // Production: https://dashboard.dupr.com
+      // UAT: https://uat.dupr.gg
       const allowedOrigins = [
-        'https://dupr.gg',
-        'https://uat.dupr.gg', // Keep for backward compatibility
+        'https://dashboard.dupr.com',
+        'https://dupr.gg', // Legacy production domain
+        'https://uat.dupr.gg',
         'http://localhost:3000', // For local testing if needed
       ]
 
@@ -59,34 +61,34 @@ export default function DUPRLoginModal({
         return
       }
 
-      // DUPR sends data in event.data
-      if (event.data && typeof event.data === 'object') {
-        const data = event.data
+      // DUPR sends data directly in event (not event.data)
+      // According to DUPR docs: event.userToken, event.refreshToken, event.id, event.duprId, event.stats
+      // But also check event.data for backward compatibility
+      const data = event.data || event
 
-        // Check if this is a DUPR login response
-        // DUPR may send data in different formats, so we check multiple possibilities
-        const duprId = data.duprId || data.dupr_id || data.userId
-        const userToken = data.userToken || data.accessToken || data.access_token
-        const refreshToken = data.refreshToken || data.refresh_token
+      // Check if this is a DUPR login response
+      // DUPR may send data in different formats, so we check multiple possibilities
+      const duprId = data.duprId || data.dupr_id || data.id
+      const userToken = data.userToken || data.accessToken || data.access_token
+      const refreshToken = data.refreshToken || data.refresh_token
 
-        if (duprId && userToken && refreshToken) {
-          console.log('DUPR login successful:', { duprId, hasToken: !!userToken })
-          
-          onSuccess({
-            duprId: String(duprId),
-            userToken: String(userToken),
-            refreshToken: String(refreshToken),
-            stats: data.stats || {
-              rating: data.rating,
-              singlesRating: data.singlesRating || data.singles_rating,
-              doublesRating: data.doublesRating || data.doubles_rating,
-              name: data.name,
-            },
-          })
-          onClose()
-        } else {
-          console.log('Received DUPR message but missing required fields:', data)
-        }
+      if (duprId && userToken && refreshToken) {
+        console.log('DUPR login successful:', { duprId, hasToken: !!userToken })
+        
+        onSuccess({
+          duprId: String(duprId),
+          userToken: String(userToken),
+          refreshToken: String(refreshToken),
+          stats: data.stats || {
+            rating: data.rating,
+            singlesRating: data.singlesRating || data.singles_rating,
+            doublesRating: data.doublesRating || data.doubles_rating,
+            name: data.name,
+          },
+        })
+        onClose()
+      } else if (data && typeof data === 'object') {
+        console.log('Received DUPR message but missing required fields:', data)
       }
     }
 
@@ -119,8 +121,31 @@ export default function DUPRLoginModal({
     )
   }
   
-  const duprLoginUrl = `https://dupr.gg/login-external-app/${clientKey}`
-  console.log('DUPR Login URL:', duprLoginUrl.replace(clientKey, '***'))
+  // According to DUPR docs: clientId must be base64 encoded
+  // Production: dashboard.dupr.com/login-external-app/:base64ClientId
+  // UAT: uat.dupr.gg/login-external-app/:base64ClientId
+  let base64ClientId: string
+  try {
+    // Use btoa for base64 encoding (browser API)
+    base64ClientId = btoa(clientKey)
+  } catch (error) {
+    console.error('Failed to encode clientKey to base64:', error)
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+          <h2 className="text-xl font-semibold mb-4">DUPR Integration Error</h2>
+          <p className="text-red-600 mb-4">
+            Failed to encode DUPR client key. Please check the configuration.
+          </p>
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    )
+  }
+  
+  // Use production URL by default (can be changed to UAT if needed)
+  const duprLoginUrl = `https://dashboard.dupr.com/login-external-app/${base64ClientId}`
+  console.log('DUPR Login URL:', duprLoginUrl.replace(base64ClientId, '***'))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
