@@ -375,6 +375,15 @@ export default function PublicTournamentsPage() {
 
                   {/* Fixed bottom section: Like/Dislike and View Results */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
+                    {/* Register CTA for upcoming tournaments (works even without divisions) */}
+                    {new Date(tournament.startDate) > new Date() && (
+                      <Link href={`/register/${tournament.id}`}>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                          Register / Join
+                        </Button>
+                      </Link>
+                    )}
+
                     {/* Like/Dislike Buttons */}
                     <div className="flex items-center gap-2">
                       <button

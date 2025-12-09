@@ -7,6 +7,7 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
 import { 
   Trophy, 
   ChevronLeft,
@@ -105,7 +106,31 @@ export default function PublicCoursePage() {
   }
 
   if (tournament.divisions.length === 0) {
-    return <div className="flex items-center justify-center min-h-screen">No divisions</div>
+    const isUpcoming = new Date(tournament.startDate) > new Date()
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
+          <div className="bg-white shadow-sm border rounded-2xl p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Tournament</p>
+                <h1 className="text-2xl font-semibold text-gray-900">{tournament.title}</h1>
+                <p className="text-sm text-gray-600 mt-2">
+                  Divisions will be added by the director later. You can still register now.
+                </p>
+              </div>
+              {isUpcoming && (
+                <Link href={`/register/${tournament.id}`}>
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                    Register / Join
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const standings = standingsData?.standings || []
