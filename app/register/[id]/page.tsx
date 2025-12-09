@@ -73,6 +73,7 @@ export default function TournamentRegisterPage() {
         email: session.user.email || '',
         firstName: session.user.name?.split(' ')[0] || '',
         lastName: session.user.name?.split(' ').slice(1).join(' ') || '',
+        gender: (session.user.gender as 'M' | 'F' | 'X' | '') || prev.gender,
       }))
     }
   }, [session])
@@ -95,8 +96,13 @@ export default function TournamentRegisterPage() {
     e.preventDefault()
     setError('')
 
-    if (!formData.gender) {
-      setError('Please select your gender')
+    const effectiveGender = (formData.gender || (session?.user?.gender as any) || '') as
+      | 'M'
+      | 'F'
+      | 'X'
+      | ''
+    if (!effectiveGender) {
+      setError('Please select your gender (taken from your profile if set)')
       return
     }
 
@@ -105,7 +111,7 @@ export default function TournamentRegisterPage() {
       firstName: formData.firstName,
       lastName: formData.lastName,
       email: formData.email,
-      gender: formData.gender,
+      gender: effectiveGender,
       duprRating: formData.duprRating ? parseFloat(formData.duprRating) : undefined,
     })
   }

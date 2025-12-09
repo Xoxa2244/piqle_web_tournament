@@ -71,10 +71,11 @@ export const authOptions: NextAuthOptions = {
         // Add role to session for client-side access
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { role: true },
+          select: { role: true, gender: true },
         })
         if (dbUser) {
           session.user.role = dbUser.role
+          session.user.gender = dbUser.gender ?? null
         }
       }
       return session

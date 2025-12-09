@@ -10,7 +10,7 @@ export const playerRouter = createTRPCRouter({
       firstName: z.string().min(1, 'First name is required'),
       lastName: z.string().min(1, 'Last name is required'),
       email: z.string().email('Valid email is required'),
-      gender: z.enum(['M', 'F']),
+      gender: z.enum(['M', 'F', 'X']).optional(),
       duprRating: z.number().min(0).max(5).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -63,10 +63,24 @@ export const playerRouter = createTRPCRouter({
       // Determine if tournament requires payment
       const requiresPayment = tournament.entryFee && parseFloat(tournament.entryFee.toString()) > 0
 
+      // Gender fallback: use provided or take from user profile
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: { gender: true },
+      })
+      const gender = input.gender ?? user?.gender
+      if (!gender) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Please set gender in your profile before registering.',
+        })
+      }
+
       // Create player
       const player = await ctx.prisma.player.create({
         data: {
           ...playerData,
+          gender,
           tournamentId,
           isPaid: !requiresPayment, // Auto-mark as paid only if tournament is free
           isWaitlist: false,
