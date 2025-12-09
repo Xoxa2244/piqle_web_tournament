@@ -74,6 +74,8 @@ export default function DUPRLoginModal({
 
       if (duprId && userToken && refreshToken) {
         console.log('DUPR login successful:', { duprId, hasToken: !!userToken })
+        console.log('DUPR full data received:', JSON.stringify(data, null, 2))
+        console.log('DUPR stats:', data.stats)
         
         onSuccess({
           duprId: String(duprId),
@@ -89,6 +91,7 @@ export default function DUPRLoginModal({
         onClose()
       } else if (data && typeof data === 'object') {
         console.log('Received DUPR message but missing required fields:', data)
+        console.log('Full event data:', JSON.stringify(data, null, 2))
       }
     }
 

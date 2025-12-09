@@ -24,21 +24,69 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Optional: Fetch profile from DUPR UAT API
+    // Fetch ratings from postMessage stats or DUPR API
     let duprRatingSingles: number | null = null
     let duprRatingDoubles: number | null = null
 
+    // First, try to get ratings from postMessage stats
     if (stats) {
-      // Use stats from postMessage if provided
-      if (stats.singlesRating) {
-        duprRatingSingles = parseFloat(stats.singlesRating)
+      if (stats.singlesRating !== undefined && stats.singlesRating !== null) {
+        duprRatingSingles = parseFloat(String(stats.singlesRating))
       }
-      if (stats.doublesRating) {
-        duprRatingDoubles = parseFloat(stats.doublesRating)
+      if (stats.doublesRating !== undefined && stats.doublesRating !== null) {
+        duprRatingDoubles = parseFloat(String(stats.doublesRating))
       }
-    } else {
-      // Optionally fetch from DUPR API
-      // For now, we'll skip this and rely on stats from postMessage
+    }
+
+    // If ratings not in stats, fetch from DUPR API
+    if ((!duprRatingSingles || !duprRatingDoubles) && accessToken) {
+      try {
+        // Use production API: https://api.dupr.gg/swagger-ui/index.html#/Public/getBasicInfo
+        // Note: Use user's access token, not partner token
+        const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
+        const response = await fetch(`${duprApiUrl}/api/v1.0/public/getBasicInfo`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (response.ok) {
+          const apiData = await response.json()
+          console.log('DUPR API response:', JSON.stringify(apiData, null, 2))
+          
+          // Extract ratings from API response
+          // Format may vary, check common field names
+          if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
+            duprRatingSingles = parseFloat(String(apiData.singlesRating))
+          }
+          if (apiData.doublesRating !== undefined && apiData.doublesRating !== null) {
+            duprRatingDoubles = parseFloat(String(apiData.doublesRating))
+          }
+          
+          // Also check nested structures
+          if (!duprRatingSingles && apiData.ratings?.singles) {
+            duprRatingSingles = parseFloat(String(apiData.ratings.singles))
+          }
+          if (!duprRatingDoubles && apiData.ratings?.doubles) {
+            duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
+          }
+          
+          // Check stats object if present
+          if (!duprRatingSingles && apiData.stats?.singlesRating) {
+            duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
+          }
+          if (!duprRatingDoubles && apiData.stats?.doublesRating) {
+            duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
+          }
+        } else {
+          console.warn('DUPR API request failed:', response.status, await response.text())
+        }
+      } catch (error) {
+        console.error('Error fetching DUPR ratings from API:', error)
+        // Continue without ratings - not critical
+      }
     }
 
     // Update or create DUPR link for user
