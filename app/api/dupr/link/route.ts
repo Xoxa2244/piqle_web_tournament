@@ -44,15 +44,46 @@ export async function POST(req: NextRequest) {
         // Use production API: /user/{version}/{id}
         // According to Swagger: This API provides details like full name, singles and doubles ratings
         // Note: Use user's access token, not partner token
-        const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
-        const response = await fetch(`${duprApiUrl}/user/v1.0/${duprId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-        })
+        // Based on DUPR email, production API base URL is https://prod.mydupr.com
+        const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://prod.mydupr.com'
+        
+        // Try different endpoint variations
+        const endpoints = [
+          `/api/user/v1.0/${duprId}`,
+          `/user/v1.0/${duprId}`,
+          `/api/v1.0/user/${duprId}`,
+          `/user/v1.0/${duprId}/details`,
+        ]
+        
+        let response: Response | null = null
+        
+        for (const endpoint of endpoints) {
+          const url = `${duprApiUrl}${endpoint}`
+          console.log(`Trying DUPR API endpoint (link): ${url}`)
+          
+          try {
+            response = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+            })
+            
+            if (response.ok) {
+              console.log(`Success with endpoint (link): ${endpoint}`)
+              break
+            } else {
+              const errorText = await response.text()
+              console.log(`Endpoint ${endpoint} failed (link): ${response.status} - ${errorText}`)
+            }
+          } catch (error: any) {
+            console.log(`Endpoint ${endpoint} error (link):`, error.message)
+          }
+        }
+        
+        if (response && response.ok) {
 
         if (response.ok) {
           const apiData = await response.json()

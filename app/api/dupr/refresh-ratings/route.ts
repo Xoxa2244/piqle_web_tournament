@@ -40,17 +40,67 @@ export async function POST(req: NextRequest) {
       // Use production API: /user/{version}/{id}
       // According to Swagger: This API provides details like full name, singles and doubles ratings
       // Note: Use user's access token, not partner token
-      const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://api.dupr.gg'
-      const response = await fetch(`${duprApiUrl}/user/v1.0/${user.duprId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${user.duprAccessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      })
-
-      if (response.ok) {
+      // Based on DUPR email, production API base URL is https://prod.mydupr.com
+      const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://prod.mydupr.com'
+      
+      // Try different endpoint variations
+      const endpoints = [
+        `/api/user/v1.0/${user.duprId}`,
+        `/user/v1.0/${user.duprId}`,
+        `/api/v1.0/user/${user.duprId}`,
+        `/user/v1.0/${user.duprId}/details`,
+      ]
+      
+      let response: Response | null = null
+      let lastError: string = ''
+      
+      for (const endpoint of endpoints) {
+        const url = `${duprApiUrl}${endpoint}`
+        console.log(`Trying DUPR API endpoint: ${url}`)
+        
+        try {
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${user.duprAccessToken}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          })
+          
+          if (response.ok) {
+            console.log(`Success with endpoint: ${endpoint}`)
+            break
+          } else {
+            const errorText = await response.text()
+            console.log(`Endpoint ${endpoint} failed: ${response.status} - ${errorText}`)
+            lastError = `${response.status}: ${errorText}`
+          }
+        } catch (error: any) {
+          console.log(`Endpoint ${endpoint} error:`, error.message)
+          lastError = error.message
+        }
+      }
+      
+      if (!response || !response.ok) {
+        const errorText = lastError || (response ? await response.text() : 'No response')
+        console.warn('All DUPR API endpoints failed. Last error:', errorText)
+        
+        // If token expired, return error
+        if (response?.status === 401) {
+          return NextResponse.json(
+            { error: 'DUPR token expired. Please reconnect your DUPR account.' },
+            { status: 401 }
+          )
+        }
+        
+        return NextResponse.json(
+          { error: `Failed to fetch ratings from DUPR. Tried multiple endpoints. Last error: ${errorText}` },
+          { status: response?.status || 500 }
+        )
+      }
+      
+      if (response && response.ok) {
         const apiData = await response.json()
         console.log('DUPR API response (refresh):', JSON.stringify(apiData, null, 2))
         
@@ -87,12 +137,8 @@ export async function POST(req: NextRequest) {
         if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
           duprRatingDoubles = parseFloat(String(apiData.doubles))
         }
-      } else {
-        const errorText = await response.text()
-        console.warn('DUPR API request failed:', response.status, errorText)
-        
         // If token expired, return error
-        if (response.status === 401) {
+        if (response?.status === 401) {
           return NextResponse.json(
             { error: 'DUPR token expired. Please reconnect your DUPR account.' },
             { status: 401 }
@@ -100,8 +146,8 @@ export async function POST(req: NextRequest) {
         }
         
         return NextResponse.json(
-          { error: `Failed to fetch ratings from DUPR: ${response.status}` },
-          { status: response.status }
+          { error: `Failed to fetch ratings from DUPR. Tried multiple endpoints. Last error: ${lastError || 'Unknown error'}` },
+          { status: response?.status || 500 }
         )
       }
     } catch (error) {
