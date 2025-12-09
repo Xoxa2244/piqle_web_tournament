@@ -120,8 +120,11 @@ export async function POST(req: NextRequest) {
           if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
             duprRatingDoubles = parseFloat(String(apiData.doubles))
           }
+        } else if (response) {
+          const errorText = await response.text()
+          console.warn('DUPR API request failed:', response.status, errorText)
         } else {
-          console.warn('DUPR API request failed:', response.status, await response.text())
+          console.warn('DUPR API request failed: No response received')
         }
       } catch (error) {
         console.error('Error fetching DUPR ratings from API:', error)
