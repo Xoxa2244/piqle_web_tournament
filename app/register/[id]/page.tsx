@@ -17,11 +17,19 @@ export default function TournamentRegisterPage() {
   const { data: session, status: sessionStatus } = useSession()
   const tournamentId = params.id as string
 
-  const [formData, setFormData] = useState({
+  type GenderOption = '' | 'M' | 'F' | 'X'
+
+  const [formData, setFormData] = useState<{
+    firstName: string
+    lastName: string
+    email: string
+    gender: GenderOption
+    duprRating: string
+  }>({
     firstName: '',
     lastName: '',
     email: '',
-    gender: '' as 'M' | 'F' | '',
+    gender: '',
     duprRating: '',
   })
 
@@ -73,7 +81,7 @@ export default function TournamentRegisterPage() {
         email: session.user.email || '',
         firstName: session.user.name?.split(' ')[0] || '',
         lastName: session.user.name?.split(' ').slice(1).join(' ') || '',
-        gender: (session.user.gender as 'M' | 'F' | 'X' | '') || prev.gender,
+        gender: (session.user.gender as GenderOption) || prev.gender,
       }))
     }
   }, [session])
@@ -96,11 +104,7 @@ export default function TournamentRegisterPage() {
     e.preventDefault()
     setError('')
 
-    const effectiveGender = (formData.gender || (session?.user?.gender as any) || '') as
-      | 'M'
-      | 'F'
-      | 'X'
-      | ''
+    const effectiveGender = (formData.gender || (session?.user?.gender as GenderOption) || '') as GenderOption
     if (!effectiveGender) {
       setError('Please select your gender (taken from your profile if set)')
       return
