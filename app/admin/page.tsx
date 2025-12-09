@@ -3,7 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
@@ -23,11 +23,30 @@ export default function AdminPage() {
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'upcoming' | 'live' | 'past'>('all')
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
+
+  const getStatus = (tournament: any) => {
+    const now = new Date()
+    const start = new Date(tournament.startDate)
+    const end = new Date(tournament.endDate)
+    if (end < now) return 'past'
+    if (start <= now && end >= now) return 'live'
+    return 'upcoming'
+  }
+
+  const filteredTournaments = useMemo(() => {
+    if (!tournaments) return []
+    return (tournaments as any[]).filter((t) => {
+      const status = getStatus(t)
+      if (statusFilter === 'all') return true
+      return status === statusFilter
+    })
+  }, [tournaments, statusFilter])
   
   // Search tournaments
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
@@ -97,6 +116,26 @@ export default function AdminPage() {
             Create Tournament
           </Link>
         </div>
+      </div>
+
+      {/* Status Filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        {([
+          { key: 'all', label: 'All' },
+          { key: 'upcoming', label: 'Upcoming (registration open)' },
+          { key: 'live', label: 'Live (results only)' },
+          { key: 'past', label: 'Past (results only)' },
+        ] as const).map((item) => (
+          <Button
+            key={item.key}
+            variant={statusFilter === item.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter(item.key)}
+            className="rounded-full"
+          >
+            {item.label}
+          </Button>
+        ))}
       </div>
 
       {/* Search Section */}
@@ -194,9 +233,16 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tournaments && tournaments.length > 0 ? (
+      {filteredTournaments && filteredTournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {(tournaments as any[]).map((tournament: any) => (
+          {filteredTournaments.map((tournament: any) => {
+            const status = getStatus(tournament)
+            const statusConfig: Record<string, { label: string; color: string }> = {
+              upcoming: { label: 'Upcoming', color: 'bg-blue-100 text-blue-700' },
+              live: { label: 'Live', color: 'bg-green-100 text-green-700' },
+              past: { label: 'Completed', color: 'bg-gray-200 text-gray-700' },
+            }
+            return (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
               {tournament.isPublicBoardEnabled && baseUrl && (
                 <div className="absolute top-4 right-4">
@@ -211,6 +257,13 @@ export default function AdminPage() {
                 </div>
               )}
               <h3 className="text-xl font-semibold mb-2 pr-10">{tournament.title}</h3>
+              <div className="mb-3">
+                <span
+                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${statusConfig[status].color}`}
+                >
+                  {statusConfig[status].label}
+                </span>
+              </div>
               {tournament.description && (
                 <div className="mb-4">
                   <div
