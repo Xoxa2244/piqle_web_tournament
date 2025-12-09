@@ -119,23 +119,26 @@ export default function AdminPage() {
       </div>
 
       {/* Status Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        {([
-          { key: 'all', label: 'All' },
-          { key: 'upcoming', label: 'Upcoming (registration open)' },
-          { key: 'live', label: 'Live (results only)' },
-          { key: 'past', label: 'Past (results only)' },
-        ] as const).map((item) => (
-          <Button
-            key={item.key}
-            variant={statusFilter === item.key ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setStatusFilter(item.key)}
-            className="rounded-full"
-          >
-            {item.label}
-          </Button>
-        ))}
+      <div className="mb-6">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium text-gray-700">Status:</span>
+          {([
+            { key: 'all', label: 'All' },
+            { key: 'upcoming', label: 'Upcoming (registration open)' },
+            { key: 'live', label: 'Live (results only)' },
+            { key: 'past', label: 'Past (results only)' },
+          ] as const).map((item) => (
+            <Button
+              key={item.key}
+              variant={statusFilter === item.key ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter(item.key)}
+              className="rounded-full text-sm"
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Search Section */}
