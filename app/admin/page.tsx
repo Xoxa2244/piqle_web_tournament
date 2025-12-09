@@ -355,7 +355,8 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
-          ))}
+          )
+        })}
         </div>
       ) : (
         <div className="text-center py-12">
