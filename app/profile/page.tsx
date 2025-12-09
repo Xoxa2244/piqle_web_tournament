@@ -387,26 +387,8 @@ export default function ProfilePage() {
               ) : (
                 <div className="mt-1">
                   {profile.duprLinked && profile.duprId ? (
-                    <div className="space-y-1">
-                      <div className="text-lg text-gray-900">
-                        Linked: <span className="font-medium">{profile.duprId}</span>
-                      </div>
-                      {(profile.duprRatingSingles || profile.duprRatingDoubles) && (
-                        <div className="text-sm text-gray-600">
-                          Rating:{' '}
-                          {profile.duprRatingSingles && (
-                            <span>Singles: {typeof profile.duprRatingSingles === 'string' 
-                              ? parseFloat(profile.duprRatingSingles).toFixed(2)
-                              : Number(profile.duprRatingSingles).toFixed(2)}</span>
-                          )}
-                          {profile.duprRatingSingles && profile.duprRatingDoubles && ' • '}
-                          {profile.duprRatingDoubles && (
-                            <span>Doubles: {typeof profile.duprRatingDoubles === 'string'
-                              ? parseFloat(profile.duprRatingDoubles).toFixed(2)
-                              : Number(profile.duprRatingDoubles).toFixed(2)}</span>
-                          )}
-                        </div>
-                      )}
+                    <div className="text-lg text-gray-900">
+                      Linked: <span className="font-medium">{profile.duprId}</span>
                     </div>
                   ) : (
                     <div className="flex items-center space-x-3">
@@ -428,6 +410,30 @@ export default function ProfilePage() {
                 <p className="mt-1 text-xs text-gray-400">This feature is temporarily unavailable</p>
               )}
             </div>
+
+            {/* DUPR Singles Rating */}
+            {profile.duprLinked && profile.duprRatingSingles !== null && (
+              <div>
+                <Label>DUPR Singles Rating</Label>
+                <div className="mt-1 text-lg text-gray-900">
+                  {typeof profile.duprRatingSingles === 'string' 
+                    ? parseFloat(profile.duprRatingSingles).toFixed(2)
+                    : Number(profile.duprRatingSingles).toFixed(2)}
+                </div>
+              </div>
+            )}
+
+            {/* DUPR Doubles Rating */}
+            {profile.duprLinked && profile.duprRatingDoubles !== null && (
+              <div>
+                <Label>DUPR Doubles Rating</Label>
+                <div className="mt-1 text-lg text-gray-900">
+                  {typeof profile.duprRatingDoubles === 'string'
+                    ? parseFloat(profile.duprRatingDoubles).toFixed(2)
+                    : Number(profile.duprRatingDoubles).toFixed(2)}
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             {isEditing && (
