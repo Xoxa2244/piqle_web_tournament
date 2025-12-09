@@ -44,11 +44,16 @@ export async function POST(req: NextRequest) {
       const duprApiUrl = process.env.NEXT_PUBLIC_DUPR_API_URL || 'https://prod.mydupr.com'
       
       // Try different endpoint variations
+      // Based on DUPR email showing /api/match/1.0/create, structure might be /api/{resource}/{version}/{action}
       const endpoints = [
         `/api/user/v1.0/${user.duprId}`,
+        `/api/user/1.0/${user.duprId}`, // Try without 'v' prefix
         `/user/v1.0/${user.duprId}`,
+        `/user/1.0/${user.duprId}`, // Try without 'v' prefix
         `/api/v1.0/user/${user.duprId}`,
+        `/api/1.0/user/${user.duprId}`, // Try without 'v' prefix
         `/user/v1.0/${user.duprId}/details`,
+        `/api/user/v1.0/${user.duprId}/details`,
       ]
       
       let response: Response | null = null
@@ -56,7 +61,11 @@ export async function POST(req: NextRequest) {
       
       for (const endpoint of endpoints) {
         const url = `${duprApiUrl}${endpoint}`
-        console.log(`Trying DUPR API endpoint: ${url}`)
+        console.log(`Trying DUPR API endpoint: ${url}`, {
+          duprId: user.duprId,
+          hasToken: !!user.duprAccessToken,
+          tokenLength: user.duprAccessToken?.length || 0,
+        })
         
         try {
           response = await fetch(url, {
