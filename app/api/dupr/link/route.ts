@@ -84,10 +84,8 @@ export async function POST(req: NextRequest) {
         }
         
         if (response && response.ok) {
-
-        if (response.ok) {
           const apiData = await response.json()
-          console.log('DUPR API response:', JSON.stringify(apiData, null, 2))
+          console.log('DUPR API response (link):', JSON.stringify(apiData, null, 2))
           
           // Extract ratings from API response
           // According to Swagger: response contains singles and doubles ratings
