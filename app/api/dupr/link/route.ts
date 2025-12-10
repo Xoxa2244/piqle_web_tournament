@@ -142,7 +142,6 @@ export async function POST(req: NextRequest) {
       },
       data: {
         duprId: duprId || undefined,
-        // @ts-expect-error - Prisma Client types may not be updated yet, but field exists in schema
         duprNumericId: numericId ? BigInt(numericId) : undefined,
         duprAccessToken: accessToken,
         duprRefreshToken: refreshToken,
