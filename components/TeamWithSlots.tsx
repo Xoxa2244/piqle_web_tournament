@@ -19,7 +19,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
-import { getTeamDisplayName } from '@/lib/utils'
+import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
 
 interface Player {
   id: string
@@ -163,8 +163,8 @@ export default function TeamWithSlots({
     const avg = sum / playersWithRatings.length
     
     return {
-      sum: sum.toFixed(1),
-      avg: avg.toFixed(1),
+      sum: sum.toFixed(3),
+      avg: avg.toFixed(3),
       count: playersWithRatings.length
     }
   }, [team.teamPlayers, teamKind])
@@ -240,7 +240,7 @@ export default function TeamWithSlots({
               playerRating && (
                 <Badge variant="outline" className="text-xs">
                   <Star className="h-3 w-3 mr-1" />
-                  {playerRating}
+                  {formatDuprRating(playerRating)}
                 </Badge>
               )
             ) : (

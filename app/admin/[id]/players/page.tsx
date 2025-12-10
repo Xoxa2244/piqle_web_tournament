@@ -23,6 +23,7 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import { formatDuprRating } from '@/lib/utils'
 
 interface Player {
   id: string
@@ -176,7 +177,7 @@ export default function PlayersPage() {
 
   const getDuprRating = (player: Player) => {
     if (player.duprRating === null) return '—'
-    return player.duprRating
+    return formatDuprRating(player.duprRating) || '—'
   }
 
   if (!tournament) {

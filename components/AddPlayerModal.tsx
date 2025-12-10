@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X } from 'lucide-react'
+import { formatDuprRating } from '@/lib/utils'
 
 interface Division {
   id: string
@@ -184,7 +185,7 @@ export default function AddPlayerModal({
                 {availablePlayers.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.firstName} {player.lastName}
-                    {player.duprRating && ` (${player.duprRating})`}
+                    {player.duprRating && ` (${formatDuprRating(player.duprRating)})`}
                   </option>
                 ))}
               </select>

@@ -40,7 +40,7 @@ import {
   ChevronDown,
   ChevronRight
 } from 'lucide-react'
-import { getTeamDisplayName } from '@/lib/utils'
+import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
 
 interface Team {
   id: string
@@ -1246,7 +1246,7 @@ function SortablePlayerCard({
       <div className="flex items-center space-x-1">
         {teamPlayer.player.duprRating && (
           <Badge variant="outline" className="text-xs">
-            {teamPlayer.player.duprRating}
+            {formatDuprRating(teamPlayer.player.duprRating)}
           </Badge>
         )}
         {onRemovePlayerFromSlot && (

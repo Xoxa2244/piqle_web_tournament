@@ -34,3 +34,17 @@ export function getTeamDisplayName(
   // Fallback to team name
   return team.name || 'Unknown Team'
 }
+
+/**
+ * Formats DUPR rating to always show 3 decimal places
+ * @param rating - Rating value (can be string, number, or null)
+ * @returns Formatted rating string with 3 decimal places, or null if rating is invalid
+ */
+export function formatDuprRating(rating: string | number | null | undefined): string | null {
+  if (rating === null || rating === undefined) return null
+  
+  const numValue = typeof rating === 'string' ? parseFloat(rating) : Number(rating)
+  if (isNaN(numValue)) return null
+  
+  return numValue.toFixed(3)
+}

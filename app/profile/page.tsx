@@ -13,6 +13,7 @@ import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
 import DUPRLoginModal from '@/components/DUPRLoginModal'
+import { formatDuprRating } from '@/lib/utils'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -489,9 +490,7 @@ export default function ProfilePage() {
                   <div>
                     <Label>DUPR Singles Rating</Label>
                     <div className="mt-1 text-lg text-gray-900">
-                      {typeof profile.duprRatingSingles === 'string' 
-                        ? parseFloat(profile.duprRatingSingles).toFixed(2)
-                        : Number(profile.duprRatingSingles).toFixed(2)}
+                      {formatDuprRating(profile.duprRatingSingles)}
                     </div>
                   </div>
                 )}
@@ -501,9 +500,7 @@ export default function ProfilePage() {
                   <div>
                     <Label>DUPR Doubles Rating</Label>
                     <div className="mt-1 text-lg text-gray-900">
-                      {typeof profile.duprRatingDoubles === 'string'
-                        ? parseFloat(profile.duprRatingDoubles).toFixed(2)
-                        : Number(profile.duprRatingDoubles).toFixed(2)}
+                      {formatDuprRating(profile.duprRatingDoubles)}
                     </div>
                   </div>
                 )}
