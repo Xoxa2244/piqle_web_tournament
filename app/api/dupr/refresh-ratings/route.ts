@@ -33,79 +33,60 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Fetch ratings from DUPR API
+    // Fetch ratings from DUPR API using /Public/getBasicInfo
+    // This endpoint works with user access token and is publicly available
     let duprRatingSingles: number | null = null
     let duprRatingDoubles: number | null = null
 
+    if (!user.duprId) {
+      return NextResponse.json(
+        { error: 'DUPR ID is required to fetch ratings' },
+        { status: 400 }
+      )
+    }
+
     try {
-      // Use production API
-      // According to Swagger: /user/{version}/{id} requires numeric ID (integer)
-      // Also try /Public/getBasicInfo which might work with just access token
-      // Note: Use user's access token, not partner token
-      // Try both api.dupr.gg and prod.mydupr.com
+      // Use /Public/getBasicInfo endpoint with duprId as query parameter
+      // According to DUPR docs: This endpoint works with user access token
       const baseUrls = [
         'https://api.dupr.gg',
-        'https://prod.mydupr.com',
+        'https://api.uat.dupr.gg',
       ]
-      
-      // Build endpoints - prefer numeric ID if available
-      const endpoints = user.duprNumericId
-        ? [
-            // Try with numeric ID first (most likely to work according to Swagger)
-            `/user/v1.0/${user.duprNumericId}`,
-            `/api/user/v1.0/${user.duprNumericId}`,
-            `/user/1.0/${user.duprNumericId}`,
-            `/api/user/1.0/${user.duprNumericId}`,
-            // Also try Public endpoint (might work with just token)
-            `/Public/getBasicInfo`,
-            `/api/v1.0/public/getBasicInfo`,
-          ]
-        : [
-            // Fallback to string ID or Public endpoint if numeric not available
-            `/Public/getBasicInfo`,
-            `/api/v1.0/public/getBasicInfo`,
-            `/user/v1.0/${user.duprId}`,
-            `/api/user/v1.0/${user.duprId}`,
-          ]
       
       let response: Response | null = null
       let lastError: string = ''
-      let successfulUrl: string | null = null
       
-      // Try all combinations of base URLs and endpoints
+      // Try both production and UAT endpoints
       for (const baseUrl of baseUrls) {
-        for (const endpoint of endpoints) {
-          const url = `${baseUrl}${endpoint}`
-          console.log(`Trying DUPR API: ${url}`, {
-            duprId: user.duprId,
-            numericId: user.duprNumericId,
-            hasToken: !!user.duprAccessToken,
-            tokenLength: user.duprAccessToken?.length || 0,
+        // Build URL with duprId as query parameter
+        const url = `${baseUrl}/Public/getBasicInfo?duprId=${encodeURIComponent(user.duprId)}`
+        
+        console.log(`Trying DUPR API (refresh): ${url}`, {
+          duprId: user.duprId,
+          hasToken: !!user.duprAccessToken,
+        })
+        
+        try {
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${user.duprAccessToken}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
           })
           
-          try {
-            response = await fetch(url, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${user.duprAccessToken}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-            })
-            
-            if (response.ok) {
-              console.log(`Success with URL: ${url}`)
-              successfulUrl = url
-              break
-            } else {
-              const errorText = await response.text()
-              console.log(`URL ${url} failed: ${response.status} - ${errorText.substring(0, 200)}`)
-              lastError = `${response.status}: ${errorText.substring(0, 200)}`
-            }
-          } catch (error: any) {
-            console.log(`URL ${url} error:`, error.message)
-            lastError = error.message
+          if (response.ok) {
+            console.log(`Success with URL (refresh): ${url}`)
+            break
+          } else {
+            const errorText = await response.text()
+            console.log(`URL ${url} failed (refresh): ${response.status} - ${errorText.substring(0, 200)}`)
+            lastError = `${response.status}: ${errorText.substring(0, 200)}`
           }
+        } catch (error: any) {
+          console.log(`URL ${url} error (refresh):`, error.message)
+          lastError = error.message
         }
         
         if (response && response.ok) {
@@ -115,7 +96,7 @@ export async function POST(req: NextRequest) {
       
       if (!response || !response.ok) {
         const errorText = lastError || (response ? await response.text() : 'No response')
-        console.warn('All DUPR API endpoints failed. Last error:', errorText)
+        console.warn('DUPR API request failed (refresh). Last error:', errorText)
         
         // If token expired, return error
         if (response?.status === 401) {
@@ -126,56 +107,45 @@ export async function POST(req: NextRequest) {
         }
         
         return NextResponse.json(
-          { error: `Failed to fetch ratings from DUPR. Tried multiple endpoints. Last error: ${errorText}` },
+          { error: `Failed to fetch ratings from DUPR. Last error: ${errorText}` },
           { status: response?.status || 500 }
         )
       }
       
-      if (response && response.ok) {
-        const apiData = await response.json()
-        console.log('DUPR API response (refresh):', JSON.stringify(apiData, null, 2))
-        
-        // Extract ratings from API response
-        // According to Swagger: response contains singles and doubles ratings
-        // Check various possible field names and structures
-        if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
-          duprRatingSingles = parseFloat(String(apiData.singlesRating))
-        }
-        if (apiData.doublesRating !== undefined && apiData.doublesRating !== null) {
-          duprRatingDoubles = parseFloat(String(apiData.doublesRating))
-        }
-        
-        // Check for nested ratings object
-        if (!duprRatingSingles && apiData.ratings?.singles !== undefined && apiData.ratings?.singles !== null) {
-          duprRatingSingles = parseFloat(String(apiData.ratings.singles))
-        }
-        if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined && apiData.ratings?.doubles !== null) {
-          duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
-        }
-        
-        // Check for nested stats object
-        if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined && apiData.stats?.singlesRating !== null) {
-          duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
-        }
-        if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined && apiData.stats?.doublesRating !== null) {
-          duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
-        }
-        
-        // Check for direct rating fields (if API returns them directly)
-        if (!duprRatingSingles && apiData.singles !== undefined && apiData.singles !== null) {
-          duprRatingSingles = parseFloat(String(apiData.singles))
-        }
-        if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
-          duprRatingDoubles = parseFloat(String(apiData.doubles))
-        }
-      } else {
-        // This should not happen as we check above, but just in case
-        const errorText = lastError || (response ? await response.text() : 'No response')
-        console.warn('Response not OK after successful check. This should not happen.')
-        return NextResponse.json(
-          { error: `Failed to fetch ratings from DUPR. Unexpected error: ${errorText}` },
-          { status: response?.status || 500 }
-        )
+      const apiData = await response.json()
+      console.log('DUPR API response (refresh):', JSON.stringify(apiData, null, 2))
+      
+      // Extract ratings from API response
+      // Check various possible field names and structures
+      if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
+        duprRatingSingles = parseFloat(String(apiData.singlesRating))
+      }
+      if (apiData.doublesRating !== undefined && apiData.doublesRating !== null) {
+        duprRatingDoubles = parseFloat(String(apiData.doublesRating))
+      }
+      
+      // Check for nested ratings object
+      if (!duprRatingSingles && apiData.ratings?.singles !== undefined && apiData.ratings?.singles !== null) {
+        duprRatingSingles = parseFloat(String(apiData.ratings.singles))
+      }
+      if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined && apiData.ratings?.doubles !== null) {
+        duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
+      }
+      
+      // Check for nested stats object
+      if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined && apiData.stats?.singlesRating !== null) {
+        duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
+      }
+      if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined && apiData.stats?.doublesRating !== null) {
+        duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
+      }
+      
+      // Check for direct rating fields (if API returns them directly)
+      if (!duprRatingSingles && apiData.singles !== undefined && apiData.singles !== null) {
+        duprRatingSingles = parseFloat(String(apiData.singles))
+      }
+      if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
+        duprRatingDoubles = parseFloat(String(apiData.doubles))
       }
     } catch (error) {
       console.error('Error fetching DUPR ratings from API:', error)

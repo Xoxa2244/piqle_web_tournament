@@ -38,70 +38,48 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If ratings not in stats, fetch from DUPR API
-    if ((!duprRatingSingles || !duprRatingDoubles) && accessToken && (numericId || duprId)) {
+    // If ratings not in stats, fetch from DUPR API using /Public/getBasicInfo
+    // This endpoint works with user access token and is publicly available
+    if ((!duprRatingSingles || !duprRatingDoubles) && accessToken && duprId) {
       try {
-        // Use production API
-        // According to Swagger: /user/{version}/{id} requires numeric ID (integer)
-        // Also try /Public/getBasicInfo which might work with just access token
-        // Note: Use user's access token, not partner token
+        // Use /Public/getBasicInfo endpoint with duprId as query parameter
+        // According to DUPR docs: This endpoint works with user access token
         const baseUrls = [
           'https://api.dupr.gg',
-          'https://prod.mydupr.com',
+          'https://api.uat.dupr.gg',
         ]
-        
-        // Build endpoints - prefer numeric ID if available
-        const endpoints = numericId
-          ? [
-              // Try with numeric ID first (most likely to work according to Swagger)
-              `/user/v1.0/${numericId}`,
-              `/api/user/v1.0/${numericId}`,
-              `/user/1.0/${numericId}`,
-              `/api/user/1.0/${numericId}`,
-              // Also try Public endpoint (might work with just token)
-              `/Public/getBasicInfo`,
-              `/api/v1.0/public/getBasicInfo`,
-            ]
-          : [
-              // Fallback to string ID or Public endpoint if numeric not available
-              `/Public/getBasicInfo`,
-              `/api/v1.0/public/getBasicInfo`,
-              `/user/v1.0/${duprId}`,
-              `/api/user/v1.0/${duprId}`,
-            ]
         
         let response: Response | null = null
         
-        // Try all combinations of base URLs and endpoints
+        // Try both production and UAT endpoints
         for (const baseUrl of baseUrls) {
-          for (const endpoint of endpoints) {
-            const url = `${baseUrl}${endpoint}`
-            console.log(`Trying DUPR API endpoint (link): ${url}`, {
-              duprId,
-              numericId,
-              hasToken: !!accessToken,
+          // Build URL with duprId as query parameter
+          const url = `${baseUrl}/Public/getBasicInfo?duprId=${encodeURIComponent(duprId)}`
+          
+          console.log(`Trying DUPR API endpoint (link): ${url}`, {
+            duprId,
+            hasToken: !!accessToken,
+          })
+          
+          try {
+            response = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
             })
             
-            try {
-              response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-              })
-              
-              if (response.ok) {
-                console.log(`Success with endpoint (link): ${url}`)
-                break
-              } else {
-                const errorText = await response.text()
-                console.log(`Endpoint ${url} failed (link): ${response.status} - ${errorText.substring(0, 200)}`)
-              }
-            } catch (error: any) {
-              console.log(`Endpoint ${url} error (link):`, error.message)
+            if (response.ok) {
+              console.log(`Success with endpoint (link): ${url}`)
+              break
+            } else {
+              const errorText = await response.text()
+              console.log(`Endpoint ${url} failed (link): ${response.status} - ${errorText.substring(0, 200)}`)
             }
+          } catch (error: any) {
+            console.log(`Endpoint ${url} error (link):`, error.message)
           }
           
           if (response && response.ok) {
@@ -114,7 +92,6 @@ export async function POST(req: NextRequest) {
           console.log('DUPR API response (link):', JSON.stringify(apiData, null, 2))
           
           // Extract ratings from API response
-          // According to Swagger: response contains singles and doubles ratings
           // Check various possible field names and structures
           if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
             duprRatingSingles = parseFloat(String(apiData.singlesRating))
@@ -165,7 +142,8 @@ export async function POST(req: NextRequest) {
       },
       data: {
         duprId: duprId || undefined,
-        duprNumericId: numericId ? numericId : undefined,
+        // @ts-expect-error - Prisma Client types may not be updated yet, but field exists in schema
+        duprNumericId: numericId ? BigInt(numericId) : undefined,
         duprAccessToken: accessToken,
         duprRefreshToken: refreshToken,
         duprRatingSingles: duprRatingSingles ? duprRatingSingles : null,
