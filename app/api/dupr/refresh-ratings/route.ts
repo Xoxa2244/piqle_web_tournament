@@ -80,7 +80,9 @@ export async function POST(req: NextRequest) {
             console.log(`Success with URL (refresh): ${url}`)
             break
           } else {
-            const errorText = await response.text()
+            // Clone response to read text without consuming body
+            const responseClone = response.clone()
+            const errorText = await responseClone.text()
             console.log(`URL ${url} failed (refresh): ${response.status} - ${errorText.substring(0, 200)}`)
             lastError = `${response.status}: ${errorText.substring(0, 200)}`
           }
@@ -95,7 +97,8 @@ export async function POST(req: NextRequest) {
       }
       
       if (!response || !response.ok) {
-        const errorText = lastError || (response ? await response.text() : 'No response')
+        // Use lastError if available, otherwise just status
+        const errorText = lastError || (response ? `${response.status}: No error details` : 'No response')
         console.warn('DUPR API request failed (refresh). Last error:', errorText)
         
         // If token expired, return error
@@ -116,36 +119,51 @@ export async function POST(req: NextRequest) {
       console.log('DUPR API response (refresh):', JSON.stringify(apiData, null, 2))
       
       // Extract ratings from API response
-      // Check various possible field names and structures
-      if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
-        duprRatingSingles = parseFloat(String(apiData.singlesRating))
+      // Helper function to parse rating (handles "NR" and numeric values)
+      const parseRating = (value: any): number | null => {
+        if (value === undefined || value === null) return null
+        const str = String(value).trim()
+        if (str === 'NR' || str === '' || str.toLowerCase() === 'not rated') return null
+        const parsed = parseFloat(str)
+        return isNaN(parsed) ? null : parsed
       }
-      if (apiData.doublesRating !== undefined && apiData.doublesRating !== null) {
-        duprRatingDoubles = parseFloat(String(apiData.doublesRating))
+      
+      // Check various possible field names and structures
+      if (!duprRatingSingles && apiData.singlesRating !== undefined) {
+        duprRatingSingles = parseRating(apiData.singlesRating)
+      }
+      if (!duprRatingDoubles && apiData.doublesRating !== undefined) {
+        duprRatingDoubles = parseRating(apiData.doublesRating)
       }
       
       // Check for nested ratings object
-      if (!duprRatingSingles && apiData.ratings?.singles !== undefined && apiData.ratings?.singles !== null) {
-        duprRatingSingles = parseFloat(String(apiData.ratings.singles))
+      if (!duprRatingSingles && apiData.ratings?.singles !== undefined) {
+        duprRatingSingles = parseRating(apiData.ratings.singles)
       }
-      if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined && apiData.ratings?.doubles !== null) {
-        duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
+      if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined) {
+        duprRatingDoubles = parseRating(apiData.ratings.doubles)
       }
       
       // Check for nested stats object
-      if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined && apiData.stats?.singlesRating !== null) {
-        duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
+      if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined) {
+        duprRatingSingles = parseRating(apiData.stats.singlesRating)
       }
-      if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined && apiData.stats?.doublesRating !== null) {
-        duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
+      if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined) {
+        duprRatingDoubles = parseRating(apiData.stats.doublesRating)
+      }
+      if (!duprRatingSingles && apiData.stats?.singles !== undefined) {
+        duprRatingSingles = parseRating(apiData.stats.singles)
+      }
+      if (!duprRatingDoubles && apiData.stats?.doubles !== undefined) {
+        duprRatingDoubles = parseRating(apiData.stats.doubles)
       }
       
       // Check for direct rating fields (if API returns them directly)
-      if (!duprRatingSingles && apiData.singles !== undefined && apiData.singles !== null) {
-        duprRatingSingles = parseFloat(String(apiData.singles))
+      if (!duprRatingSingles && apiData.singles !== undefined) {
+        duprRatingSingles = parseRating(apiData.singles)
       }
-      if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
-        duprRatingDoubles = parseFloat(String(apiData.doubles))
+      if (!duprRatingDoubles && apiData.doubles !== undefined) {
+        duprRatingDoubles = parseRating(apiData.doubles)
       }
     } catch (error) {
       console.error('Error fetching DUPR ratings from API:', error)

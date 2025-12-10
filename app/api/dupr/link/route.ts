@@ -29,12 +29,28 @@ export async function POST(req: NextRequest) {
     let duprRatingDoubles: number | null = null
 
     // First, try to get ratings from postMessage stats
+    // Stats come in format: { singles: "3.5" | "NR", doubles: "3.5" | "NR", ... }
     if (stats) {
-      if (stats.singlesRating !== undefined && stats.singlesRating !== null) {
-        duprRatingSingles = parseFloat(String(stats.singlesRating))
+      // Try singlesRating first (if present)
+      if (stats.singlesRating !== undefined && stats.singlesRating !== null && stats.singlesRating !== 'NR') {
+        const parsed = parseFloat(String(stats.singlesRating))
+        if (!isNaN(parsed)) duprRatingSingles = parsed
       }
-      if (stats.doublesRating !== undefined && stats.doublesRating !== null) {
-        duprRatingDoubles = parseFloat(String(stats.doublesRating))
+      // Try singles (direct field)
+      if (!duprRatingSingles && stats.singles !== undefined && stats.singles !== null && stats.singles !== 'NR') {
+        const parsed = parseFloat(String(stats.singles))
+        if (!isNaN(parsed)) duprRatingSingles = parsed
+      }
+      
+      // Try doublesRating first (if present)
+      if (stats.doublesRating !== undefined && stats.doublesRating !== null && stats.doublesRating !== 'NR') {
+        const parsed = parseFloat(String(stats.doublesRating))
+        if (!isNaN(parsed)) duprRatingDoubles = parsed
+      }
+      // Try doubles (direct field)
+      if (!duprRatingDoubles && stats.doubles !== undefined && stats.doubles !== null && stats.doubles !== 'NR') {
+        const parsed = parseFloat(String(stats.doubles))
+        if (!isNaN(parsed)) duprRatingDoubles = parsed
       }
     }
 
@@ -75,7 +91,9 @@ export async function POST(req: NextRequest) {
               console.log(`Success with endpoint (link): ${url}`)
               break
             } else {
-              const errorText = await response.text()
+              // Clone response to read text without consuming body
+              const responseClone = response.clone()
+              const errorText = await responseClone.text()
               console.log(`Endpoint ${url} failed (link): ${response.status} - ${errorText.substring(0, 200)}`)
             }
           } catch (error: any) {
@@ -92,40 +110,55 @@ export async function POST(req: NextRequest) {
           console.log('DUPR API response (link):', JSON.stringify(apiData, null, 2))
           
           // Extract ratings from API response
-          // Check various possible field names and structures
-          if (apiData.singlesRating !== undefined && apiData.singlesRating !== null) {
-            duprRatingSingles = parseFloat(String(apiData.singlesRating))
+          // Helper function to parse rating (handles "NR" and numeric values)
+          const parseRating = (value: any): number | null => {
+            if (value === undefined || value === null) return null
+            const str = String(value).trim()
+            if (str === 'NR' || str === '' || str.toLowerCase() === 'not rated') return null
+            const parsed = parseFloat(str)
+            return isNaN(parsed) ? null : parsed
           }
-          if (apiData.doublesRating !== undefined && apiData.doublesRating !== null) {
-            duprRatingDoubles = parseFloat(String(apiData.doublesRating))
+          
+          // Check various possible field names and structures
+          if (!duprRatingSingles && apiData.singlesRating !== undefined) {
+            duprRatingSingles = parseRating(apiData.singlesRating)
+          }
+          if (!duprRatingDoubles && apiData.doublesRating !== undefined) {
+            duprRatingDoubles = parseRating(apiData.doublesRating)
           }
           
           // Check for nested ratings object
-          if (!duprRatingSingles && apiData.ratings?.singles !== undefined && apiData.ratings?.singles !== null) {
-            duprRatingSingles = parseFloat(String(apiData.ratings.singles))
+          if (!duprRatingSingles && apiData.ratings?.singles !== undefined) {
+            duprRatingSingles = parseRating(apiData.ratings.singles)
           }
-          if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined && apiData.ratings?.doubles !== null) {
-            duprRatingDoubles = parseFloat(String(apiData.ratings.doubles))
+          if (!duprRatingDoubles && apiData.ratings?.doubles !== undefined) {
+            duprRatingDoubles = parseRating(apiData.ratings.doubles)
           }
           
           // Check for nested stats object
-          if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined && apiData.stats?.singlesRating !== null) {
-            duprRatingSingles = parseFloat(String(apiData.stats.singlesRating))
+          if (!duprRatingSingles && apiData.stats?.singlesRating !== undefined) {
+            duprRatingSingles = parseRating(apiData.stats.singlesRating)
           }
-          if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined && apiData.stats?.doublesRating !== null) {
-            duprRatingDoubles = parseFloat(String(apiData.stats.doublesRating))
+          if (!duprRatingDoubles && apiData.stats?.doublesRating !== undefined) {
+            duprRatingDoubles = parseRating(apiData.stats.doublesRating)
+          }
+          if (!duprRatingSingles && apiData.stats?.singles !== undefined) {
+            duprRatingSingles = parseRating(apiData.stats.singles)
+          }
+          if (!duprRatingDoubles && apiData.stats?.doubles !== undefined) {
+            duprRatingDoubles = parseRating(apiData.stats.doubles)
           }
           
           // Check for direct rating fields (if API returns them directly)
-          if (!duprRatingSingles && apiData.singles !== undefined && apiData.singles !== null) {
-            duprRatingSingles = parseFloat(String(apiData.singles))
+          if (!duprRatingSingles && apiData.singles !== undefined) {
+            duprRatingSingles = parseRating(apiData.singles)
           }
-          if (!duprRatingDoubles && apiData.doubles !== undefined && apiData.doubles !== null) {
-            duprRatingDoubles = parseFloat(String(apiData.doubles))
+          if (!duprRatingDoubles && apiData.doubles !== undefined) {
+            duprRatingDoubles = parseRating(apiData.doubles)
           }
         } else if (response) {
-          const errorText = await response.text()
-          console.warn('DUPR API request failed:', response.status, errorText)
+          // Response body already consumed in loop above, just log status
+          console.warn('DUPR API request failed:', response.status)
         } else {
           console.warn('DUPR API request failed: No response received')
         }
