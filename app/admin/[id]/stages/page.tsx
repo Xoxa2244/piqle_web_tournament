@@ -390,13 +390,50 @@ function DivisionStageManagementContent() {
     }
   })
   
-  const completedPlayInMatches = playInMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some((g: any) => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
-  )
+  const completedPlayInMatches = playInMatches.filter(m => {
+    if (!m.games || m.games.length === 0) return false
+    
+    // For non-MLP: at least one game with non-zero score
+    // Check if match has a winner or all games are completed
+    if (m.winnerTeamId !== null && m.winnerTeamId !== undefined) {
+      return true // Match has a winner, it's completed
+    }
+    
+    // Check if all games are completed (both scores are set and not equal)
+    const allGamesCompleted = m.games.every((g: any) =>
+      g.scoreA !== null &&
+      g.scoreA !== undefined &&
+      g.scoreB !== null &&
+      g.scoreB !== undefined &&
+      g.scoreA >= 0 &&
+      g.scoreB >= 0 &&
+      g.scoreA !== g.scoreB
+    )
+    
+    return allGamesCompleted
+  })
 
-  const completedPlayoffMatches = eliminationMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some((g: any) => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
-  )
+  const completedPlayoffMatches = eliminationMatches.filter(m => {
+    if (!m.games || m.games.length === 0) return false
+    
+    // Check if match has a winner
+    if (m.winnerTeamId !== null && m.winnerTeamId !== undefined) {
+      return true // Match has a winner, it's completed
+    }
+    
+    // Check if all games are completed (both scores are set and not equal)
+    const allGamesCompleted = m.games.every((g: any) =>
+      g.scoreA !== null &&
+      g.scoreA !== undefined &&
+      g.scoreB !== null &&
+      g.scoreB !== undefined &&
+      g.scoreA >= 0 &&
+      g.scoreB >= 0 &&
+      g.scoreA !== g.scoreB
+    )
+    
+    return allGamesCompleted
+  })
 
   const hasRRResults = completedRRMatches.length > 0
   const hasPlayInResults = completedPlayInMatches.length > 0
