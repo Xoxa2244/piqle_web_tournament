@@ -20,6 +20,7 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)),
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().default(false),
+      allowDuprSubmission: z.boolean().default(false),
       publicSlug: z.string().optional(),
       format: z.enum(['SINGLE_ELIMINATION', 'MLP']).default('SINGLE_ELIMINATION'),
     }))
@@ -189,6 +190,7 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)).optional(),
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().optional(),
+      allowDuprSubmission: z.boolean().optional(),
       publicSlug: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {

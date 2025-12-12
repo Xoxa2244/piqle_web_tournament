@@ -1,16 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { HelpCircle } from 'lucide-react'
+import PlayersWithoutDuprModal from './PlayersWithoutDuprModal'
+
+interface Player {
+  id: string
+  firstName: string
+  lastName: string
+  duprId: string | null
+  duprNumericId: bigint | null
+}
 
 interface ScoreInputModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (scoreA: number, scoreB: number) => void
+  onSubmit: (scoreA: number, scoreB: number, sendToDupr?: boolean) => void
   teamAName: string
   teamBName: string
   poolName?: string
   isLoading?: boolean
+  teamAPlayers?: Player[]
+  teamBPlayers?: Player[]
+  teamKind?: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
+  allowDuprSubmission?: boolean
+  duprSubmissionStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | null
+  onRetryDuprSubmission?: () => void
 }
 
 export default function ScoreInputModal({
@@ -21,9 +38,59 @@ export default function ScoreInputModal({
   teamBName,
   poolName,
   isLoading = false,
+  teamAPlayers = [],
+  teamBPlayers = [],
+  teamKind = 'DOUBLES_2v2',
+  allowDuprSubmission = false,
+  duprSubmissionStatus = null,
+  onRetryDuprSubmission,
 }: ScoreInputModalProps) {
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
+  const [sendToDupr, setSendToDupr] = useState(false)
+  const [showPlayersWithoutDupr, setShowPlayersWithoutDupr] = useState(false)
+
+  // Check if all players have DUPR rating
+  const allPlayersHaveDupr = useMemo(() => {
+    if (!allowDuprSubmission) return false
+    
+    const allPlayers = [...teamAPlayers, ...teamBPlayers]
+    if (allPlayers.length === 0) return false
+
+    // For SINGLES: need 2 players with DUPR
+    if (teamKind === 'SINGLES_1v1') {
+      return allPlayers.length === 2 && 
+        allPlayers.every(p => p.duprId || p.duprNumericId)
+    }
+    
+    // For DOUBLES: need 4 players with DUPR
+    if (teamKind === 'DOUBLES_2v2') {
+      return allPlayers.length === 4 && 
+        allPlayers.every(p => p.duprId || p.duprNumericId)
+    }
+    
+    // For SQUAD: need 8 players with DUPR (4 per team)
+    if (teamKind === 'SQUAD_4v4') {
+      return allPlayers.length === 8 && 
+        allPlayers.every(p => p.duprId || p.duprNumericId)
+    }
+    
+    return false
+  }, [teamAPlayers, teamBPlayers, teamKind, allowDuprSubmission])
+
+  // Get players without DUPR rating
+  const playersWithoutDupr = useMemo(() => {
+    return [...teamAPlayers, ...teamBPlayers].filter(
+      p => !p.duprId && !p.duprNumericId
+    )
+  }, [teamAPlayers, teamBPlayers])
+
+  // Set default checkbox state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setSendToDupr(allPlayersHaveDupr)
+    }
+  }, [isOpen, allPlayersHaveDupr])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,12 +102,14 @@ export default function ScoreInputModal({
       return
     }
 
-    onSubmit(scoreAValue, scoreBValue)
+    onSubmit(scoreAValue, scoreBValue, sendToDupr && allPlayersHaveDupr)
   }
 
   const handleClose = () => {
     setScoreA('')
     setScoreB('')
+    setSendToDupr(false)
+    setShowPlayersWithoutDupr(false)
     onClose()
   }
 
@@ -91,6 +160,61 @@ export default function ScoreInputModal({
                 />
           </div>
 
+          {/* DUPR Submission Checkbox */}
+          {allowDuprSubmission && (
+            <div className="pt-4 border-t space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="sendToDupr"
+                  checked={sendToDupr}
+                  onCheckedChange={(checked) => setSendToDupr(checked === true)}
+                  disabled={!allPlayersHaveDupr}
+                />
+                <label
+                  htmlFor="sendToDupr"
+                  className={`text-sm font-medium ${
+                    allPlayersHaveDupr ? 'text-gray-700' : 'text-gray-400'
+                  }`}
+                >
+                  Отправить результаты в DUPR
+                </label>
+                {!allPlayersHaveDupr && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPlayersWithoutDupr(true)}
+                    className="ml-1 text-gray-400 hover:text-gray-600"
+                    title="Показать игроков без DUPR рейтинга"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {!allPlayersHaveDupr && (
+                <p className="text-xs text-gray-500 ml-6">
+                  Рейтинг отсутствует
+                </p>
+              )}
+              {duprSubmissionStatus === 'SUCCESS' && (
+                <p className="text-xs text-green-600 ml-6">
+                  ✓ Успешно отправлено
+                </p>
+              )}
+              {duprSubmissionStatus === 'FAILED' && onRetryDuprSubmission && (
+                <div className="ml-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onRetryDuprSubmission}
+                    className="text-xs"
+                  >
+                    Отправить счет еще раз
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex space-x-3 pt-4">
             <Button
               type="button"
@@ -110,6 +234,13 @@ export default function ScoreInputModal({
             </Button>
           </div>
         </form>
+
+        {/* Players Without DUPR Modal */}
+        <PlayersWithoutDuprModal
+          isOpen={showPlayersWithoutDupr}
+          onClose={() => setShowPlayersWithoutDupr(false)}
+          players={playersWithoutDupr}
+        />
       </div>
     </div>
   )

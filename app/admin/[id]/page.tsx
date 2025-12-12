@@ -41,6 +41,7 @@ export default function TournamentDetailPage() {
     endDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
+    allowDuprSubmission: false,
   })
   const [divisionForm, setDivisionForm] = useState({
     name: '',
@@ -135,6 +136,7 @@ export default function TournamentDetailPage() {
       endDate: new Date(tournament.endDate).toISOString().split('T')[0],
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
+      allowDuprSubmission: tournament.allowDuprSubmission || false,
     })
     setShowEditTournament(true)
   }
@@ -154,6 +156,7 @@ export default function TournamentDetailPage() {
       endDate: tournamentForm.endDate,
       entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
+      allowDuprSubmission: tournamentForm.allowDuprSubmission,
     })
   }
 
@@ -614,6 +617,19 @@ export default function TournamentDetailPage() {
                 />
                 <label className="ml-2 block text-sm text-gray-700">
                   Enable public results board
+                </label>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="allowDuprSubmission"
+                  checked={tournamentForm.allowDuprSubmission}
+                  onChange={handleTournamentChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label className="ml-2 block text-sm text-gray-700">
+                  Разрешить отправку результатов в DUPR
                 </label>
               </div>
             </div>

@@ -1936,6 +1936,22 @@ function DivisionStageManagementContent() {
         const matchGamesCount = selectedMatch.gamesCount || (selectedMatch.games?.length || 0)
         const isMLPMatch = isMLP && matchGamesCount === 4
 
+        // Extract players with DUPR info
+        const teamAPlayers = selectedMatch.teamA?.teamPlayers?.map((tp: any) => ({
+          id: tp.player?.id || '',
+          firstName: tp.player?.firstName || '',
+          lastName: tp.player?.lastName || '',
+          duprId: tp.player?.duprId || tp.player?.dupr || null,
+          duprNumericId: tp.player?.duprNumericId || null,
+        })) || []
+        const teamBPlayers = selectedMatch.teamB?.teamPlayers?.map((tp: any) => ({
+          id: tp.player?.id || '',
+          firstName: tp.player?.firstName || '',
+          lastName: tp.player?.lastName || '',
+          duprId: tp.player?.duprId || tp.player?.dupr || null,
+          duprNumericId: tp.player?.duprNumericId || null,
+        })) || []
+
         if (isMLPMatch) {
           return (
             <MLPScoreInputModal
@@ -1955,6 +1971,10 @@ function DivisionStageManagementContent() {
                 refetchDivision()
                 refetchTournament()
               }}
+              teamAPlayers={teamAPlayers}
+              teamBPlayers={teamBPlayers}
+              allowDuprSubmission={tournament?.allowDuprSubmission || false}
+              duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
             />
           )
         }
@@ -1970,6 +1990,11 @@ function DivisionStageManagementContent() {
             teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
             poolName={selectedMatch.teamA.pool?.name}
             isLoading={updateMatchResultMutation.isPending}
+            teamAPlayers={teamAPlayers}
+            teamBPlayers={teamBPlayers}
+            teamKind={currentDivision?.teamKind}
+            allowDuprSubmission={tournament?.allowDuprSubmission || false}
+            duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
           />
         )
       })()}

@@ -19,6 +19,7 @@ export default function NewTournamentPage() {
     endDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
+    allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP',
   })
 
@@ -48,6 +49,7 @@ export default function NewTournamentPage() {
       endDate: formData.endDate,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      allowDuprSubmission: formData.allowDuprSubmission,
       format: formData.format,
     })
   }
@@ -208,6 +210,20 @@ export default function NewTournamentPage() {
               />
               <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
                 Enable public results board
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="allowDuprSubmission"
+                name="allowDuprSubmission"
+                checked={formData.allowDuprSubmission}
+                onChange={handleChange}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="allowDuprSubmission" className="ml-2 block text-sm text-gray-700">
+                Разрешить отправку результатов в DUPR
               </label>
             </div>
 

@@ -89,6 +89,7 @@ model Tournament {
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
   format                  TournamentFormat          @default(SINGLE_ELIMINATION)
+  allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -290,25 +291,30 @@ model DivisionRRBinding {
 }
 
 model Match {
-  id           String           @id @default(uuid())
-  rrGroupId    String?
-  divisionId   String?
-  poolId       String?
-  roundIndex   Int
-  stage        MatchStage
-  teamAId      String
-  teamBId      String
-  bestOfMode   BestOfMode
-  gamesCount   Int
-  targetPoints Int
-  winBy        Int
-  winnerTeamId String?
-  locked       Boolean          @default(false)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  note         String?          @db.VarChar(255)
-  games        Game[]
-  tiebreaker   Tiebreaker?
+  id                    String                @id @default(uuid())
+  rrGroupId             String?
+  divisionId            String?
+  poolId                String?
+  roundIndex            Int
+  stage                 MatchStage
+  teamAId               String
+  teamBId               String
+  bestOfMode            BestOfMode
+  gamesCount            Int
+  targetPoints          Int
+  winBy                 Int
+  winnerTeamId          String?
+  locked                Boolean                @default(false)
+  duprSubmissionStatus  DuprSubmissionStatus?  @default(PENDING) @map("dupr_submission_status")
+  duprMatchId           String?               @map("dupr_match_id")
+  duprSubmissionError   String?               @map("dupr_submission_error")
+  duprSubmittedAt       DateTime?             @map("dupr_submitted_at")
+  duprRetryCount        Int                   @default(0) @map("dupr_retry_count")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  note                  String?                @db.VarChar(255)
+  games                 Game[]
+  tiebreaker            Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
@@ -568,4 +574,10 @@ enum GameType {
   MEN
   MIXED_1
   MIXED_2
+}
+
+enum DuprSubmissionStatus {
+  PENDING
+  SUCCESS
+  FAILED
 }
