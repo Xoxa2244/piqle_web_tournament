@@ -234,13 +234,15 @@ function DivisionStageManagementContent() {
   const division = divisionData
   
   // DEBUG: Check divisionData
+  // Type assertion to avoid TypeScript deep type inference issue
+  const divisionDataAny = divisionData as any
   console.log('DEBUG divisionData:', {
     divisionData: divisionData,
     divisionDataIsUndefined: divisionData === undefined,
     divisionDataIsNull: divisionData === null,
-    divisionDataMatches: divisionData?.matches,
-    divisionDataMatchesLength: divisionData?.matches?.length,
-    divisionDataMatchesType: Array.isArray(divisionData?.matches) ? 'array' : typeof divisionData?.matches,
+    divisionDataMatches: divisionDataAny?.matches,
+    divisionDataMatchesLength: divisionDataAny?.matches?.length,
+    divisionDataMatchesType: Array.isArray(divisionDataAny?.matches) ? 'array' : typeof divisionDataAny?.matches,
     divisionDataId: divisionData?.id,
     divisionDataStage: divisionData?.stage,
   })
