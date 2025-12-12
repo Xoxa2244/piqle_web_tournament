@@ -1123,12 +1123,12 @@ function DivisionStageManagementContent() {
                                                 {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                                                   <div className="flex justify-between mt-0.5">
                                                     <div className="text-xs text-gray-500">
-                                                      {teamAPlayers.map((player, idx) => (
+                                                      {teamAPlayers.map((player: any, idx: number) => (
                                                         <div key={idx}>{player}</div>
                                                       ))}
                                                     </div>
                                                     <div className="text-xs text-gray-500 text-right">
-                                                      {teamBPlayers.map((player, idx) => (
+                                                      {teamBPlayers.map((player: any, idx: number) => (
                                                         <div key={idx}>{player}</div>
                                                       ))}
                                                     </div>
@@ -1246,12 +1246,12 @@ function DivisionStageManagementContent() {
                                               {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                                                 <div className="flex justify-between mt-0.5">
                                                   <div className="text-xs text-gray-500">
-                                                    {teamAPlayers.map((player, idx) => (
+                                                    {teamAPlayers.map((player: any, idx: number) => (
                                                       <div key={idx}>{player}</div>
                                                     ))}
                                                   </div>
                                                   <div className="text-xs text-gray-500 text-right">
-                                                    {teamBPlayers.map((player, idx) => (
+                                                    {teamBPlayers.map((player: any, idx: number) => (
                                                       <div key={idx}>{player}</div>
                                                     ))}
                                                   </div>
@@ -1526,12 +1526,12 @@ function DivisionStageManagementContent() {
                         {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                           <div className="flex justify-between mt-0.5">
                             <div className="text-xs text-gray-500">
-                              {teamAPlayers.map((player, idx) => (
+                              {teamAPlayers.map((player: any, idx: number) => (
                                 <div key={idx}>{player}</div>
                               ))}
                             </div>
                             <div className="text-xs text-gray-500 text-right">
-                              {teamBPlayers.map((player, idx) => (
+                              {teamBPlayers.map((player: any, idx: number) => (
                                 <div key={idx}>{player}</div>
                               ))}
                             </div>
@@ -1823,12 +1823,12 @@ function DivisionStageManagementContent() {
                                     {(teamAPlayers.length > 0 || teamBPlayers.length > 0) && currentDivision?.teamKind !== 'SINGLES_1v1' && (
                                       <div className="flex justify-between mt-0.5">
                                         <div className="text-xs text-gray-500">
-                                          {teamAPlayers.map((player, idx) => (
+                                          {teamAPlayers.map((player: any, idx: number) => (
                                             <div key={idx}>{player}</div>
                                           ))}
                                         </div>
                                         <div className="text-xs text-gray-500 text-right">
-                                          {teamBPlayers.map((player, idx) => (
+                                          {teamBPlayers.map((player: any, idx: number) => (
                                             <div key={idx}>{player}</div>
                                           ))}
                                         </div>
