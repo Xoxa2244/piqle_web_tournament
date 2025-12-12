@@ -49,7 +49,10 @@ export const divisionStageRouter = createTRPCRouter({
                         select: {
                           id: true,
                           firstName: true,
-                          lastName: true
+                          lastName: true,
+                          duprId: true,
+                          duprNumericId: true,
+                          dupr: true,
                         }
                       }
                     }
@@ -65,7 +68,10 @@ export const divisionStageRouter = createTRPCRouter({
                         select: {
                           id: true,
                           firstName: true,
-                          lastName: true
+                          lastName: true,
+                          duprId: true,
+                          duprNumericId: true,
+                          dupr: true,
                         }
                       }
                     }
