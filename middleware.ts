@@ -81,6 +81,11 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/protected/:path*', '/api/auth/:path*']
+  matcher: [
+    '/admin/:path*', 
+    '/api/protected/:path*', 
+    '/api/auth/:path*',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)' // Match all routes except API, static files, and Next.js internals
+  ]
 }
 

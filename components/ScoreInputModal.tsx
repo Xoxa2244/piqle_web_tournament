@@ -176,14 +176,14 @@ export default function ScoreInputModal({
                     allPlayersHaveDupr ? 'text-gray-700' : 'text-gray-400'
                   }`}
                 >
-                  Отправить результаты в DUPR
+                  Send results to DUPR
                 </label>
                 {!allPlayersHaveDupr && (
                   <button
                     type="button"
                     onClick={() => setShowPlayersWithoutDupr(true)}
                     className="ml-1 text-gray-400 hover:text-gray-600"
-                    title="Показать игроков без DUPR рейтинга"
+                    title="Show players without DUPR rating"
                   >
                     <HelpCircle className="h-4 w-4" />
                   </button>
@@ -191,12 +191,12 @@ export default function ScoreInputModal({
               </div>
               {!allPlayersHaveDupr && (
                 <p className="text-xs text-gray-500 ml-6">
-                  Рейтинг отсутствует
+                  Rating missing
                 </p>
               )}
               {duprSubmissionStatus === 'SUCCESS' && (
                 <p className="text-xs text-green-600 ml-6">
-                  ✓ Успешно отправлено
+                  ✓ Successfully sent
                 </p>
               )}
               {duprSubmissionStatus === 'FAILED' && onRetryDuprSubmission && (
@@ -208,7 +208,7 @@ export default function ScoreInputModal({
                     onClick={onRetryDuprSubmission}
                     className="text-xs"
                   >
-                    Отправить счет еще раз
+                    Retry sending score
                   </Button>
                 </div>
               )}

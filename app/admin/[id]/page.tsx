@@ -629,7 +629,7 @@ export default function TournamentDetailPage() {
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <label className="ml-2 block text-sm text-gray-700">
-                  Разрешить отправку результатов в DUPR
+                  Allow sending results to DUPR
                 </label>
               </div>
             </div>
