@@ -238,7 +238,8 @@ function DivisionDashboardContent() {
 
   const standings = standingsData?.standings || []
   // Type assertion to avoid TypeScript deep type inference issue
-  const divisionMatches = divisionStage?.matches
+  // @ts-expect-error - divisionStage type is too complex for TypeScript to infer
+  const divisionMatches = (divisionStage as any)?.matches
   const matches: any[] = Array.isArray(divisionMatches) ? divisionMatches : []
   const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
