@@ -247,8 +247,10 @@ function DivisionStageManagementContent() {
     divisionDataStage: divisionData?.stage,
   })
   
-  const teams = division?.teams || []
-  const matches = division?.matches || []
+  // Type assertion to avoid TypeScript deep type inference issue
+  const divisionAny = division as any
+  const teams: any[] = Array.isArray(divisionAny?.teams) ? divisionAny.teams : []
+  const matches: any[] = Array.isArray(divisionAny?.matches) ? divisionAny.matches : []
   
   // Count games won by each team in MLP match (defined early to avoid "before initialization" error)
   const countMLPGamesWon = (match: any): { teamAWins: number; teamBWins: number } => {
