@@ -371,8 +371,8 @@ function DivisionStageManagementContent() {
       return false
     } else {
       // Non-MLP: at least one game with non-zero score
-      return m.games.some(g => 
-        (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || 
+      return m.games.some((g: any) =>
+        (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) ||
         (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)
       )
     }
