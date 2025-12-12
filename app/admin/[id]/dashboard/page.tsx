@@ -679,7 +679,7 @@ function DivisionDashboardContent() {
                             name: match.teamB.name,
                             seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                           } : null,
-                          games: (match.games || []).map(g => ({
+                          games: (match.games || []).map((g: any) => ({
                             scoreA: g.scoreA,
                             scoreB: g.scoreB,
                             winner: g.winner as 'A' | 'B' | null | undefined
