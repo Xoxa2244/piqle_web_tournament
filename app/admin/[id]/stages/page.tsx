@@ -1941,19 +1941,20 @@ function DivisionStageManagementContent() {
         const isMLPMatch = isMLP && matchGamesCount === 4
 
         // Extract players with DUPR info
+        // Note: Player model only has 'dupr' field (string), not 'duprId' or 'duprNumericId'
         const teamAPlayers = selectedMatch.teamA?.teamPlayers?.map((tp: any) => ({
           id: tp.player?.id || '',
           firstName: tp.player?.firstName || '',
           lastName: tp.player?.lastName || '',
-          duprId: tp.player?.duprId || tp.player?.dupr || null,
-          duprNumericId: tp.player?.duprNumericId || null,
+          duprId: tp.player?.dupr || null, // Player.dupr is the DUPR ID string
+          duprNumericId: null, // Player model doesn't have numeric ID
         })) || []
         const teamBPlayers = selectedMatch.teamB?.teamPlayers?.map((tp: any) => ({
           id: tp.player?.id || '',
           firstName: tp.player?.firstName || '',
           lastName: tp.player?.lastName || '',
-          duprId: tp.player?.duprId || tp.player?.dupr || null,
-          duprNumericId: tp.player?.duprNumericId || null,
+          duprId: tp.player?.dupr || null, // Player.dupr is the DUPR ID string
+          duprNumericId: null, // Player model doesn't have numeric ID
         })) || []
 
         if (isMLPMatch) {
