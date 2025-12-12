@@ -18,7 +18,9 @@ import {
   Target,
   RefreshCw,
   Edit3,
-  GitBranch
+  GitBranch,
+  Upload,
+  FileText
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,8 +34,10 @@ import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
+import { Upload, FileText } from 'lucide-react'
 
 function DivisionStageManagementContent() {
   const router = useRouter()
@@ -55,6 +59,15 @@ function DivisionStageManagementContent() {
   const [showEditPlayInPairsModal, setShowEditPlayInPairsModal] = useState(false)
   const [showUnmergeModal, setShowUnmergeModal] = useState(false)
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [showDuprUploadLog, setShowDuprUploadLog] = useState(false)
+  const [duprUploadLog, setDuprUploadLog] = useState<Array<{
+    matchId: string
+    teamAName: string
+    teamBName: string
+    status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'PROCESSING'
+    error?: string | null
+  }>>([])
+  const [isUploadingToDupr, setIsUploadingToDupr] = useState(false)
 
 
   // Load tournament data
@@ -389,6 +402,49 @@ function DivisionStageManagementContent() {
   const hasRRResults = completedRRMatches.length > 0
   const hasPlayInResults = completedPlayInMatches.length > 0
   const hasPlayoffResults = completedPlayoffMatches.length > 0
+
+  // Check if all matches are completed (for DUPR upload button)
+  const allMatchesCompleted = useMemo(() => {
+    const allMatches = [...rrMatches, ...playInMatches, ...eliminationMatches]
+    const allCompletedMatches = [...completedRRMatches, ...completedPlayInMatches, ...completedPlayoffMatches]
+    return allMatches.length > 0 && allMatches.length === allCompletedMatches.length
+  }, [rrMatches, playInMatches, eliminationMatches, completedRRMatches, completedPlayInMatches, completedPlayoffMatches])
+
+  // Function to upload tournament results to DUPR
+  const handleUploadToDupr = async () => {
+    if (!tournamentId || !tournament?.allowDuprSubmission) return
+
+    setIsUploadingToDupr(true)
+    setDuprUploadLog([])
+    setShowDuprUploadLog(true)
+
+    try {
+      const response = await fetch('/api/dupr/submit-tournament', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tournamentId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to upload to DUPR')
+      }
+
+      setDuprUploadLog(data.log || [])
+      
+      // Refetch division and tournament to update UI
+      refetchDivision()
+      refetchTournament()
+    } catch (error: any) {
+      console.error('Error uploading to DUPR:', error)
+      alert(`Error: ${error.message || 'Failed to upload to DUPR'}`)
+    } finally {
+      setIsUploadingToDupr(false)
+    }
+  }
 
   const teamCount = teams.length
   // Determine target bracket size based on team count
@@ -877,7 +933,30 @@ function DivisionStageManagementContent() {
 
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
-            {/* Dashboard button hidden - available in navigation menu */}
+            {/* DUPR Upload buttons */}
+            {tournament?.allowDuprSubmission && allMatchesCompleted && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadToDupr}
+                  disabled={isUploadingToDupr}
+                  className="flex items-center space-x-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>{isUploadingToDupr ? 'Uploading...' : 'Upload to DUPR'}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDuprUploadLog(true)}
+                  className="flex items-center space-x-2"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Show upload log</span>
+                </Button>
+              </>
+            )}
             
             {/* Division switcher */}
             <div className="flex items-center space-x-2">
@@ -2186,6 +2265,14 @@ function DivisionStageManagementContent() {
           </div>
         </div>
       )}
+
+      {/* DUPR Upload Log Modal */}
+      <DuprUploadLogModal
+        isOpen={showDuprUploadLog}
+        onClose={() => setShowDuprUploadLog(false)}
+        logEntries={duprUploadLog}
+        isUploading={isUploadingToDupr}
+      />
     </div>
   )
 }
