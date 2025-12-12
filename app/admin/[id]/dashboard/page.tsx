@@ -597,7 +597,7 @@ function DivisionDashboardContent() {
                         name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
-                      games: (match.games || []).map(g => ({
+                      games: (match.games || []).map((g: any) => ({
                         scoreA: g.scoreA,
                         scoreB: g.scoreB,
                         winner: g.winner as 'A' | 'B' | null | undefined
