@@ -1,6 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
 
 export async function middleware(req: NextRequest) {
+  // Basic Auth для dev окружения
+  const isDev = process.env.VERCEL_ENV === 'development' || 
+                process.env.NEXT_PUBLIC_VERCEL_ENV === 'development' ||
+                process.env.NODE_ENV === 'development' ||
+                req.headers.get('host')?.includes('dev.piqle.io')
+  
+  if (isDev) {
+    const authHeader = req.headers.get('authorization')
+    
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+      return new NextResponse('Authentication required', {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': 'Basic realm="Dev Environment"',
+        },
+      })
+    }
+    
+    // Декодируем Basic Auth
+    const base64Credentials = authHeader.split(' ')[1]
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8')
+    const [username, password] = credentials.split(':')
+    
+    // Проверяем логин и пароль
+    if (username !== 'dev' || password !== 'devdev') {
+      return new NextResponse('Invalid credentials', {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': 'Basic realm="Dev Environment"',
+        },
+      })
+    }
+  }
+
   // Не блокируем маршруты NextAuth - они должны обрабатываться без проверки сессии
   if (req.nextUrl.pathname.startsWith('/api/auth')) {
     return NextResponse.next()
