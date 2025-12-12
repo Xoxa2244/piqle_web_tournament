@@ -550,6 +550,13 @@ function DivisionStageManagementContent() {
     setSelectedMatch(null)
   }
 
+  const handleRetryDuprSubmission = async (matchId: string) => {
+    // TODO: Implement DUPR retry submission logic
+    // For now, just refetch to update UI
+    refetchDivision()
+    refetchTournament()
+  }
+
   // Check if MLP match needs tiebreaker
   const needsTiebreaker = (match: any) => {
     if (!match) return false
