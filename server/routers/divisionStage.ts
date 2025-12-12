@@ -50,8 +50,6 @@ export const divisionStageRouter = createTRPCRouter({
                           id: true,
                           firstName: true,
                           lastName: true,
-                          duprId: true,
-                          duprNumericId: true,
                           dupr: true,
                         }
                       }
@@ -69,8 +67,6 @@ export const divisionStageRouter = createTRPCRouter({
                           id: true,
                           firstName: true,
                           lastName: true,
-                          duprId: true,
-                          duprNumericId: true,
                           dupr: true,
                         }
                       }
