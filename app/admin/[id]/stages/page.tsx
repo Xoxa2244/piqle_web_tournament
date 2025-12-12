@@ -379,11 +379,11 @@ function DivisionStageManagementContent() {
   })
   
   const completedPlayInMatches = playInMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
+    m.games && m.games.length > 0 && m.games.some((g: any) => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
   )
 
   const completedPlayoffMatches = eliminationMatches.filter(m => 
-    m.games && m.games.length > 0 && m.games.some(g => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
+    m.games && m.games.length > 0 && m.games.some((g: any) => (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0))
   )
 
   const hasRRResults = completedRRMatches.length > 0
