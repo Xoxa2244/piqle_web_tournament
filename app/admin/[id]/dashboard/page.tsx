@@ -237,7 +237,7 @@ function DivisionDashboardContent() {
   }
 
   const standings = standingsData?.standings || []
-  const matches = divisionStage?.matches || []
+  const matches: any[] = (divisionStage?.matches as any[]) || []
   const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
   const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
