@@ -37,7 +37,6 @@ import TournamentNavBar from '@/components/TournamentNavBar'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
-import { Upload, FileText } from 'lucide-react'
 
 function DivisionStageManagementContent() {
   const router = useRouter()
