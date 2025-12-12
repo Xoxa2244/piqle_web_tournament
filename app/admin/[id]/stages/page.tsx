@@ -339,10 +339,10 @@ function DivisionStageManagementContent() {
       
       // If no winner yet, check if all 4 games are completed and count wins
       if (m.games.length !== 4) return false
-      const allGamesCompleted = m.games.every(g => 
-        g.scoreA !== null && 
-        g.scoreA !== undefined && 
-        g.scoreB !== null && 
+      const allGamesCompleted = m.games.every((g: any) =>
+        g.scoreA !== null &&
+        g.scoreA !== undefined &&
+        g.scoreB !== null &&
         g.scoreB !== undefined &&
         g.scoreA >= 0 &&
         g.scoreB >= 0 &&
