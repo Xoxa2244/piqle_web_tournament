@@ -1988,6 +1988,7 @@ function DivisionStageManagementContent() {
               teamBPlayers={teamBPlayers}
               allowDuprSubmission={tournament?.allowDuprSubmission || false}
               duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
+              onRetryDuprSubmission={() => handleRetryDuprSubmission(selectedMatch.id)}
             />
           )
         }
