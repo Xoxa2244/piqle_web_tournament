@@ -237,9 +237,10 @@ function DivisionDashboardContent() {
   }
 
   const standings = standingsData?.standings || []
-  const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
-  const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
-  const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
+  const matches = divisionStage?.matches || []
+  const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
+  const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
+  const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
 
   const isMLP = tournament?.format === 'MLP'
 
