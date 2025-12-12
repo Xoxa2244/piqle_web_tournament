@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       where: {
         tournamentId,
         userId: session.user.id,
-        accessLevel: { in: ['ADMIN', 'SCORE'] },
+        accessLevel: { in: ['ADMIN', 'SCORE_ONLY'] },
       },
     })
 
