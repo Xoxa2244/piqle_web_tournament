@@ -237,7 +237,9 @@ function DivisionDashboardContent() {
   }
 
   const standings = standingsData?.standings || []
-  const matches: any[] = (divisionStage?.matches as any[]) || []
+  // Type assertion to avoid TypeScript deep type inference issue
+  const divisionMatches = divisionStage?.matches
+  const matches: any[] = Array.isArray(divisionMatches) ? divisionMatches : []
   const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
   const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
