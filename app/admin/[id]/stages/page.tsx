@@ -532,7 +532,7 @@ function DivisionStageManagementContent() {
     setShowScoreModal(true)
   }
 
-  const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>) => {
+  const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>, sendToDupr?: boolean) => {
     const game = games[0] // Take first game
     if (!game) return // Safety check
     updateMatchResultMutation.mutate({
@@ -542,6 +542,7 @@ function DivisionStageManagementContent() {
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
+    // TODO: Handle sendToDupr flag for DUPR submission
   }
 
   const handleScoreModalClose = () => {
@@ -1988,8 +1989,8 @@ function DivisionStageManagementContent() {
           <ScoreInputModal
             isOpen={showScoreModal}
             onClose={handleScoreModalClose}
-            onSubmit={(scoreA, scoreB) => {
-              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }])
+            onSubmit={(scoreA, scoreB, sendToDupr) => {
+              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }], sendToDupr)
             }}
             teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
             teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
@@ -2000,6 +2001,9 @@ function DivisionStageManagementContent() {
             teamKind={currentDivision?.teamKind}
             allowDuprSubmission={tournament?.allowDuprSubmission || false}
             duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
+            existingScoreA={selectedMatch.games?.[0]?.scoreA ?? null}
+            existingScoreB={selectedMatch.games?.[0]?.scoreB ?? null}
+            onRetryDuprSubmission={() => handleRetryDuprSubmission(selectedMatch.id)}
           />
         )
       })()}

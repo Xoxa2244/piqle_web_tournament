@@ -28,6 +28,8 @@ interface ScoreInputModalProps {
   allowDuprSubmission?: boolean
   duprSubmissionStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | null
   onRetryDuprSubmission?: () => void
+  existingScoreA?: number | null
+  existingScoreB?: number | null
 }
 
 export default function ScoreInputModal({
@@ -44,6 +46,8 @@ export default function ScoreInputModal({
   allowDuprSubmission = false,
   duprSubmissionStatus = null,
   onRetryDuprSubmission,
+  existingScoreA,
+  existingScoreB,
 }: ScoreInputModalProps) {
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
@@ -85,12 +89,23 @@ export default function ScoreInputModal({
     )
   }, [teamAPlayers, teamBPlayers])
 
-  // Set default checkbox state when modal opens
+  // Set default checkbox state and existing scores when modal opens
   useEffect(() => {
     if (isOpen) {
       setSendToDupr(allPlayersHaveDupr)
+      // Set existing scores if available
+      if (existingScoreA !== null && existingScoreA !== undefined) {
+        setScoreA(String(existingScoreA))
+      } else {
+        setScoreA('')
+      }
+      if (existingScoreB !== null && existingScoreB !== undefined) {
+        setScoreB(String(existingScoreB))
+      } else {
+        setScoreB('')
+      }
     }
-  }, [isOpen, allPlayersHaveDupr])
+  }, [isOpen, allPlayersHaveDupr, existingScoreA, existingScoreB])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
