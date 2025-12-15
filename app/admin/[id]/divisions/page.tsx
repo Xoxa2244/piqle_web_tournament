@@ -471,7 +471,7 @@ function DivisionCard({
               onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
-              disabled={(division as any).isMerged}
+              disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
             >
               <Target className="h-4 w-4 mr-1" />
               Distribute
