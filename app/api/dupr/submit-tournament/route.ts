@@ -38,6 +38,10 @@ interface DuprMatchData {
   event: string
   bracket: string
   matchType?: 'SIDEOUT'
+  // Optional fields that might be needed
+  identifier?: string
+  clubId?: number
+  matchSource?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -145,21 +149,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No access to this tournament' }, { status: 403 })
     }
 
-    // Get DUPR access token (use tournament owner's token)
-    const owner = await prisma.user.findUnique({
-      where: { id: tournament.userId },
-      select: {
-        duprAccessToken: true,
-      },
-    })
-
-    if (!owner?.duprAccessToken) {
-      return NextResponse.json({ 
-        error: 'Tournament owner does not have DUPR account linked. Please link DUPR account first.' 
-      }, { status: 400 })
+    // Get DUPR access token
+    // Try client credentials first, fallback to user token
+    const duprClientId = process.env.DUPR_CLIENT_ID
+    const duprClientSecret = process.env.DUPR_CLIENT_SECRET
+    
+    let duprAccessToken: string | null = null
+    
+    // Try to get client credentials token if available
+    if (duprClientId && duprClientSecret) {
+      try {
+        const tokenUrls = [
+          'https://api.dupr.gg/oauth/token',
+          'https://api.uat.dupr.gg/oauth/token',
+        ]
+        
+        for (const tokenUrl of tokenUrls) {
+          try {
+            const tokenResponse = await fetch(tokenUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                grant_type: 'client_credentials',
+                client_id: duprClientId,
+                client_secret: duprClientSecret,
+              }),
+            })
+            
+            if (tokenResponse.ok) {
+              const tokenData = await tokenResponse.json()
+              duprAccessToken = tokenData.access_token || null
+              if (duprAccessToken) {
+                console.log('Successfully obtained DUPR client credentials token')
+                break
+              }
+            }
+          } catch (error) {
+            console.log(`Failed to get client credentials token from ${tokenUrl}`)
+          }
+        }
+      } catch (error) {
+        console.log('Error getting client credentials token, will use user token')
+      }
     }
+    
+    // Fallback to user access token
+    if (!duprAccessToken) {
+      const owner = await prisma.user.findUnique({
+        where: { id: tournament.userId },
+        select: {
+          duprAccessToken: true,
+        },
+      })
 
-    const duprAccessToken = owner.duprAccessToken
+      if (!owner?.duprAccessToken) {
+        return NextResponse.json({ 
+          error: 'Tournament owner does not have DUPR account linked. Please link DUPR account first.' 
+        }, { status: 400 })
+      }
+
+      duprAccessToken = owner.duprAccessToken
+      console.log('Using user access token for DUPR API')
+    }
 
     // Prepare matches for DUPR submission
     const duprMatches: DuprMatchData[] = []
