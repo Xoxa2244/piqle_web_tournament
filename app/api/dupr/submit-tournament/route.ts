@@ -484,7 +484,7 @@ export async function POST(req: NextRequest) {
         matchNameMap.set(match.id, { teamA: teamAName, teamB: teamBName })
       }
 
-      for (const [matchKey, mapping] of matchMapping.entries()) {
+      for (const [matchKey, mapping] of Array.from(matchMapping.entries())) {
         const names = matchNameMap.get(mapping.matchId) || { teamA: 'Team A', teamB: 'Team B' }
 
         const logEntry: DuprMatchSubmission = {
