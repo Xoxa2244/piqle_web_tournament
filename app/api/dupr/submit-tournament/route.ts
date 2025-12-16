@@ -408,12 +408,18 @@ export async function POST(req: NextRequest) {
       tokenLength: duprAccessToken?.length || 0,
     })
 
+    // Try batch endpoint first, if it fails, fall back to individual create calls
+    let useBatch = true
+    let batchResponse: Response | null = null
+    let batchError: string = ''
+
+    // Try batch endpoint
     for (const baseUrl of baseUrls) {
       const url = `${baseUrl}/match/v1.0/batch`
       
       try {
-        console.log(`Attempting DUPR API call to: ${url}`)
-        response = await fetch(url, {
+        console.log(`Attempting DUPR API batch call to: ${url}`)
+        batchResponse = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -423,23 +429,104 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify(duprMatches),
         })
 
-        if (response.ok) {
+        if (batchResponse.ok) {
           console.log(`DUPR API batch success: ${url}`)
+          response = batchResponse
           break
         } else {
-          const responseClone = response.clone()
+          const responseClone = batchResponse.clone()
           const errorText = await responseClone.text()
-          lastError = `${response.status}: ${errorText.substring(0, 200)}`
-          console.error(`DUPR API batch failed: ${url} - ${lastError}`)
+          batchError = `${batchResponse.status}: ${errorText.substring(0, 200)}`
+          console.error(`DUPR API batch failed: ${url} - ${batchError}`)
           console.error('Full error response:', errorText)
+          
+          // If 404, batch endpoint doesn't exist, use individual calls
+          if (batchResponse.status === 404) {
+            console.log('Batch endpoint not found (404), will use individual create calls')
+            useBatch = false
+            break
+          }
         }
       } catch (error: any) {
-        lastError = error.message
-        console.error(`DUPR API batch error: ${url} - ${lastError}`, error)
+        batchError = error.message
+        console.error(`DUPR API batch error: ${url} - ${batchError}`, error)
       }
 
-      if (response && response.ok) {
+      if (batchResponse && batchResponse.ok) {
         break
+      }
+    }
+
+    // If batch failed or returned 404, try individual create calls
+    if (!batchResponse || !batchResponse.ok || !useBatch) {
+      console.log('Falling back to individual match creation calls')
+      const individualResults: Array<{ success: boolean; matchId?: string; error?: string; index: number }> = []
+      
+      for (let i = 0; i < duprMatches.length; i++) {
+        const match = duprMatches[i]
+        let matchResponse: Response | null = null
+        let matchError: string = ''
+
+        for (const baseUrl of baseUrls) {
+          const url = `${baseUrl}/match/v1.0/create`
+          
+          try {
+            console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${url}`)
+            matchResponse = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${duprAccessToken}`,
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify(match),
+            })
+
+            if (matchResponse.ok) {
+              console.log(`DUPR API create success for match ${i + 1}: ${url}`)
+              break
+            } else {
+              const responseClone = matchResponse.clone()
+              const errorText = await responseClone.text()
+              matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
+              console.error(`DUPR API create failed for match ${i + 1}: ${url} - ${matchError}`)
+            }
+          } catch (error: any) {
+            matchError = error.message
+            console.error(`DUPR API create error for match ${i + 1}: ${url} - ${matchError}`, error)
+          }
+
+          if (matchResponse && matchResponse.ok) {
+            break
+          }
+        }
+
+        if (matchResponse && matchResponse.ok) {
+          try {
+            const responseData = await matchResponse.json()
+            const matchId = responseData.matchId || responseData.id || null
+            individualResults.push({ success: true, matchId: matchId ? String(matchId) : undefined, index: i })
+          } catch (error: any) {
+            individualResults.push({ success: false, error: 'Failed to parse response', index: i })
+          }
+        } else {
+          individualResults.push({ success: false, error: matchError || 'Unknown error', index: i })
+        }
+      }
+
+      // Convert individual results to batch-like response
+      const allSuccessful = individualResults.every(r => r.success)
+      if (allSuccessful) {
+        // Create a mock response with array of match IDs
+        const matchIds = individualResults.map(r => r.matchId).filter(Boolean)
+        response = {
+          ok: true,
+          json: async () => matchIds,
+        } as Response
+      } else {
+        // Some failed - we'll handle this in the error section
+        lastError = `Some matches failed: ${individualResults.filter(r => !r.success).map(r => `Match ${r.index + 1}: ${r.error}`).join(', ')}`
+        response = null
       }
     }
 
@@ -530,8 +617,21 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse response - should be array of match IDs in same order
-    const responseData = await response.json()
-    const duprMatchIds = Array.isArray(responseData) ? responseData : (responseData.matchIds || [])
+    let responseData: any
+    try {
+      responseData = await response.json()
+    } catch (error) {
+      // If response is not JSON, try to parse as array directly
+      const text = await response.text()
+      try {
+        responseData = JSON.parse(text)
+      } catch {
+        // If still not JSON, assume it's already an array or single value
+        responseData = text ? [text] : []
+      }
+    }
+    
+    const duprMatchIds = Array.isArray(responseData) ? responseData : (responseData.matchIds || responseData.matchId ? [responseData.matchId] : [])
 
     // Get all match IDs that need names
     const allMatchIds = Array.from(new Set(Array.from(matchMapping.values()).map(m => m.matchId)))
