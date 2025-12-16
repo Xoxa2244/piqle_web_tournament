@@ -445,12 +445,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Call DUPR API batch endpoint
-    // Try different version formats: v1.0, v1, and without version
+    // Use the same approach as working /Public/getBasicInfo endpoint
     const baseUrls = [
       'https://api.dupr.gg',
       'https://api.uat.dupr.gg',
     ]
-    const apiVersions = ['v1.0', 'v1', 'v1.1'] // Try different version formats
+    // Try different endpoint formats based on DUPR API structure
+    const endpointFormats = [
+      '/match/v1.0/batch',
+      '/match/v1/batch',
+      '/match/batch',
+      '/Match/v1.0/batch', // Try with capital M
+      '/Match/v1.0/create', // Try create instead of batch
+    ]
 
     let response: Response | null = null
     let lastError: string = ''
@@ -464,22 +471,27 @@ export async function POST(req: NextRequest) {
     })
 
     // Try batch endpoint first, if it fails, fall back to individual create calls
+    // Use the same approach as working /Public/getBasicInfo endpoint
     let useBatch = true
     let batchResponse: Response | null = null
     let batchError: string = ''
 
-    // Try batch endpoint with different versions
+    // Try batch endpoint with different formats (same approach as /Public/getBasicInfo)
     batchLoop: for (const baseUrl of baseUrls) {
-      for (const version of apiVersions) {
-        const url = `${baseUrl}/match/${version}/batch`
+      for (const endpoint of endpointFormats) {
+        const url = `${baseUrl}${endpoint}`
         
         try {
-          console.log(`Attempting DUPR API batch call to: ${url}`)
+          console.log(`Attempting DUPR API batch call to: ${url}`, {
+            matchesCount: duprMatches.length,
+            hasToken: !!duprAccessToken,
+          })
+          
           batchResponse = await fetch(url, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
               'Authorization': `Bearer ${duprAccessToken}`,
+              'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
             body: JSON.stringify(duprMatches),
@@ -490,14 +502,16 @@ export async function POST(req: NextRequest) {
             response = batchResponse
             break batchLoop
           } else {
+            // Clone response to read text without consuming body
             const responseClone = batchResponse.clone()
             const errorText = await responseClone.text()
             batchError = `${batchResponse.status}: ${errorText.substring(0, 200)}`
             console.error(`DUPR API batch failed: ${url} - ${batchError}`)
+            console.error('Full error response:', errorText)
             
-            // If 404, try next version
+            // If 404, try next endpoint format
             if (batchResponse.status === 404) {
-              continue // Try next version
+              continue // Try next endpoint format
             } else {
               // Other error, stop trying batch
               useBatch = false
@@ -507,7 +521,7 @@ export async function POST(req: NextRequest) {
         } catch (error: any) {
           batchError = error.message
           console.error(`DUPR API batch error: ${url} - ${batchError}`, error)
-          continue // Try next version
+          continue // Try next endpoint format
         }
       }
     }
@@ -530,17 +544,27 @@ export async function POST(req: NextRequest) {
         let matchResponse: Response | null = null
         let matchError: string = ''
 
+        // Try different create endpoint formats (same approach as /Public/getBasicInfo)
+        const createEndpointFormats = [
+          '/match/v1.0/create',
+          '/match/v1/create',
+          '/match/create',
+          '/Match/v1.0/create',
+          '/Match/v1/create',
+          '/Match/create',
+        ]
+        
         createLoop: for (const baseUrl of baseUrls) {
-          for (const version of apiVersions) {
-            const url = `${baseUrl}/match/${version}/create`
+          for (const endpoint of createEndpointFormats) {
+            const url = `${baseUrl}${endpoint}`
             
             try {
               console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${url}`)
               matchResponse = await fetch(url, {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'application/json',
                   'Authorization': `Bearer ${duprAccessToken}`,
+                  'Content-Type': 'application/json',
                   'Accept': 'application/json',
                 },
                 body: JSON.stringify(match),
@@ -550,14 +574,15 @@ export async function POST(req: NextRequest) {
                 console.log(`DUPR API create success for match ${i + 1}: ${url}`)
                 break createLoop
               } else {
+                // Clone response to read text without consuming body
                 const responseClone = matchResponse.clone()
                 const errorText = await responseClone.text()
                 matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
                 console.error(`DUPR API create failed for match ${i + 1}: ${url} - ${matchError}`)
                 
-                // If 404, try next version
+                // If 404, try next endpoint format
                 if (matchResponse.status === 404) {
-                  continue // Try next version
+                  continue // Try next endpoint format
                 } else {
                   // Other error, try next base URL
                   break // Try next baseUrl
@@ -566,7 +591,7 @@ export async function POST(req: NextRequest) {
             } catch (error: any) {
               matchError = error.message
               console.error(`DUPR API create error for match ${i + 1}: ${url} - ${matchError}`, error)
-              continue // Try next version
+              continue // Try next endpoint format
             }
           }
         }
