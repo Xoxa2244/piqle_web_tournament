@@ -37,7 +37,7 @@ interface DuprMatchData {
   format: 'SINGLES' | 'DOUBLES'
   event: string
   bracket: string
-  matchType: 'SIDEOUT'
+  matchType?: 'SIDEOUT'
 }
 
 export async function POST(req: NextRequest) {
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
               bracket: division.name,
-              matchType,
+              matchType: 'SIDEOUT',
             }
 
             // Remove player2 if undefined
@@ -363,7 +363,7 @@ export async function POST(req: NextRequest) {
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
             bracket: division.name,
-            matchType,
+            matchType: 'SIDEOUT',
           }
 
           // Remove player2 if undefined
@@ -400,10 +400,19 @@ export async function POST(req: NextRequest) {
     let response: Response | null = null
     let lastError: string = ''
 
+    // Log the data being sent for debugging
+    console.log('DUPR API Request:', {
+      matchesCount: duprMatches.length,
+      firstMatch: duprMatches[0] ? JSON.stringify(duprMatches[0], null, 2) : 'No matches',
+      hasToken: !!duprAccessToken,
+      tokenLength: duprAccessToken?.length || 0,
+    })
+
     for (const baseUrl of baseUrls) {
       const url = `${baseUrl}/match/v1.0/batch`
       
       try {
+        console.log(`Attempting DUPR API call to: ${url}`)
         response = await fetch(url, {
           method: 'POST',
           headers: {
@@ -415,16 +424,18 @@ export async function POST(req: NextRequest) {
         })
 
         if (response.ok) {
+          console.log(`DUPR API batch success: ${url}`)
           break
         } else {
           const responseClone = response.clone()
           const errorText = await responseClone.text()
           lastError = `${response.status}: ${errorText.substring(0, 200)}`
-          console.log(`DUPR API batch failed: ${url} - ${lastError}`)
+          console.error(`DUPR API batch failed: ${url} - ${lastError}`)
+          console.error('Full error response:', errorText)
         }
       } catch (error: any) {
         lastError = error.message
-        console.log(`DUPR API batch error: ${url} - ${lastError}`)
+        console.error(`DUPR API batch error: ${url} - ${lastError}`, error)
       }
 
       if (response && response.ok) {
