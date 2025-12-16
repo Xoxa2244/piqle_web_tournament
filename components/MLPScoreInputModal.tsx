@@ -164,6 +164,7 @@ export default function MLPScoreInputModal({
         gameIndex: index,
         scoreA,
         scoreB,
+        sendToDupr: sendToDupr && allPlayersHaveDupr ? true : undefined,
       })
       // onSuccess is already called in mutation's onSuccess callback
     } catch (error) {
@@ -219,6 +220,7 @@ export default function MLPScoreInputModal({
           gameIndex: i,
           scoreA: scoreA as number,
           scoreB: scoreB as number,
+          sendToDupr: sendToDupr && allPlayersHaveDupr ? true : undefined,
         })
       } catch (error) {
         console.error(`Error saving game ${i}:`, error)

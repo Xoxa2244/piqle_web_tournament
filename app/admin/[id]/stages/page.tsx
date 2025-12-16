@@ -630,11 +630,11 @@ function DivisionStageManagementContent() {
     updateMatchResultMutation.mutate({
       matchId,
       scoreA: game.scoreA ?? null,
-      scoreB: game.scoreB ?? null
+      scoreB: game.scoreB ?? null,
+      sendToDupr: sendToDupr ?? false,
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
-    // TODO: Handle sendToDupr flag for DUPR submission
   }
 
   const handleScoreModalClose = () => {

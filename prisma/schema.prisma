@@ -305,6 +305,7 @@ model Match {
   winBy                 Int
   winnerTeamId          String?
   locked                Boolean                @default(false)
+  sendToDupr            Boolean                @default(false) @map("send_to_dupr")
   duprSubmissionStatus  DuprSubmissionStatus?  @default(PENDING) @map("dupr_submission_status")
   duprMatchId           String?               @map("dupr_match_id")
   duprSubmissionError   String?               @map("dupr_submission_error")

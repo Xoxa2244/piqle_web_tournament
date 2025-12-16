@@ -346,6 +346,7 @@ export const divisionStageRouter = createTRPCRouter({
       matchId: z.string(),
       scoreA: z.number(),
       scoreB: z.number(),
+      sendToDupr: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Update game score
@@ -419,6 +420,15 @@ export const divisionStageRouter = createTRPCRouter({
           data: {
             winnerTeamId: gameWinner === 'A' ? match.teamA.id : 
                           gameWinner === 'B' ? match.teamB.id : null,
+            sendToDupr: input.sendToDupr ?? false,
+          },
+        })
+      } else {
+        // For MLP, just update sendToDupr flag
+        await ctx.prisma.match.update({
+          where: { id: input.matchId },
+          data: {
+            sendToDupr: input.sendToDupr ?? false,
           },
         })
       }

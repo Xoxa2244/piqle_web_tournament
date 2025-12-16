@@ -670,6 +670,7 @@ export const matchRouter = createTRPCRouter({
       gameIndex: z.number(),
       scoreA: z.union([z.number(), z.null()]).optional(),
       scoreB: z.union([z.number(), z.null()]).optional(),
+      sendToDupr: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const match = await ctx.prisma.match.findUnique({
@@ -784,11 +785,15 @@ export const matchRouter = createTRPCRouter({
         // Also clear tiebreaker if winner is determined (e.g., changed from 2-2 to 3-1)
         if (needsTiebreaker) {
           // If tiebreaker needed, clear winner but keep tiebreaker if it exists
+          const updateData: any = {
+            winnerTeamId: null,
+          }
+          if (input.sendToDupr !== undefined) {
+            updateData.sendToDupr = input.sendToDupr
+          }
           await ctx.prisma.match.update({
             where: { id: input.matchId },
-            data: {
-              winnerTeamId: null,
-            },
+            data: updateData,
           })
         } else {
           // If winner is determined, set winner and delete tiebreaker if it exists
@@ -803,6 +808,10 @@ export const matchRouter = createTRPCRouter({
             }
           }
           
+          if (input.sendToDupr !== undefined) {
+            updateData.sendToDupr = input.sendToDupr
+          }
+          
           await ctx.prisma.match.update({
             where: { id: input.matchId },
             data: updateData,
@@ -814,11 +823,23 @@ export const matchRouter = createTRPCRouter({
       } else if (!isMLP && match.games && match.games.length > 0) {
         // For non-MLP matches, update winner based on single game
         const updatedGame = match.games.find(g => g.id === game.id) || game
+        const updateData: any = {
+          winnerTeamId: updatedGame.winner === 'A' ? match.teamA.id : 
+                        updatedGame.winner === 'B' ? match.teamB.id : null,
+        }
+        if (input.sendToDupr !== undefined) {
+          updateData.sendToDupr = input.sendToDupr
+        }
+        await ctx.prisma.match.update({
+          where: { id: input.matchId },
+          data: updateData,
+        })
+      } else if (input.sendToDupr !== undefined) {
+        // If no winner update needed but sendToDupr is provided, update it
         await ctx.prisma.match.update({
           where: { id: input.matchId },
           data: {
-            winnerTeamId: updatedGame.winner === 'A' ? match.teamA.id : 
-                          updatedGame.winner === 'B' ? match.teamB.id : null,
+            sendToDupr: input.sendToDupr,
           },
         })
       }
