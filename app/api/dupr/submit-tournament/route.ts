@@ -345,42 +345,44 @@ export async function POST(req: NextRequest) {
             const scoreB = game.scoreB || 0
             const team1Wins = scoreA > scoreB
 
+            // Build team1 object - for doubles, player2 is required
+            const team1Obj: any = {
+              player1: teamAPlayer1,
+              game1: scoreA,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+              winner: team1Wins,
+            }
+            if (teamAPlayer2) {
+              team1Obj.player2 = teamAPlayer2
+            }
+
+            // Build team2 object - for doubles, player2 is required
+            const team2Obj: any = {
+              player1: teamBPlayer1,
+              game1: scoreB,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+              winner: !team1Wins,
+            }
+            if (teamBPlayer2) {
+              team2Obj.player2 = teamBPlayer2
+            }
+
             const duprMatch: DuprMatchData = {
               location,
               tournament: tournamentName,
               eventDate,
-              team1: {
-                player1: teamAPlayer1,
-                player2: teamAPlayer2 || undefined,
-                game1: scoreA,
-                game2: 0,
-                game3: 0,
-                game4: 0,
-                game5: 0,
-                winner: team1Wins,
-              },
-              team2: {
-                player1: teamBPlayer1,
-                player2: teamBPlayer2 || undefined,
-                game1: scoreB,
-                game2: 0,
-                game3: 0,
-                game4: 0,
-                game5: 0,
-                winner: !team1Wins,
-              },
+              team1: team1Obj,
+              team2: team2Obj,
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
               bracket: division.name,
               matchType: 'SIDEOUT',
-            }
-
-            // Remove player2 if undefined
-            if (!duprMatch.team1.player2) {
-              delete duprMatch.team1.player2
-            }
-            if (!duprMatch.team2.player2) {
-              delete duprMatch.team2.player2
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -417,42 +419,44 @@ export async function POST(req: NextRequest) {
           }
           const team1Wins = team1GamesWon > team2GamesWon
 
+          // Build team1 object - only include player2 for doubles
+          const team1Obj: any = {
+            player1: teamAPlayer1,
+            game1: gameScores[0]?.scoreA || 0,
+            game2: gameScores[1]?.scoreA || 0,
+            game3: gameScores[2]?.scoreA || 0,
+            game4: gameScores[3]?.scoreA || 0,
+            game5: gameScores[4]?.scoreA || 0,
+            winner: team1Wins,
+          }
+          if (teamAPlayer2) {
+            team1Obj.player2 = teamAPlayer2
+          }
+
+          // Build team2 object - only include player2 for doubles
+          const team2Obj: any = {
+            player1: teamBPlayer1,
+            game1: gameScores[0]?.scoreB || 0,
+            game2: gameScores[1]?.scoreB || 0,
+            game3: gameScores[2]?.scoreB || 0,
+            game4: gameScores[3]?.scoreB || 0,
+            game5: gameScores[4]?.scoreB || 0,
+            winner: !team1Wins,
+          }
+          if (teamBPlayer2) {
+            team2Obj.player2 = teamBPlayer2
+          }
+
           const duprMatch: DuprMatchData = {
             location,
             tournament: tournamentName,
             eventDate,
-            team1: {
-              player1: teamAPlayer1,
-              player2: teamAPlayer2 || undefined,
-              game1: gameScores[0]?.scoreA || 0,
-              game2: gameScores[1]?.scoreA || 0,
-              game3: gameScores[2]?.scoreA || 0,
-              game4: gameScores[3]?.scoreA || 0,
-              game5: gameScores[4]?.scoreA || 0,
-              winner: team1Wins,
-            },
-            team2: {
-              player1: teamBPlayer1,
-              player2: teamBPlayer2 || undefined,
-              game1: gameScores[0]?.scoreB || 0,
-              game2: gameScores[1]?.scoreB || 0,
-              game3: gameScores[2]?.scoreB || 0,
-              game4: gameScores[3]?.scoreB || 0,
-              game5: gameScores[4]?.scoreB || 0,
-              winner: !team1Wins,
-            },
+            team1: team1Obj,
+            team2: team2Obj,
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
             bracket: division.name,
             matchType: 'SIDEOUT',
-          }
-
-          // Remove player2 if undefined
-          if (!duprMatch.team1.player2) {
-            delete duprMatch.team1.player2
-          }
-          if (!duprMatch.team2.player2) {
-            delete duprMatch.team2.player2
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
@@ -488,6 +492,11 @@ export async function POST(req: NextRequest) {
       hasToken: !!duprAccessToken,
       tokenLength: duprAccessToken?.length || 0,
     })
+    
+    // Log full request body for first match to debug structure
+    if (duprMatches.length > 0) {
+      console.log('Full first match request body:', JSON.stringify(duprMatches[0], null, 2))
+    }
 
     // Send each match individually using PUT /match/{version}/save
     // According to DUPR API docs, this is the correct endpoint
@@ -504,7 +513,9 @@ export async function POST(req: NextRequest) {
           const url = `${baseUrl}/match/${version}/save`
           
           try {
+            const requestBody = JSON.stringify(match)
             console.log(`Attempting DUPR API save call ${i + 1}/${duprMatches.length} to: ${url}`)
+            console.log(`Request body for match ${i + 1}:`, requestBody)
             matchResponse = await fetch(url, {
               method: 'PUT',
               headers: {
@@ -512,7 +523,7 @@ export async function POST(req: NextRequest) {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
               },
-              body: JSON.stringify(match),
+              body: requestBody,
             })
 
             if (matchResponse.ok) {
