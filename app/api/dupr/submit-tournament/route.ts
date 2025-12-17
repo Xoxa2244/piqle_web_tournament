@@ -15,33 +15,38 @@ interface DuprMatchSubmission {
 
 interface DuprMatchData {
   location: string
-  matchDate: string
-  teamA: {
-    player1: string
-    player2?: string
+  tournament?: string
+  league?: string
+  eventDate: string // Changed from matchDate to eventDate
+  team1: {
+    player1: number | string // DUPR expects numeric ID or string ID
+    player2?: number | string
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
+    winner: boolean
   }
-  teamB: {
-    player1: string
-    player2?: string
+  team2: {
+    player1: number | string
+    player2?: number | string
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
+    winner: boolean
   }
   format: 'SINGLES' | 'DOUBLES'
   event: string
-  bracket: string
-  matchType?: 'SIDEOUT'
-  // Optional fields that might be needed
-  identifier?: string
+  bracket?: string
+  matchType?: 'SIDEOUT' | 'SIDE_ONLY' | 'RALLY'
+  // Optional fields from API docs
+  scoreFormatId?: number
   clubId?: number
-  matchSource?: string
+  notify?: boolean
+  metadata?: Record<string, string>
 }
 
 export async function POST(req: NextRequest) {
@@ -221,8 +226,9 @@ export async function POST(req: NextRequest) {
 
     const isMLP = tournament.format === 'MLP'
     const location = tournament.venueName || tournament.venueAddress || 'Unknown Location'
-    const matchDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
+    const eventDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
     const eventName = tournament.title
+    const tournamentName = tournament.title // Use tournament title as tournament field
     const matchType = 'SIDEOUT' as const
 
     for (const division of tournament.divisions) {
@@ -334,27 +340,34 @@ export async function POST(req: NextRequest) {
             }
 
             // For MLP, each game is a single game match (best of 1)
-            // game1 is the score for teamA, game2 would be for teamB if needed, but DUPR expects game1 as teamA score
+            // Determine winner based on scores
+            const scoreA = game.scoreA || 0
+            const scoreB = game.scoreB || 0
+            const team1Wins = scoreA > scoreB
+
             const duprMatch: DuprMatchData = {
               location,
-              matchDate,
-              teamA: {
+              tournament: tournamentName,
+              eventDate,
+              team1: {
                 player1: teamAPlayer1,
                 player2: teamAPlayer2 || undefined,
-                game1: game.scoreA || 0,
+                game1: scoreA,
                 game2: 0,
                 game3: 0,
                 game4: 0,
                 game5: 0,
+                winner: team1Wins,
               },
-              teamB: {
+              team2: {
                 player1: teamBPlayer1,
                 player2: teamBPlayer2 || undefined,
-                game1: game.scoreB || 0,
+                game1: scoreB,
                 game2: 0,
                 game3: 0,
                 game4: 0,
                 game5: 0,
+                winner: !team1Wins,
               },
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
@@ -363,11 +376,11 @@ export async function POST(req: NextRequest) {
             }
 
             // Remove player2 if undefined
-            if (!duprMatch.teamA.player2) {
-              delete duprMatch.teamA.player2
+            if (!duprMatch.team1.player2) {
+              delete duprMatch.team1.player2
             }
-            if (!duprMatch.teamB.player2) {
-              delete duprMatch.teamB.player2
+            if (!duprMatch.team2.player2) {
+              delete duprMatch.team2.player2
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -392,10 +405,23 @@ export async function POST(req: NextRequest) {
             scoreB: g.scoreB || 0,
           }))
 
+          // Determine winner: count games won by each team
+          let team1GamesWon = 0
+          let team2GamesWon = 0
+          for (const game of gameScores) {
+            if (game.scoreA > game.scoreB) {
+              team1GamesWon++
+            } else if (game.scoreB > game.scoreA) {
+              team2GamesWon++
+            }
+          }
+          const team1Wins = team1GamesWon > team2GamesWon
+
           const duprMatch: DuprMatchData = {
             location,
-            matchDate,
-            teamA: {
+            tournament: tournamentName,
+            eventDate,
+            team1: {
               player1: teamAPlayer1,
               player2: teamAPlayer2 || undefined,
               game1: gameScores[0]?.scoreA || 0,
@@ -403,8 +429,9 @@ export async function POST(req: NextRequest) {
               game3: gameScores[2]?.scoreA || 0,
               game4: gameScores[3]?.scoreA || 0,
               game5: gameScores[4]?.scoreA || 0,
+              winner: team1Wins,
             },
-            teamB: {
+            team2: {
               player1: teamBPlayer1,
               player2: teamBPlayer2 || undefined,
               game1: gameScores[0]?.scoreB || 0,
@@ -412,6 +439,7 @@ export async function POST(req: NextRequest) {
               game3: gameScores[2]?.scoreB || 0,
               game4: gameScores[3]?.scoreB || 0,
               game5: gameScores[4]?.scoreB || 0,
+              winner: !team1Wins,
             },
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
@@ -420,11 +448,11 @@ export async function POST(req: NextRequest) {
           }
 
           // Remove player2 if undefined
-          if (!duprMatch.teamA.player2) {
-            delete duprMatch.teamA.player2
+          if (!duprMatch.team1.player2) {
+            delete duprMatch.team1.player2
           }
-          if (!duprMatch.teamB.player2) {
-            delete duprMatch.teamB.player2
+          if (!duprMatch.team2.player2) {
+            delete duprMatch.team2.player2
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
@@ -444,23 +472,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Call DUPR API batch endpoint
+    // Call DUPR API using /match/{version}/save endpoint (PUT method)
     // Use the same approach as working /Public/getBasicInfo endpoint
     const baseUrls = [
       'https://api.dupr.gg',
       'https://api.uat.dupr.gg',
     ]
-    // Try different endpoint formats based on DUPR API structure
-    const endpointFormats = [
-      '/match/v1.0/batch',
-      '/match/v1/batch',
-      '/match/batch',
-      '/Match/v1.0/batch', // Try with capital M
-      '/Match/v1.0/create', // Try create instead of batch
-    ]
-
-    let response: Response | null = null
-    let lastError: string = ''
+    // Try different API versions for /match/{version}/save endpoint
+    const apiVersions = ['v1.0', 'v1', 'v1.1']
 
     // Log the data being sent for debugging
     console.log('DUPR API Request:', {
@@ -470,263 +489,77 @@ export async function POST(req: NextRequest) {
       tokenLength: duprAccessToken?.length || 0,
     })
 
-    // Try batch endpoint first, if it fails, fall back to individual create calls
-    // Use the same approach as working /Public/getBasicInfo endpoint
-    let useBatch = true
-    let batchResponse: Response | null = null
-    let batchError: string = ''
-
-    // Try batch endpoint with different formats (same approach as /Public/getBasicInfo)
-    batchLoop: for (const baseUrl of baseUrls) {
-      for (const endpoint of endpointFormats) {
-        const url = `${baseUrl}${endpoint}`
-        
-        try {
-          console.log(`Attempting DUPR API batch call to: ${url}`, {
-            matchesCount: duprMatches.length,
-            hasToken: !!duprAccessToken,
-          })
-          
-          batchResponse = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${duprAccessToken}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: JSON.stringify(duprMatches),
-          })
-
-          if (batchResponse.ok) {
-            console.log(`DUPR API batch success: ${url}`)
-            response = batchResponse
-            break batchLoop
-          } else {
-            // Clone response to read text without consuming body
-            const responseClone = batchResponse.clone()
-            const errorText = await responseClone.text()
-            batchError = `${batchResponse.status}: ${errorText.substring(0, 200)}`
-            console.error(`DUPR API batch failed: ${url} - ${batchError}`)
-            console.error('Full error response:', errorText)
-            
-            // If 404, try next endpoint format
-            if (batchResponse.status === 404) {
-              continue // Try next endpoint format
-            } else {
-              // Other error, stop trying batch
-              useBatch = false
-              break batchLoop
-            }
-          }
-        } catch (error: any) {
-          batchError = error.message
-          console.error(`DUPR API batch error: ${url} - ${batchError}`, error)
-          continue // Try next endpoint format
-        }
-      }
-    }
-
-    // If all batch attempts failed with 404, use individual calls
-    if (!batchResponse || !batchResponse.ok) {
-      if (batchResponse?.status === 404) {
-        console.log('All batch endpoints returned 404, will use individual create calls')
-        useBatch = false
-      }
-    }
-
-    // If batch failed or returned 404, try individual create calls
-    if (!batchResponse || !batchResponse.ok || !useBatch) {
-      console.log('Falling back to individual match creation calls')
-      const individualResults: Array<{ success: boolean; matchId?: string; error?: string; index: number }> = []
-      
-      for (let i = 0; i < duprMatches.length; i++) {
-        const match = duprMatches[i]
-        let matchResponse: Response | null = null
-        let matchError: string = ''
-
-        // Try different create endpoint formats (same approach as /Public/getBasicInfo)
-        const createEndpointFormats = [
-          '/match/v1.0/create',
-          '/match/v1/create',
-          '/match/create',
-          '/Match/v1.0/create',
-          '/Match/v1/create',
-          '/Match/create',
-        ]
-        
-        createLoop: for (const baseUrl of baseUrls) {
-          for (const endpoint of createEndpointFormats) {
-            const url = `${baseUrl}${endpoint}`
-            
-            try {
-              console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${url}`)
-              matchResponse = await fetch(url, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${duprAccessToken}`,
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-                body: JSON.stringify(match),
-              })
-
-              if (matchResponse.ok) {
-                console.log(`DUPR API create success for match ${i + 1}: ${url}`)
-                break createLoop
-              } else {
-                // Clone response to read text without consuming body
-                const responseClone = matchResponse.clone()
-                const errorText = await responseClone.text()
-                matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
-                console.error(`DUPR API create failed for match ${i + 1}: ${url} - ${matchError}`)
-                
-                // If 404, try next endpoint format
-                if (matchResponse.status === 404) {
-                  continue // Try next endpoint format
-                } else {
-                  // Other error, try next base URL
-                  break // Try next baseUrl
-                }
-              }
-            } catch (error: any) {
-              matchError = error.message
-              console.error(`DUPR API create error for match ${i + 1}: ${url} - ${matchError}`, error)
-              continue // Try next endpoint format
-            }
-          }
-        }
-
-        if (matchResponse && matchResponse.ok) {
-          try {
-            const responseData = await matchResponse.json()
-            const matchId = responseData.matchId || responseData.id || null
-            individualResults.push({ success: true, matchId: matchId ? String(matchId) : undefined, index: i })
-          } catch (error: any) {
-            individualResults.push({ success: false, error: 'Failed to parse response', index: i })
-          }
-        } else {
-          individualResults.push({ success: false, error: matchError || 'Unknown error', index: i })
-        }
-      }
-
-      // Convert individual results to batch-like response
-      const allSuccessful = individualResults.every(r => r.success)
-      if (allSuccessful) {
-        // Create a mock response with array of match IDs
-        const matchIds = individualResults.map(r => r.matchId).filter(Boolean)
-        response = {
-          ok: true,
-          json: async () => matchIds,
-        } as Response
-      } else {
-        // Some failed - we'll handle this in the error section
-        lastError = `Some matches failed: ${individualResults.filter(r => !r.success).map(r => `Match ${r.index + 1}: ${r.error}`).join(', ')}`
-        response = null
-      }
-    }
-
-    if (!response || !response.ok) {
-      // All matches failed
-      const errorText = lastError || (response ? `${response.status}: No error details` : 'No response')
-      
-      // Log all matches as failed
-      // Need to reload matches to get team names
-      const failedMatchIds = Array.from(new Set(Array.from(matchMapping.values()).map(m => m.matchId)))
-      const failedMatches = await prisma.match.findMany({
-        where: { id: { in: failedMatchIds } },
-        include: {
-          teamA: {
-            include: {
-              teamPlayers: {
-                include: {
-                  player: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          teamB: {
-            include: {
-              teamPlayers: {
-                include: {
-                  player: {
-                    select: {
-                      firstName: true,
-                      lastName: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      })
-
-      const matchNameMap = new Map<string, { teamA: string; teamB: string }>()
-      for (const match of failedMatches) {
-        const teamAName = match.teamA?.teamPlayers
-          ?.map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
-          .join(' / ') || 'Team A'
-        const teamBName = match.teamB?.teamPlayers
-          ?.map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
-          .join(' / ') || 'Team B'
-        matchNameMap.set(match.id, { teamA: teamAName, teamB: teamBName })
-      }
-
-      for (const [matchKey, mapping] of Array.from(matchMapping.entries())) {
-        const names = matchNameMap.get(mapping.matchId) || { teamA: 'Team A', teamB: 'Team B' }
-
-        const logEntry: DuprMatchSubmission = {
-          matchId: mapping.matchId,
-          teamAName: names.teamA,
-          teamBName: names.teamB,
-          status: 'FAILED',
-          error: errorText,
-        }
-
-        submissionLog.push(logEntry)
-
-        // Update match status in DB
-        await prisma.match.update({
-          where: { id: mapping.matchId },
-          data: {
-            duprSubmissionStatus: 'FAILED',
-            duprSubmissionError: errorText,
-            duprRetryCount: { increment: 1 },
-          },
-        })
-      }
-
-      return NextResponse.json({
-        success: false,
-        log: submissionLog,
-        totalMatches: duprMatches.length,
-        successful: 0,
-        failed: duprMatches.length,
-        error: errorText,
-      })
-    }
-
-    // Parse response - should be array of match IDs in same order
-    let responseData: any
-    try {
-      responseData = await response.json()
-    } catch (error) {
-      // If response is not JSON, try to parse as array directly
-      const text = await response.text()
-      try {
-        responseData = JSON.parse(text)
-      } catch {
-        // If still not JSON, assume it's already an array or single value
-        responseData = text ? [text] : []
-      }
-    }
+    // Send each match individually using PUT /match/{version}/save
+    // According to DUPR API docs, this is the correct endpoint
+    const individualResults: Array<{ success: boolean; matchId?: string; error?: string; index: number }> = []
     
-    const duprMatchIds = Array.isArray(responseData) ? responseData : (responseData.matchIds || responseData.matchId ? [responseData.matchId] : [])
+    for (let i = 0; i < duprMatches.length; i++) {
+      const match = duprMatches[i]
+      let matchResponse: Response | null = null
+      let matchError: string = ''
+
+      // Try different API versions and base URLs (same approach as /Public/getBasicInfo)
+      saveLoop: for (const baseUrl of baseUrls) {
+        for (const version of apiVersions) {
+          const url = `${baseUrl}/match/${version}/save`
+          
+          try {
+            console.log(`Attempting DUPR API save call ${i + 1}/${duprMatches.length} to: ${url}`)
+            matchResponse = await fetch(url, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${duprAccessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify(match),
+            })
+
+            if (matchResponse.ok) {
+              console.log(`DUPR API save success for match ${i + 1}: ${url}`)
+              break saveLoop
+            } else {
+              // Clone response to read text without consuming body
+              const responseClone = matchResponse.clone()
+              const errorText = await responseClone.text()
+              matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
+              console.error(`DUPR API save failed for match ${i + 1}: ${url} - ${matchError}`)
+              console.error('Full error response:', errorText)
+              
+              // If 404, try next version
+              if (matchResponse.status === 404) {
+                continue // Try next version
+              } else {
+                // Other error, try next base URL
+                break // Try next baseUrl
+              }
+            }
+          } catch (error: any) {
+            matchError = error.message
+            console.error(`DUPR API save error for match ${i + 1}: ${url} - ${matchError}`, error)
+            continue // Try next version
+          }
+        }
+      }
+
+      if (matchResponse && matchResponse.ok) {
+        try {
+          const responseData = await matchResponse.json()
+          // Response format: { status: "SUCCESS", message: "...", result: matchId }
+          const matchId = responseData.result || responseData.matchId || responseData.id || null
+          individualResults.push({ success: true, matchId: matchId ? String(matchId) : undefined, index: i })
+        } catch (error: any) {
+          individualResults.push({ success: false, error: 'Failed to parse response', index: i })
+        }
+      } else {
+        individualResults.push({ success: false, error: matchError || 'Unknown error', index: i })
+      }
+    }
+
+    // Check if all matches were successful
+    const allSuccessful = individualResults.every(r => r.success)
+    const lastError = allSuccessful ? '' : `Some matches failed: ${individualResults.filter(r => !r.success).map(r => `Match ${r.index + 1}: ${r.error}`).join(', ')}`
+    const response = allSuccessful ? { ok: true } as Response : null
 
     // Get all match IDs that need names
     const allMatchIds = Array.from(new Set(Array.from(matchMapping.values()).map(m => m.matchId)))
@@ -775,29 +608,29 @@ export async function POST(req: NextRequest) {
       allMatchNameMap.set(match.id, { teamA: teamAName, teamB: teamBName })
     }
 
-    // Update matches in DB with DUPR match IDs
+    // Update matches in DB with DUPR match IDs based on individualResults
     let successCount = 0
     let failCount = 0
 
     for (let i = 0; i < duprMatches.length; i++) {
       const matchKey = Array.from(matchMapping.keys())[i]
       const mapping = matchMapping.get(matchKey)
+      const result = individualResults[i]
       
-      if (!mapping) continue
+      if (!mapping || !result) continue
 
-      const duprMatchId = duprMatchIds[i] ? String(duprMatchIds[i]) : null
       const names = allMatchNameMap.get(mapping.matchId) || { teamA: 'Team A', teamB: 'Team B' }
       const teamAName = names.teamA
       const teamBName = names.teamB
 
-      if (duprMatchId) {
+      if (result.success && result.matchId) {
         const logEntry: DuprMatchSubmission = {
           matchId: mapping.matchId,
           teamAName,
           teamBName,
           status: 'SUCCESS',
           error: null,
-          duprMatchId,
+          duprMatchId: result.matchId,
         }
 
         submissionLog.push(logEntry)
@@ -809,8 +642,8 @@ export async function POST(req: NextRequest) {
           data: {
             duprSubmissionStatus: 'SUCCESS',
             duprMatchId: mapping.gameIndex !== undefined 
-              ? `${duprMatchId}-game${mapping.gameIndex}` // For MLP, store game index
-              : duprMatchId,
+              ? `${result.matchId}-game${mapping.gameIndex}` // For MLP, store game index
+              : result.matchId,
             duprSubmittedAt: new Date(),
             duprSubmissionError: null,
           },
@@ -821,7 +654,7 @@ export async function POST(req: NextRequest) {
           teamAName,
           teamBName,
           status: 'FAILED',
-          error: 'DUPR API did not return match ID',
+          error: result.error || 'DUPR API did not return match ID',
         }
 
         submissionLog.push(logEntry)
@@ -832,11 +665,24 @@ export async function POST(req: NextRequest) {
           where: { id: mapping.matchId },
           data: {
             duprSubmissionStatus: 'FAILED',
-            duprSubmissionError: 'DUPR API did not return match ID',
+            duprSubmissionError: result.error || 'DUPR API did not return match ID',
             duprRetryCount: { increment: 1 },
           },
         })
       }
+    }
+
+    // Return error response if all matches failed
+    if (!response || !response.ok) {
+      const errorText = lastError || 'All matches failed'
+      return NextResponse.json({
+        success: false,
+        log: submissionLog,
+        totalMatches: duprMatches.length,
+        successful: successCount,
+        failed: failCount,
+        error: errorText,
+      })
     }
 
     return NextResponse.json({
