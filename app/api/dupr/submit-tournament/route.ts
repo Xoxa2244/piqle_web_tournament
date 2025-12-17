@@ -473,50 +473,56 @@ export async function POST(req: NextRequest) {
             
             const team1Wins = scoreA > scoreB
 
-            // Build team1 object - for doubles, player2 is required
+            // Build team1 object - order matters: player1, player2 (if doubles), game1-5, winner
             const team1Obj: any = {
               player1: teamAPlayer1,
-              game1: scoreA,
-              game2: 0,
-              game3: 0,
-              game4: 0,
-              game5: 0,
-              winner: team1Wins,
             }
             if (teamAPlayer2) {
               team1Obj.player2 = teamAPlayer2
             }
+            team1Obj.game1 = scoreA
+            team1Obj.game2 = 0
+            team1Obj.game3 = 0
+            team1Obj.game4 = 0
+            team1Obj.game5 = 0
+            team1Obj.winner = team1Wins
 
-            // Build team2 object - for doubles, player2 is required
+            // Build team2 object - order matters: player1, player2 (if doubles), game1-5, winner
             const team2Obj: any = {
               player1: teamBPlayer1,
-              game1: scoreB,
-              game2: 0,
-              game3: 0,
-              game4: 0,
-              game5: 0,
-              winner: !team1Wins,
             }
             if (teamBPlayer2) {
               team2Obj.player2 = teamBPlayer2
             }
+            team2Obj.game1 = scoreB
+            team2Obj.game2 = 0
+            team2Obj.game3 = 0
+            team2Obj.game4 = 0
+            team2Obj.game5 = 0
+            team2Obj.winner = !team1Wins
 
             // Generate unique identifier for this match (DUPR FAQ requirement)
             const identifier = `${match.id}-${gameIndex}-${Date.now()}`
 
+            // Build match object - order may matter, so build explicitly
             const duprMatch: DuprMatchData = {
               location,
-              tournament: tournamentName,
               eventDate,
               team1: team1Obj,
               team2: team2Obj,
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
-              bracket: division.name,
               matchType: 'SIDEOUT',
               identifier, // Unique identifier for each match
               matchSource, // Required: 'PARTNER' (we're a partner, not a club)
-              // clubId is omitted for PARTNER submissions
+              // Optional fields - only include if they have values
+            }
+            // Add optional fields only if they exist
+            if (tournamentName) {
+              duprMatch.tournament = tournamentName
+            }
+            if (division.name) {
+              duprMatch.bracket = division.name
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -655,19 +661,25 @@ export async function POST(req: NextRequest) {
           // Generate unique identifier for this match (DUPR FAQ requirement)
           const identifier = `${match.id}-${Date.now()}`
 
+          // Build match object - order may matter, so build explicitly
           const duprMatch: DuprMatchData = {
             location,
-            tournament: tournamentName,
             eventDate,
             team1: team1Obj,
             team2: team2Obj,
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
-            bracket: division.name,
             matchType: 'SIDEOUT',
             identifier, // Unique identifier for each match
             matchSource, // Required: 'PARTNER' (we're a partner, not a club)
-            // clubId is omitted for PARTNER submissions
+            // Optional fields - only include if they have values
+          }
+          // Add optional fields only if they exist
+          if (tournamentName) {
+            duprMatch.tournament = tournamentName
+          }
+          if (division.name) {
+            duprMatch.bracket = division.name
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
