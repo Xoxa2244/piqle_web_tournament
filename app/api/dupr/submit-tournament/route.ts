@@ -241,17 +241,73 @@ export async function POST(req: NextRequest) {
         // Skip matches without games or with no scores
         if (!match.games || match.games.length === 0) continue
 
-        // Check if match has scores
-        const hasScores = match.games.some((g: any) => 
-          (g.scoreA !== null && g.scoreA !== undefined) || 
-          (g.scoreB !== null && g.scoreB !== undefined)
-        )
-
-        if (!hasScores) continue
-
-        // Get players with DUPR IDs
+        // Get players with DUPR IDs (needed for both validation and match creation)
         const teamAPlayers = match.teamA?.teamPlayers || []
         const teamBPlayers = match.teamB?.teamPlayers || []
+        
+        // Check if match is fully completed (all games have both scores)
+        // This is required before submitting to DUPR
+        const allGamesCompleted = match.games.every((g: any) =>
+          g.scoreA !== null &&
+          g.scoreA !== undefined &&
+          g.scoreB !== null &&
+          g.scoreB !== undefined &&
+          g.scoreA >= 0 &&
+          g.scoreB >= 0
+        )
+
+        // For Play-Off matches, also check if there's a winner
+        const hasWinner = match.winnerTeamId !== null && match.winnerTeamId !== undefined
+
+        // Match is considered completed if:
+        // 1. All games have both scores, OR
+        // 2. There's a winner (for Play-Off matches)
+        const isMatchCompleted = allGamesCompleted || hasWinner
+
+        if (!isMatchCompleted) {
+          // Match is not fully completed - skip and log error
+          const teamAName = teamAPlayers
+            .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+            .join(' / ') || 'Team A'
+          const teamBName = teamBPlayers
+            .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+            .join(' / ') || 'Team B'
+          
+          // Find which games are incomplete
+          const incompleteGames = match.games
+            .map((g: any, idx: number) => {
+              const isComplete = g.scoreA !== null && g.scoreA !== undefined &&
+                                g.scoreB !== null && g.scoreB !== undefined &&
+                                g.scoreA >= 0 && g.scoreB >= 0
+              return !isComplete ? idx + 1 : null
+            })
+            .filter(Boolean)
+          
+          const errorMessage = incompleteGames.length > 0
+            ? `Match not completed: games ${incompleteGames.join(', ')} are missing scores`
+            : `Match not completed: all games must have both scores set`
+          
+          const logEntry: DuprMatchSubmission = {
+            matchId: match.id,
+            teamAName,
+            teamBName,
+            status: 'FAILED',
+            error: errorMessage,
+          }
+          
+          submissionLog.push(logEntry)
+          
+          // Update match status in DB
+          await prisma.match.update({
+            where: { id: match.id },
+            data: {
+              duprSubmissionStatus: 'FAILED',
+              duprSubmissionError: errorMessage,
+            },
+          })
+          
+          continue
+        }
         const allPlayers = [...teamAPlayers, ...teamBPlayers]
 
         // Check if all players have DUPR IDs
