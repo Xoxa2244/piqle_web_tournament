@@ -42,9 +42,12 @@ interface DuprMatchData {
   event: string
   bracket?: string
   matchType?: 'SIDEOUT' | 'SIDE_ONLY' | 'RALLY'
+  // Required fields from DUPR FAQ
+  identifier: string // Must be unique for each new match
+  matchSource: 'CLUB' | 'PARTNER' // Required field
   // Optional fields from API docs
   scoreFormatId?: number
-  clubId?: number
+  clubId?: number // Required if matchSource is 'CLUB', omitted if 'PARTNER'
   notify?: boolean
   metadata?: Record<string, string>
 }
@@ -230,6 +233,8 @@ export async function POST(req: NextRequest) {
     const eventName = tournament.title
     const tournamentName = tournament.title // Use tournament title as tournament field
     const matchType = 'SIDEOUT' as const
+    const matchSource = 'PARTNER' as const // We're a partner, not a club
+    // clubId should be omitted for PARTNER submissions
 
     for (const division of tournament.divisions) {
       for (const match of division.matches) {
@@ -339,10 +344,77 @@ export async function POST(req: NextRequest) {
               continue // Skip if players are missing
             }
 
+            // Check for duplicate players (DUPR FAQ requirement)
+            const team1Players = [teamAPlayer1, teamAPlayer2].filter(Boolean)
+            const team2Players = [teamBPlayer1, teamBPlayer2].filter(Boolean)
+            const allPlayers = [...team1Players, ...team2Players]
+            const uniquePlayers = new Set(allPlayers)
+            if (allPlayers.length !== uniquePlayers.size) {
+              // Duplicate player found - skip this match
+              const teamAName = teamAPlayers
+                .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+                .join(' / ') || 'Team A'
+              const teamBName = teamBPlayers
+                .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+                .join(' / ') || 'Team B'
+              
+              const logEntry: DuprMatchSubmission = {
+                matchId: match.id,
+                teamAName,
+                teamBName,
+                status: 'FAILED',
+                error: `Duplicate player found in match (same player in both teams)`,
+              }
+              
+              submissionLog.push(logEntry)
+              
+              await prisma.match.update({
+                where: { id: match.id },
+                data: {
+                  duprSubmissionStatus: 'FAILED',
+                  duprSubmissionError: logEntry.error,
+                },
+              })
+              
+              continue
+            }
+
             // For MLP, each game is a single game match (best of 1)
             // Determine winner based on scores
             const scoreA = game.scoreA || 0
             const scoreB = game.scoreB || 0
+            
+            // Check for tied games (DUPR FAQ requirement: no tied games allowed)
+            if (scoreA === scoreB) {
+              // Tied game - skip this match
+              const teamAName = teamAPlayers
+                .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+                .join(' / ') || 'Team A'
+              const teamBName = teamBPlayers
+                .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+                .join(' / ') || 'Team B'
+              
+              const logEntry: DuprMatchSubmission = {
+                matchId: match.id,
+                teamAName,
+                teamBName,
+                status: 'FAILED',
+                error: `Tied game not allowed (score: ${scoreA}-${scoreB})`,
+              }
+              
+              submissionLog.push(logEntry)
+              
+              await prisma.match.update({
+                where: { id: match.id },
+                data: {
+                  duprSubmissionStatus: 'FAILED',
+                  duprSubmissionError: logEntry.error,
+                },
+              })
+              
+              continue
+            }
+            
             const team1Wins = scoreA > scoreB
 
             // Build team1 object - for doubles, player2 is required
@@ -373,6 +445,9 @@ export async function POST(req: NextRequest) {
               team2Obj.player2 = teamBPlayer2
             }
 
+            // Generate unique identifier for this match (DUPR FAQ requirement)
+            const identifier = `${match.id}-${gameIndex}-${Date.now()}`
+
             const duprMatch: DuprMatchData = {
               location,
               tournament: tournamentName,
@@ -383,6 +458,9 @@ export async function POST(req: NextRequest) {
               event: eventName,
               bracket: division.name,
               matchType: 'SIDEOUT',
+              identifier, // Unique identifier for each match
+              matchSource, // Required: 'PARTNER' (we're a partner, not a club)
+              // clubId is omitted for PARTNER submissions
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -399,6 +477,41 @@ export async function POST(req: NextRequest) {
 
           if (!teamAPlayer1 || !teamBPlayer1) continue
 
+          // Check for duplicate players (DUPR FAQ requirement)
+          const team1Players = [teamAPlayer1, teamAPlayer2].filter(Boolean)
+          const team2Players = [teamBPlayer1, teamBPlayer2].filter(Boolean)
+          const allPlayers = [...team1Players, ...team2Players]
+          const uniquePlayers = new Set(allPlayers)
+          if (allPlayers.length !== uniquePlayers.size) {
+            // Duplicate player found - skip this match
+            const teamAName = teamAPlayers
+              .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+              .join(' / ') || 'Team A'
+            const teamBName = teamBPlayers
+              .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+              .join(' / ') || 'Team B'
+            
+            const logEntry: DuprMatchSubmission = {
+              matchId: match.id,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error: `Duplicate player found in match (same player in both teams)`,
+            }
+            
+            submissionLog.push(logEntry)
+            
+            await prisma.match.update({
+              where: { id: match.id },
+              data: {
+                duprSubmissionStatus: 'FAILED',
+                duprSubmissionError: logEntry.error,
+              },
+            })
+            
+            continue
+          }
+
           // For single elimination, all games between two teams are combined into one match
           // DUPR expects game1, game2, etc. as scores for each game
           const games = match.games.slice(0, 5) // Max 5 games
@@ -406,6 +519,42 @@ export async function POST(req: NextRequest) {
             scoreA: g.scoreA || 0,
             scoreB: g.scoreB || 0,
           }))
+
+          // Check for tied games (DUPR FAQ requirement: no tied games allowed)
+          const hasTiedGames = gameScores.some((game: any) => game.scoreA === game.scoreB && game.scoreA > 0)
+          if (hasTiedGames) {
+            // Tied game found - skip this match
+            const teamAName = teamAPlayers
+              .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+              .join(' / ') || 'Team A'
+            const teamBName = teamBPlayers
+              .map((tp: any) => `${tp.player.firstName} ${tp.player.lastName}`)
+              .join(' / ') || 'Team B'
+            
+            const tiedGames = gameScores
+              .map((game: any, idx: number) => game.scoreA === game.scoreB && game.scoreA > 0 ? idx + 1 : null)
+              .filter(Boolean)
+            
+            const logEntry: DuprMatchSubmission = {
+              matchId: match.id,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error: `Tied games not allowed (games: ${tiedGames.join(', ')})`,
+            }
+            
+            submissionLog.push(logEntry)
+            
+            await prisma.match.update({
+              where: { id: match.id },
+              data: {
+                duprSubmissionStatus: 'FAILED',
+                duprSubmissionError: logEntry.error,
+              },
+            })
+            
+            continue
+          }
 
           // Determine winner: count games won by each team
           let team1GamesWon = 0
@@ -447,6 +596,9 @@ export async function POST(req: NextRequest) {
             team2Obj.player2 = teamBPlayer2
           }
 
+          // Generate unique identifier for this match (DUPR FAQ requirement)
+          const identifier = `${match.id}-${Date.now()}`
+
           const duprMatch: DuprMatchData = {
             location,
             tournament: tournamentName,
@@ -457,6 +609,9 @@ export async function POST(req: NextRequest) {
             event: eventName,
             bracket: division.name,
             matchType: 'SIDEOUT',
+            identifier, // Unique identifier for each match
+            matchSource, // Required: 'PARTNER' (we're a partner, not a club)
+            // clubId is omitted for PARTNER submissions
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
