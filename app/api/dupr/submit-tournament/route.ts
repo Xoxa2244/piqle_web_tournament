@@ -15,35 +15,33 @@ interface DuprMatchSubmission {
 
 interface DuprMatchData {
   location: string
-  matchDate: string // Correct field name from DUPR API
+  matchDate: string
   teamA: {
-    player1: string // DUPR ID as string
-    player2: string | null // null for singles, DUPR ID for doubles
+    player1: string
+    player2: string | null
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
-    // No winner field - not in DUPR API
   }
   teamB: {
     player1: string
-    player2: string | null // null for singles, DUPR ID for doubles
+    player2: string | null
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
-    // No winner field - not in DUPR API
   }
   format: 'SINGLES' | 'DOUBLES'
   event: string
   bracket: string | null
   matchType: string | null
-  identifier: string // Must be unique for each new match
-  matchSource: 'CLUB' | 'PARTNER' // Required field
-  clubId?: number // Required if matchSource is 'CLUB', omitted if 'PARTNER'
-  extras: any | null // Optional field
+  identifier: string
+  clubId: number // Required field (from working example)
+  extras: Record<string, string> | null // Can be object or null
+  matchSource: 'CLUB' | 'PARTNER'
 }
 
 export async function POST(req: NextRequest) {
@@ -151,27 +149,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No access to this tournament' }, { status: 403 })
     }
 
-    // Get DUPR access token
-    // Try client credentials first, fallback to user token
+    // Get DUPR access token - generate new token via client credentials
     const duprClientId = process.env.DUPR_CLIENT_ID
     const duprClientSecret = process.env.DUPR_CLIENT_SECRET
     
     let duprAccessToken: string | null = null
     
-    // Try to get client credentials token if available
+    // Try to get client credentials token (preferred - generates new token)
     if (duprClientId && duprClientSecret) {
       try {
         const tokenUrls = [
           'https://api.dupr.gg/oauth/token',
           'https://api.uat.dupr.gg/oauth/token',
+          'https://prod.mydupr.com/api/oauth/token', // Production token endpoint
         ]
         
         for (const tokenUrl of tokenUrls) {
           try {
+            console.log(`Attempting to get DUPR client credentials token from: ${tokenUrl}`)
             const tokenResponse = await fetch(tokenUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
               },
               body: new URLSearchParams({
                 grant_type: 'client_credentials',
@@ -187,9 +187,12 @@ export async function POST(req: NextRequest) {
                 console.log('Successfully obtained DUPR client credentials token')
                 break
               }
+            } else {
+              const errorText = await tokenResponse.text()
+              console.log(`Failed to get client credentials token from ${tokenUrl}: ${tokenResponse.status} - ${errorText.substring(0, 200)}`)
             }
-          } catch (error) {
-            console.log(`Failed to get client credentials token from ${tokenUrl}`)
+          } catch (error: any) {
+            console.log(`Error getting client credentials token from ${tokenUrl}:`, error.message)
           }
         }
       } catch (error) {
@@ -197,7 +200,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Fallback to user access token
+    // Fallback to user access token if client credentials failed
     if (!duprAccessToken) {
       const owner = await prisma.user.findUnique({
         where: { id: tournament.userId },
@@ -213,7 +216,7 @@ export async function POST(req: NextRequest) {
       }
 
       duprAccessToken = owner.duprAccessToken
-      console.log('Using user access token for DUPR API')
+      console.log('Using user access token for DUPR API (client credentials not available)')
     }
 
     // Prepare matches for DUPR submission
@@ -225,8 +228,8 @@ export async function POST(req: NextRequest) {
     const location = tournament.venueName || tournament.venueAddress || 'Unknown Location'
     const matchDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
     const eventName = tournament.title
-    const matchSource = 'PARTNER' as const // We're a partner, not a club
-    // clubId is omitted for PARTNER submissions
+    const matchSource = 'PARTNER' as const
+    const clubId = 8206412294 // Required clubId (from working example)
 
     for (const division of tournament.divisions) {
       for (const match of division.matches) {
@@ -492,7 +495,7 @@ export async function POST(req: NextRequest) {
             // Generate unique identifier for this match (DUPR FAQ requirement)
             const identifier = `${match.id}-${gameIndex}-${Date.now()}`
 
-            // Build match object - correct structure for DUPR API
+            // Build match object - exact structure from working example
             const duprMatch: DuprMatchData = {
               location,
               matchDate,
@@ -501,10 +504,11 @@ export async function POST(req: NextRequest) {
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
               bracket: division.name || null,
-              matchType: 'SIDEOUT', // Set to SIDEOUT as in working example
+              matchType: 'SIDEOUT',
               identifier,
+              clubId, // Required field
+              extras: null,
               matchSource,
-              extras: null, // Optional field, can be null
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -627,7 +631,7 @@ export async function POST(req: NextRequest) {
           // Generate unique identifier for this match (DUPR FAQ requirement)
           const identifier = `${match.id}-${Date.now()}`
 
-          // Build match object - correct structure for DUPR API
+          // Build match object - exact structure from working example
           const duprMatch: DuprMatchData = {
             location,
             matchDate,
@@ -636,10 +640,11 @@ export async function POST(req: NextRequest) {
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
             bracket: division.name || null,
-            matchType: 'SIDEOUT', // Set to SIDEOUT as in working example
+            matchType: 'SIDEOUT',
             identifier,
+            clubId, // Required field
+            extras: null,
             matchSource,
-            extras: null, // Optional field, can be null
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
