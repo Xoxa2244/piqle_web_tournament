@@ -218,9 +218,8 @@ export async function POST(req: NextRequest) {
         } catch (error) {
           console.log('Error getting DUPR token from client credentials:', error)
         }
-      } else {
-        console.log('DUPR client credentials not available (missing DUPR_CLIENT_KEY or DUPR_CLIENT_SECRET)')
-      }
+    } else {
+      console.log('DUPR client credentials not available (missing DUPR_CLIENT_KEY or DUPR_CLIENT_SECRET)')
     }
     
     // Fallback to user access token if client credentials failed
