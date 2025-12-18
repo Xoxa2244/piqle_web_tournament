@@ -15,41 +15,35 @@ interface DuprMatchSubmission {
 
 interface DuprMatchData {
   location: string
-  tournament?: string
-  league?: string
-  eventDate: string // Changed from matchDate to eventDate
-  team1: {
-    player1: number | string // DUPR expects numeric ID or string ID
-    player2?: number | string
+  matchDate: string // Correct field name from DUPR API
+  teamA: {
+    player1: string // DUPR ID as string
+    player2: string | null // null for singles, DUPR ID for doubles
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
-    winner: boolean
+    // No winner field - not in DUPR API
   }
-  team2: {
-    player1: number | string
-    player2?: number | string
+  teamB: {
+    player1: string
+    player2: string | null // null for singles, DUPR ID for doubles
     game1: number
     game2: number
     game3: number
     game4: number
     game5: number
-    winner: boolean
+    // No winner field - not in DUPR API
   }
   format: 'SINGLES' | 'DOUBLES'
   event: string
-  bracket?: string
-  matchType?: 'SIDEOUT' | 'SIDE_ONLY' | 'RALLY'
-  // Required fields from DUPR FAQ
+  bracket: string | null
+  matchType: string | null
   identifier: string // Must be unique for each new match
   matchSource: 'CLUB' | 'PARTNER' // Required field
-  // Optional fields from API docs
-  scoreFormatId?: number
   clubId?: number // Required if matchSource is 'CLUB', omitted if 'PARTNER'
-  notify?: boolean
-  metadata?: Record<string, string>
+  extras: any | null // Optional field
 }
 
 export async function POST(req: NextRequest) {
@@ -229,12 +223,10 @@ export async function POST(req: NextRequest) {
 
     const isMLP = tournament.format === 'MLP'
     const location = tournament.venueName || tournament.venueAddress || 'Unknown Location'
-    const eventDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
+    const matchDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
     const eventName = tournament.title
-    const tournamentName = tournament.title // Use tournament title as tournament field
-    const matchType = 'SIDEOUT' as const
     const matchSource = 'PARTNER' as const // We're a partner, not a club
-    // clubId should be omitted for PARTNER submissions
+    // clubId is omitted for PARTNER submissions
 
     for (const division of tournament.divisions) {
       for (const match of division.matches) {
@@ -473,56 +465,46 @@ export async function POST(req: NextRequest) {
             
             const team1Wins = scoreA > scoreB
 
-            // Build team1 object - order matters: player1, player2 (if doubles), game1-5, winner
-            const team1Obj: any = {
+            // Build teamA object - correct structure for DUPR API
+            const teamAObj: any = {
               player1: teamAPlayer1,
+              player2: teamAPlayer2 || null, // null for singles, DUPR ID for doubles
+              game1: scoreA,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+              // No winner field - not in DUPR API
             }
-            if (teamAPlayer2) {
-              team1Obj.player2 = teamAPlayer2
-            }
-            team1Obj.game1 = scoreA
-            team1Obj.game2 = 0
-            team1Obj.game3 = 0
-            team1Obj.game4 = 0
-            team1Obj.game5 = 0
-            team1Obj.winner = team1Wins
 
-            // Build team2 object - order matters: player1, player2 (if doubles), game1-5, winner
-            const team2Obj: any = {
+            // Build teamB object - correct structure for DUPR API
+            const teamBObj: any = {
               player1: teamBPlayer1,
+              player2: teamBPlayer2 || null, // null for singles, DUPR ID for doubles
+              game1: scoreB,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+              // No winner field - not in DUPR API
             }
-            if (teamBPlayer2) {
-              team2Obj.player2 = teamBPlayer2
-            }
-            team2Obj.game1 = scoreB
-            team2Obj.game2 = 0
-            team2Obj.game3 = 0
-            team2Obj.game4 = 0
-            team2Obj.game5 = 0
-            team2Obj.winner = !team1Wins
 
             // Generate unique identifier for this match (DUPR FAQ requirement)
             const identifier = `${match.id}-${gameIndex}-${Date.now()}`
 
-            // Build match object - order may matter, so build explicitly
+            // Build match object - correct structure for DUPR API
             const duprMatch: DuprMatchData = {
               location,
-              eventDate,
-              team1: team1Obj,
-              team2: team2Obj,
+              matchDate,
+              teamA: teamAObj,
+              teamB: teamBObj,
               format: 'DOUBLES', // MLP games are always doubles (2v2)
               event: eventName,
-              matchType: 'SIDEOUT',
-              identifier, // Unique identifier for each match
-              matchSource, // Required: 'PARTNER' (we're a partner, not a club)
-              // Optional fields - only include if they have values
-            }
-            // Add optional fields only if they exist
-            if (tournamentName) {
-              duprMatch.tournament = tournamentName
-            }
-            if (division.name) {
-              duprMatch.bracket = division.name
+              bracket: division.name || null,
+              matchType: null, // Can be null according to example
+              identifier,
+              matchSource,
+              extras: null, // Optional field, can be null
             }
 
             const matchKey = `${match.id}-${gameIndex}`
@@ -618,68 +600,46 @@ export async function POST(req: NextRequest) {
             continue
           }
 
-          // Determine winner: count games won by each team
-          let team1GamesWon = 0
-          let team2GamesWon = 0
-          for (const game of gameScores) {
-            if (game.scoreA > game.scoreB) {
-              team1GamesWon++
-            } else if (game.scoreB > game.scoreA) {
-              team2GamesWon++
-            }
-          }
-          const team1Wins = team1GamesWon > team2GamesWon
-
-          // Build team1 object - only include player2 for doubles
-          const team1Obj: any = {
+          // Build teamA object - correct structure for DUPR API
+          const teamAObj: any = {
             player1: teamAPlayer1,
+            player2: teamAPlayer2 || null, // null for singles, DUPR ID for doubles
             game1: gameScores[0]?.scoreA || 0,
             game2: gameScores[1]?.scoreA || 0,
             game3: gameScores[2]?.scoreA || 0,
             game4: gameScores[3]?.scoreA || 0,
             game5: gameScores[4]?.scoreA || 0,
-            winner: team1Wins,
-          }
-          if (teamAPlayer2) {
-            team1Obj.player2 = teamAPlayer2
+            // No winner field - not in DUPR API
           }
 
-          // Build team2 object - only include player2 for doubles
-          const team2Obj: any = {
+          // Build teamB object - correct structure for DUPR API
+          const teamBObj: any = {
             player1: teamBPlayer1,
+            player2: teamBPlayer2 || null, // null for singles, DUPR ID for doubles
             game1: gameScores[0]?.scoreB || 0,
             game2: gameScores[1]?.scoreB || 0,
             game3: gameScores[2]?.scoreB || 0,
             game4: gameScores[3]?.scoreB || 0,
             game5: gameScores[4]?.scoreB || 0,
-            winner: !team1Wins,
-          }
-          if (teamBPlayer2) {
-            team2Obj.player2 = teamBPlayer2
+            // No winner field - not in DUPR API
           }
 
           // Generate unique identifier for this match (DUPR FAQ requirement)
           const identifier = `${match.id}-${Date.now()}`
 
-          // Build match object - order may matter, so build explicitly
+          // Build match object - correct structure for DUPR API
           const duprMatch: DuprMatchData = {
             location,
-            eventDate,
-            team1: team1Obj,
-            team2: team2Obj,
+            matchDate,
+            teamA: teamAObj,
+            teamB: teamBObj,
             format: teamAPlayer2 ? 'DOUBLES' : 'SINGLES',
             event: eventName,
-            matchType: 'SIDEOUT',
-            identifier, // Unique identifier for each match
-            matchSource, // Required: 'PARTNER' (we're a partner, not a club)
-            // Optional fields - only include if they have values
-          }
-          // Add optional fields only if they exist
-          if (tournamentName) {
-            duprMatch.tournament = tournamentName
-          }
-          if (division.name) {
-            duprMatch.bracket = division.name
+            bracket: division.name || null,
+            matchType: null, // Can be null according to example
+            identifier,
+            matchSource,
+            extras: null, // Optional field, can be null
           }
 
           matchMapping.set(match.id, { matchId: match.id, division })
@@ -699,14 +659,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Call DUPR API using /match/{version}/save endpoint (PUT method)
-    // Use the same approach as working /Public/getBasicInfo endpoint
+    // Call DUPR API using POST /match/1.0/create endpoint
+    // According to working example from colleague
     const baseUrls = [
       'https://api.dupr.gg',
       'https://api.uat.dupr.gg',
+      'https://uat.mydupr.com', // UAT domain from example
     ]
-    // Try different API versions for /match/{version}/save endpoint
-    const apiVersions = ['v1.0', 'v1', 'v1.1']
 
     // Log the data being sent for debugging
     console.log('DUPR API Request:', {
@@ -721,8 +680,8 @@ export async function POST(req: NextRequest) {
       console.log('Full first match request body:', JSON.stringify(duprMatches[0], null, 2))
     }
 
-    // Send each match individually using PUT /match/{version}/save
-    // According to DUPR API docs, this is the correct endpoint
+    // Send each match individually using POST /match/1.0/create
+    // This is the correct endpoint according to working example
     const individualResults: Array<{ success: boolean; matchId?: string; error?: string; index: number }> = []
     
     for (let i = 0; i < duprMatches.length; i++) {
@@ -730,51 +689,49 @@ export async function POST(req: NextRequest) {
       let matchResponse: Response | null = null
       let matchError: string = ''
 
-      // Try different API versions and base URLs (same approach as /Public/getBasicInfo)
-      saveLoop: for (const baseUrl of baseUrls) {
-        for (const version of apiVersions) {
-          const url = `${baseUrl}/match/${version}/save`
-          
-          try {
-            const requestBody = JSON.stringify(match)
-            console.log(`Attempting DUPR API save call ${i + 1}/${duprMatches.length} to: ${url}`)
-            console.log(`Request body for match ${i + 1}:`, requestBody)
-            matchResponse = await fetch(url, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `Bearer ${duprAccessToken}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              body: requestBody,
-            })
+      // Try different base URLs (same approach as /Public/getBasicInfo)
+      createLoop: for (const baseUrl of baseUrls) {
+        const url = `${baseUrl}/api/match/1.0/create`
+        
+        try {
+          const requestBody = JSON.stringify(match)
+          console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${url}`)
+          console.log(`Request body for match ${i + 1}:`, requestBody)
+          matchResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${duprAccessToken}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: requestBody,
+          })
 
             if (matchResponse.ok) {
-              console.log(`DUPR API save success for match ${i + 1}: ${url}`)
-              break saveLoop
+              console.log(`DUPR API create success for match ${i + 1}: ${url}`)
+              break createLoop
             } else {
               // Clone response to read text without consuming body
               const responseClone = matchResponse.clone()
               const errorText = await responseClone.text()
               matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
-              console.error(`DUPR API save failed for match ${i + 1}: ${url} - ${matchError}`)
+              console.error(`DUPR API create failed for match ${i + 1}: ${url} - ${matchError}`)
               console.error('Full error response:', errorText)
               
-              // If 404, try next version
+              // If 404, try next base URL
               if (matchResponse.status === 404) {
-                continue // Try next version
+                continue // Try next base URL
               } else {
                 // Other error, try next base URL
-                break // Try next baseUrl
+                continue // Try next baseUrl
               }
             }
           } catch (error: any) {
             matchError = error.message
-            console.error(`DUPR API save error for match ${i + 1}: ${url} - ${matchError}`, error)
-            continue // Try next version
+            console.error(`DUPR API create error for match ${i + 1}: ${url} - ${matchError}`, error)
+            continue // Try next base URL
           }
         }
-      }
 
       if (matchResponse && matchResponse.ok) {
         try {
