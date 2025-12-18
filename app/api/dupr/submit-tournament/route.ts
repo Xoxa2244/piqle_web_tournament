@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
     const location = tournament.venueName || tournament.venueAddress || 'Unknown Location'
     const matchDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
     const eventName = tournament.title
-    const matchSource = 'PARTNER' as const
+    const matchSource = 'CLUB' as const
     const clubId = 8206412294 // Required clubId (from working example)
 
     for (const division of tournament.divisions) {
@@ -510,7 +510,7 @@ export async function POST(req: NextRequest) {
               matchType: 'SIDEOUT',
               identifier,
               clubId, // Required field
-              extras: null,
+              extras: {}, // Empty object instead of null (as in working curl example)
               matchSource,
             }
 
