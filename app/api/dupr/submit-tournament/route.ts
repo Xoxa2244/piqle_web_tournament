@@ -198,10 +198,10 @@ export async function POST(req: NextRequest) {
             
             if (tokenResponse.ok) {
               const tokenData = await tokenResponse.json()
-              // Response should contain bearer token (check common field names)
-              duprAccessToken = tokenData.token || tokenData.access_token || tokenData.bearerToken || null
+              // Response structure: {"status":"SUCCESS","result":{"token":"...","expiry":"..."}}
+              duprAccessToken = tokenData.result?.token || tokenData.token || tokenData.access_token || tokenData.bearerToken || null
               if (duprAccessToken) {
-                console.log('Successfully obtained DUPR token')
+                console.log('Successfully obtained DUPR token from client credentials')
                 break
               } else {
                 console.log('Token response OK but no token found in response:', JSON.stringify(tokenData))
@@ -664,7 +664,7 @@ export async function POST(req: NextRequest) {
             matchType: 'SIDEOUT',
             identifier,
             clubId, // Required field
-            extras: null,
+            extras: {}, // Empty object instead of null (as in working curl example)
             matchSource,
           }
 
