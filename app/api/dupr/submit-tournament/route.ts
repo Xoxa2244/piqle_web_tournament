@@ -150,17 +150,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Get DUPR access token - generate new token according to DUPR documentation
-    const duprClientId = process.env.DUPR_CLIENT_ID
+    // According to DUPR docs: base64(client_key + ":" + client_secret) in x-authorization header
+    // Client Key format: ck-xxxxx, Client Secret format: cs-xxxxx
+    const duprClientKey = process.env.DUPR_CLIENT_KEY || process.env.DUPR_CLIENT_ID // Support both naming conventions
     const duprClientSecret = process.env.DUPR_CLIENT_SECRET
     
     let duprAccessToken: string | null = null
     
     // Try to get token using DUPR's custom authentication method
-    // According to DUPR docs: base64(client_key + ":" + client_secret) in x-authorization header
-    if (duprClientId && duprClientSecret) {
+    if (duprClientKey && duprClientSecret) {
       try {
-        // Encode client_key:client_secret in base64
-        const credentials = `${duprClientId}:${duprClientSecret}`
+        // Encode client_key:client_secret in base64 (exact format from DUPR docs)
+        const credentials = `${duprClientKey}:${duprClientSecret}`
         const base64Credentials = Buffer.from(credentials).toString('base64')
         
         const tokenUrls = [
@@ -169,7 +170,13 @@ export async function POST(req: NextRequest) {
         
         for (const tokenUrl of tokenUrls) {
           try {
-            console.log(`Attempting to get DUPR token from: ${tokenUrl}`)
+            console.log(`Attempting to get DUPR token from: ${tokenUrl}`, {
+              hasClientKey: !!duprClientKey,
+              clientKeyLength: duprClientKey?.length || 0,
+              hasClientSecret: !!duprClientSecret,
+              clientSecretLength: duprClientSecret?.length || 0,
+              base64Length: base64Credentials.length,
+            })
             const tokenResponse = await fetch(tokenUrl, {
               method: 'POST',
               headers: {
