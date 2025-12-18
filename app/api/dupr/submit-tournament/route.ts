@@ -167,23 +167,9 @@ export async function POST(req: NextRequest) {
     
     let duprAccessToken: string | null = null
     
-    // Try user access token first (as in working curl example)
-    // User token works better for match creation according to working examples
-    const owner = await prisma.user.findUnique({
-      where: { id: tournament.userId },
-      select: {
-        duprAccessToken: true,
-      },
-    })
-
-    if (owner?.duprAccessToken) {
-      duprAccessToken = owner.duprAccessToken
-      console.log('Using user access token for DUPR API (as in working curl example)')
-    } else {
-      // Fallback to client credentials token if user token not available
-      console.log('User access token not available, trying client credentials token')
-      
-      if (duprClientKey && duprClientSecret) {
+    // Use client credentials token first (as confirmed in Postman test)
+    // Client credentials token works for match creation
+    if (duprClientKey && duprClientSecret) {
         try {
           // Encode client_key:client_secret in base64 (exact format from DUPR docs)
           const credentials = `${duprClientKey}:${duprClientSecret}`
@@ -237,10 +223,25 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // Fallback to user access token if client credentials failed
+    if (!duprAccessToken) {
+      const owner = await prisma.user.findUnique({
+        where: { id: tournament.userId },
+        select: {
+          duprAccessToken: true,
+        },
+      })
+
+      if (owner?.duprAccessToken) {
+        duprAccessToken = owner.duprAccessToken
+        console.log('Using user access token for DUPR API (fallback)')
+      }
+    }
+    
     // Final check - if no token available, return error
     if (!duprAccessToken) {
       return NextResponse.json({ 
-        error: 'Tournament owner does not have DUPR account linked and client credentials token generation failed. Please link DUPR account first.' 
+        error: 'DUPR client credentials not available and tournament owner does not have DUPR account linked. Please configure DUPR_CLIENT_KEY/DUPR_CLIENT_SECRET or link DUPR account.' 
       }, { status: 400 })
     }
 
@@ -254,7 +255,7 @@ export async function POST(req: NextRequest) {
     const matchDate = tournament.startDate.toISOString().split('T')[0] // yyyy-MM-dd format
     const eventName = tournament.title
     const matchSource = 'CLUB' as const
-    const clubId = 8206412294 // Required clubId (from working example)
+    const clubId = 4465399627 // Required clubId (from working Postman test)
 
     for (const division of tournament.divisions) {
       for (const match of division.matches) {
@@ -494,9 +495,9 @@ export async function POST(req: NextRequest) {
             const team1Wins = scoreA > scoreB
 
             // Build teamA object - correct structure for DUPR API
+            // For SINGLES: exclude player2 field entirely (not null)
             const teamAObj: any = {
               player1: teamAPlayer1,
-              player2: teamAPlayer2 || null, // null for singles, DUPR ID for doubles
               game1: scoreA,
               game2: 0,
               game3: 0,
@@ -504,11 +505,15 @@ export async function POST(req: NextRequest) {
               game5: 0,
               // No winner field - not in DUPR API
             }
+            // Only include player2 for DOUBLES
+            if (teamAPlayer2) {
+              teamAObj.player2 = teamAPlayer2
+            }
 
             // Build teamB object - correct structure for DUPR API
+            // For SINGLES: exclude player2 field entirely (not null)
             const teamBObj: any = {
               player1: teamBPlayer1,
-              player2: teamBPlayer2 || null, // null for singles, DUPR ID for doubles
               game1: scoreB,
               game2: 0,
               game3: 0,
@@ -516,9 +521,15 @@ export async function POST(req: NextRequest) {
               game5: 0,
               // No winner field - not in DUPR API
             }
+            // Only include player2 for DOUBLES
+            if (teamBPlayer2) {
+              teamBObj.player2 = teamBPlayer2
+            }
 
             // Generate unique identifier for this match (DUPR FAQ requirement)
-            const identifier = `${match.id}-${gameIndex}-${Date.now()}`
+            // Format: matchId-gameIndex-timestamp-random
+            const randomSuffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0')
+            const identifier = `${match.id}-${gameIndex}-${Date.now()}-${randomSuffix}`
 
             // Build match object - exact structure from working example
             const duprMatch: DuprMatchData = {
@@ -630,9 +641,9 @@ export async function POST(req: NextRequest) {
           }
 
           // Build teamA object - correct structure for DUPR API
+          // For SINGLES: exclude player2 field entirely (not null)
           const teamAObj: any = {
             player1: teamAPlayer1,
-            player2: teamAPlayer2 || null, // null for singles, DUPR ID for doubles
             game1: gameScores[0]?.scoreA || 0,
             game2: gameScores[1]?.scoreA || 0,
             game3: gameScores[2]?.scoreA || 0,
@@ -640,11 +651,15 @@ export async function POST(req: NextRequest) {
             game5: gameScores[4]?.scoreA || 0,
             // No winner field - not in DUPR API
           }
+          // Only include player2 for DOUBLES
+          if (teamAPlayer2) {
+            teamAObj.player2 = teamAPlayer2
+          }
 
           // Build teamB object - correct structure for DUPR API
+          // For SINGLES: exclude player2 field entirely (not null)
           const teamBObj: any = {
             player1: teamBPlayer1,
-            player2: teamBPlayer2 || null, // null for singles, DUPR ID for doubles
             game1: gameScores[0]?.scoreB || 0,
             game2: gameScores[1]?.scoreB || 0,
             game3: gameScores[2]?.scoreB || 0,
@@ -652,9 +667,15 @@ export async function POST(req: NextRequest) {
             game5: gameScores[4]?.scoreB || 0,
             // No winner field - not in DUPR API
           }
+          // Only include player2 for DOUBLES
+          if (teamBPlayer2) {
+            teamBObj.player2 = teamBPlayer2
+          }
 
           // Generate unique identifier for this match (DUPR FAQ requirement)
-          const identifier = `${match.id}-${Date.now()}`
+          // Format: matchId-timestamp-random
+          const randomSuffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0')
+          const identifier = `${match.id}-${Date.now()}-${randomSuffix}`
 
           // Build match object - exact structure from working example
           const duprMatch: DuprMatchData = {
