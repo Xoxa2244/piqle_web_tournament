@@ -660,12 +660,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Call DUPR API using POST /match/1.0/create endpoint
-    // According to working example from colleague
-    // Production URLs first, then UAT for testing
+    // Use the same base URLs as working /Public/getBasicInfo endpoint
     const baseUrls = [
-      'https://mydupr.com', // Production domain
-      'https://api.dupr.gg', // Production API domain (without /api/ in path)
-      'https://uat.mydupr.com', // UAT domain (for testing only)
+      'https://api.dupr.gg', // Production API (same as profile endpoint)
+      'https://api.uat.dupr.gg', // UAT API (same as profile endpoint)
+    ]
+    
+    // Try different endpoint paths (in case version or path differs)
+    const endpointPaths = [
+      '/match/1.0/create', // Standard path
+      '/api/match/1.0/create', // Alternative path with /api/
+      '/match/v1.0/create', // Alternative version format
     ]
 
     // Log the data being sent for debugging
@@ -690,14 +695,10 @@ export async function POST(req: NextRequest) {
       let matchResponse: Response | null = null
       let matchError: string = ''
 
-      // Try different base URLs (same approach as /Public/getBasicInfo)
+      // Try different base URLs and endpoint paths (same approach as /Public/getBasicInfo)
       createLoop: for (const baseUrl of baseUrls) {
-        // For api.dupr.gg, path is /match/1.0/create (no /api/ prefix)
-        // For mydupr.com and uat.mydupr.com, path is /api/match/1.0/create
-        const path = baseUrl.includes('api.dupr.gg') 
-          ? '/match/1.0/create' 
-          : '/api/match/1.0/create'
-        const url = `${baseUrl}${path}`
+        for (const endpointPath of endpointPaths) {
+          const url = `${baseUrl}${endpointPath}`
         
         try {
           const requestBody = JSON.stringify(match)
@@ -715,7 +716,7 @@ export async function POST(req: NextRequest) {
 
             if (matchResponse.ok) {
               console.log(`DUPR API create success for match ${i + 1}: ${url}`)
-              break createLoop
+              break createLoop // Exit both loops on success
             } else {
               // Clone response to read text without consuming body
               const responseClone = matchResponse.clone()
@@ -724,20 +725,20 @@ export async function POST(req: NextRequest) {
               console.error(`DUPR API create failed for match ${i + 1}: ${url} - ${matchError}`)
               console.error('Full error response:', errorText)
               
-              // If 404, try next base URL
-              if (matchResponse.status === 404) {
-                continue // Try next base URL
-              } else {
-                // Other error, try next base URL
-                continue // Try next baseUrl
-              }
+              // Continue to next endpoint path
+              continue
             }
           } catch (error: any) {
             matchError = error.message
             console.error(`DUPR API create error for match ${i + 1}: ${url} - ${matchError}`, error)
-            continue // Try next base URL
+            continue // Try next endpoint path
           }
         }
+        // If all endpoint paths failed for this base URL, try next base URL
+        if (matchResponse && matchResponse.ok) {
+          break createLoop
+        }
+      }
 
       if (matchResponse && matchResponse.ok) {
         try {
