@@ -165,7 +165,6 @@ export async function POST(req: NextRequest) {
         
         const tokenUrls = [
           'https://prod.mydupr.com/api/auth/1.0/token', // Production token endpoint
-          'https://uat.mydupr.com/api/auth/1.0/token', // UAT token endpoint
         ]
         
         for (const tokenUrl of tokenUrls) {
@@ -672,8 +671,6 @@ export async function POST(req: NextRequest) {
     const baseUrls = [
       'https://prod.mydupr.com', // Production domain (from working example)
       'https://api.dupr.gg', // Production API (fallback)
-      'https://api.uat.dupr.gg', // UAT API (fallback)
-      'https://uat.mydupr.com', // UAT domain (fallback)
     ]
     
     // Endpoint path is always /api/match/1.0/create for mydupr.com domains

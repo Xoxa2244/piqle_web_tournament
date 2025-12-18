@@ -50,13 +50,12 @@ export async function POST(req: NextRequest) {
       // According to DUPR docs: This endpoint works with user access token
       const baseUrls = [
         'https://api.dupr.gg',
-        'https://api.uat.dupr.gg',
       ]
       
       let response: Response | null = null
       let lastError: string = ''
       
-      // Try both production and UAT endpoints
+      // Try production endpoint
       for (const baseUrl of baseUrls) {
         // Build URL with duprId as query parameter
         const url = `${baseUrl}/Public/getBasicInfo?duprId=${encodeURIComponent(user.duprId)}`
