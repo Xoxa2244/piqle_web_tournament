@@ -155,6 +155,16 @@ export async function POST(req: NextRequest) {
     const duprClientKey = process.env.DUPR_CLIENT_KEY || process.env.DUPR_CLIENT_ID // Support both naming conventions
     const duprClientSecret = process.env.DUPR_CLIENT_SECRET
     
+    console.log('DUPR Token Generation Debug:', {
+      hasClientKey: !!duprClientKey,
+      clientKeySource: process.env.DUPR_CLIENT_KEY ? 'DUPR_CLIENT_KEY' : (process.env.DUPR_CLIENT_ID ? 'DUPR_CLIENT_ID' : 'none'),
+      clientKeyLength: duprClientKey?.length || 0,
+      clientKeyPrefix: duprClientKey?.substring(0, 3) || 'none',
+      hasClientSecret: !!duprClientSecret,
+      clientSecretLength: duprClientSecret?.length || 0,
+      clientSecretPrefix: duprClientSecret?.substring(0, 3) || 'none',
+    })
+    
     let duprAccessToken: string | null = null
     
     // Try to get token using DUPR's custom authentication method
@@ -205,8 +215,10 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (error) {
-        console.log('Error getting DUPR token, will use user token')
+        console.log('Error getting DUPR token, will use user token:', error)
       }
+    } else {
+      console.log('DUPR client credentials not available (missing DUPR_CLIENT_KEY or DUPR_CLIENT_SECRET), will use user token')
     }
     
     // Fallback to user access token if client credentials failed
@@ -748,6 +760,15 @@ export async function POST(req: NextRequest) {
               matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
               console.error(`DUPR API create failed for match ${i + 1}: ${tryUrl} - ${matchError}`)
               console.error('Full error response:', errorText)
+              console.error('Request details:', {
+                url: tryUrl,
+                method: 'POST',
+                status: matchResponse.status,
+                statusText: matchResponse.statusText,
+                hasToken: !!duprAccessToken,
+                tokenLength: duprAccessToken?.length || 0,
+                requestBodyLength: requestBody.length,
+              })
               
               // Continue to next URL variant
               continue
