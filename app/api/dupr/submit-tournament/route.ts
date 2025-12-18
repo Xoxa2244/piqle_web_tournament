@@ -167,77 +167,81 @@ export async function POST(req: NextRequest) {
     
     let duprAccessToken: string | null = null
     
-    // Try to get token using DUPR's custom authentication method
-    if (duprClientKey && duprClientSecret) {
-      try {
-        // Encode client_key:client_secret in base64 (exact format from DUPR docs)
-        const credentials = `${duprClientKey}:${duprClientSecret}`
-        const base64Credentials = Buffer.from(credentials).toString('base64')
-        
-        const tokenUrls = [
-          'https://prod.mydupr.com/api/auth/1.0/token', // Production token endpoint
-        ]
-        
-        for (const tokenUrl of tokenUrls) {
-          try {
-            console.log(`Attempting to get DUPR token from: ${tokenUrl}`, {
-              hasClientKey: !!duprClientKey,
-              clientKeyLength: duprClientKey?.length || 0,
-              hasClientSecret: !!duprClientSecret,
-              clientSecretLength: duprClientSecret?.length || 0,
-              base64Length: base64Credentials.length,
-            })
-            const tokenResponse = await fetch(tokenUrl, {
-              method: 'POST',
-              headers: {
-                'x-authorization': base64Credentials, // Base64 encoded credentials in header
-                'accept': 'application/json',
-              },
-              // No body needed - credentials are in x-authorization header
-            })
-            
-            if (tokenResponse.ok) {
-              const tokenData = await tokenResponse.json()
-              // Response structure: {"status":"SUCCESS","result":{"token":"...","expiry":"..."}}
-              duprAccessToken = tokenData.result?.token || tokenData.token || tokenData.access_token || tokenData.bearerToken || null
-              if (duprAccessToken) {
-                console.log('Successfully obtained DUPR token from client credentials')
-                break
-              } else {
-                console.log('Token response OK but no token found in response:', JSON.stringify(tokenData))
-              }
-            } else {
-              const errorText = await tokenResponse.text()
-              console.log(`Failed to get token from ${tokenUrl}: ${tokenResponse.status} - ${errorText.substring(0, 200)}`)
-            }
-          } catch (error: any) {
-            console.log(`Error getting token from ${tokenUrl}:`, error.message)
-          }
-        }
-      } catch (error) {
-        console.log('Error getting DUPR token, will use user token:', error)
-      }
+    // Try user access token first (as in working curl example)
+    // User token works better for match creation according to working examples
+    const owner = await prisma.user.findUnique({
+      where: { id: tournament.userId },
+      select: {
+        duprAccessToken: true,
+      },
+    })
+
+    if (owner?.duprAccessToken) {
+      duprAccessToken = owner.duprAccessToken
+      console.log('Using user access token for DUPR API (as in working curl example)')
     } else {
-      console.log('DUPR client credentials not available (missing DUPR_CLIENT_KEY or DUPR_CLIENT_SECRET), will use user token')
+      // Fallback to client credentials token if user token not available
+      console.log('User access token not available, trying client credentials token')
+      
+      if (duprClientKey && duprClientSecret) {
+        try {
+          // Encode client_key:client_secret in base64 (exact format from DUPR docs)
+          const credentials = `${duprClientKey}:${duprClientSecret}`
+          const base64Credentials = Buffer.from(credentials).toString('base64')
+          
+          const tokenUrls = [
+            'https://prod.mydupr.com/api/auth/1.0/token', // Production token endpoint
+          ]
+          
+          for (const tokenUrl of tokenUrls) {
+            try {
+              console.log(`Attempting to get DUPR token from: ${tokenUrl}`, {
+                hasClientKey: !!duprClientKey,
+                clientKeyLength: duprClientKey?.length || 0,
+                hasClientSecret: !!duprClientSecret,
+                clientSecretLength: duprClientSecret?.length || 0,
+                base64Length: base64Credentials.length,
+              })
+              const tokenResponse = await fetch(tokenUrl, {
+                method: 'POST',
+                headers: {
+                  'x-authorization': base64Credentials, // Base64 encoded credentials in header
+                  'accept': 'application/json',
+                },
+                // No body needed - credentials are in x-authorization header
+              })
+              
+              if (tokenResponse.ok) {
+                const tokenData = await tokenResponse.json()
+                // Response structure: {"status":"SUCCESS","result":{"token":"...","expiry":"..."}}
+                duprAccessToken = tokenData.result?.token || tokenData.token || tokenData.access_token || tokenData.bearerToken || null
+                if (duprAccessToken) {
+                  console.log('Successfully obtained DUPR token from client credentials')
+                  break
+                } else {
+                  console.log('Token response OK but no token found in response:', JSON.stringify(tokenData))
+                }
+              } else {
+                const errorText = await tokenResponse.text()
+                console.log(`Failed to get token from ${tokenUrl}: ${tokenResponse.status} - ${errorText.substring(0, 200)}`)
+              }
+            } catch (error: any) {
+              console.log(`Error getting token from ${tokenUrl}:`, error.message)
+            }
+          }
+        } catch (error) {
+          console.log('Error getting DUPR token from client credentials:', error)
+        }
+      } else {
+        console.log('DUPR client credentials not available (missing DUPR_CLIENT_KEY or DUPR_CLIENT_SECRET)')
+      }
     }
     
-    // Fallback to user access token if client credentials failed
+    // Final check - if no token available, return error
     if (!duprAccessToken) {
-      const owner = await prisma.user.findUnique({
-        where: { id: tournament.userId },
-        select: {
-          duprAccessToken: true,
-        },
-      })
-
-      if (!owner?.duprAccessToken) {
-        return NextResponse.json({ 
-          error: 'Tournament owner does not have DUPR account linked. Please link DUPR account first.' 
-        }, { status: 400 })
-      }
-
-      duprAccessToken = owner.duprAccessToken
-      console.log('Using user access token for DUPR API (client credentials not available)')
+      return NextResponse.json({ 
+        error: 'Tournament owner does not have DUPR account linked and client credentials token generation failed. Please link DUPR account first.' 
+      }, { status: 400 })
     }
 
     // Prepare matches for DUPR submission
