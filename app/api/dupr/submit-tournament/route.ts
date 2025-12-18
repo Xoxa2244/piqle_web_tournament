@@ -164,8 +164,8 @@ export async function POST(req: NextRequest) {
         const base64Credentials = Buffer.from(credentials).toString('base64')
         
         const tokenUrls = [
-          'https://prod.mydupr.com/api/token', // Production token endpoint
-          'https://uat.mydupr.com/api/token', // UAT token endpoint
+          'https://prod.mydupr.com/api/auth/1.0/token', // Production token endpoint
+          'https://uat.mydupr.com/api/auth/1.0/token', // UAT token endpoint
         ]
         
         for (const tokenUrl of tokenUrls) {
@@ -175,8 +175,7 @@ export async function POST(req: NextRequest) {
               method: 'POST',
               headers: {
                 'x-authorization': base64Credentials, // Base64 encoded credentials in header
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
+                'accept': 'application/json',
               },
               // No body needed - credentials are in x-authorization header
             })
