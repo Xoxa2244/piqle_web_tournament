@@ -661,10 +661,11 @@ export async function POST(req: NextRequest) {
 
     // Call DUPR API using POST /match/1.0/create endpoint
     // According to working example from colleague
+    // Production URLs first, then UAT for testing
     const baseUrls = [
-      'https://api.dupr.gg',
-      'https://api.uat.dupr.gg',
-      'https://uat.mydupr.com', // UAT domain from example
+      'https://mydupr.com', // Production domain
+      'https://api.dupr.gg', // Production API domain (without /api/ in path)
+      'https://uat.mydupr.com', // UAT domain (for testing only)
     ]
 
     // Log the data being sent for debugging
@@ -691,7 +692,12 @@ export async function POST(req: NextRequest) {
 
       // Try different base URLs (same approach as /Public/getBasicInfo)
       createLoop: for (const baseUrl of baseUrls) {
-        const url = `${baseUrl}/api/match/1.0/create`
+        // For api.dupr.gg, path is /match/1.0/create (no /api/ prefix)
+        // For mydupr.com and uat.mydupr.com, path is /api/match/1.0/create
+        const path = baseUrl.includes('api.dupr.gg') 
+          ? '/match/1.0/create' 
+          : '/api/match/1.0/create'
+        const url = `${baseUrl}${path}`
         
         try {
           const requestBody = JSON.stringify(match)
