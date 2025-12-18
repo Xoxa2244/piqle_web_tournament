@@ -701,16 +701,22 @@ export async function POST(req: NextRequest) {
       let matchResponse: Response | null = null
       let matchError: string = ''
 
-      // Try different base URLs and endpoint paths (same approach as /Public/getBasicInfo)
+      // Try different base URLs (same approach as /Public/getBasicInfo)
       createLoop: for (const baseUrl of baseUrls) {
-        for (const endpointPath of endpointPaths) {
-          const url = `${baseUrl}${endpointPath}`
+        const endpointPath = getEndpointPath(baseUrl)
+        const url = `${baseUrl}${endpointPath}`
         
-        try {
-          const requestBody = JSON.stringify(match)
-          console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${tryUrl}`)
-          console.log(`Request body for match ${i + 1}:`, requestBody)
-          matchResponse = await fetch(tryUrl, {
+        // For api.dupr.gg, also try with /api/ prefix
+        const alternativeUrls = baseUrl.includes('api.dupr.gg') 
+          ? [`${baseUrl}/api/match/1.0/create`, url]
+          : [url]
+        
+        for (const tryUrl of alternativeUrls) {
+          try {
+            const requestBody = JSON.stringify(match)
+            console.log(`Attempting DUPR API create call ${i + 1}/${duprMatches.length} to: ${tryUrl}`)
+            console.log(`Request body for match ${i + 1}:`, requestBody)
+            matchResponse = await fetch(tryUrl, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${duprAccessToken}`,
