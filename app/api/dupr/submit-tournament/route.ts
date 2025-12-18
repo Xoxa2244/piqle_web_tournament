@@ -149,54 +149,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No access to this tournament' }, { status: 403 })
     }
 
-    // Get DUPR access token - generate new token via client credentials
+    // Get DUPR access token - generate new token according to DUPR documentation
     const duprClientId = process.env.DUPR_CLIENT_ID
     const duprClientSecret = process.env.DUPR_CLIENT_SECRET
     
     let duprAccessToken: string | null = null
     
-    // Try to get client credentials token (preferred - generates new token)
+    // Try to get token using DUPR's custom authentication method
+    // According to DUPR docs: base64(client_key + ":" + client_secret) in x-authorization header
     if (duprClientId && duprClientSecret) {
       try {
+        // Encode client_key:client_secret in base64
+        const credentials = `${duprClientId}:${duprClientSecret}`
+        const base64Credentials = Buffer.from(credentials).toString('base64')
+        
         const tokenUrls = [
-          'https://api.dupr.gg/oauth/token',
-          'https://api.uat.dupr.gg/oauth/token',
-          'https://prod.mydupr.com/api/oauth/token', // Production token endpoint
+          'https://prod.mydupr.com/api/token', // Production token endpoint
+          'https://uat.mydupr.com/api/token', // UAT token endpoint
         ]
         
         for (const tokenUrl of tokenUrls) {
           try {
-            console.log(`Attempting to get DUPR client credentials token from: ${tokenUrl}`)
+            console.log(`Attempting to get DUPR token from: ${tokenUrl}`)
             const tokenResponse = await fetch(tokenUrl, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'x-authorization': base64Credentials, // Base64 encoded credentials in header
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
               },
-              body: new URLSearchParams({
-                grant_type: 'client_credentials',
-                client_id: duprClientId,
-                client_secret: duprClientSecret,
-              }),
+              // No body needed - credentials are in x-authorization header
             })
             
             if (tokenResponse.ok) {
               const tokenData = await tokenResponse.json()
-              duprAccessToken = tokenData.access_token || null
+              // Response should contain bearer token (check common field names)
+              duprAccessToken = tokenData.token || tokenData.access_token || tokenData.bearerToken || null
               if (duprAccessToken) {
-                console.log('Successfully obtained DUPR client credentials token')
+                console.log('Successfully obtained DUPR token')
                 break
+              } else {
+                console.log('Token response OK but no token found in response:', JSON.stringify(tokenData))
               }
             } else {
               const errorText = await tokenResponse.text()
-              console.log(`Failed to get client credentials token from ${tokenUrl}: ${tokenResponse.status} - ${errorText.substring(0, 200)}`)
+              console.log(`Failed to get token from ${tokenUrl}: ${tokenResponse.status} - ${errorText.substring(0, 200)}`)
             }
           } catch (error: any) {
-            console.log(`Error getting client credentials token from ${tokenUrl}:`, error.message)
+            console.log(`Error getting token from ${tokenUrl}:`, error.message)
           }
         }
       } catch (error) {
-        console.log('Error getting client credentials token, will use user token')
+        console.log('Error getting DUPR token, will use user token')
       }
     }
     
