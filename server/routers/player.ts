@@ -19,6 +19,18 @@ export const playerRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { tournamentId, ...playerData } = input
       
+      // Check if tournament is MLP and validate gender
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: tournamentId },
+        select: { format: true },
+      })
+
+      if (tournament?.format === 'MLP') {
+        if (!input.gender || input.gender === 'X') {
+          throw new Error('Gender (M or F) is required for players in MLP tournaments')
+        }
+      }
+      
       const player = await ctx.prisma.player.create({
         data: {
           ...playerData,
@@ -124,6 +136,34 @@ export const playerRouter = createTRPCRouter({
         throw new Error('Player not found')
       }
 
+      // Check if player is in any MLP tournament teams and validate gender
+      if (data.gender !== undefined) {
+        const playerTeams = await ctx.prisma.teamPlayer.findMany({
+          where: { playerId: id },
+          include: {
+            team: {
+              include: {
+                division: {
+                  include: {
+                    tournament: {
+                      select: { format: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        })
+
+        const isInMLPTournament = playerTeams.some(
+          tp => tp.team.division.tournament.format === 'MLP'
+        )
+
+        if (isInMLPTournament && (!data.gender || data.gender === 'X')) {
+          throw new Error('Cannot set gender to X or empty. Gender (M or F) is required for players in MLP tournaments')
+        }
+      }
+
       const updatedPlayer = await ctx.prisma.player.update({
         where: { id },
         data,
@@ -206,6 +246,28 @@ export const playerRouter = createTRPCRouter({
 
       if (!team) {
         throw new Error('Team not found')
+      }
+
+      // Get tournament format
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: team.division.tournamentId },
+        select: { format: true },
+      })
+
+      // Get player
+      const player = await ctx.prisma.player.findUnique({
+        where: { id: input.playerId },
+      })
+
+      if (!player) {
+        throw new Error('Player not found')
+      }
+
+      // Validate gender for MLP tournaments
+      if (tournament?.format === 'MLP') {
+        if (!player.gender || player.gender === 'X') {
+          throw new Error('Player must have gender (M or F) set before adding to MLP team. Please update player profile first.')
+        }
       }
 
       const teamPlayer = await ctx.prisma.teamPlayer.create({

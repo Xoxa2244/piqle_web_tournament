@@ -237,15 +237,25 @@ export const importRouter = createTRPCRouter({
           
           // Create players
           for (const participant of teamParticipants) {
+            // Parse age and create birthDate only if age is valid
+            let birthDate: Date | undefined = undefined
+            const ageStr = participant['Age']?.trim()
+            if (ageStr) {
+              const age = parseInt(ageStr)
+              if (!isNaN(age) && age > 0 && age < 150) {
+                birthDate = new Date(new Date().getFullYear() - age, 0, 1)
+              }
+            }
+            
             const player = await ctx.prisma.player.create({
               data: {
                 tournamentId: input.tournamentId,
                 firstName: participant['First Name'],
                 lastName: participant['Last Name'],
-                gender: participant['Gender'] === 'M' ? 'M' : 'F',
-                birthDate: new Date(new Date().getFullYear() - parseInt(participant['Age']), 0, 1),
-                dupr: participant['DUPR ID'] || null,
-                duprRating: participant['DUPR rating'] ? parseFloat(participant['DUPR rating']) : null,
+                gender: participant['Gender'] === 'M' ? 'M' : participant['Gender'] === 'F' ? 'F' : undefined,
+                birthDate,
+                dupr: participant['DUPR ID']?.trim() || null,
+                duprRating: participant['DUPR rating']?.trim() ? parseFloat(participant['DUPR rating']) : null,
               }
             })
             

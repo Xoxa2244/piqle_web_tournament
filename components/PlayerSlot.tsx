@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { formatDuprRating } from '@/lib/utils'
 import { 
   Plus, 
   GripVertical, 
@@ -145,7 +146,7 @@ export default function PlayerSlot({
       {player.duprRating && (
         <Badge variant="outline" className="text-xs">
           <Star className="h-3 w-3 mr-1" />
-          {player.duprRating}
+          {formatDuprRating(player.duprRating)}
         </Badge>
       )}
       

@@ -15,6 +15,15 @@ model User {
   emailVerified            DateTime?
   role                     UserRole                  @default(TD)
   isActive                 Boolean                   @default(true)
+  gender                   Gender?
+  city                     String?
+  duprLink                 String?
+  duprId                   String?                   @map("dupr_id")
+  duprNumericId            BigInt?                   @map("dupr_numeric_id")
+  duprAccessToken          String?                   @map("dupr_access_token")
+  duprRefreshToken         String?                   @map("dupr_refresh_token")
+  duprRatingSingles        Decimal?                  @map("dupr_rating_singles") @db.Decimal(4, 2)
+  duprRatingDoubles        Decimal?                  @map("dupr_rating_doubles") @db.Decimal(4, 2)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   accounts                 Account[]
@@ -24,6 +33,7 @@ model User {
   tournaments              Tournament[]
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
+  tournamentRatings        TournamentRating[]
 
   @@map("users")
 }
@@ -78,6 +88,8 @@ model Tournament {
   entryFee                Decimal?                  @db.Decimal(10, 2)
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
+  format                  TournamentFormat          @default(SINGLE_ELIMINATION)
+  allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -88,6 +100,7 @@ model Tournament {
   prizes                  Prize[]
   rrGroups                RoundRobinGroup[]
   tournamentAccesses      TournamentAccess[]
+  tournamentRatings       TournamentRating[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
 
@@ -278,24 +291,31 @@ model DivisionRRBinding {
 }
 
 model Match {
-  id           String           @id @default(uuid())
-  rrGroupId    String?
-  divisionId   String?
-  poolId       String?
-  roundIndex   Int
-  stage        MatchStage
-  teamAId      String
-  teamBId      String
-  bestOfMode   BestOfMode
-  gamesCount   Int
-  targetPoints Int
-  winBy        Int
-  winnerTeamId String?
-  locked       Boolean          @default(false)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  note         String?          @db.VarChar(255)
-  games        Game[]
+  id                    String                @id @default(uuid())
+  rrGroupId             String?
+  divisionId            String?
+  poolId                String?
+  roundIndex            Int
+  stage                 MatchStage
+  teamAId               String
+  teamBId               String
+  bestOfMode            BestOfMode
+  gamesCount            Int
+  targetPoints          Int
+  winBy                 Int
+  winnerTeamId          String?
+  locked                Boolean                @default(false)
+  sendToDupr            Boolean                @default(false) @map("send_to_dupr")
+  duprSubmissionStatus  DuprSubmissionStatus?  @default(PENDING) @map("dupr_submission_status")
+  duprMatchId           String?               @map("dupr_match_id")
+  duprSubmissionError   String?               @map("dupr_submission_error")
+  duprSubmittedAt       DateTime?             @map("dupr_submitted_at")
+  duprRetryCount        Int                   @default(0) @map("dupr_retry_count")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  note                  String?                @db.VarChar(255)
+  games                 Game[]
+  tiebreaker            Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
@@ -309,15 +329,30 @@ model Game {
   id        String      @id @default(uuid())
   matchId   String
   index     Int
-  scoreA    Int         @default(0)
-  scoreB    Int         @default(0)
+  scoreA    Int? // Nullable - empty until score is entered
+  scoreB    Int? // Nullable - empty until score is entered
   winner    GameWinner?
+  gameType  GameType? // For MLP: WOMEN, MEN, MIXED_1, MIXED_2
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   match     Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([matchId, index])
   @@map("games")
+}
+
+model Tiebreaker {
+  id           String   @id @default(uuid())
+  matchId      String   @unique
+  teamAScore   Int      @default(0)
+  teamBScore   Int      @default(0)
+  winnerTeamId String?
+  sequence     Json? // Array of { order, teamAPlayerId, teamBPlayerId } - optional
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  match        Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@map("tiebreakers")
 }
 
 model Standing {
@@ -404,6 +439,21 @@ model TournamentAccessRequest {
 
   @@unique([userId, tournamentId]) // One request per user per tournament
   @@map("tournament_access_requests")
+}
+
+model TournamentRating {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  rating       RatingType
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tournamentId]) // One rating per user per tournament
+  @@map("tournament_ratings")
 }
 
 enum UserRole {
@@ -508,4 +558,27 @@ enum DivisionStage {
   FINAL_IN_PROGRESS
   FINAL_COMPLETE
   DIVISION_COMPLETE
+}
+
+enum RatingType {
+  LIKE
+  DISLIKE
+}
+
+enum TournamentFormat {
+  SINGLE_ELIMINATION
+  MLP
+}
+
+enum GameType {
+  WOMEN
+  MEN
+  MIXED_1
+  MIXED_2
+}
+
+enum DuprSubmissionStatus {
+  PENDING
+  SUCCESS
+  FAILED
 }

@@ -18,9 +18,13 @@ interface Match {
   id: string
   teamA: Team | null
   teamB: Team | null
-  games: Array<{ scoreA: number; scoreB: number }>
+  games: Array<{ scoreA: number | null; scoreB: number | null; winner?: 'A' | 'B' | null }>
   roundIndex: number
   stage: string
+  tiebreaker?: { winnerTeamId: string | null } | null
+  winnerTeamId?: string | null
+  gamesCount?: number
+  isMLP?: boolean
 }
 
 interface BracketPyramidProps {
@@ -102,8 +106,8 @@ export default function BracketPyramid({
       return { status: 'scheduled', text: 'Awaiting score' }
     }
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     if (totalScoreA > totalScoreB || totalScoreB > totalScoreA) {
       return { status: 'completed', text: 'Completed' }
@@ -113,10 +117,52 @@ export default function BracketPyramid({
   }
 
   const getWinner = (match: Match) => {
+    // For MLP matches, check tiebreaker first, then winnerTeamId, then count games won
+    if (match.isMLP && (match.gamesCount === 4 || (match.games && match.games.length === 4))) {
+      // Check tiebreaker winner first
+      if (match.tiebreaker?.winnerTeamId) {
+        if (match.teamA && match.teamA.id === match.tiebreaker.winnerTeamId) return match.teamA
+        if (match.teamB && match.teamB.id === match.tiebreaker.winnerTeamId) return match.teamB
+      }
+      
+      // Check winnerTeamId
+      if (match.winnerTeamId) {
+        if (match.teamA && match.teamA.id === match.winnerTeamId) return match.teamA
+        if (match.teamB && match.teamB.id === match.winnerTeamId) return match.teamB
+      }
+      
+      // Count games won if all games are completed
+      if (match.games && match.games.length === 4) {
+        let teamAWins = 0
+        let teamBWins = 0
+        
+        for (const game of match.games) {
+          if (game.winner === 'A') {
+            teamAWins++
+          } else if (game.winner === 'B') {
+            teamBWins++
+          } else if (game.scoreA !== null && game.scoreB !== null) {
+            if (game.scoreA > game.scoreB) {
+              teamAWins++
+            } else if (game.scoreB > game.scoreA) {
+              teamBWins++
+            }
+          }
+        }
+        
+        if (teamAWins >= 3) return match.teamA
+        if (teamBWins >= 3) return match.teamB
+        // If 2-2, winner is determined by tiebreaker (already checked above)
+      }
+      
+      return null
+    }
+    
+    // For non-MLP matches, use sum of scores
     if (!match.games || match.games.length === 0) return null
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     if (totalScoreA > totalScoreB) return match.teamA
     if (totalScoreB > totalScoreA) return match.teamB
@@ -124,34 +170,85 @@ export default function BracketPyramid({
   }
 
   const getScores = (match: Match) => {
+    // For MLP matches, show games won count instead of total points
+    if (match.isMLP && (match.gamesCount === 4 || (match.games && match.games.length === 4))) {
+      if (!match.games || match.games.length === 0) return { scoreA: null, scoreB: null }
+      
+      let teamAWins = 0
+      let teamBWins = 0
+      
+      for (const game of match.games) {
+        if (game.winner === 'A') {
+          teamAWins++
+        } else if (game.winner === 'B') {
+          teamBWins++
+        } else if (game.scoreA !== null && game.scoreB !== null) {
+          if (game.scoreA > game.scoreB) {
+            teamAWins++
+          } else if (game.scoreB > game.scoreA) {
+            teamBWins++
+          }
+        }
+      }
+      
+      return { scoreA: teamAWins, scoreB: teamBWins }
+    }
+    
+    // For non-MLP matches, use sum of scores
     if (!match.games || match.games.length === 0) return { scoreA: null, scoreB: null }
     
-    const totalScoreA = match.games.reduce((sum, game) => sum + game.scoreA, 0)
-    const totalScoreB = match.games.reduce((sum, game) => sum + game.scoreB, 0)
+    const totalScoreA = match.games.reduce((sum, game) => sum + (game.scoreA ?? 0), 0)
+    const totalScoreB = match.games.reduce((sum, game) => sum + (game.scoreB ?? 0), 0)
     
     return { scoreA: totalScoreA, scoreB: totalScoreB }
   }
 
   const getPlacementTeams = () => {
-    const finalMatch = matches.find(m => m.roundIndex === maxRound)
+    // Find Final Match (exclude Third Place Match)
+    const finalMatch = matches.find(m => 
+      m.roundIndex === maxRound && (m as any).note !== 'Third Place Match'
+    )
+    
+    // Find Third Place Match separately
+    const thirdPlaceMatch = matches.find(m => 
+      m.roundIndex === maxRound && (m as any).note === 'Third Place Match'
+    )
+    
     const semiFinalMatches = matches.filter(m => m.roundIndex === maxRound - 1)
     
     if (!finalMatch || semiFinalMatches.length === 0) return { secondPlace: null, thirdPlace: null }
     
+    // 2nd Place = loser of Final Match
     const finalWinner = getWinner(finalMatch)
-    const finalLoser = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
+    const secondPlace = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
     
-    // Find semi-final losers
-    const semiFinalLosers = semiFinalMatches
-      .map(match => {
-        const winner = getWinner(match)
-        return winner === match.teamA ? match.teamB : match.teamA
-      })
-      .filter(team => team !== null)
+    // 3rd Place = loser of Third Place Match (if match exists and is completed)
+    let thirdPlace: Team | null = null
+    if (thirdPlaceMatch) {
+      const thirdPlaceWinner = getWinner(thirdPlaceMatch)
+      if (thirdPlaceWinner) {
+        // Match is completed - loser is the other team
+        thirdPlace = thirdPlaceWinner === thirdPlaceMatch.teamA 
+          ? thirdPlaceMatch.teamB 
+          : thirdPlaceMatch.teamA
+      }
+    }
+    
+    // Fallback: if Third Place Match doesn't exist or isn't completed, use semi-final losers
+    if (!thirdPlace) {
+      const semiFinalLosers = semiFinalMatches
+        .map(match => {
+          const winner = getWinner(match)
+          return winner === match.teamA ? match.teamB : match.teamA
+        })
+        .filter(team => team !== null)
+      
+      thirdPlace = semiFinalLosers.length > 0 ? semiFinalLosers[0] : null
+    }
     
     return {
-      secondPlace: finalLoser,
-      thirdPlace: semiFinalLosers.length > 0 ? semiFinalLosers[0] : null
+      secondPlace,
+      thirdPlace
     }
   }
 

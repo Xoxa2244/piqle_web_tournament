@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 import Link from 'next/link'
+import { getTeamDisplayName } from '@/lib/utils'
 
 interface TeamStanding {
   teamId: string
@@ -53,12 +54,15 @@ interface PlayoffMatch {
   stage: string
 }
 
-export default function DivisionDashboard() {
+function DivisionDashboardContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
   const [scoreModal, setScoreModal] = useState<{
     isOpen: boolean
     matchId: string | null
@@ -66,19 +70,56 @@ export default function DivisionDashboard() {
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
 
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
+
   // Get tournament data
   const { data: tournament, isLoading: tournamentLoading, refetch: refetchTournament } = trpc.tournament.get.useQuery(
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
 
+  // Read division from URL params on mount and when URL changes
+  useEffect(() => {
+    if (!tournament || (tournament.divisions as any[]).length === 0) return
+    
+    const divisions = tournament.divisions as any[]
+    const divisionFromUrl = searchParams.get('division')
+    if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
+      // Division from URL is valid - use it
+      if (selectedDivisionId !== divisionFromUrl) {
+        setSelectedDivisionId(divisionFromUrl)
+      }
+    } else if (!selectedDivisionId && divisions.length > 0) {
+      // No division in URL and no selected division - set first one and update URL
+      const firstDivisionId = divisions[0]?.id || ''
+      setSelectedDivisionId(firstDivisionId)
+      if (!divisionFromUrl) {
+        router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+      }
+    }
+  }, [searchParams, tournament])
+
+  // Update URL when division changes via selector (not from URL read)
+  useEffect(() => {
+    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
+      const divisionFromUrl = searchParams.get('division')
+      // Only update URL if it's different and division was not just set from URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        // Small delay to avoid race condition with URL reading
+        const timeoutId = setTimeout(() => {
+          router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
+        }, 0)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+  }, [selectedDivisionId, tournamentId, router])
+
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
-  
-  if (currentDivision && !selectedDivisionId) {
-    setSelectedDivisionId(currentDivision.id)
-  }
 
   // Get standings for current division
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
@@ -119,6 +160,15 @@ export default function DivisionDashboard() {
       alert(`Error: ${error.message}`)
     },
   })
+
+  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
     setScoreModal({
@@ -187,9 +237,14 @@ export default function DivisionDashboard() {
   }
 
   const standings = standingsData?.standings || []
-  const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
-  const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
-  const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
+  // Type assertion to avoid TypeScript deep type inference issue
+  const divisionMatches = (divisionStage as any)?.matches
+  const matches: any[] = Array.isArray(divisionMatches) ? divisionMatches : []
+  const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
+  const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
+  const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
+
+  const isMLP = tournament?.format === 'MLP'
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
@@ -204,20 +259,12 @@ export default function DivisionDashboard() {
   }
   
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
-
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -227,6 +274,14 @@ export default function DivisionDashboard() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
+        onPublicScoreboardClick={() => {
+          if (!tournament?.isPublicBoardEnabled) {
+            alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+            return
+          }
+          window.open(`/scoreboard/${tournamentId}`, '_blank')
+        }}
       />
       
       {/* Header */}
@@ -344,17 +399,6 @@ export default function DivisionDashboard() {
                           </div>
                         )}
                       </div>
-                      
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-sm font-medium">Tournament Info</span>
-                        </div>
-                        <div className="text-xs text-gray-600 space-y-1">
-                          <p>Round Robin format</p>
-                          <p>Best of 3 games</p>
-                          <p>Win by 2 points</p>
-                        </div>
-                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -384,11 +428,13 @@ export default function DivisionDashboard() {
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
                               <th className="text-center py-2">H2H Diff</th>
-                              <th className="text-center py-2">Status</th>
+                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
-                            {standings.map((team: TeamStanding) => (
+                            {standings.map((team: TeamStanding) => {
+                              // teamName already comes from backend with helper applied
+                              return (
                               <tr key={team.teamId} className="border-b hover:bg-gray-50">
                                 <td className="py-2 font-medium">{team.rank}</td>
                                 <td className="py-2 font-medium">{team.teamName}</td>
@@ -402,23 +448,26 @@ export default function DivisionDashboard() {
                                   </span>
                                 </td>
                                 <td className="py-2 text-center">—</td>
-                                <td className="py-2 text-center">
-                                  {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Auto-qualified
-                                    </Badge>
-                                  ) : hasPlayIn ? (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                      Play-in
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="default" className="bg-green-100 text-green-800">
-                                      Qualified
-                                    </Badge>
-                                  )}
-                                </td>
+                                {!isMLP && (
+                                  <td className="py-2 text-center">
+                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Auto-qualified
+                                      </Badge>
+                                    ) : hasPlayIn ? (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                                        Play-in
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="default" className="bg-green-100 text-green-800">
+                                        Qualified
+                                      </Badge>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
-                            ))}
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -472,8 +521,8 @@ export default function DivisionDashboard() {
                                   <div className="text-xs text-gray-500 font-medium w-6">
                                     #{teamASeed || '?'}
                                   </div>
-                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA?.name || 'TBD'}>
-                                    {match.teamA?.name || 'TBD'}
+                                  <div className="text-sm font-medium text-gray-900 truncate" title={match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamA ? getTeamDisplayName(match.teamA as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'A' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -503,8 +552,8 @@ export default function DivisionDashboard() {
                                     winner === 'B' ? 'text-gray-900' : 
                                     winner === 'A' ? 'text-gray-500' : 
                                     'text-gray-900'
-                                  }`} title={match.teamB?.name || 'TBD'}>
-                                    {match.teamB?.name || 'TBD'}
+                                  }`} title={match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}>
+                                    {match.teamB ? getTeamDisplayName(match.teamB as any, currentDivision?.teamKind) : 'TBD'}
                                   </div>
                                   {winner === 'B' && (
                                     <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
@@ -540,18 +589,26 @@ export default function DivisionDashboard() {
                       id: match.id,
                       teamA: match.teamA ? {
                         id: match.teamA.id,
-                        name: match.teamA.name,
+                        name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
                       } : null,
                       teamB: match.teamB ? {
                         id: match.teamB.id,
-                        name: match.teamB.name,
+                        name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
                         seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                       } : null,
-                      games: match.games || [],
+                      games: (match.games || []).map((g: any) => ({
+                        scoreA: g.scoreA,
+                        scoreB: g.scoreB,
+                        winner: g.winner as 'A' | 'B' | null | undefined
+                      })),
                       roundIndex: match.roundIndex,
                       stage: match.stage,
-                      note: (match as any).note
+                      note: (match as any).note,
+                      tiebreaker: (match as any).tiebreaker,
+                      winnerTeamId: (match as any).winnerTeamId,
+                      gamesCount: (match as any).gamesCount,
+                      isMLP: tournament?.format === 'MLP'
                     }))}
                     showConnectingLines={showConnectingLines}
                     onMatchClick={(matchId) => {
@@ -622,10 +679,18 @@ export default function DivisionDashboard() {
                             name: match.teamB.name,
                             seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
                           } : null,
-                          games: match.games || [],
+                          games: (match.games || []).map((g: any) => ({
+                            scoreA: g.scoreA,
+                            scoreB: g.scoreB,
+                            winner: g.winner as 'A' | 'B' | null | undefined
+                          })),
                           roundIndex: match.roundIndex,
                           stage: match.stage,
-                          note: (match as any).note
+                          note: (match as any).note,
+                          tiebreaker: (match as any).tiebreaker,
+                          winnerTeamId: (match as any).winnerTeamId,
+                          gamesCount: (match as any).gamesCount,
+                          isMLP: tournament?.format === 'MLP'
                         }))}
                         showConnectingLines={showConnectingLines}
                         onMatchClick={(matchId) => {
@@ -662,5 +727,21 @@ export default function DivisionDashboard() {
         />
       )}
     </div>
+  )
+}
+
+// Wrapper with Suspense to prevent hydration errors
+export default function DivisionDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <DivisionDashboardContent />
+    </Suspense>
   )
 }

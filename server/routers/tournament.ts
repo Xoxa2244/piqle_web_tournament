@@ -20,7 +20,9 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)),
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().default(false),
+      allowDuprSubmission: z.boolean().default(false),
       publicSlug: z.string().optional(),
+      format: z.enum(['SINGLE_ELIMINATION', 'MLP']).default('SINGLE_ELIMINATION'),
     }))
     .mutation(async ({ ctx, input }) => {
       // Generate unique publicSlug
@@ -73,6 +75,14 @@ export const tournamentRouter = createTRPCRouter({
         orderBy: { createdAt: 'desc' },
         include: {
           divisions: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              email: true,
+            },
+          },
           _count: {
             select: {
               divisions: true,
@@ -91,80 +101,94 @@ export const tournamentRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Check if user has access to this tournament
-      const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
-      
-      // If user is not owner and has no access, throw error
-      if (!isOwner && !access) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this tournament',
-        })
-      }
+      try {
+        // Check if user has access to this tournament
+        const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+        
+        // If user is not owner and has no access, throw error
+        if (!isOwner && !access) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this tournament',
+          })
+        }
 
-      // Get accessible division IDs for this user
-      const accessibleDivisionIds = await getUserDivisionIds(
-        ctx.prisma,
-        ctx.session.user.id,
-        input.id
-      )
+        // Get accessible division IDs for this user
+        const accessibleDivisionIds = await getUserDivisionIds(
+          ctx.prisma,
+          ctx.session.user.id,
+          input.id
+        )
 
-      const tournament = await ctx.prisma.tournament.findFirst({
-        where: { 
-          id: input.id,
-        },
-        include: {
-          divisions: {
-            where: accessibleDivisionIds.length > 0 ? {
-              id: {
-                in: accessibleDivisionIds,
+        const tournament = await ctx.prisma.tournament.findFirst({
+          where: { 
+            id: input.id,
+          },
+          include: {
+            divisions: {
+              where: accessibleDivisionIds.length > 0 ? {
+                id: {
+                  in: accessibleDivisionIds,
+                },
+              } : {
+                id: {
+                  in: [], // Return empty if no access to any divisions
+                },
               },
-            } : {
-              id: {
-                in: [], // Return empty if no access to any divisions
-              },
-            },
-            include: {
-              constraints: true,
-              teams: {
-                include: {
-                  teamPlayers: {
-                    include: {
-                      player: true,
+              include: {
+                constraints: true,
+                teams: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
+                    },
+                  },
+                },
+                pools: true,
+                matches: {
+                  include: {
+                    teamA: true,
+                    teamB: true,
+                    games: {
+                      orderBy: { index: 'asc' },
                     },
                   },
                 },
               },
-              pools: true,
-              matches: {
-                include: {
-                  teamA: true,
-                  teamB: true,
-                  games: {
-                    orderBy: { index: 'asc' },
-                  },
-                },
-              },
             },
+            prizes: true,
           },
-          prizes: true,
-        },
-      })
-      
-      if (!tournament) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Tournament not found',
         })
-      }
+        
+        if (!tournament) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Tournament not found',
+          })
+        }
 
-      // Add access information to the response
-      return {
-        ...tournament,
-        userAccessInfo: {
-          isOwner,
-          accessLevel: isOwner ? 'ADMIN' : (access?.accessLevel || null),
-        },
+        // Add access information to the response
+        return {
+          ...tournament,
+          userAccessInfo: {
+            isOwner,
+            accessLevel: isOwner ? 'ADMIN' : (access?.accessLevel || null),
+          },
+        }
+      } catch (error: any) {
+        console.error('Error in tournament.get:', error)
+        // If it's already a TRPCError, re-throw it
+        if (error instanceof TRPCError) {
+          throw error
+        }
+        // Otherwise, wrap it in a TRPCError
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error.message || 'Failed to fetch tournament',
+          cause: error,
+        })
       }
     }),
 
@@ -180,6 +204,7 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)).optional(),
       entryFee: z.number().optional(),
       isPublicBoardEnabled: z.boolean().optional(),
+      allowDuprSubmission: z.boolean().optional(),
       publicSlug: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {

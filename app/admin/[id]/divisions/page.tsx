@@ -31,6 +31,7 @@ import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
+import AddPlayerModal from '@/components/AddPlayerModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
@@ -470,7 +471,7 @@ function DivisionCard({
               onClick={() => onDistributeTeams(division.id)}
               className="h-8 px-3"
               title="Distribute teams by DUPR rating"
-              disabled={(division as any).isMerged}
+              disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
             >
               <Target className="h-4 w-4 mr-1" />
               Distribute
@@ -515,7 +516,7 @@ function DivisionCard({
                 size="sm"
                 onClick={onAddTeam}
                 className="h-8 w-8 p-0"
-                title="Add team to division"
+                title={division.teamKind === 'SINGLES_1v1' ? 'Add player to division' : 'Add team to division'}
               >
                 <Plus className="h-4 w-4" />
               </Button>
@@ -626,6 +627,7 @@ export default function DivisionsPage() {
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
@@ -634,6 +636,7 @@ export default function DivisionsPage() {
   const [selectedDivisionForUnmerge, setSelectedDivisionForUnmerge] = useState<Division | null>(null)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
+  const [selectedDivisionForPlayer, setSelectedDivisionForPlayer] = useState<Division | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -648,7 +651,16 @@ export default function DivisionsPage() {
     { enabled: !!tournamentId }
   )
   
-  // Check if user has admin access (defined later, avoid redeclaration)
+  // Check if user has admin access (must be before conditional returns to avoid hooks violations)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner) - MUST be before conditional returns
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
@@ -1184,8 +1196,14 @@ export default function DivisionsPage() {
   }
 
   const handleAddTeam = (division: Division) => {
-    setSelectedDivisionForTeam(division)
-    setShowAddTeamModal(true)
+    // For SINGLES_1v1, use AddPlayerModal instead
+    if (division.teamKind === 'SINGLES_1v1') {
+      setSelectedDivisionForPlayer(division)
+      setShowAddPlayerModal(true)
+    } else {
+      setSelectedDivisionForTeam(division)
+      setShowAddTeamModal(true)
+    }
   }
 
   const handleMergeDivisions = (division: Division) => {
@@ -1242,7 +1260,20 @@ export default function DivisionsPage() {
   }
 
   const handleDeleteTeam = (team: Team) => {
-    if (window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
+    // Find division to get teamKind
+    const division = localDivisions.find(d => d.teams.some(t => t.id === team.id))
+    const teamKind = division?.teamKind
+    
+    // Get display name (player name for SINGLES_1v1, team name for others)
+    const displayName = teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0
+      ? `${team.teamPlayers[0].player.firstName} ${team.teamPlayers[0].player.lastName}`
+      : team.name
+    
+    const confirmMessage = teamKind === 'SINGLES_1v1'
+      ? `Are you sure you want to delete "${displayName}"?`
+      : `Are you sure you want to delete "${displayName}"? This will remove all players from the team and cannot be undone.`
+    
+    if (window.confirm(confirmMessage)) {
       // Use the existing deleteTeamMutation
       deleteTeamMutation.mutate({ id: team.id })
     }
@@ -1336,17 +1367,6 @@ export default function DivisionsPage() {
   if (!tournament) {
     return <div>Loading...</div>
   }
-
-  // Check if user has admin access (owner or ADMIN access level)
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-
-  // Get pending access requests count (only for owner)
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   // Check if user has access to any divisions
   // Check if user has admin access to manage divisions
@@ -1588,6 +1608,23 @@ export default function DivisionsPage() {
           refetch()
         }}
       />
+
+      {/* Add Player Modal (for SINGLES_1v1) */}
+      {selectedDivisionForPlayer && (
+        <AddPlayerModal
+          division={selectedDivisionForPlayer}
+          availablePlayers={availablePlayers}
+          tournamentId={tournamentId}
+          isOpen={showAddPlayerModal}
+          onClose={() => {
+            setShowAddPlayerModal(false)
+            setSelectedDivisionForPlayer(null)
+          }}
+          onSuccess={() => {
+            refetch()
+          }}
+        />
+      )}
 
       {/* Add Division Modal */}
       <AddDivisionModal

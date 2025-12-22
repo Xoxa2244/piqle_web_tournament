@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,6 +27,12 @@ export default function TournamentDetailPage() {
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
+  const [baseUrl, setBaseUrl] = useState<string>('')
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
   const [tournamentForm, setTournamentForm] = useState({
     title: '',
     description: '',
@@ -35,6 +41,7 @@ export default function TournamentDetailPage() {
     endDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
+    allowDuprSubmission: false,
   })
   const [divisionForm, setDivisionForm] = useState({
     name: '',
@@ -129,6 +136,7 @@ export default function TournamentDetailPage() {
       endDate: new Date(tournament.endDate).toISOString().split('T')[0],
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
+      allowDuprSubmission: tournament.allowDuprSubmission || false,
     })
     setShowEditTournament(true)
   }
@@ -148,6 +156,7 @@ export default function TournamentDetailPage() {
       endDate: tournamentForm.endDate,
       entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
+      allowDuprSubmission: tournamentForm.allowDuprSubmission,
     })
   }
 
@@ -212,6 +221,7 @@ export default function TournamentDetailPage() {
         pendingRequestsCount={pendingRequestsCount}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
+        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
       />
 
       {/* Main Content */}
@@ -653,6 +663,19 @@ export default function TournamentDetailPage() {
                 />
                 <label className="ml-3 block text-sm font-semibold text-gray-700 cursor-pointer">
                   Enable public results board
+                </label>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="allowDuprSubmission"
+                  checked={tournamentForm.allowDuprSubmission}
+                  onChange={handleTournamentChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label className="ml-2 block text-sm text-gray-700">
+                  Allow sending results to DUPR
                 </label>
               </div>
             </div>

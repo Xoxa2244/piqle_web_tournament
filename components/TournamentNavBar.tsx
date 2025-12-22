@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 import { 
   Settings,
   Users,
@@ -14,6 +15,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import ShareButton from '@/components/ShareButton'
 
 interface TournamentNavBarProps {
   tournamentTitle?: string
@@ -22,18 +24,23 @@ interface TournamentNavBarProps {
   pendingRequestsCount?: number
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
+  publicScoreboardUrl?: string
 }
 
-export default function TournamentNavBar({
+function TournamentNavBarContent({
   tournamentTitle,
   isAdmin = false,
   isOwner = false,
   pendingRequestsCount = 0,
   onPublicScoreboardClick,
-  onEditTournamentClick
+  onEditTournamentClick,
+  publicScoreboardUrl
 }: TournamentNavBarProps) {
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
+  const divisionParam = searchParams.get('division')
+  const divisionQuery = divisionParam ? `?division=${divisionParam}` : ''
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
@@ -84,6 +91,16 @@ export default function TournamentNavBar({
               </button>
             )}
             
+            {publicScoreboardUrl && (
+              <ShareButton
+                url={publicScoreboardUrl}
+                title={tournamentTitle}
+                size="sm"
+                variant="outline"
+                className="px-3 py-1.5 rounded-lg transition-all duration-200 text-sm font-medium"
+              />
+            )}
+            
             <Link
               href="/admin"
               className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
@@ -121,7 +138,8 @@ export default function TournamentNavBar({
               </Button>
             </Link>
             
-            <Link href={`/admin/${tournamentId}/teams`}>
+            {/* Teams button hidden - functionality not ready */}
+            {/* <Link href={`/admin/${tournamentId}/teams`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -130,9 +148,9 @@ export default function TournamentNavBar({
                 <Users className="w-4 h-4" />
                 <span>Teams</span>
               </Button>
-            </Link>
+            </Link> */}
             
-            <Link href={`/admin/${tournamentId}/stages`}>
+            <Link href={`/admin/${tournamentId}/stages${divisionQuery}`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -143,7 +161,7 @@ export default function TournamentNavBar({
               </Button>
             </Link>
             
-            <Link href={`/admin/${tournamentId}/dashboard`}>
+            <Link href={`/admin/${tournamentId}/dashboard${divisionQuery}`}>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -175,6 +193,21 @@ export default function TournamentNavBar({
         </div>
       </div>
     </div>
+  )
+}
+
+// Wrapper with Suspense to prevent hydration errors
+export default function TournamentNavBar(props: TournamentNavBarProps) {
+  return (
+    <Suspense fallback={
+      <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="animate-pulse h-10 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    }>
+      <TournamentNavBarContent {...props} />
+    </Suspense>
   )
 }
 

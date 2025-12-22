@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatDuprRating } from '@/lib/utils'
 import { 
   Search, 
   X, 
@@ -167,7 +168,7 @@ export default function PlayerSelectionModal({
                                 {player.duprRating && (
                                   <Badge variant="outline" className="text-xs">
                                     <Star className="h-3 w-3 mr-1" />
-                                    {player.duprRating}
+                                    {formatDuprRating(player.duprRating)}
                                   </Badge>
                                 )}
                                 

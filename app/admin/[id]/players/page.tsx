@@ -20,9 +20,10 @@ import {
   EyeOff
 } from 'lucide-react'
 import Link from 'next/link'
-import AddPlayerModal from '@/components/AddPlayerModal'
+import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import { formatDuprRating } from '@/lib/utils'
 
 interface Player {
   id: string
@@ -31,6 +32,7 @@ interface Player {
   email: string | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
+  gender: 'M' | 'F' | 'X' | null
   isPaid: boolean | null
   isWaitlist: boolean | null
   teamPlayers: Array<{
@@ -175,7 +177,7 @@ export default function PlayersPage() {
 
   const getDuprRating = (player: Player) => {
     if (player.duprRating === null) return '—'
-    return player.duprRating
+    return formatDuprRating(player.duprRating) || '—'
   }
 
   if (!tournament) {
@@ -295,6 +297,7 @@ export default function PlayersPage() {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3 font-medium">Player Name</th>
+                  <th className="text-left p-3 font-medium">Gender</th>
                   <th className="text-left p-3 font-medium">Email</th>
                   <th className="text-left p-3 font-medium">DUPR ID</th>
                   <th className="text-left p-3 font-medium">DUPR Rating</th>
@@ -308,7 +311,7 @@ export default function PlayersPage() {
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-8 text-gray-500">
+                    <td colSpan={10} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -322,6 +325,13 @@ export default function PlayersPage() {
                         <div className="font-medium">
                           {player.firstName} {player.lastName}
                         </div>
+                      </td>
+                      <td className="p-3 text-sm text-gray-600">
+                        {player.gender ? (
+                          <Badge variant={player.gender === 'M' ? 'default' : player.gender === 'F' ? 'secondary' : 'outline'}>
+                            {player.gender === 'M' ? 'Male' : player.gender === 'F' ? 'Female' : 'Other'}
+                          </Badge>
+                        ) : '—'}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {player.email || '—'}
@@ -379,7 +389,7 @@ export default function PlayersPage() {
       </Card>
 
       {/* Modals */}
-      <AddPlayerModal
+      <AddParticipantModal
         tournamentId={tournamentId}
         isOpen={showAddPlayerModal}
         onClose={() => setShowAddPlayerModal(false)}

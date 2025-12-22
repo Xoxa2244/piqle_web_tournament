@@ -33,8 +33,16 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
   const [dupr, setDupr] = useState('')
+  const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
   const [selectedTeamId, setSelectedTeamId] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Get tournament format to check if gender is required
+  const { data: tournament } = trpc.tournament.get.useQuery(
+    { id: tournamentId },
+    { enabled: !!tournamentId && isOpen }
+  )
+  const isMLP = tournament?.format === 'MLP'
 
   const createPlayerMutation = trpc.player.create.useMutation({
     onSuccess: () => {
@@ -42,6 +50,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
       setLastName('')
       setEmail('')
       setDupr('')
+      setGender('')
       setSelectedTeamId('')
       setIsSubmitting(false)
       onSuccess?.()
@@ -75,6 +84,11 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
       return
     }
 
+    if (isMLP && (!gender || gender === 'X')) {
+      alert('Gender (M or F) is required for players in MLP tournaments')
+      return
+    }
+
     setIsSubmitting(true)
     
     try {
@@ -85,6 +99,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
         lastName: lastName.trim(),
         email: email.trim() || undefined,
         dupr: dupr.trim() || undefined,
+        gender: gender ? (gender as 'M' | 'F' | 'X') : undefined,
       })
 
       // If a team is selected, add player to that team
@@ -106,6 +121,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
       setLastName('')
       setEmail('')
       setDupr('')
+      setGender('')
       setSelectedTeamId('')
       onClose()
     }
@@ -197,6 +213,28 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
             </div>
 
             <div>
+              <label htmlFor="gender" className="block text-sm font-medium text-gray-700 mb-1">
+                Gender {isMLP && <span className="text-red-500">*</span>} {!isMLP && '(optional)'}
+              </label>
+              <select
+                id="gender"
+                value={gender}
+                onChange={(e) => setGender(e.target.value as 'M' | 'F' | 'X' | '')}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required={isMLP}
+              >
+                <option value="">Select gender</option>
+                <option value="M">Male (M)</option>
+                <option value="F">Female (F)</option>
+                {!isMLP && <option value="X">Other (X)</option>}
+              </select>
+              {isMLP && (
+                <p className="text-xs text-gray-500 mt-1">Gender is required for MLP tournaments</p>
+              )}
+            </div>
+
+            <div>
               <label htmlFor="team" className="block text-sm font-medium text-gray-700 mb-1">
                 Team (optional)
               </label>
@@ -227,7 +265,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting || !firstName.trim() || !lastName.trim()}
+                disabled={isSubmitting || !firstName.trim() || !lastName.trim() || (isMLP && (!gender || gender === 'X'))}
                 className="flex items-center space-x-2"
               >
                 {isSubmitting ? (

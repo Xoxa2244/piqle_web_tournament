@@ -3,10 +3,12 @@
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Eye, Search, X } from 'lucide-react'
+import Image from 'next/image'
+import { Eye, Search, X, User as UserIcon } from 'lucide-react'
+import ShareButton from '@/components/ShareButton'
 
 export default function AdminPage() {
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
@@ -20,6 +22,12 @@ export default function AdminPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [baseUrl, setBaseUrl] = useState<string>('')
+
+  // Set base URL on client side only to avoid hydration mismatch
+  useEffect(() => {
+    setBaseUrl(window.location.origin)
+  }, [])
   
   // Search tournaments
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
@@ -60,46 +68,42 @@ export default function AdminPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-50/50 flex justify-center items-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-stone-400 mx-auto mb-3"></div>
-          <div className="text-sm text-stone-600">Loading tournaments...</div>
-        </div>
+      <div className="flex justify-center items-center h-64">
+        <div className="text-lg">Loading tournaments...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-50/50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex justify-between items-center mb-5">
-          <h1 className="text-2xl font-bold text-stone-900">Tournaments</h1>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => {
-                setShowSearch(!showSearch)
-                setSearchQuery('')
-              }}
-              variant="outline"
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 border-stone-300 bg-white hover:bg-stone-50 text-stone-700"
-            >
-              <Search className="h-3.5 w-3.5" />
-              Find Tournament
-            </Button>
-            <Link
-              href="/admin/new"
-              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white font-semibold text-sm py-2 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              Create Tournament
-            </Link>
-          </div>
+    <div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
+        <div className="flex gap-3">
+          <Button
+            onClick={() => {
+              setShowSearch(!showSearch)
+              setSearchQuery('')
+            }}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Search className="h-4 w-4" />
+            Find Tournament
+          </Button>
+          <Link
+            href="/admin/new"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          >
+            Create Tournament
+          </Link>
         </div>
+      </div>
 
       {/* Search Section */}
       {showSearch && (
-        <div className="mb-5 p-4 bg-white/80 rounded-lg border border-stone-200/60 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-stone-900">Find Tournament</h2>
+        <div className="mb-8 p-6 bg-white rounded-lg shadow-md">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Find Tournament</h2>
             <Button
               onClick={() => {
                 setShowSearch(false)
@@ -107,38 +111,70 @@ export default function AdminPage() {
               }}
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </Button>
           </div>
           <Input
             placeholder="Search tournaments by name or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="mb-3 text-sm"
+            className="mb-4"
           />
           {searchQuery.length >= 2 && searchResults && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {searchResults.length === 0 ? (
-                <div className="text-center py-5 text-sm text-stone-500">No tournaments found</div>
+                <div className="text-center py-8 text-gray-500">No tournaments found</div>
               ) : (
                 searchResults.map((tournament) => (
-                  <div key={tournament.id} className="bg-white border border-stone-200/60 rounded-lg p-3 flex justify-between items-start hover:border-stone-300 hover:shadow-sm transition-all">
+                  <div key={tournament.id} className="border rounded-lg p-4 flex justify-between items-start">
                     <div className="flex-1">
-                      <h3 className="text-sm font-semibold mb-1 text-stone-900">{tournament.title}</h3>
+                      <h3 className="text-lg font-semibold mb-2">{tournament.title}</h3>
                       {tournament.description && (
                         <div
-                          className="text-xs text-stone-600 mb-1.5 line-clamp-2 break-words"
+                          className="text-sm text-gray-600 mb-2 line-clamp-2 break-words"
                           dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                         />
                       )}
-                      <div className="space-y-0.5 text-xs text-stone-500">
+                      <div className="space-y-1 text-sm text-gray-500">
                         <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
                         <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
                         {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
                         {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
-                        <div>Organizer: {tournament.user.name || tournament.user.email}</div>
+                        {tournament.user && (
+                          <div className="flex items-center space-x-2">
+                            <span>Tournament Director:</span>
+                            {(tournament.user as { image?: string | null }).image ? (
+                              <Link
+                                href={`/profile/${tournament.user.id}`}
+                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                              >
+                                <Image
+                                  src={(tournament.user as { image?: string | null }).image!}
+                                  alt={tournament.user.name || tournament.user.email || 'TD'}
+                                  width={18}
+                                  height={18}
+                                  className="rounded-full object-cover"
+                                />
+                                <span className="font-medium group-hover:underline">
+                                  {tournament.user.name || tournament.user.email}
+                                </span>
+                              </Link>
+                            ) : (
+                              <Link
+                                href={`/profile/${tournament.user.id}`}
+                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                              >
+                                <div className="w-4.5 h-4.5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                                  <UserIcon className="h-3 w-3 text-gray-500" />
+                                </div>
+                                <span className="font-medium group-hover:underline">
+                                  {tournament.user.name || tournament.user.email}
+                                </span>
+                              </Link>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Button
@@ -146,7 +182,7 @@ export default function AdminPage() {
                         requestAccessMutation.mutate({ tournamentId: tournament.id })
                       }}
                       disabled={requestAccessMutation.isLoading}
-                      className="ml-3 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white text-xs font-medium py-1.5 px-3 rounded-lg shadow-sm hover:shadow transition-all"
+                      className="ml-4"
                     >
                       {requestAccessMutation.isLoading ? 'Requesting...' : 'Request Access'}
                     </Button>
@@ -159,20 +195,32 @@ export default function AdminPage() {
       )}
 
       {tournaments && tournaments.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(tournaments as any[]).map((tournament: any) => (
-            <div key={tournament.id} className="bg-white/90 rounded-lg border border-stone-200/60 shadow-sm p-4 hover:border-stone-300/80 hover:shadow-md transition-all">
-              <h3 className="text-base font-semibold mb-1.5 text-stone-900">{tournament.title}</h3>
+            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
+              {tournament.isPublicBoardEnabled && baseUrl && (
+                <div className="absolute top-4 right-4">
+                  <ShareButton
+                    url={`${baseUrl}/scoreboard/${tournament.id}`}
+                    title={tournament.title}
+                    iconOnly
+                    size="sm"
+                    variant="ghost"
+                    className="text-gray-500 hover:text-gray-700"
+                  />
+                </div>
+              )}
+              <h3 className="text-xl font-semibold mb-2 pr-10">{tournament.title}</h3>
               {tournament.description && (
-                <div className="mb-2.5">
+                <div className="mb-4">
                   <div
-                    className="text-stone-600 text-xs break-words line-clamp-3 leading-relaxed"
+                    className="text-gray-600 text-sm break-words line-clamp-3"
                     dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                   />
                   {tournament.description && tournament.description.split('\n').length > 3 && (
                     <button
                       onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
-                      className="mt-1 text-stone-700 hover:text-stone-900 text-xs font-medium flex items-center"
+                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                     >
                       <Eye className="h-3 w-3 mr-1" />
                       Show full description
@@ -181,7 +229,7 @@ export default function AdminPage() {
                 </div>
               )}
               
-              <div className="space-y-0.5 text-xs text-stone-600 mb-2.5">
+              <div className="space-y-2 text-sm text-gray-500">
                 <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
                 <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
                 <div>Divisions: {tournament._count.divisions}</div>
@@ -190,17 +238,55 @@ export default function AdminPage() {
                 )}
               </div>
 
-              <div className="mt-2.5 flex flex-wrap gap-2">
+              {/* Tournament Director */}
+              {tournament.user && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">Tournament Director:</span>
+                    {(tournament.user as { image?: string | null }).image ? (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <Image
+                          src={(tournament.user as { image?: string | null }).image!}
+                          alt={tournament.user.name || tournament.user.email || 'TD'}
+                          width={20}
+                          height={20}
+                          className="rounded-full object-cover"
+                        />
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                          <UserIcon className="h-3 w-3 text-gray-500" />
+                        </div>
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   href={`/admin/${tournament.id}`}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                 >
                   Manage
                 </Link>
                 {tournament.isPublicBoardEnabled && (
                   <Link
                     href={`/t/${tournament.publicSlug}`}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                    className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                   >
                     View Board
                   </Link>
@@ -209,7 +295,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => handleDeleteClick(tournament.id, tournament.title)}
                     disabled={deleteConfirmId === tournament.id}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition-all duration-200 shadow-sm hover:shadow"
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                   >
                     {deleteConfirmId === tournament.id ? 'Deleting...' : 'Delete'}
                   </button>
@@ -219,12 +305,12 @@ export default function AdminPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-8">
-          <h3 className="text-base font-medium text-stone-900 mb-1.5">No tournaments yet</h3>
-          <p className="text-sm text-stone-600 mb-3">Create your first tournament to get started</p>
+        <div className="text-center py-12">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No tournaments yet</h3>
+          <p className="text-gray-600 mb-4">Create your first tournament to get started</p>
           <Link
             href="/admin/new"
-            className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white font-semibold text-sm py-2 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md inline-block"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
           >
             Create Tournament
           </Link>
@@ -234,22 +320,22 @@ export default function AdminPage() {
       {/* Description Modal */}
       {selectedDescription && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg border border-stone-200 shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-stone-200">
-              <h2 className="text-lg font-bold text-stone-900">{selectedDescription.title}</h2>
-              <p className="text-stone-600 text-xs mt-0.5">Tournament Description</p>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900">{selectedDescription.title}</h2>
+              <p className="text-gray-600 mt-1">Tournament Description</p>
             </div>
-            <div className="p-4 overflow-y-auto flex-1">
+            <div className="p-6 overflow-y-auto flex-1">
               <div 
-                className="text-stone-700 text-sm whitespace-pre-wrap break-words prose prose-sm max-w-none leading-relaxed"
+                className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
                 dangerouslySetInnerHTML={{ __html: formatDescription(selectedDescription.description) }}
               />
             </div>
-            <div className="p-4 border-t border-stone-200 flex justify-end">
+            <div className="p-6 border-t border-gray-200 flex justify-end">
               <Button
                 onClick={() => setSelectedDescription(null)}
                 variant="outline"
-                className="px-4 py-1.5 text-sm border-stone-300 hover:bg-stone-50"
+                className="px-6"
               >
                 Close
               </Button>
@@ -257,7 +343,6 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-      </div>
     </div>
   )
 }
