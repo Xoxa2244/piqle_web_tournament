@@ -1,0 +1,451 @@
+'use client'
+
+import { useRouter, useParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { trpc } from '@/lib/trpc'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ArrowLeft, Save, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
+
+export default function MatchupDetailPage({ params }: { params: { id: string; matchupId: string } }) {
+  const router = useRouter()
+  const tournamentId = params.id
+  const matchupId = params.matchupId
+
+  // Get matchup data - find it from all match days
+  const { data: matchDays } = trpc.matchDay.list.useQuery({ tournamentId })
+  
+  // Find matchup by searching through match days
+  let currentMatchup: any = null
+  let foundMatchDayId = ''
+  
+  for (const day of matchDays || []) {
+    const { data: matchups } = trpc.indyMatchup.list.useQuery({ matchDayId: day.id })
+    const matchup = matchups?.find((m: any) => m.id === matchupId)
+    if (matchup) {
+      currentMatchup = matchup
+      foundMatchDayId = day.id
+      break
+    }
+  }
+
+  const [homeRosters, setHomeRosters] = useState<any[]>([])
+  const [awayRosters, setAwayRosters] = useState<any[]>([])
+
+  const updateRoster = trpc.indyMatchup.updateRoster.useMutation({
+    onSuccess: () => {
+      allMatchupsQueries.forEach((q) => q.refetch())
+    },
+    onError: (error) => {
+      alert('Error updating roster: ' + error.message)
+    },
+  })
+
+  const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
+    onSuccess: () => {
+      // Refetch will happen automatically via React Query
+      window.location.reload() // Simple refresh for now
+    },
+    onError: (error) => {
+      alert('Error updating score: ' + error.message)
+    },
+  })
+
+  const updateTieBreak = trpc.indyMatchup.updateTieBreak.useMutation({
+    onSuccess: () => {
+      // Refetch will happen automatically via React Query
+      window.location.reload() // Simple refresh for now
+    },
+    onError: (error) => {
+      alert('Error updating tie-break: ' + error.message)
+    },
+  })
+
+  // Initialize rosters from matchup data
+  useEffect(() => {
+    if (currentMatchup) {
+      const home = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.homeTeamId) || []
+      const away = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.awayTeamId) || []
+
+      // If no rosters exist, create them from team players
+      if (home.length === 0 && currentMatchup.homeTeam?.teamPlayers) {
+        const newHome = currentMatchup.homeTeam.teamPlayers.map((tp: any) => ({
+          playerId: tp.player.id,
+          teamId: currentMatchup.homeTeamId,
+          isActive: false,
+          letter: null,
+        }))
+        setHomeRosters(newHome)
+      } else {
+        setHomeRosters(home)
+      }
+
+      if (away.length === 0 && currentMatchup.awayTeam?.teamPlayers) {
+        const newAway = currentMatchup.awayTeam.teamPlayers.map((tp: any) => ({
+          playerId: tp.player.id,
+          teamId: currentMatchup.awayTeamId,
+          isActive: false,
+          letter: null,
+        }))
+        setAwayRosters(newAway)
+      } else {
+        setAwayRosters(away.map((r: any) => ({
+          playerId: r.playerId,
+          teamId: r.teamId,
+          isActive: r.isActive,
+          letter: r.letter,
+        })))
+      }
+    }
+  }, [currentMatchup])
+
+  const handleAutoAssign = (teamRosters: any[], setRosters: any) => {
+    const activePlayers = teamRosters.filter((r) => r.isActive)
+    if (activePlayers.length !== 4) {
+      alert('Please select exactly 4 active players first')
+      return
+    }
+
+    const letters = ['A', 'B', 'C', 'D']
+    const updated = teamRosters.map((roster, index) => {
+      if (roster.isActive) {
+        const letterIndex = activePlayers.indexOf(roster)
+        return { ...roster, letter: letters[letterIndex] }
+      }
+      return roster
+    })
+
+    setRosters(updated)
+  }
+
+  const handleSaveRoster = () => {
+    const allRosters = [...homeRosters, ...awayRosters]
+    updateRoster.mutate({
+      matchupId,
+      rosters: allRosters.map((r) => ({
+        playerId: r.playerId,
+        teamId: r.teamId,
+        isActive: r.isActive,
+        letter: r.letter as 'A' | 'B' | 'C' | 'D' | null,
+      })),
+    })
+  }
+
+  const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
+    updateGameScore.mutate({
+      gameId,
+      homeScore,
+      awayScore,
+    })
+  }
+
+  const handleTieBreakChange = (winnerTeamId: string) => {
+    updateTieBreak.mutate({
+      matchupId,
+      tieBreakWinnerTeamId: winnerTeamId,
+    })
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'PENDING':
+        return <Badge variant="outline">Pending</Badge>
+      case 'READY':
+        return <Badge variant="default" className="bg-yellow-500">Ready</Badge>
+      case 'IN_PROGRESS':
+        return <Badge variant="default" className="bg-blue-500">In Progress</Badge>
+      case 'COMPLETED':
+        return <Badge variant="default" className="bg-green-500">Completed</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  if (!currentMatchup) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-gray-600">Loading matchup...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const needsTieBreak =
+    currentMatchup.gamesWonHome === 6 &&
+    currentMatchup.gamesWonAway === 6 &&
+    !currentMatchup.tieBreakWinnerTeamId
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="mb-6">
+        <Button
+          variant="outline"
+          onClick={() => router.back()}
+          className="mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {currentMatchup.homeTeam.name} vs {currentMatchup.awayTeam.name}
+            </h1>
+            <p className="text-gray-600 mt-2">
+              {currentMatchup.division.name} • {currentMatchup.gamesWonHome} - {currentMatchup.gamesWonAway}
+            </p>
+          </div>
+          {getStatusBadge(currentMatchup.status)}
+        </div>
+      </div>
+
+      {/* Roster Management */}
+      {currentMatchup.status === 'PENDING' || currentMatchup.status === 'READY' ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Assign Players & Letters</CardTitle>
+            <CardDescription>
+              Select 4 active players for each team and assign letters A, B, C, D
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-6">
+              {/* Home Team */}
+              <div>
+                <h3 className="font-semibold mb-3">Home: {currentMatchup.homeTeam.name}</h3>
+                <div className="space-y-2">
+                  {homeRosters.map((roster, idx) => {
+                    const player = currentMatchup.homeTeam?.teamPlayers?.find(
+                      (tp: any) => tp.player.id === roster.playerId
+                    )?.player
+                    if (!player) return null
+
+                    return (
+                      <div key={idx} className="flex items-center gap-2 p-2 border rounded">
+                        <input
+                          type="checkbox"
+                          checked={roster.isActive}
+                          onChange={(e) => {
+                            const updated = [...homeRosters]
+                            updated[idx].isActive = e.target.checked
+                            if (!e.target.checked) {
+                              updated[idx].letter = null
+                            }
+                            setHomeRosters(updated)
+                          }}
+                        />
+                        <span className="flex-1">
+                          {player.firstName} {player.lastName}
+                        </span>
+                        {roster.isActive && (
+                          <select
+                            value={roster.letter || ''}
+                            onChange={(e) => {
+                              const updated = [...homeRosters]
+                              updated[idx].letter = e.target.value || null
+                              setHomeRosters(updated)
+                            }}
+                            className="px-2 py-1 border rounded text-sm"
+                          >
+                            <option value="">Select letter...</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                          </select>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => handleAutoAssign(homeRosters, setHomeRosters)}
+                >
+                  Auto-assign A/B/C/D
+                </Button>
+              </div>
+
+              {/* Away Team */}
+              <div>
+                <h3 className="font-semibold mb-3">Away: {currentMatchup.awayTeam.name}</h3>
+                <div className="space-y-2">
+                  {awayRosters.map((roster, idx) => {
+                    const player = currentMatchup.awayTeam?.teamPlayers?.find(
+                      (tp: any) => tp.player.id === roster.playerId
+                    )?.player
+                    if (!player) return null
+
+                    return (
+                      <div key={idx} className="flex items-center gap-2 p-2 border rounded">
+                        <input
+                          type="checkbox"
+                          checked={roster.isActive}
+                          onChange={(e) => {
+                            const updated = [...awayRosters]
+                            updated[idx].isActive = e.target.checked
+                            if (!e.target.checked) {
+                              updated[idx].letter = null
+                            }
+                            setAwayRosters(updated)
+                          }}
+                        />
+                        <span className="flex-1">
+                          {player.firstName} {player.lastName}
+                        </span>
+                        {roster.isActive && (
+                          <select
+                            value={roster.letter || ''}
+                            onChange={(e) => {
+                              const updated = [...awayRosters]
+                              updated[idx].letter = e.target.value || null
+                              setAwayRosters(updated)
+                            }}
+                            className="px-2 py-1 border rounded text-sm"
+                          >
+                            <option value="">Select letter...</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                          </select>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => handleAutoAssign(awayRosters, setAwayRosters)}
+                >
+                  Auto-assign A/B/C/D
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <Button onClick={handleSaveRoster} disabled={updateRoster.isPending}>
+                <Save className="h-4 w-4 mr-2" />
+                Save Roster
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Tie-break */}
+      {needsTieBreak && (
+        <Card className="mb-6 border-yellow-300 bg-yellow-50">
+          <CardHeader>
+            <CardTitle>Tie-Break Required</CardTitle>
+            <CardDescription>
+              Games are 6-6. Please select the tie-break winner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4">
+              <Button
+                variant={currentMatchup.tieBreakWinnerTeamId === currentMatchup.homeTeamId ? 'default' : 'outline'}
+                onClick={() => handleTieBreakChange(currentMatchup.homeTeamId)}
+              >
+                {currentMatchup.homeTeam.name}
+              </Button>
+              <Button
+                variant={currentMatchup.tieBreakWinnerTeamId === currentMatchup.awayTeamId ? 'default' : 'outline'}
+                onClick={() => handleTieBreakChange(currentMatchup.awayTeamId)}
+              >
+                {currentMatchup.awayTeam.name}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Games */}
+      {currentMatchup.games && currentMatchup.games.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Games</CardTitle>
+            <CardDescription>Enter scores for each game (no ties allowed)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              {currentMatchup.games.map((game: any) => (
+                <div
+                  key={game.id}
+                  className="border rounded-lg p-4"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="font-semibold">
+                        Game {game.order} • Court {game.court}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {game.homePair} vs {game.awayPair}
+                      </div>
+                    </div>
+                    {game.homeScore !== null && game.awayScore !== null && (
+                      <div className="flex items-center gap-1">
+                        {game.homeScore > game.awayScore ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500">Home</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={game.homeScore ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? null : parseInt(e.target.value)
+                          if (value !== null && value === game.awayScore) {
+                            alert('Ties are not allowed')
+                            return
+                          }
+                          handleGameScoreChange(game.id, value, game.awayScore)
+                        }}
+                        className="w-full px-2 py-1 border rounded"
+                      />
+                    </div>
+                    <span className="text-gray-400">-</span>
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500">Away</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={game.awayScore ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? null : parseInt(e.target.value)
+                          if (value !== null && value === game.homeScore) {
+                            alert('Ties are not allowed')
+                            return
+                          }
+                          handleGameScoreChange(game.id, game.homeScore, value)
+                        }}
+                        className="w-full px-2 py-1 border rounded"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+

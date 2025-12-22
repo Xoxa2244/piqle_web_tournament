@@ -90,6 +90,8 @@ model Tournament {
   publicSlug              String?                   @unique
   format                  TournamentFormat          @default(SINGLE_ELIMINATION)
   allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
+  seasonLabel             String?                   @map("season_label")
+  timezone                String?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -103,6 +105,7 @@ model Tournament {
   tournamentRatings       TournamentRating[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
+  matchDays               MatchDay[]
 
   @@map("tournaments")
 }
@@ -146,6 +149,7 @@ model Division {
   standings             Standing[]
   teams                 Team[]
   tournamentAccesses    TournamentAccess[]
+  indyMatchups          IndyMatchup[]
 
   @@map("divisions")
 }
@@ -202,12 +206,16 @@ model Team {
   note        String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  matchesAsA  Match[]      @relation("TeamA")
-  matchesAsB  Match[]      @relation("TeamB")
-  standings   Standing[]
-  teamPlayers TeamPlayer[]
-  division    Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool        Pool?        @relation(fields: [poolId], references: [id])
+  matchesAsA          Match[]         @relation("TeamA")
+  matchesAsB          Match[]         @relation("TeamB")
+  homeMatchups        IndyMatchup[]   @relation("HomeTeam")
+  awayMatchups        IndyMatchup[]   @relation("AwayTeam")
+  tieBreakWinnerMatchups IndyMatchup[] @relation("TieBreakWinnerTeam")
+  standings           Standing[]
+  teamPlayers         TeamPlayer[]
+  dayRosters          DayRoster[]
+  division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool                Pool?           @relation(fields: [poolId], references: [id])
 
   @@map("teams")
 }
@@ -229,6 +237,7 @@ model Player {
   tournamentId String?      @map("tournament_id")
   tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   teamPlayers  TeamPlayer[]
+  dayRosters   DayRoster[]
 
   @@map("players")
 }
@@ -456,6 +465,77 @@ model TournamentRating {
   @@map("tournament_ratings")
 }
 
+model MatchDay {
+  id           String          @id @default(uuid())
+  tournamentId String           @map("tournament_id")
+  date         DateTime         @db.Date
+  status       MatchDayStatus   @default(DRAFT)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchups     IndyMatchup[]
+
+  @@unique([tournamentId, date])
+  @@map("match_days")
+}
+
+model IndyMatchup {
+  id                  String          @id @default(uuid())
+  matchDayId          String           @map("match_day_id")
+  divisionId          String           @map("division_id")
+  homeTeamId          String           @map("home_team_id")
+  awayTeamId          String           @map("away_team_id")
+  tieBreakWinnerTeamId String?         @map("tie_break_winner_team_id")
+  gamesWonHome        Int             @default(0) @map("games_won_home")
+  gamesWonAway        Int             @default(0) @map("games_won_away")
+  status              MatchupStatus   @default(PENDING)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  matchDay            MatchDay         @relation(fields: [matchDayId], references: [id], onDelete: Cascade)
+  division            Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  homeTeam            Team             @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
+  awayTeam            Team             @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
+  tieBreakWinnerTeam  Team?            @relation("TieBreakWinnerTeam", fields: [tieBreakWinnerTeamId], references: [id], onDelete: SetNull)
+  rosters             DayRoster[]
+  games                IndyGame[]
+
+  @@map("indy_matchups")
+}
+
+model DayRoster {
+  id        String      @id @default(uuid())
+  matchupId String      @map("matchup_id")
+  teamId    String      @map("team_id")
+  playerId  String      @map("player_id")
+  isActive  Boolean     @default(false) @map("is_active")
+  letter    String?     @db.VarChar(1) // A, B, C, or D
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchupId, teamId, playerId])
+  @@map("day_rosters")
+}
+
+model IndyGame {
+  id        String      @id @default(uuid())
+  matchupId String      @map("matchup_id")
+  order     Int         // 1-12
+  court     Int         // 1 or 2
+  homePair  String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  awayPair  String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  homeScore Int?
+  awayScore Int?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+
+  @@unique([matchupId, order])
+  @@map("indy_games")
+}
+
 enum UserRole {
   TD
   ASSISTANT
@@ -568,6 +648,7 @@ enum RatingType {
 enum TournamentFormat {
   SINGLE_ELIMINATION
   MLP
+  INDY_LEAGUE
 }
 
 enum GameType {
@@ -581,4 +662,17 @@ enum DuprSubmissionStatus {
   PENDING
   SUCCESS
   FAILED
+}
+
+enum MatchDayStatus {
+  DRAFT
+  IN_PROGRESS
+  FINALIZED
+}
+
+enum MatchupStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  COMPLETED
 }

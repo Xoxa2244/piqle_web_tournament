@@ -20,7 +20,9 @@ export default function NewTournamentPage() {
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP',
+    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP' | 'INDY_LEAGUE',
+    seasonLabel: '',
+    timezone: '',
   })
 
   const createTournament = trpc.tournament.create.useMutation({
@@ -51,6 +53,8 @@ export default function NewTournamentPage() {
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       format: formData.format,
+      seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
+      timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
     })
   }
 
@@ -191,13 +195,53 @@ export default function NewTournamentPage() {
               >
                 <option value="SINGLE_ELIMINATION">Single Elimination</option>
                 <option value="MLP">MiLP Tournament</option>
+                <option value="INDY_LEAGUE">Indy League</option>
               </select>
               <p className="mt-1 text-sm text-gray-500">
                 {formData.format === 'MLP' 
                   ? 'MLP format: 4-player teams (2F + 2M), 4 games per match, tiebreaker on 2:2'
+                  : formData.format === 'INDY_LEAGUE'
+                  ? 'Indy League: Multi-day league format with match days and 12-game matchups'
                   : 'Standard single elimination bracket with play-in matches'}
               </p>
             </div>
+
+            {formData.format === 'INDY_LEAGUE' && (
+              <>
+                <div>
+                  <label htmlFor="seasonLabel" className="block text-sm font-medium text-gray-700 mb-2">
+                    Season Label
+                  </label>
+                  <input
+                    type="text"
+                    id="seasonLabel"
+                    name="seasonLabel"
+                    value={formData.seasonLabel}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Spring 2024"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
+                    Timezone
+                  </label>
+                  <input
+                    type="text"
+                    id="timezone"
+                    name="timezone"
+                    value={formData.timezone}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., America/New_York"
+                  />
+                  <p className="mt-1 text-sm text-gray-500">
+                    IANA timezone identifier (optional)
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="flex items-center">
               <input

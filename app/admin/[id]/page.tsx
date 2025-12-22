@@ -222,6 +222,7 @@ export default function TournamentDetailPage() {
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
+        tournamentFormat={tournament.format}
       />
 
       {/* Main Content */}

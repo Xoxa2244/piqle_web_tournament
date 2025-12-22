@@ -12,7 +12,8 @@ import {
   Upload,
   Globe,
   Edit,
-  ArrowLeft
+  ArrowLeft,
+  Calendar
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -25,6 +26,7 @@ interface TournamentNavBarProps {
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
   publicScoreboardUrl?: string
+  tournamentFormat?: 'SINGLE_ELIMINATION' | 'MLP' | 'INDY_LEAGUE'
 }
 
 function TournamentNavBarContent({
@@ -34,7 +36,8 @@ function TournamentNavBarContent({
   pendingRequestsCount = 0,
   onPublicScoreboardClick,
   onEditTournamentClick,
-  publicScoreboardUrl
+  publicScoreboardUrl,
+  tournamentFormat
 }: TournamentNavBarProps) {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -171,6 +174,19 @@ function TournamentNavBarContent({
                 <span>Dashboard</span>
               </Button>
             </Link>
+            
+            {tournamentFormat === 'INDY_LEAGUE' && isAdmin && (
+              <Link href={`/admin/${tournamentId}/match-days`}>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-indigo-50 hover:border-indigo-200 transition-all"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Match Days</span>
+                </Button>
+              </Link>
+            )}
             
             {isOwner && (
               <Link href={`/admin/${tournamentId}/access`} className="relative">

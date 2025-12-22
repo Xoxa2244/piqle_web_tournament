@@ -22,7 +22,9 @@ export const tournamentRouter = createTRPCRouter({
       isPublicBoardEnabled: z.boolean().default(false),
       allowDuprSubmission: z.boolean().default(false),
       publicSlug: z.string().optional(),
-      format: z.enum(['SINGLE_ELIMINATION', 'MLP']).default('SINGLE_ELIMINATION'),
+      format: z.enum(['SINGLE_ELIMINATION', 'MLP', 'INDY_LEAGUE']).default('SINGLE_ELIMINATION'),
+      seasonLabel: z.string().optional(),
+      timezone: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Generate unique publicSlug
@@ -38,7 +40,19 @@ export const tournamentRouter = createTRPCRouter({
 
       const tournament = await ctx.prisma.tournament.create({
         data: {
-          ...input,
+          title: input.title,
+          description: input.description,
+          rulesUrl: input.rulesUrl,
+          venueName: input.venueName,
+          venueAddress: input.venueAddress,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          entryFee: input.entryFee,
+          isPublicBoardEnabled: input.isPublicBoardEnabled,
+          allowDuprSubmission: input.allowDuprSubmission,
+          format: input.format,
+          seasonLabel: input.seasonLabel,
+          timezone: input.timezone,
           userId: ctx.session.user.id,
           publicSlug,
         },
