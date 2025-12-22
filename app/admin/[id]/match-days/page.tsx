@@ -179,7 +179,7 @@ export default function MatchDaysPage({ params }: { params: { id: string } }) {
             <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">No match days created yet.</p>
             <p className="text-sm text-gray-500 mt-2">
-              Click "Add Match Day" to create your first match day.
+              Click &quot;Add Match Day&quot; to create your first match day.
             </p>
           </CardContent>
         </Card>

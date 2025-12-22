@@ -271,7 +271,7 @@ export default function MatchDayDetailPage({ params }: { params: { id: string; d
             <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">No matchups created yet.</p>
             <p className="text-sm text-gray-500 mt-2">
-              Click "Add Matchup" to create your first matchup.
+              Click &quot;Add Matchup&quot; to create your first matchup.
             </p>
           </CardContent>
         </Card>
