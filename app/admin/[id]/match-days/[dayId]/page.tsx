@@ -291,7 +291,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {divMatchups.map((matchup) => (
+                  {(divMatchups as any[]).map((matchup: any) => (
                     <div
                       key={matchup.id}
                       className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
