@@ -122,14 +122,14 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   }
 
   // Group matchups by division
-  const matchupsByDivision = matchups?.reduce((acc, matchup) => {
+  const matchupsByDivision = matchups?.reduce((acc: any, matchup: any) => {
     const divName = matchup.division.name
     if (!acc[divName]) {
       acc[divName] = []
     }
     acc[divName].push(matchup)
     return acc
-  }, {} as Record<string, typeof matchups>)
+  }, {} as Record<string, any[]>)
 
   if (!matchDay) {
     return (
