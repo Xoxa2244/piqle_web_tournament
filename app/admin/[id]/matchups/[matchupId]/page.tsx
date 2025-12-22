@@ -42,7 +42,8 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
 
   const updateRoster = trpc.indyMatchup.updateRoster.useMutation({
     onSuccess: () => {
-      allMatchupsQueries.forEach((q) => q.refetch())
+      // Refetch will happen automatically via React Query
+      window.location.reload() // Simple refresh for now
     },
     onError: (error) => {
       alert('Error updating roster: ' + error.message)
