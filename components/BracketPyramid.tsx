@@ -222,15 +222,13 @@ export default function BracketPyramid({
     const finalWinner = getWinner(finalMatch)
     const secondPlace = finalWinner === finalMatch.teamA ? finalMatch.teamB : finalMatch.teamA
     
-    // 3rd Place = loser of Third Place Match (if match exists and is completed)
+    // 3rd Place = winner of Third Place Match (if match exists and is completed)
     let thirdPlace: Team | null = null
     if (thirdPlaceMatch) {
       const thirdPlaceWinner = getWinner(thirdPlaceMatch)
       if (thirdPlaceWinner) {
-        // Match is completed - loser is the other team
-        thirdPlace = thirdPlaceWinner === thirdPlaceMatch.teamA 
-          ? thirdPlaceMatch.teamB 
-          : thirdPlaceMatch.teamA
+        // Match is completed - winner gets 3rd place
+        thirdPlace = thirdPlaceWinner
       }
     }
     
