@@ -8,10 +8,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Plus, RefreshCw, Users, Play } from 'lucide-react'
 
-export default function MatchDayDetailPage({ params }: { params: { id: string; dayId: string } }) {
+export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
-  const tournamentId = params.id
-  const matchDayId = params.dayId
+  const [tournamentId, setTournamentId] = useState<string>('')
+  const [matchDayId, setMatchDayId] = useState<string>('')
+  
+  useEffect(() => {
+    params.then((p) => {
+      setTournamentId(p.id)
+      setMatchDayId(p.dayId)
+    })
+  }, [params])
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')

@@ -8,10 +8,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Save, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
 
-export default function MatchupDetailPage({ params }: { params: { id: string; matchupId: string } }) {
+export default function MatchupDetailPage({ params }: { params: Promise<{ id: string; matchupId: string }> }) {
   const router = useRouter()
-  const tournamentId = params.id
-  const matchupId = params.matchupId
+  const [tournamentId, setTournamentId] = useState<string>('')
+  const [matchupId, setMatchupId] = useState<string>('')
+  
+  useEffect(() => {
+    params.then((p) => {
+      setTournamentId(p.id)
+      setMatchupId(p.matchupId)
+    })
+  }, [params])
 
   // Get matchup data - find it from all match days
   const { data: matchDays } = trpc.matchDay.list.useQuery({ tournamentId })
