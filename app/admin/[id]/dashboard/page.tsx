@@ -261,7 +261,7 @@ function DivisionDashboardContent() {
   }
   
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && !isIndyLeague && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
