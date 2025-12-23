@@ -22,6 +22,7 @@ import {
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import DaySelector from '@/components/DaySelector'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
 
@@ -245,6 +246,7 @@ function DivisionDashboardContent() {
   const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
 
   const isMLP = tournament?.format === 'MLP'
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
@@ -293,8 +295,8 @@ function DivisionDashboardContent() {
               {/* Status badges hidden per user request */}
             </div>
             
-            {/* Show Bracket Button */}
-            {isRRComplete && currentDivision && (
+            {/* Show Bracket Button - only for non-IndyLeague */}
+            {isRRComplete && currentDivision && !isIndyLeague && (
               <Button
                 onClick={() => setShowBracketModal(true)}
                 variant="outline"
@@ -303,6 +305,19 @@ function DivisionDashboardContent() {
                 <Trophy className="h-4 w-4" />
                 <span>Show Bracket</span>
               </Button>
+            )}
+
+            {/* Day Selector for IndyLeague */}
+            {isIndyLeague && tournamentId && (
+              <div className="mr-4">
+                <DaySelector
+                  tournamentId={tournamentId}
+                  selectedDayId={selectedDayId}
+                  onDayChange={setSelectedDayId}
+                  mode={viewMode}
+                  onModeChange={setViewMode}
+                />
+              </div>
             )}
 
             {/* Division Switcher */}
@@ -353,6 +368,66 @@ function DivisionDashboardContent() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {currentDivision ? (
           <>
+            {/* IndyLeague Dashboard */}
+            {isIndyLeague ? (
+              <div className="space-y-6">
+                {/* Standings Table for IndyLeague */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Standings {viewMode === 'DAY_ONLY' ? '(This Day Only)' : '(Season to Date)'}</CardTitle>
+                      <Button variant="outline" size="sm">
+                        <Download className="h-4 w-4 mr-2" />
+                        Export CSV
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">#</th>
+                            <th className="text-left py-2">Team</th>
+                            <th className="text-center py-2">W</th>
+                            <th className="text-center py-2">L</th>
+                            <th className="text-center py-2">PF</th>
+                            <th className="text-center py-2">PA</th>
+                            <th className="text-center py-2">Diff</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {indyStandings && indyStandings.length > 0 ? (
+                            indyStandings.map((team: any, index: number) => (
+                              <tr key={team.teamId} className="border-b hover:bg-gray-50">
+                                <td className="py-2 font-medium">{index + 1}</td>
+                                <td className="py-2 font-medium">{team.teamName}</td>
+                                <td className="py-2 text-center">{team.wins}</td>
+                                <td className="py-2 text-center">{team.losses}</td>
+                                <td className="py-2 text-center">{team.pointsFor}</td>
+                                <td className="py-2 text-center">{team.pointsAgainst}</td>
+                                <td className="py-2 text-center">
+                                  <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                    {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-gray-500">
+                                No standings data available
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <>
             {/* Desktop Layout */}
             <div className="hidden lg:block space-y-6">
               {/* Round Robin Section */}
@@ -702,6 +777,8 @@ function DivisionDashboardContent() {
                 </TabsContent>
               </Tabs>
             </div>
+              </>
+            )}
           </>
         ) : (
           <div className="text-center py-8">
