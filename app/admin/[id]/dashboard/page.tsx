@@ -70,6 +70,10 @@ function DivisionDashboardContent() {
     teamAName: string
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+  
+  // IndyLeague specific state
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>('SEASON_TO_DATE')
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -267,6 +271,22 @@ function DivisionDashboardContent() {
   const hasPlayIn = needsPlayIn
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
+
+  // IndyLeague queries
+  const { data: matchDays } = trpc.matchDay.list.useQuery(
+    { tournamentId },
+    { enabled: isIndyLeague && !!tournamentId }
+  )
+  
+  const { data: indyStandings } = trpc.indyStandings.get.useQuery(
+    {
+      tournamentId,
+      divisionId: selectedDivisionId || undefined,
+      matchDayId: selectedDayId || undefined,
+      mode: viewMode,
+    },
+    { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
