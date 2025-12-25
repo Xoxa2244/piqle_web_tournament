@@ -32,15 +32,23 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFuZ3dkbXl
 
 ## 🔧 Alternative DATABASE_URL Options:
 
-### Direct connection (for local development):
+### 1. Transaction Pooling (PgBouncer) - ✅ RECOMMENDED for Vercel/Serverless
 ```
-postgresql://postgres:Kwpc75md8!!!@db.angwdmyswzztmlrdzgxm.supabase.co:5432/postgres
+postgresql://postgres.angwdmyswzztmlrdzgxm:Kwpc75md8!!!@aws-1-us-east-2.pooler.supabase.com:6543/postgres?pgbouncer=true&prepared_statements=false
 ```
+**Why:** Best for serverless (Next.js API routes). Reuses connections, prevents "too many connections" errors.
 
-### Session pooler (alternative for IPv4):
+### 2. Session Pooling - For long-running connections
 ```
 postgresql://postgres.angwdmyswzztmlrdzgxm:Kwpc75md8!!!@aws-1-us-east-2.pooler.supabase.com:5432/postgres
 ```
+**Why:** Full PostgreSQL features, but uses more connections. Not ideal for serverless.
+
+### 3. Direct Connection - ⚠️ NOT recommended for serverless
+```
+postgresql://postgres:Kwpc75md8!!!@db.angwdmyswzztmlrdzgxm.supabase.co:5432/postgres
+```
+**Why:** Full features but high risk of "too many connections" in serverless environments. Use only for local development.
 
 ## ✅ Recommendation:
-**Use Transaction pooler** - it's ideal for Vercel serverless functions and provides better performance.
+**Use Transaction pooler (port 6543)** - it's ideal for Vercel serverless functions and provides better performance while preventing connection limit issues.
