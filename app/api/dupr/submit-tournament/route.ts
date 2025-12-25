@@ -152,8 +152,8 @@ export async function POST(req: NextRequest) {
     // Get DUPR access token - generate new token according to DUPR documentation
     // According to DUPR docs: base64(client_key + ":" + client_secret) in x-authorization header
     // Client Key format: ck-xxxxx, Client Secret format: cs-xxxxx
-    const duprClientKey = process.env.DUPR_CLIENT_KEY || process.env.DUPR_CLIENT_ID // Support both naming conventions
-    const duprClientSecret = process.env.DUPR_CLIENT_SECRET
+    const duprClientKey = process.env.DUPR_CLIENT_KEY || process.env.DUPR_CLIENT_ID_test || process.env.DUPR_CLIENT_ID // Support both naming conventions
+    const duprClientSecret = process.env.DUPR_CLIENT_SECRET_test || process.env.DUPR_CLIENT_SECRET
     
     console.log('DUPR Token Generation Debug:', {
       hasClientKey: !!duprClientKey,

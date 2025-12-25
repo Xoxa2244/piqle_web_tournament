@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
+      url: process.env.DATABASE_URL_test || process.env.DATABASE_URL || 'postgresql://placeholder:placeholder@localhost:5432/placeholder',
     },
   },
 })

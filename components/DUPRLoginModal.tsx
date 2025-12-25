@@ -31,7 +31,7 @@ export default function DUPRLoginModal({
   useEffect(() => {
     if (!isOpen) return
 
-    const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
+    const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY_test || process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
     if (!clientKey) {
       console.error('NEXT_PUBLIC_DUPR_CLIENT_KEY is not set')
       alert('DUPR integration is not configured. Please set NEXT_PUBLIC_DUPR_CLIENT_KEY in environment variables.')
@@ -112,7 +112,7 @@ export default function DUPRLoginModal({
 
   if (!isOpen) return null
 
-  const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
+  const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY_test || process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
   
   // Log for debugging
   console.log('DUPR Login Modal - clientKey:', clientKey ? `${clientKey.substring(0, 10)}...` : 'UNDEFINED')
