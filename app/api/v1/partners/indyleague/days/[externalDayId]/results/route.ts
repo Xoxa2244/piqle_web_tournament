@@ -141,7 +141,8 @@ export async function GET(
       teamIds.add(m.awayTeamId)
     })
     const teamExternalIdMap = new Map<string, string>()
-    for (const teamId of teamIds) {
+    const teamIdsArray = Array.from(teamIds)
+    for (const teamId of teamIdsArray) {
       const extId = await getExternalId(
         context.partnerId,
         'TEAM',
