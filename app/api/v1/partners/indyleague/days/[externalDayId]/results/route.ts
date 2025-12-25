@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { externalDayId } = await params
   
-  return withPartnerAuth(
+  const handler = withPartnerAuth(
     async (req: NextRequest, context) => {
       const divisionExternalId = req.nextUrl.searchParams.get('divisionExternalId')
 
@@ -361,10 +361,12 @@ export async function GET(
       }))
     }
 
-    return NextResponse.json(response)
-  },
-  {
-    requiredScope: 'indyleague:read',
-  }
-)
-
+      return NextResponse.json(response)
+    },
+    {
+      requiredScope: 'indyleague:read',
+    }
+  )
+  
+  return handler(req)
+}

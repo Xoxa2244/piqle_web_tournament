@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { externalDayId } = await params
   
-  return withPartnerAuth(
+  const handler = withPartnerAuth(
     async (req: NextRequest, context) => {
 
     if (!externalDayId) {
@@ -106,19 +106,22 @@ export async function GET(
       status = 'finalized'
     }
 
-    return NextResponse.json({
-      status,
-      completion: {
-        totalMatchups,
-        completedMatchups,
-        matchupsRequiringTieBreak,
-        matchupsWithMissingScores,
-      },
-      lastUpdatedAt: matchDay.updatedAt.toISOString(),
-    })
-  },
-  {
-    requiredScope: 'indyleague:read',
-  }
-)
+      return NextResponse.json({
+        status,
+        completion: {
+          totalMatchups,
+          completedMatchups,
+          matchupsRequiringTieBreak,
+          matchupsWithMissingScores,
+        },
+        lastUpdatedAt: matchDay.updatedAt.toISOString(),
+      })
+    },
+    {
+      requiredScope: 'indyleague:read',
+    }
+  )
+  
+  return handler(req)
+}
 
