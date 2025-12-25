@@ -1,0 +1,398 @@
+{
+  "info": {
+    "name": "Piqle Partner API - Full Test Flow",
+    "description": "Complete test collection for Piqle Partner API. Run requests in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://rtest.piqle.io",
+      "type": "string"
+    },
+    {
+      "key": "key_id",
+      "value": "pk_baa72f0edf3776b57fb5f015dbf76ea9",
+      "type": "string"
+    },
+    {
+      "key": "secret",
+      "value": "sk_3633d7f17a962cdd17684dc71153d7f49bac4cb7bf34992477a830637585fec3",
+      "type": "string"
+    },
+    {
+      "key": "external_tournament_id",
+      "value": "test-tournament-001",
+      "type": "string"
+    },
+    {
+      "key": "external_division_id",
+      "value": "test-div-001",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_1",
+      "value": "test-team-001",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_2",
+      "value": "test-team-002",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_1",
+      "value": "test-player-001",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_2",
+      "value": "test-player-002",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id",
+      "value": "test-day-001",
+      "type": "string"
+    },
+    {
+      "key": "external_matchup_id",
+      "value": "test-matchup-001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create Tournament",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"name\": \"Test Tournament - Full Flow\",\n  \"seasonLabel\": \"Test Season 2024\",\n  \"timezone\": \"America/New_York\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/tournaments/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "tournaments", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "2. Create Divisions",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"divisions\": [\n    {\n      \"externalDivisionId\": \"{{external_division_id}}\",\n      \"name\": \"Test Division\",\n      \"orderIndex\": 1\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/divisions/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "divisions", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "3. Create Players",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"players\": [\n    {\n      \"externalPlayerId\": \"{{external_player_id_1}}\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\"\n    },\n    {\n      \"externalPlayerId\": \"{{external_player_id_2}}\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "players", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "4. Create Teams",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"teams\": [\n    {\n      \"externalTeamId\": \"{{external_team_id_1}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Alpha\",\n      \"clubName\": \"Alpha Club\",\n      \"eventType\": \"men\"\n    },\n    {\n      \"externalTeamId\": \"{{external_team_id_2}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Beta\",\n      \"clubName\": \"Beta Club\",\n      \"eventType\": \"men\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/teams/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "teams", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "5. Create Match Day",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"days\": [\n    {\n      \"externalDayId\": \"{{external_day_id}}\",\n      \"date\": \"2024-12-26\",\n      \"statusHint\": \"scheduled\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/days/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "days", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "6. Create Matchups",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"matchups\": [\n    {\n      \"externalMatchupId\": \"{{external_matchup_id}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"homeTeamExternalId\": \"{{external_team_id_1}}\",\n      \"awayTeamExternalId\": \"{{external_team_id_2}}\",\n      \"site\": \"Court 1\",\n      \"courtGroup\": \"A\",\n      \"startTime\": \"2024-12-26T10:00:00Z\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/matchups/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "matchups", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "7. Create Rosters",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_1}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_2}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\"{{external_player_id_1}}\", \"{{external_player_id_2}}\"]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_1}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_2}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\"{{external_player_id_1}}\", \"{{external_player_id_2}}\"]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "rosters", "upsert"]
+        }
+      }
+    },
+    {
+      "name": "8. Get Day Status",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/days/{{external_day_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "days", "{{external_day_id}}"]
+        }
+      }
+    },
+    {
+      "name": "9. Get Day Results",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/days/{{external_day_id}}/results?divisionExternalId={{external_division_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "days", "{{external_day_id}}", "results"],
+          "query": [
+            {
+              "key": "divisionExternalId",
+              "value": "{{external_division_id}}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+
