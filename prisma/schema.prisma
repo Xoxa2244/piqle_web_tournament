@@ -676,3 +676,123 @@ enum MatchupStatus {
   IN_PROGRESS
   COMPLETED
 }
+
+model Partner {
+  id              String       @id @default(uuid())
+  name            String
+  code            String       @unique // Short unique identifier
+  contactEmail    String?
+  contactName     String?
+  status          PartnerStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  apps            PartnerApp[]
+  externalMappings ExternalIdMapping[]
+  apiRequestLogs  ApiRequestLog[]
+
+  @@map("partners")
+}
+
+model PartnerApp {
+  id              String       @id @default(uuid())
+  partnerId       String
+  environment     PartnerEnvironment
+  keyId           String       @unique // Public identifier
+  secretHash      String       // Hashed secret (bcrypt)
+  lastUsedAt      DateTime?
+  status          PartnerAppStatus @default(ACTIVE)
+  allowedIps      String[]    @default([]) // IP allowlist (empty = no restriction)
+  rateLimitRpm    Int         @default(60) // Requests per minute
+  scopes          String[]    @default([]) // e.g., ["indyleague:write", "indyleague:read"]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  apiRequestLogs  ApiRequestLog[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("partner_apps")
+}
+
+model ExternalIdMapping {
+  id              String       @id @default(uuid())
+  partnerId       String
+  entityType      ExternalEntityType
+  externalId      String       // Partner's external ID
+  internalId      String       // Our internal ID
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, entityType, externalId])
+  @@index([partnerId, entityType, externalId])
+  @@index([entityType, internalId])
+  @@map("external_id_mappings")
+}
+
+model ApiRequestLog {
+  id              String       @id @default(uuid())
+  partnerId       String?
+  partnerAppId    String?
+  endpoint        String
+  method          String
+  statusCode      Int
+  duration        Int         // milliseconds
+  idempotencyKey  String?
+  correlationId   String?
+  requestBody     Json?
+  responseBody    Json?
+  errorMessage    String?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime     @default(now())
+  partner         Partner?     @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerApp      PartnerApp?  @relation(fields: [partnerAppId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId, createdAt])
+  @@index([partnerAppId, createdAt])
+  @@index([idempotencyKey])
+  @@index([correlationId])
+  @@map("api_request_logs")
+}
+
+model IdempotencyKey {
+  id              String       @id @default(uuid())
+  partnerAppId    String
+  key             String       // The idempotency key (UUID)
+  endpoint        String
+  method          String
+  requestHash     String?      // Hash of request body for validation
+  responseStatus  Int
+  responseBody    Json?
+  createdAt       DateTime     @default(now())
+  expiresAt       DateTime     // Default 24 hours
+  partnerApp      PartnerApp   @relation(fields: [partnerAppId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerAppId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PartnerEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum PartnerAppStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ExternalEntityType {
+  TOURNAMENT
+  DIVISION
+  TEAM
+  PLAYER
+  MATCH_DAY
+  MATCHUP
+}
