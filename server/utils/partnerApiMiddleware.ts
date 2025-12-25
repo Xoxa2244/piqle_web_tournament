@@ -85,12 +85,14 @@ export function withPartnerAuth(
         )
       }
 
-      // Parse request body if present
+      // Parse request body if present (clone request to avoid consuming body)
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         try {
           const contentType = req.headers.get('content-type') || ''
           if (contentType.includes('application/json')) {
-            requestBody = await req.json()
+            // Clone request to read body without consuming it
+            const clonedReq = req.clone()
+            requestBody = await clonedReq.json()
           }
         } catch (e) {
           // Body might be empty, that's ok
