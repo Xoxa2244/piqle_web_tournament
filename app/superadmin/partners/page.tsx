@@ -287,7 +287,7 @@ export default function PartnersPage() {
                         setNewSecret(null)
                       }}
                     >
-                      I've saved it
+                      I&apos;ve saved it
                     </Button>
                   </div>
                 </div>
