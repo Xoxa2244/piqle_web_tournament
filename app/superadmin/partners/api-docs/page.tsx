@@ -260,6 +260,7 @@ export default function ApiDocsPage() {
                 <CodeBlock
                   id="players-request"
                   code={JSON.stringify({
+                    externalTournamentId: "tournament-001",
                     players: [
                       {
                         externalPlayerId: "player-001",

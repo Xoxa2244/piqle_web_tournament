@@ -5,6 +5,7 @@ import { setExternalIdMapping, getInternalId } from '@/server/utils/externalIdMa
 import { z } from 'zod'
 
 const upsertPlayersSchema = z.object({
+  externalTournamentId: z.string(),
   players: z.array(
     z.object({
       externalPlayerId: z.string(),
@@ -22,6 +23,41 @@ export const POST = withPartnerAuth(
   async (req: NextRequest, context) => {
     const body = await req.json()
     const validated = upsertPlayersSchema.parse(body)
+
+    // Get tournament internal ID
+    const tournamentId = await getInternalId(
+      context.partnerId,
+      'TOURNAMENT',
+      validated.externalTournamentId
+    )
+
+    if (!tournamentId) {
+      return NextResponse.json(
+        {
+          errorCode: 'TOURNAMENT_NOT_FOUND',
+          message: `Tournament with external ID ${validated.externalTournamentId} not found`,
+          details: [],
+        },
+        { status: 422 }
+      )
+    }
+
+    // Verify tournament exists and is IndyLeague
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { format: true },
+    })
+
+    if (!tournament || tournament.format !== 'INDY_LEAGUE') {
+      return NextResponse.json(
+        {
+          errorCode: 'INVALID_TOURNAMENT',
+          message: 'Tournament is not an IndyLeague tournament',
+          details: [],
+        },
+        { status: 422 }
+      )
+    }
 
     const results: Array<{
       externalPlayerId: string
@@ -47,6 +83,7 @@ export const POST = withPartnerAuth(
               email: player.email || null,
               gender: player.gender || null,
               dupr: player.duprId || null,
+              tournamentId, // Update tournament association
             },
           })
           results.push({
@@ -54,7 +91,7 @@ export const POST = withPartnerAuth(
             status: 'updated',
           })
         } else {
-          // Create new player (global, not tied to tournament)
+          // Create new player tied to tournament
           const newPlayer = await prisma.player.create({
             data: {
               firstName: player.firstName,
@@ -62,6 +99,7 @@ export const POST = withPartnerAuth(
               email: player.email || null,
               gender: player.gender || null,
               dupr: player.duprId || null,
+              tournamentId, // Link to tournament
             },
           })
 

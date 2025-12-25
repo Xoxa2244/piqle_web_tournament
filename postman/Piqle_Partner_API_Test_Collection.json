@@ -170,7 +170,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"players\": [\n    {\n      \"externalPlayerId\": \"{{external_player_id_1}}\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\"\n    },\n    {\n      \"externalPlayerId\": \"{{external_player_id_2}}\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\"\n    }\n  ]\n}"
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"{{external_player_id_1}}\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\"\n    },\n    {\n      \"externalPlayerId\": \"{{external_player_id_2}}\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\"\n    }\n  ]\n}"
         },
         "url": {
           "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
