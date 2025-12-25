@@ -27,6 +27,16 @@ const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 export default function PartnersPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [showCreatePartner, setShowCreatePartner] = useState(false)
+  const [showEditPartner, setShowEditPartner] = useState(false)
+  const [editingPartner, setEditingPartner] = useState<{
+    id: string
+    name: string
+    code: string
+    contactEmail: string | null
+    contactName: string | null
+    directorUserId: string | null
+    director: { id: string; name: string | null; email: string } | null
+  } | null>(null)
   const [showCreateApp, setShowCreateApp] = useState(false)
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null)
   const [newSecret, setNewSecret] = useState<string | null>(null)
@@ -70,6 +80,16 @@ export default function PartnersPage() {
     onSuccess: () => {
       setShowCreatePartner(false)
       setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '', directorUserId: '' })
+      setSelectedDirector(null)
+      setDirectorSearchQuery('')
+      refetch()
+    },
+  })
+
+  const updatePartner = trpc.partner.update.useMutation({
+    onSuccess: () => {
+      setShowEditPartner(false)
+      setEditingPartner(null)
       setSelectedDirector(null)
       setDirectorSearchQuery('')
       refetch()
@@ -136,6 +156,161 @@ export default function PartnersPage() {
             </Button>
           </div>
         </div>
+
+        {/* Edit Partner Modal */}
+        {showEditPartner && editingPartner && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Edit Partner</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Partner Name</label>
+                    <Input
+                      value={editingPartner.name}
+                      onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })}
+                      placeholder="Acme Sports"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Partner Code</label>
+                    <Input
+                      value={editingPartner.code}
+                      onChange={(e) => setEditingPartner({ ...editingPartner, code: e.target.value })}
+                      placeholder="acme-sports"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Unique identifier (letters, numbers, _, -)</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Contact Email (optional)</label>
+                    <Input
+                      type="email"
+                      value={editingPartner.contactEmail || ''}
+                      onChange={(e) => setEditingPartner({ ...editingPartner, contactEmail: e.target.value || null })}
+                      placeholder="contact@acme.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Contact Name (optional)</label>
+                    <Input
+                      value={editingPartner.contactName || ''}
+                      onChange={(e) => setEditingPartner({ ...editingPartner, contactName: e.target.value || null })}
+                      placeholder="John Doe"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Tournament Director</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search by name or email..."
+                        value={directorSearchQuery}
+                        onChange={(e) => {
+                          setDirectorSearchQuery(e.target.value)
+                          if (!e.target.value) {
+                            setSelectedDirector(null)
+                            setEditingPartner({ ...editingPartner, directorUserId: null })
+                          }
+                        }}
+                        className="pl-10"
+                      />
+                    </div>
+                    {directorSearchQuery.length >= 2 && searchUsersQuery.data && (
+                      <div className="mt-2 border rounded-md bg-white shadow-lg z-10 max-h-48 overflow-y-auto">
+                        {searchUsersQuery.data.length === 0 ? (
+                          <div className="p-4 text-sm text-gray-500">No users found</div>
+                        ) : (
+                          searchUsersQuery.data.map((user) => (
+                            <button
+                              key={user.id}
+                              onClick={() => {
+                                setSelectedDirector(user)
+                                setEditingPartner({ ...editingPartner, directorUserId: user.id })
+                                setDirectorSearchQuery(user.name || user.email)
+                              }}
+                              className="w-full text-left p-3 hover:bg-gray-50 flex items-center space-x-3"
+                            >
+                              <div>
+                                <div className="font-medium">{user.name || 'No name'}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {editingPartner.director && !selectedDirector && (
+                      <div className="mt-2 p-2 bg-gray-100 rounded-lg text-sm">
+                        Current: <strong>{editingPartner.director.name || 'No name'}</strong> ({editingPartner.director.email})
+                      </div>
+                    )}
+                    {selectedDirector && (
+                      <div className="mt-2 p-2 bg-gray-100 rounded-lg text-sm">
+                        Selected: <strong>{selectedDirector.name || 'No name'}</strong> ({selectedDirector.email})
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-2 h-6 px-2"
+                          onClick={() => {
+                            setSelectedDirector(null)
+                            setEditingPartner({ ...editingPartner, directorUserId: null })
+                            setDirectorSearchQuery('')
+                          }}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => {
+                        setEditingPartner({ ...editingPartner, directorUserId: null })
+                        setSelectedDirector(null)
+                        setDirectorSearchQuery('')
+                      }}
+                    >
+                      Clear Director
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => {
+                        updatePartner.mutate({
+                          id: editingPartner.id,
+                          name: editingPartner.name,
+                          code: editingPartner.code,
+                          contactEmail: editingPartner.contactEmail || null,
+                          contactName: editingPartner.contactName || null,
+                          directorUserId: editingPartner.directorUserId || null,
+                        })
+                      }}
+                      disabled={!editingPartner.name || !editingPartner.code}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowEditPartner(false)
+                        setEditingPartner(null)
+                        setSelectedDirector(null)
+                        setDirectorSearchQuery('')
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Create Partner Modal */}
         {showCreatePartner && (
@@ -403,16 +578,43 @@ export default function PartnersPage() {
                       <p className="text-sm text-yellow-600">⚠️ No director assigned</p>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setSelectedPartnerId(partner.id)
-                      setShowCreateApp(true)
-                    }}
-                  >
-                    <Key className="w-4 h-4 mr-2" />
-                    Create Credentials
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingPartner({
+                          id: partner.id,
+                          name: partner.name,
+                          code: partner.code,
+                          contactEmail: partner.contactEmail,
+                          contactName: partner.contactName,
+                          directorUserId: partner.director?.id || null,
+                          director: partner.director,
+                        })
+                        setSelectedDirector(partner.director ? {
+                          id: partner.director.id,
+                          email: partner.director.email,
+                          name: partner.director.name,
+                        } : null)
+                        setDirectorSearchQuery('')
+                        setShowEditPartner(true)
+                      }}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedPartnerId(partner.id)
+                        setShowCreateApp(true)
+                      }}
+                    >
+                      <Key className="w-4 h-4 mr-2" />
+                      Create Credentials
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
