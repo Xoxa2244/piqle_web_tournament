@@ -150,6 +150,9 @@ export default function PartnersPage() {
             <Link href="/superadmin">
               <Button variant="outline">Back to Super Admin</Button>
             </Link>
+            <Link href="/superadmin/partners/api-docs">
+              <Button variant="outline">API Documentation</Button>
+            </Link>
             <Button onClick={() => setShowCreatePartner(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Create Partner
