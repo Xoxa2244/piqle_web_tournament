@@ -154,9 +154,9 @@ export default function DUPRLoginModal({
     )
   }
   
-  // Use production URL by default (can be changed to UAT if needed)
-  const duprLoginUrl = `https://dashboard.dupr.com/login-external-app/${base64ClientId}`
-  console.log('DUPR Login URL:', duprLoginUrl.replace(base64ClientId, '***'))
+  // Use UAT/test environment URL for test branch
+  const duprLoginUrl = `https://uat.dupr.gg/login-external-app/${base64ClientId}`
+  console.log('DUPR Login URL (UAT):', duprLoginUrl.replace(base64ClientId, '***'))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">

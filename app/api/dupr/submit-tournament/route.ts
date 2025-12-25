@@ -175,8 +175,10 @@ export async function POST(req: NextRequest) {
           const credentials = `${duprClientKey}:${duprClientSecret}`
           const base64Credentials = Buffer.from(credentials).toString('base64')
           
+          // Using UAT/test environment for test branch
           const tokenUrls = [
-            'https://prod.mydupr.com/api/auth/1.0/token', // Production token endpoint
+            'https://uat.dupr.gg/api/auth/1.0/token', // UAT token endpoint
+            'https://prod.mydupr.com/api/auth/1.0/token', // Production fallback
           ]
           
           for (const tokenUrl of tokenUrls) {
@@ -710,16 +712,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Call DUPR API using POST /api/match/1.0/create endpoint
-    // Production URL from working example: https://prod.mydupr.com/api/match/1.0/create
+    // Using UAT/test environment for test branch
     const baseUrls = [
-      'https://prod.mydupr.com', // Production domain (from working example)
+      'https://uat.dupr.gg', // UAT domain
+      'https://prod.mydupr.com', // Production domain (fallback)
       'https://api.dupr.gg', // Production API (fallback)
     ]
     
-    // Endpoint path is always /api/match/1.0/create for mydupr.com domains
-    // For api.dupr.gg, try without /api/ prefix
+    // Endpoint path configuration
     const getEndpointPath = (baseUrl: string) => {
       if (baseUrl.includes('mydupr.com')) {
+        return '/api/match/1.0/create'
+      } else if (baseUrl.includes('uat.dupr.gg')) {
+        // UAT environment
         return '/api/match/1.0/create'
       } else {
         // For api.dupr.gg, try both with and without /api/
@@ -755,6 +760,7 @@ export async function POST(req: NextRequest) {
         const url = `${baseUrl}${endpointPath}`
         
         // For api.dupr.gg, also try with /api/ prefix
+        // For uat.dupr.gg, use the endpoint path directly
         const alternativeUrls = baseUrl.includes('api.dupr.gg') 
           ? [`${baseUrl}/api/match/1.0/create`, url]
           : [url]

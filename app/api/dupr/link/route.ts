@@ -60,8 +60,10 @@ export async function POST(req: NextRequest) {
       try {
         // Use /Public/getBasicInfo endpoint with duprId as query parameter
         // According to DUPR docs: This endpoint works with user access token
+        // Using UAT/test environment for test branch
         const baseUrls = [
-          'https://api.dupr.gg',
+          'https://uat.dupr.gg',
+          'https://api.dupr.gg', // Fallback
         ]
         
         let response: Response | null = null
