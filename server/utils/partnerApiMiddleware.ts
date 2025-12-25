@@ -20,7 +20,7 @@ export function withPartnerAuth(
   handler: PartnerApiHandler,
   options: PartnerApiOptions = {}
 ) {
-  return async (req: NextRequest): Promise<NextResponse> {
+  return async (req: NextRequest): Promise<NextResponse> => {
     const startTime = Date.now()
     let partnerContext: PartnerAuthContext | null = null
     let idempotencyKey: string | null = null
