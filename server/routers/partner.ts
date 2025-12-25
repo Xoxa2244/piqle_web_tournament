@@ -9,6 +9,9 @@ export const partnerRouter = createTRPCRouter({
     const partners = await ctx.prisma.partner.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
+        apps: {
+          orderBy: { createdAt: 'desc' },
+        },
         _count: {
           select: {
             apps: true,
