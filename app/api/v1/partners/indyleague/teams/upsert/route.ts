@@ -41,7 +41,7 @@ export const POST = withPartnerAuth(
     }
 
     // Get all division external IDs and map them
-    const divisionExternalIds = [...new Set(validated.teams.map(t => t.divisionExternalId))]
+    const divisionExternalIds = Array.from(new Set(validated.teams.map(t => t.divisionExternalId)))
     const divisionMap = await getInternalIds(
       context.partnerId,
       'DIVISION',

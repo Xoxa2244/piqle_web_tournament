@@ -53,7 +53,7 @@ export const POST = withPartnerAuth(
     })
 
     // Create team external ID to matchup map
-    const teamExternalIds = [...new Set(validated.rosters.map(r => r.teamExternalId))]
+    const teamExternalIds = Array.from(new Set(validated.rosters.map(r => r.teamExternalId)))
     const teamMap = await getInternalIds(
       context.partnerId,
       'TEAM',
@@ -61,11 +61,9 @@ export const POST = withPartnerAuth(
     )
 
     // Get all player external IDs
-    const allPlayerExternalIds = [
-      ...new Set(
-        validated.rosters.flatMap(r => r.players.map(p => p.externalPlayerId))
-      ),
-    ]
+    const allPlayerExternalIds = Array.from(new Set(
+      validated.rosters.flatMap(r => r.players.map(p => p.externalPlayerId))
+    ))
     const playerMap = await getInternalIds(
       context.partnerId,
       'PLAYER',

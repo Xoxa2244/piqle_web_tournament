@@ -44,13 +44,11 @@ export const POST = withPartnerAuth(
     }
 
     // Get all division and team external IDs
-    const divisionExternalIds = [...new Set(validated.matchups.map(m => m.divisionExternalId))]
-    const teamExternalIds = [
-      ...new Set([
-        ...validated.matchups.map(m => m.homeTeamExternalId),
-        ...validated.matchups.map(m => m.awayTeamExternalId),
-      ]),
-    ]
+    const divisionExternalIds = Array.from(new Set(validated.matchups.map(m => m.divisionExternalId)))
+    const teamExternalIds = Array.from(new Set([
+      ...validated.matchups.map(m => m.homeTeamExternalId),
+      ...validated.matchups.map(m => m.awayTeamExternalId),
+    ]))
 
     const divisionMap = await getInternalIds(
       context.partnerId,
