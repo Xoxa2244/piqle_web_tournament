@@ -681,11 +681,11 @@ model Partner {
   id              String       @id @default(uuid())
   name            String
   code            String       @unique // Short unique identifier
-  contactEmail    String?
-  contactName     String?
+  contactEmail    String?      @map("contact_email")
+  contactName     String?      @map("contact_name")
   status          PartnerStatus @default(ACTIVE)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
   apps            PartnerApp[]
   externalMappings ExternalIdMapping[]
   apiRequestLogs  ApiRequestLog[]
@@ -695,17 +695,17 @@ model Partner {
 
 model PartnerApp {
   id              String       @id @default(uuid())
-  partnerId       String
+  partnerId       String       @map("partner_id")
   environment     PartnerEnvironment
-  keyId           String       @unique // Public identifier
-  secretHash      String       // Hashed secret (bcrypt)
-  lastUsedAt      DateTime?
+  keyId           String       @unique @map("key_id") // Public identifier
+  secretHash      String       @map("secret_hash") // Hashed secret (bcrypt)
+  lastUsedAt      DateTime?    @map("last_used_at")
   status          PartnerAppStatus @default(ACTIVE)
-  allowedIps      String[]    @default([]) // IP allowlist (empty = no restriction)
-  rateLimitRpm    Int         @default(60) // Requests per minute
+  allowedIps      String[]    @default([]) @map("allowed_ips") // IP allowlist (empty = no restriction)
+  rateLimitRpm    Int         @default(60) @map("rate_limit_rpm") // Requests per minute
   scopes          String[]    @default([]) // e.g., ["indyleague:write", "indyleague:read"]
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
   partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   apiRequestLogs  ApiRequestLog[]
   idempotencyKeys IdempotencyKey[]
@@ -715,12 +715,12 @@ model PartnerApp {
 
 model ExternalIdMapping {
   id              String       @id @default(uuid())
-  partnerId       String
-  entityType      ExternalEntityType
-  externalId      String       // Partner's external ID
-  internalId      String       // Our internal ID
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  partnerId       String       @map("partner_id")
+  entityType      ExternalEntityType @map("entity_type")
+  externalId      String       @map("external_id") // Partner's external ID
+  internalId      String       @map("internal_id") // Our internal ID
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
   partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@unique([partnerId, entityType, externalId])
@@ -731,20 +731,20 @@ model ExternalIdMapping {
 
 model ApiRequestLog {
   id              String       @id @default(uuid())
-  partnerId       String?
-  partnerAppId    String?
+  partnerId       String?      @map("partner_id")
+  partnerAppId    String?      @map("partner_app_id")
   endpoint        String
   method          String
-  statusCode      Int
+  statusCode      Int           @map("status_code")
   duration        Int         // milliseconds
-  idempotencyKey  String?
-  correlationId   String?
-  requestBody     Json?
-  responseBody    Json?
-  errorMessage    String?
-  ipAddress       String?
-  userAgent       String?
-  createdAt       DateTime     @default(now())
+  idempotencyKey  String?       @map("idempotency_key")
+  correlationId   String?       @map("correlation_id")
+  requestBody     Json?         @map("request_body")
+  responseBody    Json?         @map("response_body")
+  errorMessage    String?       @map("error_message")
+  ipAddress       String?       @map("ip_address")
+  userAgent       String?       @map("user_agent")
+  createdAt       DateTime     @default(now()) @map("created_at")
   partner         Partner?     @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   partnerApp      PartnerApp?  @relation(fields: [partnerAppId], references: [id], onDelete: SetNull)
 
@@ -757,15 +757,15 @@ model ApiRequestLog {
 
 model IdempotencyKey {
   id              String       @id @default(uuid())
-  partnerAppId    String
+  partnerAppId    String       @map("partner_app_id")
   key             String       // The idempotency key (UUID)
   endpoint        String
   method          String
-  requestHash     String?      // Hash of request body for validation
-  responseStatus  Int
-  responseBody    Json?
-  createdAt       DateTime     @default(now())
-  expiresAt       DateTime     // Default 24 hours
+  requestHash     String?       @map("request_hash") // Hash of request body for validation
+  responseStatus  Int           @map("response_status")
+  responseBody    Json?         @map("response_body")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  expiresAt       DateTime     @map("expires_at") // Default 24 hours
   partnerApp      PartnerApp   @relation(fields: [partnerAppId], references: [id], onDelete: Cascade)
 
   @@unique([partnerAppId, key])
