@@ -121,7 +121,7 @@ export async function GET(
     })
 
     // Get all division external IDs
-    const divisionIds = [...new Set(matchups.map(m => m.divisionId))]
+    const divisionIds = Array.from(new Set(matchups.map(m => m.divisionId)))
     const divisionExternalIdMap = new Map<string, string>()
     for (const divisionId of divisionIds) {
       const extId = await getExternalId(
