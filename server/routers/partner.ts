@@ -6,21 +6,46 @@ import { generateApiKey, hashSecret } from '../utils/partnerAuth'
 export const partnerRouter = createTRPCRouter({
   // List all partners
   list: publicProcedure.query(async ({ ctx }) => {
-    const partners = await ctx.prisma.partner.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        apps: {
-          orderBy: { createdAt: 'desc' },
-        },
-        _count: {
-          select: {
-            apps: true,
+    try {
+      // First, try a simple query to check if table exists
+      const partners = await ctx.prisma.partner.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          apps: {
+            orderBy: { createdAt: 'desc' },
+          },
+          _count: {
+            select: {
+              apps: true,
+            },
           },
         },
-      },
-    })
+      })
 
-    return partners
+      return partners
+    } catch (error: any) {
+      // Log full error details
+      console.error('Error in partner.list:', {
+        message: error.message,
+        code: error.code,
+        meta: error.meta,
+        stack: error.stack,
+      })
+      
+      // Check if it's a table not found error
+      if (error.message?.includes('does not exist') || error.code === 'P2021') {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Partners table does not exist. Please run the migration.',
+        })
+      }
+      
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: error.message || 'Failed to fetch partners',
+        cause: error,
+      })
+    }
   }),
 
   // Get partner by ID
