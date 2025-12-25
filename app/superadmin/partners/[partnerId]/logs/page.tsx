@@ -89,7 +89,7 @@ export default function PartnerLogsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {data?.logs.map((log) => (
+              {data?.logs.map((log: any) => (
                 <div
                   key={log.id}
                   className="border rounded-lg p-4 space-y-2"
