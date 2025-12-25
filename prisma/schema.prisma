@@ -34,6 +34,7 @@ model User {
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
+  partnerDirectorships     Partner[] // Partners where this user is the director
 
   @@map("users")
 }
@@ -683,13 +684,16 @@ model Partner {
   code            String       @unique // Short unique identifier
   contactEmail    String?      @map("contact_email")
   contactName     String?      @map("contact_name")
+  directorUserId  String?      @map("director_user_id") // Tournament director who manages tournaments
   status          PartnerStatus @default(ACTIVE)
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   apps            PartnerApp[]
   externalMappings ExternalIdMapping[]
   apiRequestLogs  ApiRequestLog[]
+  director        User?        @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
 
+  @@index([directorUserId])
   @@map("partners")
 }
 

@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Globe
+  Globe,
+  Search
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -35,7 +36,14 @@ export default function PartnersPage() {
     code: '',
     contactEmail: '',
     contactName: '',
+    directorUserId: '',
   })
+  const [directorSearchQuery, setDirectorSearchQuery] = useState('')
+  const [selectedDirector, setSelectedDirector] = useState<{
+    id: string
+    email: string
+    name: string | null
+  } | null>(null)
   const [appForm, setAppForm] = useState({
     environment: 'SANDBOX' as 'SANDBOX' | 'PRODUCTION',
     allowedIps: '',
@@ -61,10 +69,18 @@ export default function PartnersPage() {
   const createPartner = trpc.partner.create.useMutation({
     onSuccess: () => {
       setShowCreatePartner(false)
-      setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '' })
+      setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '', directorUserId: '' })
+      setSelectedDirector(null)
+      setDirectorSearchQuery('')
       refetch()
     },
   })
+
+  // Search users for director selection
+  const searchUsersQuery = trpc.tournamentAccess.searchUsers.useQuery(
+    { query: directorSearchQuery },
+    { enabled: directorSearchQuery.length >= 2 }
+  )
 
   const createApp = trpc.partner.createApp.useMutation({
     onSuccess: (data) => {
@@ -164,10 +180,73 @@ export default function PartnersPage() {
                       placeholder="John Doe"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Tournament Director (optional)</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search by name or email..."
+                        value={directorSearchQuery}
+                        onChange={(e) => {
+                          setDirectorSearchQuery(e.target.value)
+                          if (!e.target.value) {
+                            setSelectedDirector(null)
+                            setPartnerForm({ ...partnerForm, directorUserId: '' })
+                          }
+                        }}
+                        className="pl-10"
+                      />
+                    </div>
+                    {directorSearchQuery.length >= 2 && searchUsersQuery.data && (
+                      <div className="mt-2 border rounded-md bg-white shadow-lg z-10 max-h-48 overflow-y-auto">
+                        {searchUsersQuery.data.length === 0 ? (
+                          <div className="p-4 text-sm text-gray-500">No users found</div>
+                        ) : (
+                          searchUsersQuery.data.map((user) => (
+                            <button
+                              key={user.id}
+                              onClick={() => {
+                                setSelectedDirector(user)
+                                setPartnerForm({ ...partnerForm, directorUserId: user.id })
+                                setDirectorSearchQuery(user.name || user.email)
+                              }}
+                              className="w-full text-left p-3 hover:bg-gray-50 flex items-center space-x-3"
+                            >
+                              <div>
+                                <div className="font-medium">{user.name || 'No name'}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {selectedDirector && (
+                      <div className="mt-2 p-2 bg-gray-100 rounded-lg text-sm">
+                        Selected: <strong>{selectedDirector.name || 'No name'}</strong> ({selectedDirector.email})
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="ml-2 h-6 px-2"
+                          onClick={() => {
+                            setSelectedDirector(null)
+                            setPartnerForm({ ...partnerForm, directorUserId: '' })
+                            setDirectorSearchQuery('')
+                          }}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
-                        createPartner.mutate(partnerForm)
+                        createPartner.mutate({
+                          ...partnerForm,
+                          directorUserId: partnerForm.directorUserId || undefined,
+                        })
                       }}
                       disabled={!partnerForm.name || !partnerForm.code}
                     >
@@ -177,7 +256,9 @@ export default function PartnersPage() {
                       variant="outline"
                       onClick={() => {
                         setShowCreatePartner(false)
-                        setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '' })
+                        setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '', directorUserId: '' })
+                        setSelectedDirector(null)
+                        setDirectorSearchQuery('')
                       }}
                     >
                       Cancel
@@ -312,6 +393,14 @@ export default function PartnersPage() {
                     <p className="text-sm text-gray-600 mt-1">Code: {partner.code}</p>
                     {partner.contactEmail && (
                       <p className="text-sm text-gray-600">Contact: {partner.contactEmail}</p>
+                    )}
+                    {partner.director && (
+                      <p className="text-sm text-gray-600">
+                        Director: {partner.director.name || 'No name'} ({partner.director.email})
+                      </p>
+                    )}
+                    {!partner.director && (
+                      <p className="text-sm text-yellow-600">⚠️ No director assigned</p>
                     )}
                   </div>
                   <Button

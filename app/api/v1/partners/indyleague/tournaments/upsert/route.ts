@@ -42,14 +42,18 @@ export const POST = withPartnerAuth(
       status = 'updated'
     } else {
       // Create new tournament
-      // Find or create a system user for partner tournaments
-      // For now, we'll need a system user - this should be created during setup
-      const systemUser = await prisma.user.findFirst({
-        where: { email: 'system@piqle.com' },
+      // Get partner with director
+      const partner = await prisma.partner.findUnique({
+        where: { id: context.partnerId },
+        select: { directorUserId: true },
       })
 
-      if (!systemUser) {
-        throw new Error('System user not found. Please create a system user for partner integrations.')
+      if (!partner) {
+        throw new Error('Partner not found')
+      }
+
+      if (!partner.directorUserId) {
+        throw new Error('Tournament director not assigned to this partner. Please assign a director in the superadmin panel.')
       }
 
       const tournament = await prisma.tournament.create({
@@ -58,7 +62,7 @@ export const POST = withPartnerAuth(
           seasonLabel: validated.seasonLabel || null,
           timezone: validated.timezone || null,
           format: 'INDY_LEAGUE',
-          userId: systemUser.id,
+          userId: partner.directorUserId,
           startDate: new Date(), // Default, can be updated later
           endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // Default 1 year from now
         },

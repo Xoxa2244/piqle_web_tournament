@@ -14,6 +14,13 @@ export const partnerRouter = createTRPCRouter({
           apps: {
             orderBy: { createdAt: 'desc' },
           },
+          director: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           _count: {
             select: {
               apps: true,
@@ -58,6 +65,13 @@ export const partnerRouter = createTRPCRouter({
           apps: {
             orderBy: { createdAt: 'desc' },
           },
+          director: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       })
 
@@ -79,6 +93,7 @@ export const partnerRouter = createTRPCRouter({
         code: z.string().min(1).regex(/^[a-z0-9_-]+$/i),
         contactEmail: z.string().email().optional(),
         contactName: z.string().optional(),
+        directorUserId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -94,13 +109,37 @@ export const partnerRouter = createTRPCRouter({
         })
       }
 
+      // If directorUserId provided, verify user exists
+      if (input.directorUserId) {
+        const director = await ctx.prisma.user.findUnique({
+          where: { id: input.directorUserId },
+        })
+
+        if (!director) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Director user not found',
+          })
+        }
+      }
+
       const partner = await ctx.prisma.partner.create({
         data: {
           name: input.name,
           code: input.code,
           contactEmail: input.contactEmail || null,
           contactName: input.contactName || null,
+          directorUserId: input.directorUserId || null,
           status: 'ACTIVE',
+        },
+        include: {
+          director: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       })
 
@@ -116,6 +155,7 @@ export const partnerRouter = createTRPCRouter({
         code: z.string().min(1).regex(/^[a-z0-9_-]+$/i).optional(),
         contactEmail: z.string().email().optional().nullable(),
         contactName: z.string().optional().nullable(),
+        directorUserId: z.string().optional().nullable(),
         status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
       })
     )
@@ -139,12 +179,35 @@ export const partnerRouter = createTRPCRouter({
         }
       }
 
+      // If directorUserId provided, verify user exists
+      if (data.directorUserId !== undefined && data.directorUserId !== null) {
+        const director = await ctx.prisma.user.findUnique({
+          where: { id: data.directorUserId },
+        })
+
+        if (!director) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Director user not found',
+          })
+        }
+      }
+
       const partner = await ctx.prisma.partner.update({
         where: { id },
         data: {
           ...data,
           contactEmail: data.contactEmail === undefined ? undefined : data.contactEmail,
           contactName: data.contactName === undefined ? undefined : data.contactName,
+        },
+        include: {
+          director: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
       })
 
