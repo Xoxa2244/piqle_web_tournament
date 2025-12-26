@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Plus, RefreshCw, Users, Play } from 'lucide-react'
+import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
@@ -30,6 +30,11 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   })
 
   const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
+
+  // Get all match days for the tournament to enable day switching
+  const { data: allMatchDays } = trpc.matchDay.list.useQuery({
+    tournamentId,
+  })
 
   const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery({
     matchDayId,
@@ -143,6 +148,17 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
+  // Find current day index and get previous/next days
+  const currentDayIndex = allMatchDays?.findIndex(d => d.id === matchDayId) ?? -1
+  const previousDay = currentDayIndex > 0 ? allMatchDays?.[currentDayIndex - 1] : null
+  const nextDay = currentDayIndex >= 0 && currentDayIndex < (allMatchDays?.length ?? 0) - 1 
+    ? allMatchDays?.[currentDayIndex + 1] 
+    : null
+
+  const handleDayChange = (newDayId: string) => {
+    router.push(`/admin/${tournamentId}/match-days/${newDayId}`)
+  }
+
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
@@ -154,10 +170,51 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Match Days
         </Button>
-        <h1 className="text-3xl font-bold text-gray-900">{formatDate(matchDay.date)}</h1>
-        <p className="text-gray-600 mt-2">
-          Manage matchups for this match day
-        </p>
+        
+        {/* Day Selector */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-gray-900">{formatDate(matchDay.date)}</h1>
+            <p className="text-gray-600 mt-2">
+              Manage matchups for this match day
+            </p>
+          </div>
+          
+          {/* Day Navigation */}
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => previousDay && handleDayChange(previousDay.id)}
+              disabled={!previousDay}
+              title={previousDay ? `Go to ${formatDate(previousDay.date)}` : 'No previous day'}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <select
+              value={matchDayId}
+              onChange={(e) => handleDayChange(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              {allMatchDays?.map((day) => (
+                <option key={day.id} value={day.id}>
+                  {formatDate(day.date)}
+                </option>
+              ))}
+            </select>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => nextDay && handleDayChange(nextDay.id)}
+              disabled={!nextDay}
+              title={nextDay ? `Go to ${formatDate(nextDay.date)}` : 'No next day'}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
       {showCreateModal && (

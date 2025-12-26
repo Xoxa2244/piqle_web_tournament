@@ -420,6 +420,24 @@ export default function TournamentDetailPage() {
                     </div>
                   </Link>
                   
+                  {tournament?.format === 'INDY_LEAGUE' && isAdmin && (
+                    <Link href={`/admin/${tournamentId}/match-days`} className="group/action">
+                      <div className="relative h-24 w-full">
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-blue-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
+                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-indigo-200/50 hover:border-indigo-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                          <div className="flex flex-col items-center space-y-2 w-full">
+                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                              <Calendar className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="text-center">
+                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-indigo-600 transition-colors">Match Days</div>
+                            </div>
+                          </div>
+                        </Button>
+                      </div>
+                    </Link>
+                  )}
+                  
                   {isOwner && (
                     <Link href={`/admin/${tournamentId}/access`} className="relative group/action">
                       <div className="relative h-24 w-full">
