@@ -413,10 +413,14 @@ function DivisionCard({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  tournamentFormat?: string
 }) {
+  const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const activeTeams = division.teams.filter(team => team.poolId !== null)
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const totalTeams = division.teams.length
+  // For IndyLeague, show all teams (no pools/waitlist distinction)
+  const allTeams = division.teams
 
   // Add drop zone for division
   const { setNodeRef: setDivisionNodeRef } = useDroppable({
@@ -448,7 +452,7 @@ function DivisionCard({
                 <span>{totalTeams} teams</span>
                 <span>•</span>
                 <span>{division.pairingMode}</span>
-                {division.poolCount >= 1 && (
+                {!isIndyLeague && division.poolCount >= 1 && (
                   <>
                     <span>•</span>
                     <span>{division.poolCount} pools</span>
@@ -465,17 +469,19 @@ function DivisionCard({
           </div>
           
           <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDistributeTeams(division.id)}
-              className="h-8 px-3"
-              title="Distribute teams by DUPR rating"
-              disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
-            >
-              <Target className="h-4 w-4 mr-1" />
-              Distribute
-            </Button>
+            {!isIndyLeague && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onDistributeTeams(division.id)}
+                className="h-8 px-3"
+                title="Distribute teams by DUPR rating"
+                disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
+              >
+                <Target className="h-4 w-4 mr-1" />
+                Distribute
+              </Button>
+            )}
             
             {(division as any).isMerged ? (
               <Button
@@ -542,38 +548,11 @@ function DivisionCard({
       {isExpanded && (
         <CardContent>
           <div className="space-y-4">
-            {/* Pools */}
-            {division.poolCount >= 1 && division.pools.length > 0 ? (
-              <div className="space-y-4">
-                {division.pools.map((pool) => (
-                  <PoolCard
-                    key={pool.id}
-                    pool={pool}
-                    division={division}
-                    onTeamMove={onTeamMove}
-                    onEditTeam={onEditTeam}
-                    onDeleteTeam={onDeleteTeam}
-                    expandedTeams={expandedTeams}
-                    availablePlayers={availablePlayers}
-                    tournamentId={tournamentId}
-                    onToggleTeamExpansion={onToggleTeamExpansion}
-                    onAddPlayerToSlot={onAddPlayerToSlot}
-                    onRemovePlayerFromSlot={onRemovePlayerFromSlot}
-                    onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
-                  />
-                ))}
-              </div>
-            ) : (
+            {/* For IndyLeague: show all teams without pools/waitlist */}
+            {isIndyLeague ? (
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-sm text-green-600 flex items-center">
-                    <Trophy className="h-4 w-4 mr-1" />
-                    Active teams ({activeTeams.length})
-                  </h4>
-                </div>
-                
                 <div className="space-y-2">
-                  {activeTeams.map((team) => (
+                  {allTeams.map((team) => (
                     <TeamWithSlots
                       key={team.id}
                       team={team}
@@ -592,22 +571,76 @@ function DivisionCard({
                   ))}
                 </div>
               </div>
+            ) : (
+              <>
+                {/* Pools */}
+                {division.poolCount >= 1 && division.pools.length > 0 ? (
+                  <div className="space-y-4">
+                    {division.pools.map((pool) => (
+                      <PoolCard
+                        key={pool.id}
+                        pool={pool}
+                        division={division}
+                        onTeamMove={onTeamMove}
+                        onEditTeam={onEditTeam}
+                        onDeleteTeam={onDeleteTeam}
+                        expandedTeams={expandedTeams}
+                        availablePlayers={availablePlayers}
+                        tournamentId={tournamentId}
+                        onToggleTeamExpansion={onToggleTeamExpansion}
+                        onAddPlayerToSlot={onAddPlayerToSlot}
+                        onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                        onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-sm text-green-600 flex items-center">
+                        <Trophy className="h-4 w-4 mr-1" />
+                        Active teams ({activeTeams.length})
+                      </h4>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {activeTeams.map((team) => (
+                        <TeamWithSlots
+                          key={team.id}
+                          team={team}
+                          teamKind={division.teamKind as any}
+                          isExpanded={expandedTeams.has(team.id)}
+                          availablePlayers={availablePlayers}
+                          tournamentId={tournamentId}
+                          onToggleExpansion={() => onToggleTeamExpansion(team.id)}
+                          onEdit={() => onEditTeam(team)}
+                          onDelete={() => onDeleteTeam(team)}
+                          onContextMenu={() => {}}
+                          onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                          onRemovePlayer={onRemovePlayerFromSlot}
+                          onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* WaitList */}
+                <WaitList
+                  division={division}
+                  onTeamMove={onTeamMove}
+                  onEditTeam={onEditTeam}
+                  onDeleteTeam={onDeleteTeam}
+                  expandedTeams={expandedTeams}
+                  availablePlayers={availablePlayers}
+                  tournamentId={tournamentId}
+                  onToggleTeamExpansion={onToggleTeamExpansion}
+                  onAddPlayerToSlot={onAddPlayerToSlot}
+                  onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                  onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                />
+              </>
             )}
-            
-            {/* WaitList */}
-            <WaitList
-              division={division}
-              onTeamMove={onTeamMove}
-              onEditTeam={onEditTeam}
-              onDeleteTeam={onDeleteTeam}
-              expandedTeams={expandedTeams}
-              availablePlayers={availablePlayers}
-              tournamentId={tournamentId}
-              onToggleTeamExpansion={onToggleTeamExpansion}
-              onAddPlayerToSlot={onAddPlayerToSlot}
-              onRemovePlayerFromSlot={onRemovePlayerFromSlot}
-              onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
-            />
           </div>
         </CardContent>
       )}
@@ -1553,6 +1586,7 @@ export default function DivisionsPage() {
                       onAddPlayerToSlot={handleAddPlayerToSlot}
                       onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
                       onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
+                      tournamentFormat={tournament?.format}
                     />
                   ))}
                 </div>

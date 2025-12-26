@@ -22,7 +22,7 @@
     },
     {
       "key": "external_tournament_id",
-      "value": "test-tournament-4teams-{{$timestamp}}",
+      "value": "test-tournament-4teams-fixed",
       "type": "string"
     },
     {
@@ -185,7 +185,7 @@
       }
     },
     {
-      "name": "4. Create Players - Team 1 (8 players)",
+      "name": "4. Create All Players (32 players - 4 teams x 8)",
       "event": [
         {
           "listen": "prerequest",
@@ -214,7 +214,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team1-player-001\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10001\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-002\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10002\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-003\",\n      \"firstName\": \"Bob\",\n      \"lastName\": \"Johnson\",\n      \"email\": \"bob.johnson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10003\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-004\",\n      \"firstName\": \"Alice\",\n      \"lastName\": \"Williams\",\n      \"email\": \"alice.williams@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10004\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-005\",\n      \"firstName\": \"Charlie\",\n      \"lastName\": \"Brown\",\n      \"email\": \"charlie.brown@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10005\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-006\",\n      \"firstName\": \"Diana\",\n      \"lastName\": \"Davis\",\n      \"email\": \"diana.davis@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10006\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-007\",\n      \"firstName\": \"Edward\",\n      \"lastName\": \"Miller\",\n      \"email\": \"edward.miller@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10007\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-008\",\n      \"firstName\": \"Fiona\",\n      \"lastName\": \"Wilson\",\n      \"email\": \"fiona.wilson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10008\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    }\n  ]\n}"
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team1-player-001\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10001\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-002\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10002\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-003\",\n      \"firstName\": \"Bob\",\n      \"lastName\": \"Johnson\",\n      \"email\": \"bob.johnson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10003\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-004\",\n      \"firstName\": \"Alice\",\n      \"lastName\": \"Williams\",\n      \"email\": \"alice.williams@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10004\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-005\",\n      \"firstName\": \"Charlie\",\n      \"lastName\": \"Brown\",\n      \"email\": \"charlie.brown@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10005\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-006\",\n      \"firstName\": \"Diana\",\n      \"lastName\": \"Davis\",\n      \"email\": \"diana.davis@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10006\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-007\",\n      \"firstName\": \"Edward\",\n      \"lastName\": \"Miller\",\n      \"email\": \"edward.miller@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10007\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-008\",\n      \"firstName\": \"Fiona\",\n      \"lastName\": \"Wilson\",\n      \"email\": \"fiona.wilson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10008\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-001\",\n      \"firstName\": \"George\",\n      \"lastName\": \"Moore\",\n      \"email\": \"george.moore@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20001\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-002\",\n      \"firstName\": \"Helen\",\n      \"lastName\": \"Taylor\",\n      \"email\": \"helen.taylor@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20002\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-003\",\n      \"firstName\": \"Ivan\",\n      \"lastName\": \"Anderson\",\n      \"email\": \"ivan.anderson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20003\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-004\",\n      \"firstName\": \"Julia\",\n      \"lastName\": \"Thomas\",\n      \"email\": \"julia.thomas@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20004\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-005\",\n      \"firstName\": \"Kevin\",\n      \"lastName\": \"Jackson\",\n      \"email\": \"kevin.jackson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20005\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-006\",\n      \"firstName\": \"Laura\",\n      \"lastName\": \"White\",\n      \"email\": \"laura.white@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20006\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-007\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Harris\",\n      \"email\": \"michael.harris@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20007\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-008\",\n      \"firstName\": \"Nancy\",\n      \"lastName\": \"Martin\",\n      \"email\": \"nancy.martin@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20008\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-001\",\n      \"firstName\": \"Oliver\",\n      \"lastName\": \"Thompson\",\n      \"email\": \"oliver.thompson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30001\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-002\",\n      \"firstName\": \"Patricia\",\n      \"lastName\": \"Garcia\",\n      \"email\": \"patricia.garcia@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30002\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-003\",\n      \"firstName\": \"Quinn\",\n      \"lastName\": \"Martinez\",\n      \"email\": \"quinn.martinez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30003\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-004\",\n      \"firstName\": \"Rachel\",\n      \"lastName\": \"Robinson\",\n      \"email\": \"rachel.robinson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30004\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-005\",\n      \"firstName\": \"Samuel\",\n      \"lastName\": \"Clark\",\n      \"email\": \"samuel.clark@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30005\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-006\",\n      \"firstName\": \"Tina\",\n      \"lastName\": \"Rodriguez\",\n      \"email\": \"tina.rodriguez@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30006\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-007\",\n      \"firstName\": \"Ulysses\",\n      \"lastName\": \"Lewis\",\n      \"email\": \"ulysses.lewis@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30007\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-008\",\n      \"firstName\": \"Victoria\",\n      \"lastName\": \"Lee\",\n      \"email\": \"victoria.lee@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30008\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-001\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Walker\",\n      \"email\": \"william.walker@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40001\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-002\",\n      \"firstName\": \"Xena\",\n      \"lastName\": \"Hall\",\n      \"email\": \"xena.hall@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40002\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-003\",\n      \"firstName\": \"Yuki\",\n      \"lastName\": \"Allen\",\n      \"email\": \"yuki.allen@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40003\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-004\",\n      \"firstName\": \"Zoe\",\n      \"lastName\": \"Young\",\n      \"email\": \"zoe.young@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40004\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-005\",\n      \"firstName\": \"Adam\",\n      \"lastName\": \"King\",\n      \"email\": \"adam.king@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40005\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-006\",\n      \"firstName\": \"Bella\",\n      \"lastName\": \"Wright\",\n      \"email\": \"bella.wright@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40006\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-007\",\n      \"firstName\": \"Chris\",\n      \"lastName\": \"Lopez\",\n      \"email\": \"chris.lopez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40007\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-008\",\n      \"firstName\": \"Dana\",\n      \"lastName\": \"Hill\",\n      \"email\": \"dana.hill@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40008\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    }\n  ]\n}"
         },
         "url": {
           "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
@@ -224,124 +224,7 @@
       }
     },
     {
-      "name": "5. Create Players - Team 2 (8 players)",
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "exec": [
-              "pm.request.headers.add({",
-              "    key: 'Authorization',",
-              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
-              "});",
-              "pm.request.headers.add({",
-              "    key: 'Idempotency-Key',",
-              "    value: pm.variables.replaceIn('{{$guid}}')",
-              "});"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team2-player-001\",\n      \"firstName\": \"George\",\n      \"lastName\": \"Moore\",\n      \"email\": \"george.moore@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20001\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-002\",\n      \"firstName\": \"Helen\",\n      \"lastName\": \"Taylor\",\n      \"email\": \"helen.taylor@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20002\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-003\",\n      \"firstName\": \"Ivan\",\n      \"lastName\": \"Anderson\",\n      \"email\": \"ivan.anderson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20003\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-004\",\n      \"firstName\": \"Julia\",\n      \"lastName\": \"Thomas\",\n      \"email\": \"julia.thomas@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20004\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-005\",\n      \"firstName\": \"Kevin\",\n      \"lastName\": \"Jackson\",\n      \"email\": \"kevin.jackson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20005\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-006\",\n      \"firstName\": \"Laura\",\n      \"lastName\": \"White\",\n      \"email\": \"laura.white@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20006\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-007\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Harris\",\n      \"email\": \"michael.harris@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20007\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-008\",\n      \"firstName\": \"Nancy\",\n      \"lastName\": \"Martin\",\n      \"email\": \"nancy.martin@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20008\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    }\n  ]\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "partners", "indyleague", "players", "upsert"]
-        }
-      }
-    },
-    {
-      "name": "6. Create Players - Team 3 (8 players)",
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "exec": [
-              "pm.request.headers.add({",
-              "    key: 'Authorization',",
-              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
-              "});",
-              "pm.request.headers.add({",
-              "    key: 'Idempotency-Key',",
-              "    value: pm.variables.replaceIn('{{$guid}}')",
-              "});"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team3-player-001\",\n      \"firstName\": \"Oliver\",\n      \"lastName\": \"Thompson\",\n      \"email\": \"oliver.thompson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30001\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-002\",\n      \"firstName\": \"Patricia\",\n      \"lastName\": \"Garcia\",\n      \"email\": \"patricia.garcia@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30002\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-003\",\n      \"firstName\": \"Quinn\",\n      \"lastName\": \"Martinez\",\n      \"email\": \"quinn.martinez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30003\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-004\",\n      \"firstName\": \"Rachel\",\n      \"lastName\": \"Robinson\",\n      \"email\": \"rachel.robinson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30004\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-005\",\n      \"firstName\": \"Samuel\",\n      \"lastName\": \"Clark\",\n      \"email\": \"samuel.clark@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30005\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-006\",\n      \"firstName\": \"Tina\",\n      \"lastName\": \"Rodriguez\",\n      \"email\": \"tina.rodriguez@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30006\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-007\",\n      \"firstName\": \"Ulysses\",\n      \"lastName\": \"Lewis\",\n      \"email\": \"ulysses.lewis@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30007\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-008\",\n      \"firstName\": \"Victoria\",\n      \"lastName\": \"Lee\",\n      \"email\": \"victoria.lee@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30008\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    }\n  ]\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "partners", "indyleague", "players", "upsert"]
-        }
-      }
-    },
-    {
-      "name": "7. Create Players - Team 4 (8 players)",
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "exec": [
-              "pm.request.headers.add({",
-              "    key: 'Authorization',",
-              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
-              "});",
-              "pm.request.headers.add({",
-              "    key: 'Idempotency-Key',",
-              "    value: pm.variables.replaceIn('{{$guid}}')",
-              "});"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team4-player-001\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Walker\",\n      \"email\": \"william.walker@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40001\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-002\",\n      \"firstName\": \"Xena\",\n      \"lastName\": \"Hall\",\n      \"email\": \"xena.hall@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40002\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-003\",\n      \"firstName\": \"Yuki\",\n      \"lastName\": \"Allen\",\n      \"email\": \"yuki.allen@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40003\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-004\",\n      \"firstName\": \"Zoe\",\n      \"lastName\": \"Young\",\n      \"email\": \"zoe.young@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40004\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-005\",\n      \"firstName\": \"Adam\",\n      \"lastName\": \"King\",\n      \"email\": \"adam.king@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40005\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-006\",\n      \"firstName\": \"Bella\",\n      \"lastName\": \"Wright\",\n      \"email\": \"bella.wright@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40006\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-007\",\n      \"firstName\": \"Chris\",\n      \"lastName\": \"Lopez\",\n      \"email\": \"chris.lopez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40007\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-008\",\n      \"firstName\": \"Dana\",\n      \"lastName\": \"Hill\",\n      \"email\": \"dana.hill@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40008\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    }\n  ]\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "partners", "indyleague", "players", "upsert"]
-        }
-      }
-    },
-    {
-      "name": "8. Create Match Day",
+      "name": "5. Create Match Day",
       "event": [
         {
           "listen": "prerequest",
@@ -380,7 +263,7 @@
       }
     },
     {
-      "name": "9. Create Matchups (2 matches)",
+      "name": "6. Create Matchups (2 matches)",
       "event": [
         {
           "listen": "prerequest",
@@ -419,7 +302,7 @@
       }
     },
     {
-      "name": "10. Create Rosters - Matchup 1 (Team 1 vs Team 2)",
+      "name": "7. Create Rosters - Matchup 1 (Team 1 vs Team 2)",
       "event": [
         {
           "listen": "prerequest",
@@ -458,7 +341,7 @@
       }
     },
     {
-      "name": "11. Create Rosters - Matchup 2 (Team 3 vs Team 4)",
+      "name": "8. Create Rosters - Matchup 2 (Team 3 vs Team 4)",
       "event": [
         {
           "listen": "prerequest",
@@ -497,7 +380,7 @@
       }
     },
     {
-      "name": "12. Get Day Status",
+      "name": "9. Get Day Status",
       "event": [
         {
           "listen": "prerequest",
@@ -523,7 +406,7 @@
       }
     },
     {
-      "name": "13. Get Day Results",
+      "name": "10. Get Day Results",
       "event": [
         {
           "listen": "prerequest",
