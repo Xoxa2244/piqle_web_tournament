@@ -98,33 +98,70 @@ export const POST = withPartnerAuth(
         )
 
         if (existingInternalId) {
-          // Update existing matchup (only if not completed)
+          // Check if matchup actually exists in database
           const existing = await prisma.indyMatchup.findUnique({
             where: { id: existingInternalId },
             select: { status: true },
           })
 
-          if (existing && existing.status === 'COMPLETED') {
+          if (existing) {
+            // Update existing matchup (only if not completed)
+            if (existing.status === 'COMPLETED') {
+              results.push({
+                externalMatchupId: matchup.externalMatchupId,
+                status: 'updated',
+                error: 'Cannot update completed matchup',
+              })
+              continue
+            }
+
+            await prisma.indyMatchup.update({
+              where: { id: existingInternalId },
+              data: {
+                divisionId,
+                homeTeamId,
+                awayTeamId,
+              },
+            })
             results.push({
               externalMatchupId: matchup.externalMatchupId,
               status: 'updated',
-              error: 'Cannot update completed matchup',
             })
-            continue
-          }
+          } else {
+            // Mapping exists but matchup was deleted - create new one
+            // First, remove old mapping
+            await prisma.externalIdMapping.deleteMany({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'MATCHUP',
+                externalId: matchup.externalMatchupId,
+              },
+            })
 
-          await prisma.indyMatchup.update({
-            where: { id: existingInternalId },
-            data: {
-              divisionId,
-              homeTeamId,
-              awayTeamId,
-            },
-          })
-          results.push({
-            externalMatchupId: matchup.externalMatchupId,
-            status: 'updated',
-          })
+            // Create new matchup
+            const newMatchup = await prisma.indyMatchup.create({
+              data: {
+                matchDayId,
+                divisionId,
+                homeTeamId,
+                awayTeamId,
+                status: 'PENDING',
+              },
+            })
+
+            // Create external ID mapping
+            await setExternalIdMapping(
+              context.partnerId,
+              'MATCHUP',
+              matchup.externalMatchupId,
+              newMatchup.id
+            )
+
+            results.push({
+              externalMatchupId: matchup.externalMatchupId,
+              status: 'created',
+            })
+          }
         } else {
           // Create new matchup
           const newMatchup = await prisma.indyMatchup.create({

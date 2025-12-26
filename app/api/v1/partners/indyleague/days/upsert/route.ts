@@ -74,18 +74,57 @@ export const POST = withPartnerAuth(
         }
 
         if (existingInternalId) {
-          // Update existing day
-          await prisma.matchDay.update({
+          // Check if day actually exists in database
+          const existingDay = await prisma.matchDay.findUnique({
             where: { id: existingInternalId },
-            data: {
-              date,
-              status: day.statusHint === 'cancelled' ? 'DRAFT' : undefined, // Can't cancel via API, just keep as DRAFT
-            },
           })
-          results.push({
-            externalDayId: day.externalDayId,
-            status: 'updated',
-          })
+
+          if (existingDay) {
+            // Update existing day
+            await prisma.matchDay.update({
+              where: { id: existingInternalId },
+              data: {
+                date,
+                status: day.statusHint === 'cancelled' ? 'DRAFT' : undefined, // Can't cancel via API, just keep as DRAFT
+              },
+            })
+            results.push({
+              externalDayId: day.externalDayId,
+              status: 'updated',
+            })
+          } else {
+            // Mapping exists but day was deleted - create new one
+            // First, remove old mapping
+            await prisma.externalIdMapping.deleteMany({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'MATCH_DAY',
+                externalId: day.externalDayId,
+              },
+            })
+
+            // Create new day
+            const newDay = await prisma.matchDay.create({
+              data: {
+                tournamentId,
+                date,
+                status: 'DRAFT',
+              },
+            })
+
+            // Create external ID mapping
+            await setExternalIdMapping(
+              context.partnerId,
+              'MATCH_DAY',
+              day.externalDayId,
+              newDay.id
+            )
+
+            results.push({
+              externalDayId: day.externalDayId,
+              status: 'created',
+            })
+          }
         } else {
           // Create new day
           const newDay = await prisma.matchDay.create({
