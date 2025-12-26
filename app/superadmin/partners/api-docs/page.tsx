@@ -518,7 +518,7 @@ Email турнирного директора: director@example.com
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-gray-700">
-                    Creates or updates divisions within a tournament. Divisions group teams together (e.g., "Men's A", "Women's B").
+                    Creates or updates divisions within a tournament. Divisions group teams together (e.g., &quot;Men&apos;s A&quot;, &quot;Women&apos;s B&quot;).
                     Each division must have a unique external ID within the tournament.
                   </p>
                   <div>
