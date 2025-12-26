@@ -148,10 +148,24 @@ export const POST = withPartnerAuth(
           })
         }
       } catch (error: any) {
+        // Log full error for debugging
+        console.error(`Error upserting team ${team.externalTeamId}:`, error)
         results.push({
           externalTeamId: team.externalTeamId,
           status: 'updated',
           error: error.message || 'Failed to upsert team',
+        })
+      }
+    }
+
+    // Ensure we return results for all teams, even if some failed
+    const returnedTeamIds = new Set(results.map(r => r.externalTeamId))
+    for (const team of validated.teams) {
+      if (!returnedTeamIds.has(team.externalTeamId)) {
+        results.push({
+          externalTeamId: team.externalTeamId,
+          status: 'updated',
+          error: 'Team was not processed (unknown error)',
         })
       }
     }
