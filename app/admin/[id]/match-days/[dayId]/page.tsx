@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight } from 'lucide-react'
+import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
@@ -25,20 +26,40 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   const [selectedHomeTeamId, setSelectedHomeTeamId] = useState<string>('')
   const [selectedAwayTeamId, setSelectedAwayTeamId] = useState<string>('')
 
-  const { data: matchDay, refetch: refetchMatchDay } = trpc.matchDay.get.useQuery({
-    matchDayId,
-  })
+  const { data: matchDay, refetch: refetchMatchDay } = trpc.matchDay.get.useQuery(
+    {
+      matchDayId,
+    },
+    {
+      enabled: !!matchDayId, // Only run query when matchDayId is available
+    }
+  )
 
-  const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
+  const { data: tournament } = trpc.tournament.get.useQuery(
+    { id: tournamentId },
+    {
+      enabled: !!tournamentId, // Only run query when tournamentId is available
+    }
+  )
 
   // Get all match days for the tournament to enable day switching
-  const { data: allMatchDays } = trpc.matchDay.list.useQuery({
-    tournamentId,
-  })
+  const { data: allMatchDays } = trpc.matchDay.list.useQuery(
+    {
+      tournamentId,
+    },
+    {
+      enabled: !!tournamentId, // Only run query when tournamentId is available
+    }
+  )
 
-  const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery({
-    matchDayId,
-  })
+  const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery(
+    {
+      matchDayId,
+    },
+    {
+      enabled: !!matchDayId, // Only run query when matchDayId is available
+    }
+  )
 
   const createMatchup = trpc.indyMatchup.create.useMutation({
     onSuccess: () => {
@@ -405,6 +426,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

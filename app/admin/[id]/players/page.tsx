@@ -196,6 +196,7 @@ export default function PlayersPage() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament?.format}
       />
       
       <div className="container mx-auto p-6">

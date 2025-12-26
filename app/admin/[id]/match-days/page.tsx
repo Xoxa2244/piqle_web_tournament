@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Calendar, Trash2, Edit } from 'lucide-react'
+import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchDaysPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -21,10 +22,31 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   const [showAddModal, setShowAddModal] = useState(false)
   const [newDate, setNewDate] = useState('')
 
-  const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
-  const { data: matchDays, refetch: refetchMatchDays } = trpc.matchDay.list.useQuery({
-    tournamentId,
-  })
+  const { data: tournament } = trpc.tournament.get.useQuery(
+    { id: tournamentId },
+    {
+      enabled: !!tournamentId, // Only run query when tournamentId is available
+    }
+  )
+  const { data: matchDays, refetch: refetchMatchDays } = trpc.matchDay.list.useQuery(
+    {
+      tournamentId,
+    },
+    {
+      enabled: !!tournamentId, // Only run query when tournamentId is available
+    }
+  )
+
+  // Check if user has admin access
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
 
   const createMatchDay = trpc.matchDay.create.useMutation({
     onSuccess: () => {
@@ -117,14 +139,24 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Match Days</h1>
-          <p className="text-gray-600 mt-2">
-            Manage match days for {tournament?.title}
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament?.format}
+      />
+
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Match Days</h1>
+            <p className="text-gray-600 mt-2">
+              Manage match days for {tournament?.title}
+            </p>
+          </div>
         <Button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2"
@@ -250,6 +282,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

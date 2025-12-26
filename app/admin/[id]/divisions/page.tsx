@@ -1415,6 +1415,7 @@ export default function DivisionsPage() {
           isAdmin={false}
           isOwner={false}
           pendingRequestsCount={0}
+          tournamentFormat={tournament?.format}
         />
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1449,6 +1450,7 @@ export default function DivisionsPage() {
             isAdmin={isAdmin}
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
+            tournamentFormat={tournament.format}
           />
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
             <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1492,6 +1494,7 @@ export default function DivisionsPage() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament.format}
       />
       
       {/* Header */}

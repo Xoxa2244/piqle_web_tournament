@@ -296,6 +296,7 @@ function DivisionDashboardContent() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament.format}
         publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         onPublicScoreboardClick={() => {
           if (!tournament?.isPublicBoardEnabled) {

@@ -944,6 +944,7 @@ function DivisionStageManagementContent() {
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament?.format}
       />
       
       {/* Top panel */}
