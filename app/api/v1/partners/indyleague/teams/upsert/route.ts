@@ -73,18 +73,57 @@ export const POST = withPartnerAuth(
         )
 
         if (existingInternalId) {
-          // Update existing team
-          await prisma.team.update({
+          // Check if team actually exists in database
+          const existingTeam = await prisma.team.findUnique({
             where: { id: existingInternalId },
-            data: {
-              name: team.name,
-              note: team.clubName || null,
-            },
           })
-          results.push({
-            externalTeamId: team.externalTeamId,
-            status: 'updated',
-          })
+
+          if (existingTeam) {
+            // Update existing team
+            await prisma.team.update({
+              where: { id: existingInternalId },
+              data: {
+                name: team.name,
+                note: team.clubName || null,
+              },
+            })
+            results.push({
+              externalTeamId: team.externalTeamId,
+              status: 'updated',
+            })
+          } else {
+            // Mapping exists but team was deleted - create new one
+            // First, remove old mapping
+            await prisma.externalIdMapping.deleteMany({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'TEAM',
+                externalId: team.externalTeamId,
+              },
+            })
+
+            // Create new team
+            const newTeam = await prisma.team.create({
+              data: {
+                divisionId,
+                name: team.name,
+                note: team.clubName || null,
+              },
+            })
+
+            // Create external ID mapping
+            await setExternalIdMapping(
+              context.partnerId,
+              'TEAM',
+              team.externalTeamId,
+              newTeam.id
+            )
+
+            results.push({
+              externalTeamId: team.externalTeamId,
+              status: 'created',
+            })
+          }
         } else {
           // Create new team
           const newTeam = await prisma.team.create({
