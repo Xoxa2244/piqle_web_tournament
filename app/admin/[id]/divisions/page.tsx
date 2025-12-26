@@ -392,7 +392,8 @@ function DivisionCard({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  tournamentFormat
 }: {
   division: Division
   isExpanded: boolean
