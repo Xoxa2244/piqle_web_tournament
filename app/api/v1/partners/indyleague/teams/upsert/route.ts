@@ -79,10 +79,11 @@ export const POST = withPartnerAuth(
           })
 
           if (existingTeam) {
-            // Update existing team
+            // Update existing team (including divisionId in case it changed)
             await prisma.team.update({
               where: { id: existingInternalId },
               data: {
+                divisionId, // Update division in case team was moved
                 name: team.name,
                 note: team.clubName || null,
               },
