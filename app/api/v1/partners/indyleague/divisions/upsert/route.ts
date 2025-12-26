@@ -70,17 +70,57 @@ export const POST = withPartnerAuth(
         )
 
         if (existingInternalId) {
-          // Update existing division
-          await prisma.division.update({
+          // Check if division actually exists in database
+          const existingDivision = await prisma.division.findUnique({
             where: { id: existingInternalId },
-            data: {
-              name: division.name,
-            },
           })
-          results.push({
-            externalDivisionId: division.externalDivisionId,
-            status: 'updated',
-          })
+
+          if (existingDivision) {
+            // Update existing division
+            await prisma.division.update({
+              where: { id: existingInternalId },
+              data: {
+                name: division.name,
+              },
+            })
+            results.push({
+              externalDivisionId: division.externalDivisionId,
+              status: 'updated',
+            })
+          } else {
+            // Mapping exists but division was deleted - create new one
+            // First, remove old mapping
+            await prisma.externalIdMapping.deleteMany({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'DIVISION',
+                externalId: division.externalDivisionId,
+              },
+            })
+
+            // Create new division
+            const newDivision = await prisma.division.create({
+              data: {
+                tournamentId,
+                name: division.name,
+                teamKind: 'SQUAD_4v4', // Default for IndyLeague
+                pairingMode: 'FIXED', // Default for IndyLeague
+              },
+            })
+
+            // Create external ID mapping
+            await setExternalIdMapping(
+              context.partnerId,
+              'DIVISION',
+              division.externalDivisionId,
+              newDivision.id
+            )
+
+            results.push({
+              externalDivisionId: division.externalDivisionId,
+              status: 'created',
+            })
+          }
         } else {
           // Create new division
           const newDivision = await prisma.division.create({
