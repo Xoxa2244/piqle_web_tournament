@@ -131,15 +131,23 @@ export const POST = withPartnerAuth(
           continue
         }
 
-        // Delete existing rosters for this matchup and team
-        await prisma.dayRoster.deleteMany({
+        // Get existing rosters to preserve letters
+        const existingRosters = await prisma.dayRoster.findMany({
           where: {
             matchupId: matchup.id,
             teamId,
           },
         })
 
-        // Create new rosters
+        // Create map of existing player letters (playerId -> letter)
+        const existingPlayerLetters = new Map<string, string>()
+        for (const existingRoster of existingRosters) {
+          if (existingRoster.letter) {
+            existingPlayerLetters.set(existingRoster.playerId, existingRoster.letter)
+          }
+        }
+
+        // Get active player IDs
         const activePlayerIds = roster.activePlayerExternalIds
           ? roster.activePlayerExternalIds
               .map(extId => playerMap.get(extId))
@@ -156,6 +164,77 @@ export const POST = withPartnerAuth(
           continue
         }
 
+        // Delete existing rosters for this matchup and team
+        await prisma.dayRoster.deleteMany({
+          where: {
+            matchupId: matchup.id,
+            teamId,
+          },
+        })
+
+        // Available letters
+        const availableLetters = ['A', 'B', 'C', 'D']
+        const usedLetters = new Set<string>()
+
+        // First, preserve existing letters for active players
+        const activePlayersWithLetters: Array<{ playerId: string; letter: string | null }> = []
+        for (const activePlayerId of activePlayerIds) {
+          const existingLetter = existingPlayerLetters.get(activePlayerId)
+          if (existingLetter && availableLetters.includes(existingLetter)) {
+            activePlayersWithLetters.push({ playerId: activePlayerId, letter: existingLetter })
+            usedLetters.add(existingLetter)
+          } else {
+            activePlayersWithLetters.push({ playerId: activePlayerId, letter: null })
+          }
+        }
+
+        // Assign letters to active players without letters (in order)
+        for (const activePlayer of activePlayersWithLetters) {
+          if (!activePlayer.letter) {
+            // Find first available letter
+            for (const letter of availableLetters) {
+              if (!usedLetters.has(letter)) {
+                activePlayer.letter = letter
+                usedLetters.add(letter)
+                break
+              }
+            }
+          }
+        }
+
+        // Validate that all active players have unique letters
+        const activePlayerLetters = activePlayersWithLetters
+          .map(p => p.letter)
+          .filter((letter): letter is string => letter !== null)
+        
+        if (activePlayerLetters.length !== new Set(activePlayerLetters).size) {
+          results.push({
+            teamExternalId: roster.teamExternalId,
+            status: 'updated',
+            error: 'Active players must have unique letters (A/B/C/D)',
+          })
+          continue
+        }
+
+        // Validate that all 4 active players have letters
+        if (activePlayerIds.length === 4 && activePlayerLetters.length !== 4) {
+          results.push({
+            teamExternalId: roster.teamExternalId,
+            status: 'updated',
+            error: 'All 4 active players must have letters assigned',
+          })
+          continue
+        }
+
+        // Create map of active player letters
+        const activePlayerLetterMap = new Map<string, string>()
+        for (const activePlayer of activePlayersWithLetters) {
+          if (activePlayer.letter) {
+            activePlayerLetterMap.set(activePlayer.playerId, activePlayer.letter)
+          }
+        }
+
+        // Create rosters
         for (const player of roster.players) {
           const playerId = playerMap.get(player.externalPlayerId)
           if (!playerId) {
@@ -163,6 +242,7 @@ export const POST = withPartnerAuth(
           }
 
           const isActive = activePlayerIds.includes(playerId)
+          const letter = isActive ? (activePlayerLetterMap.get(playerId) || null) : null
 
           await prisma.dayRoster.create({
             data: {
@@ -170,8 +250,34 @@ export const POST = withPartnerAuth(
               teamId,
               playerId,
               isActive,
-              // Letter will be assigned later in UI
+              letter,
             },
+          })
+        }
+
+        // Update matchup status to READY if both teams have 4 active players with letters
+        const allRosters = await prisma.dayRoster.findMany({
+          where: { matchupId: matchup.id },
+        })
+
+        const homeActive = allRosters.filter(
+          (r) => r.teamId === matchup.homeTeamId && r.isActive && r.letter
+        )
+        const awayActive = allRosters.filter(
+          (r) => r.teamId === matchup.awayTeamId && r.isActive && r.letter
+        )
+
+        const newStatus =
+          homeActive.length === 4 && awayActive.length === 4
+            ? matchup.status === 'PENDING'
+              ? 'READY'
+              : matchup.status
+            : 'PENDING'
+
+        if (newStatus !== matchup.status) {
+          await prisma.indyMatchup.update({
+            where: { id: matchup.id },
+            data: { status: newStatus },
           })
         }
 
