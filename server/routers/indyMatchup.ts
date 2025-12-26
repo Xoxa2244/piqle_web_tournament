@@ -696,70 +696,6 @@ export const indyMatchupRouter = createTRPCRouter({
 
       return updated
     }),
-})
-
-// Helper function to recalculate games won
-async function recalculateMatchupGamesWon(prisma: any, matchupId: string) {
-  const games = await prisma.indyGame.findMany({
-    where: { matchupId },
-  })
-
-  let gamesWonHome = 0
-  let gamesWonAway = 0
-
-  for (const game of games) {
-    if (game.homeScore !== null && game.awayScore !== null) {
-      if (game.homeScore > game.awayScore) {
-        gamesWonHome++
-      } else if (game.awayScore > game.homeScore) {
-        gamesWonAway++
-      }
-      // Ties are not allowed (validated on update)
-    }
-  }
-
-  await prisma.indyMatchup.update({
-    where: { id: matchupId },
-    data: {
-      gamesWonHome,
-      gamesWonAway,
-    },
-  })
-
-  // Check if matchup status should be updated
-  await checkAndUpdateMatchupStatus(prisma, matchupId)
-}
-
-// Helper function to check and update matchup status
-async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
-  const matchup = await prisma.indyMatchup.findUnique({
-    where: { id: matchupId },
-    include: {
-      games: true,
-    },
-  })
-
-  if (!matchup) return
-
-  // Check if all games are completed
-  const allGamesCompleted = matchup.games.every(
-    (g: any) => g.homeScore !== null && g.awayScore !== null
-  )
-
-  if (allGamesCompleted) {
-    // Check if 6-6 and tie-break needed
-    if (matchup.gamesWonHome === 6 && matchup.gamesWonAway === 6 && !matchup.tieBreakWinnerTeamId) {
-      // Status stays IN_PROGRESS, waiting for tie-break
-      return
-    }
-
-    // All games completed and winner determined
-    await prisma.indyMatchup.update({
-      where: { id: matchupId },
-      data: { status: 'COMPLETED' },
-    })
-  }
-}
 
   getLatestForTeam: protectedProcedure
     .input(z.object({
@@ -938,6 +874,68 @@ async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
 
       return updated
     }),
-
 })
+
+// Helper function to recalculate games won
+async function recalculateMatchupGamesWon(prisma: any, matchupId: string) {
+  const games = await prisma.indyGame.findMany({
+    where: { matchupId },
+  })
+
+  let gamesWonHome = 0
+  let gamesWonAway = 0
+
+  for (const game of games) {
+    if (game.homeScore !== null && game.awayScore !== null) {
+      if (game.homeScore > game.awayScore) {
+        gamesWonHome++
+      } else if (game.awayScore > game.homeScore) {
+        gamesWonAway++
+      }
+      // Ties are not allowed (validated on update)
+    }
+  }
+
+  await prisma.indyMatchup.update({
+    where: { id: matchupId },
+    data: {
+      gamesWonHome,
+      gamesWonAway,
+    },
+  })
+
+  // Check if matchup status should be updated
+  await checkAndUpdateMatchupStatus(prisma, matchupId)
+}
+
+// Helper function to check and update matchup status
+async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
+  const matchup = await prisma.indyMatchup.findUnique({
+    where: { id: matchupId },
+    include: {
+      games: true,
+    },
+  })
+
+  if (!matchup) return
+
+  // Check if all games are completed
+  const allGamesCompleted = matchup.games.every(
+    (g: any) => g.homeScore !== null && g.awayScore !== null
+  )
+
+  if (allGamesCompleted) {
+    // Check if 6-6 and tie-break needed
+    if (matchup.gamesWonHome === 6 && matchup.gamesWonAway === 6 && !matchup.tieBreakWinnerTeamId) {
+      // Status stays IN_PROGRESS, waiting for tie-break
+      return
+    }
+
+    // All games completed and winner determined
+    await prisma.indyMatchup.update({
+      where: { id: matchupId },
+      data: { status: 'COMPLETED' },
+    })
+  }
+}
 
