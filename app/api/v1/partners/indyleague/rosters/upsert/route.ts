@@ -102,6 +102,35 @@ export const POST = withPartnerAuth(
           continue
         }
 
+        // Get team players to validate roster
+        const teamPlayers = await prisma.teamPlayer.findMany({
+          where: { teamId },
+          select: { playerId: true },
+        })
+        const teamPlayerIds = new Set(teamPlayers.map(tp => tp.playerId))
+
+        // Validate that all players in roster are part of the team
+        const invalidPlayers: string[] = []
+        for (const player of roster.players) {
+          const playerId = playerMap.get(player.externalPlayerId)
+          if (!playerId) {
+            invalidPlayers.push(player.externalPlayerId)
+            continue
+          }
+          if (!teamPlayerIds.has(playerId)) {
+            invalidPlayers.push(player.externalPlayerId)
+          }
+        }
+
+        if (invalidPlayers.length > 0) {
+          results.push({
+            teamExternalId: roster.teamExternalId,
+            status: 'updated',
+            error: `Players not in team: ${invalidPlayers.join(', ')}. All players must be part of the team before adding to roster.`,
+          })
+          continue
+        }
+
         // Delete existing rosters for this matchup and team
         await prisma.dayRoster.deleteMany({
           where: {
@@ -117,10 +146,20 @@ export const POST = withPartnerAuth(
               .filter((id): id is string => id !== undefined)
           : []
 
+        // Validate active players count (should be 4 for IndyLeague)
+        if (activePlayerIds.length > 0 && activePlayerIds.length !== 4) {
+          results.push({
+            teamExternalId: roster.teamExternalId,
+            status: 'updated',
+            error: `Active players count must be exactly 4 for IndyLeague, got ${activePlayerIds.length}`,
+          })
+          continue
+        }
+
         for (const player of roster.players) {
           const playerId = playerMap.get(player.externalPlayerId)
           if (!playerId) {
-            continue // Skip if player not found
+            continue // Skip if player not found (shouldn't happen after validation)
           }
 
           const isActive = activePlayerIds.includes(playerId)

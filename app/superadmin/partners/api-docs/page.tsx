@@ -103,6 +103,10 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates a new tournament or updates an existing one. Tournaments are the top-level container for all IndyLeague data.
+                Each tournament must have a unique external ID within your partner account.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/tournaments/upsert</code>
               </div>
@@ -140,6 +144,10 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates divisions within a tournament. Divisions group teams together (e.g., "Men's A", "Women's B").
+                Each division must have a unique external ID within the tournament.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/divisions/upsert</code>
               </div>
@@ -194,6 +202,10 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates teams within a division. Teams can have up to 8 players for IndyLeague tournaments.
+                Each team must belong to a division and have a unique external ID within the tournament.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/teams/upsert</code>
               </div>
@@ -252,6 +264,11 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates players within a tournament. If <code className="bg-gray-100 px-2 py-1 rounded">externalTeamId</code> is provided,
+                the player will be automatically added to that team (up to 8 players per team for IndyLeague).
+                Players must be part of a team before they can be added to a roster.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/players/upsert</code>
               </div>
@@ -269,14 +286,16 @@ export default function ApiDocsPage() {
                         email: "john.doe@example.com",
                         gender: "M",
                         duprId: "12345",
-                        phone: "+1234567890"
+                        phone: "+1234567890",
+                        externalTeamId: "team-001"
                       },
                       {
                         externalPlayerId: "player-002",
                         firstName: "Jane",
                         lastName: "Smith",
                         email: "jane.smith@example.com",
-                        gender: "F"
+                        gender: "F",
+                        externalTeamId: "team-001"
                       }
                     ]
                   }, null, 2)}
@@ -312,6 +331,10 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates match days within a tournament. Each match day represents a single day of play.
+                Dates must be unique within a tournament. Matchups are scheduled for specific match days.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/days/upsert</code>
               </div>
@@ -366,6 +389,10 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates matchups (matches) for a specific match day. Each matchup represents a game between two teams.
+                Matchups cannot be updated once they are completed. Each matchup must belong to a division and a match day.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/matchups/upsert</code>
               </div>
@@ -416,6 +443,11 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Creates or updates day rosters for teams in matchups. Rosters define which players from a team are available for a specific matchup.
+                All players in the roster must be part of the team (TeamPlayer). Exactly 4 players must be marked as active for IndyLeague.
+                Letters (A/B/C/D) are assigned later in the UI. Rosters are matchup-specific.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/rosters/upsert</code>
               </div>
@@ -435,9 +467,15 @@ export default function ApiDocsPage() {
                           },
                           {
                             externalPlayerId: "player-002"
+                          },
+                          {
+                            externalPlayerId: "player-003"
+                          },
+                          {
+                            externalPlayerId: "player-004"
                           }
                         ],
-                        activePlayerExternalIds: ["player-001", "player-002"]
+                        activePlayerExternalIds: ["player-001", "player-002", "player-003", "player-004"]
                       }
                     ]
                   }, null, 2)}
@@ -469,6 +507,11 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Retrieves aggregated results for a match day, including team statistics (wins, losses, points for/against, point differential)
+                and optional matchup details. Results are aggregated at the team level. If <code className="bg-gray-100 px-2 py-1 rounded">divisionExternalId</code> is provided,
+                only results for that division are returned.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/days/{`{externalDayId}`}/results?divisionExternalId={`{optional}`}</code>
               </div>
@@ -527,6 +570,11 @@ export default function ApiDocsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-gray-700">
+                Retrieves the status and readiness of a match day, including total matchups, completed matchups,
+                matchups requiring tie-breaks, and matchups with missing scores. Use this to check if a day is ready
+                for results retrieval or if there are outstanding issues.
+              </p>
               <div>
                 <code className="text-sm bg-gray-100 px-2 py-1 rounded">/days/{`{externalDayId}`}</code>
               </div>

@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Piqle Partner API - Full Test Flow",
-    "description": "Complete test collection for Piqle Partner API. Run requests in order.",
+    "name": "Piqle Partner API - IndyLeague v2 (Teams First)",
+    "description": "Updated test collection for Piqle Partner API with improved workflow: Teams → Players (with team assignment) → Rosters. Run requests in order.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -48,6 +48,36 @@
     {
       "key": "external_player_id_2",
       "value": "test-player-002",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_3",
+      "value": "test-player-003",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_4",
+      "value": "test-player-004",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_5",
+      "value": "test-player-005",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_6",
+      "value": "test-player-006",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_7",
+      "value": "test-player-007",
+      "type": "string"
+    },
+    {
+      "key": "external_player_id_8",
+      "value": "test-player-008",
       "type": "string"
     },
     {
@@ -141,7 +171,7 @@
       }
     },
     {
-      "name": "3. Create Players",
+      "name": "3. Create Teams",
       "event": [
         {
           "listen": "prerequest",
@@ -170,17 +200,17 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"{{external_player_id_1}}\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\"\n    },\n    {\n      \"externalPlayerId\": \"{{external_player_id_2}}\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\"\n    }\n  ]\n}"
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"teams\": [\n    {\n      \"externalTeamId\": \"{{external_team_id_1}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Alpha\",\n      \"clubName\": \"Alpha Club\",\n      \"eventType\": \"men\"\n    },\n    {\n      \"externalTeamId\": \"{{external_team_id_2}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Beta\",\n      \"clubName\": \"Beta Club\",\n      \"eventType\": \"men\"\n    }\n  ]\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
+          "raw": "{{base_url}}/api/v1/partners/indyleague/teams/upsert",
           "host": ["{{base_url}}"],
-          "path": ["api", "v1", "partners", "indyleague", "players", "upsert"]
+          "path": ["api", "v1", "partners", "indyleague", "teams", "upsert"]
         }
       }
     },
     {
-      "name": "4. Create Teams",
+      "name": "4. Create Players (with Team Assignment)",
       "event": [
         {
           "listen": "prerequest",
@@ -326,7 +356,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_1}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_2}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\"{{external_player_id_1}}\", \"{{external_player_id_2}}\"]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_1}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_2}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\"{{external_player_id_1}}\", \"{{external_player_id_2}}\"]\n    }\n  ]\n}"
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_1}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_2}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_3}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_4}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"{{external_player_id_1}}\",\n        \"{{external_player_id_2}}\",\n        \"{{external_player_id_3}}\",\n        \"{{external_player_id_4}}\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"{{external_player_id_5}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_6}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_7}}\"\n        },\n        {\n          \"externalPlayerId\": \"{{external_player_id_8}}\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"{{external_player_id_5}}\",\n        \"{{external_player_id_6}}\",\n        \"{{external_player_id_7}}\",\n        \"{{external_player_id_8}}\"\n      ]\n    }\n  ]\n}"
         },
         "url": {
           "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
