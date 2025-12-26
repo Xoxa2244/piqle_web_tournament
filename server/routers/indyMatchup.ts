@@ -761,3 +761,183 @@ async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
   }
 }
 
+  getLatestForTeam: protectedProcedure
+    .input(z.object({
+      teamId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      // Get the latest matchup for this team (home or away)
+      const matchup = await ctx.prisma.indyMatchup.findFirst({
+        where: {
+          OR: [
+            { homeTeamId: input.teamId },
+            { awayTeamId: input.teamId },
+          ],
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        include: {
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true },
+              },
+            },
+          },
+        },
+      })
+
+      return matchup
+    }),
+
+  getRosters: protectedProcedure
+    .input(z.object({
+      matchupId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const rosters = await ctx.prisma.dayRoster.findMany({
+        where: {
+          matchupId: input.matchupId,
+        },
+        include: {
+          player: true,
+          team: true,
+        },
+        orderBy: [
+          { teamId: 'asc' },
+          { isActive: 'desc' },
+          { letter: 'asc' },
+        ],
+      })
+
+      return rosters
+    }),
+
+  updatePlayerLetter: tdProcedure
+    .input(z.object({
+      matchupId: z.string(),
+      playerId: z.string(),
+      teamId: z.string(),
+      letter: z.enum(['A', 'B', 'C', 'D']).nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify matchup exists and get tournament
+      const matchup = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true, userId: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (!matchup) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Matchup not found',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+
+      // Verify team is part of this matchup
+      if (matchup.homeTeamId !== input.teamId && matchup.awayTeamId !== input.teamId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Team is not part of this matchup',
+        })
+      }
+
+      // Find or create roster entry
+      const roster = await ctx.prisma.dayRoster.findUnique({
+        where: {
+          matchupId_teamId_playerId: {
+            matchupId: input.matchupId,
+            teamId: input.teamId,
+            playerId: input.playerId,
+          },
+        },
+      })
+
+      if (!roster) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Player roster not found. Please add player to roster first.',
+        })
+      }
+
+      // If assigning a letter, check if it's already taken by another active player on the same team
+      if (input.letter) {
+        const letterTaken = await ctx.prisma.dayRoster.findFirst({
+          where: {
+            matchupId: input.matchupId,
+            teamId: input.teamId,
+            playerId: { not: input.playerId },
+            letter: input.letter,
+            isActive: true,
+          },
+        })
+
+        if (letterTaken) {
+          // Remove letter from the other player
+          await ctx.prisma.dayRoster.update({
+            where: { id: letterTaken.id },
+            data: { letter: null },
+          })
+        }
+      }
+
+      // Update this player's letter
+      const updated = await ctx.prisma.dayRoster.update({
+        where: {
+          matchupId_teamId_playerId: {
+            matchupId: input.matchupId,
+            teamId: input.teamId,
+            playerId: input.playerId,
+          },
+        },
+        data: {
+          letter: input.letter,
+          // If assigning a letter, make player active
+          isActive: input.letter ? true : roster.isActive,
+        },
+        include: {
+          player: true,
+          team: true,
+        },
+      })
+
+      // Update matchup status if needed
+      const allRosters = await ctx.prisma.dayRoster.findMany({
+        where: { matchupId: input.matchupId },
+      })
+
+      const homeActive = allRosters.filter(
+        (r) => r.teamId === matchup.homeTeamId && r.isActive && r.letter
+      )
+      const awayActive = allRosters.filter(
+        (r) => r.teamId === matchup.awayTeamId && r.isActive && r.letter
+      )
+
+      const newStatus =
+        homeActive.length === 4 && awayActive.length === 4
+          ? matchup.status === 'PENDING' ? 'READY' : matchup.status
+          : 'PENDING'
+
+      if (newStatus !== matchup.status) {
+        await ctx.prisma.indyMatchup.update({
+          where: { id: input.matchupId },
+          data: { status: newStatus },
+        })
+      }
+
+      return updated
+    }),
+
+})
+

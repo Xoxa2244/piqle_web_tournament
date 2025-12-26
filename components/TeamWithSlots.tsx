@@ -19,6 +19,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
+import IndyLeagueTeamPlayers from './IndyLeagueTeamPlayers'
 import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
 
 interface Player {
@@ -55,6 +56,7 @@ interface TeamWithSlotsProps {
   isExpanded: boolean
   availablePlayers: Player[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleExpansion: () => void
   onEdit: () => void
   onDelete: () => void
@@ -71,6 +73,7 @@ export default function TeamWithSlots({
   isExpanded,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleExpansion,
   onEdit,
   onDelete,
@@ -80,6 +83,7 @@ export default function TeamWithSlots({
   onMovePlayer,
   isDragDisabled = false
 }: TeamWithSlotsProps) {
+  const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
 
@@ -302,19 +306,32 @@ export default function TeamWithSlots({
         {/* Player Slots - only show for non-SINGLES or when expanded */}
         {teamKind !== 'SINGLES_1v1' && isExpanded && (
           <div className="p-2 space-y-2">
-            {slots.map((player, index) => (
-              <PlayerSlot
-                key={`${team.id}-slot-${index}`}
-                slotIndex={index}
-                player={player}
-                teamKind={teamKind}
+            {isIndyLeague ? (
+              // For IndyLeague: show all players (up to 8) with letter selectors
+              <IndyLeagueTeamPlayers
                 teamId={team.id}
-                onAddPlayer={handleAddPlayerClick}
-                onRemovePlayer={handleRemovePlayer}
-                onMovePlayer={onMovePlayer}
-                isDragDisabled={isDragDisabled}
+                teamPlayers={team.teamPlayers.map(tp => ({
+                  id: tp.id,
+                  player: tp.player,
+                }))}
+                tournamentId={tournamentId}
               />
-            ))}
+            ) : (
+              // For other formats: show slots
+              slots.map((player, index) => (
+                <PlayerSlot
+                  key={`${team.id}-slot-${index}`}
+                  slotIndex={index}
+                  player={player}
+                  teamKind={teamKind}
+                  teamId={team.id}
+                  onAddPlayer={handleAddPlayerClick}
+                  onRemovePlayer={handleRemovePlayer}
+                  onMovePlayer={onMovePlayer}
+                  isDragDisabled={isDragDisabled}
+                />
+              ))
+            )}
           </div>
         )}
       </div>

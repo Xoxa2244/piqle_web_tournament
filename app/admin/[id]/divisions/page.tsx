@@ -484,28 +484,30 @@ function DivisionCard({
               </Button>
             )}
             
-            {(division as any).isMerged ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onUnmergeDivisions?.(division)}
-                className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
-                title="Unmerge division back to original divisions"
-              >
-                <GitBranch className="h-4 w-4 mr-1" />
-                Unmerge
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onMergeDivisions(division)}
-                className="h-8 px-3"
-                title="Merge with another division"
-              >
-                <GitMerge className="h-4 w-4 mr-1" />
-                Merge
-              </Button>
+            {!isIndyLeague && (
+              (division as any).isMerged ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onUnmergeDivisions?.(division)}
+                  className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  title="Unmerge division back to original divisions"
+                >
+                  <GitBranch className="h-4 w-4 mr-1" />
+                  Unmerge
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onMergeDivisions(division)}
+                  className="h-8 px-3"
+                  title="Merge with another division"
+                >
+                  <GitMerge className="h-4 w-4 mr-1" />
+                  Merge
+                </Button>
+              )
             )}
             
             <div className="flex items-center space-x-1">
@@ -561,6 +563,7 @@ function DivisionCard({
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
+                      tournamentFormat={tournamentFormat}
                       onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
