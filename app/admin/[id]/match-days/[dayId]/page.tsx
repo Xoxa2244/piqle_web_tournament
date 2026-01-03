@@ -42,6 +42,17 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     }
   )
 
+  // Check if user has admin access
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   // Get all match days for the tournament to enable day switching
   const { data: allMatchDays } = trpc.matchDay.list.useQuery(
     {
