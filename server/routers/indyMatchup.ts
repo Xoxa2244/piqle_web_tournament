@@ -151,13 +151,18 @@ export const indyMatchupRouter = createTRPCRouter({
             orderBy: { order: 'asc' },
           },
         },
-        orderBy: [
-          { division: { name: 'asc' } },
-          { createdAt: 'asc' },
-        ],
+        orderBy: { createdAt: 'asc' },
       })
 
-      return matchups
+      // Sort by division name manually to avoid nested orderBy issues
+      return matchups.sort((a, b) => {
+        const divisionA = a.division?.name || ''
+        const divisionB = b.division?.name || ''
+        if (divisionA !== divisionB) {
+          return divisionA.localeCompare(divisionB)
+        }
+        return a.createdAt.getTime() - b.createdAt.getTime()
+      })
     }),
 
   swapHomeAway: tdProcedure

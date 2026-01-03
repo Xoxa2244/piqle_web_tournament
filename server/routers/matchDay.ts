@@ -126,55 +126,60 @@ export const matchDayRouter = createTRPCRouter({
       matchDayId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      const matchDay = await ctx.prisma.matchDay.findUnique({
-        where: { id: input.matchDayId },
-        include: {
-          tournament: {
-            select: { id: true, title: true, format: true },
-          },
-          matchups: {
-            include: {
-              division: true,
-              homeTeam: {
-                include: {
-                  teamPlayers: {
-                    include: {
-                      player: true,
+      try {
+        const matchDay = await ctx.prisma.matchDay.findUnique({
+          where: { id: input.matchDayId },
+          include: {
+            tournament: {
+              select: { id: true, title: true, format: true },
+            },
+            matchups: {
+              include: {
+                division: true,
+                homeTeam: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
                     },
                   },
                 },
-              },
-              awayTeam: {
-                include: {
-                  teamPlayers: {
-                    include: {
-                      player: true,
+                awayTeam: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
                     },
                   },
                 },
-              },
-              rosters: {
-                include: {
-                  player: true,
-                  team: true,
+                rosters: {
+                  include: {
+                    player: true,
+                    team: true,
+                  },
                 },
-              },
-              games: {
-                orderBy: { order: 'asc' },
+                games: {
+                  orderBy: { order: 'asc' },
+                },
               },
             },
           },
-        },
-      })
-
-      if (!matchDay) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Match day not found',
         })
-      }
 
-      return matchDay
+        if (!matchDay) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Match day not found',
+          })
+        }
+
+        return matchDay
+      } catch (error) {
+        console.error('Error in matchDay.get:', error)
+        throw error
+      }
     }),
 
   updateStatus: tdProcedure
