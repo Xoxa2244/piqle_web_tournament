@@ -157,18 +157,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     return acc
   }, {} as Record<string, any[]>)
 
-  if (!matchDay) {
-    return (
-      <div className="max-w-6xl mx-auto p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-gray-600">Loading match day...</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   // Find current day index and get previous/next days
   const currentDayIndex = allMatchDays?.findIndex(d => d.id === matchDayId) ?? -1
   const previousDay = currentDayIndex > 0 ? allMatchDays?.[currentDayIndex - 1] : null
@@ -180,8 +168,39 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     router.push(`/admin/${tournamentId}/match-days/${newDayId}`)
   }
 
+  if (!matchDay) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TournamentNavBar
+          tournamentTitle={tournament?.title}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          pendingRequestsCount={pendingRequestsCount}
+          tournamentFormat={tournament?.format}
+        />
+        <div className="max-w-6xl mx-auto p-6">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-gray-600">Loading match day...</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament?.format}
+      />
+
+      <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
         <Button
           variant="outline"
