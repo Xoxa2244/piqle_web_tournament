@@ -176,9 +176,22 @@ export const matchDayRouter = createTRPCRouter({
         }
 
         return matchDay
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error in matchDay.get:', error)
-        throw error
+        // Log more details about Prisma errors
+        if (error?.code === 'P2025' || error?.code === 'P2002') {
+          console.error('Prisma error details:', {
+            code: error.code,
+            meta: error.meta,
+            message: error.message,
+          })
+        }
+        // Return a more user-friendly error message
+        throw new TRPCError({
+          code: error?.code === 'NOT_FOUND' ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
+          message: error?.message || 'Failed to fetch match day',
+          cause: error,
+        })
       }
     }),
 

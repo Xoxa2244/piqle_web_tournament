@@ -119,50 +119,68 @@ export const indyMatchupRouter = createTRPCRouter({
       matchDayId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      const matchups = await ctx.prisma.indyMatchup.findMany({
-        where: { matchDayId: input.matchDayId },
-        include: {
-          division: true,
-          homeTeam: {
-            include: {
-              teamPlayers: {
-                include: {
-                  player: true,
+      try {
+        const matchups = await ctx.prisma.indyMatchup.findMany({
+          where: { matchDayId: input.matchDayId },
+          include: {
+            division: true,
+            homeTeam: {
+              include: {
+                teamPlayers: {
+                  include: {
+                    player: true,
+                  },
                 },
               },
             },
-          },
-          awayTeam: {
-            include: {
-              teamPlayers: {
-                include: {
-                  player: true,
+            awayTeam: {
+              include: {
+                teamPlayers: {
+                  include: {
+                    player: true,
+                  },
                 },
               },
             },
-          },
-          rosters: {
-            include: {
-              player: true,
-              team: true,
+            rosters: {
+              include: {
+                player: true,
+                team: true,
+              },
+            },
+            games: {
+              orderBy: { order: 'asc' },
             },
           },
-          games: {
-            orderBy: { order: 'asc' },
-          },
-        },
-        orderBy: { createdAt: 'asc' },
-      })
+          orderBy: { createdAt: 'asc' },
+        })
 
-      // Sort by division name manually to avoid nested orderBy issues
-      return matchups.sort((a, b) => {
-        const divisionA = a.division?.name || ''
-        const divisionB = b.division?.name || ''
-        if (divisionA !== divisionB) {
-          return divisionA.localeCompare(divisionB)
+        // Sort by division name manually to avoid nested orderBy issues
+        return matchups.sort((a, b) => {
+          const divisionA = a.division?.name || ''
+          const divisionB = b.division?.name || ''
+          if (divisionA !== divisionB) {
+            return divisionA.localeCompare(divisionB)
+          }
+          return a.createdAt.getTime() - b.createdAt.getTime()
+        })
+      } catch (error: any) {
+        console.error('Error in indyMatchup.list:', error)
+        // Log more details about Prisma errors
+        if (error?.code === 'P2025' || error?.code === 'P2002' || error?.code?.startsWith('P')) {
+          console.error('Prisma error details:', {
+            code: error.code,
+            meta: error.meta,
+            message: error.message,
+          })
         }
-        return a.createdAt.getTime() - b.createdAt.getTime()
-      })
+        // Return a more user-friendly error message
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error?.message || 'Failed to fetch matchups',
+          cause: error,
+        })
+      }
     }),
 
   get: protectedProcedure
