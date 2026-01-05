@@ -142,8 +142,8 @@ function DivisionStageManagementContent() {
     }
   }, [selectedDivisionId, tournamentId, router])
 
-  // Check if tournament is IndyLeague (tournament is guaranteed to be defined after check above)
-  const isIndyLeague = tournament.format === 'INDY_LEAGUE'
+  // Check if tournament is IndyLeague
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
