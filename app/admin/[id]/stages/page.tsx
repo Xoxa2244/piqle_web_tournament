@@ -12,7 +12,6 @@ import {
   Calculator,
   AlertTriangle,
   CheckCircle,
-  XCircle,
   Clock,
   Trophy,
   Users,
@@ -37,7 +36,7 @@ import BracketModal from '@/components/BracketModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
-import { getTeamDisplayName, cn } from '@/lib/utils'
+import { getTeamDisplayName } from '@/lib/utils'
 
 function DivisionStageManagementContent() {
   const router = useRouter()
@@ -76,21 +75,9 @@ function DivisionStageManagementContent() {
     { enabled: !!tournamentId }
   )
   
-  // Early return if tournament is not loaded
-  if (!tournament) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading tournament data...</p>
-        </div>
-      </div>
-    )
-  }
-  
   // Get access info for nav bar (must be before any conditional returns)
-  const isAdmin = tournament.userAccessInfo?.isOwner || tournament.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament.userAccessInfo?.isOwner
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
   const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
     { enabled: !!isOwner && !!tournamentId }
@@ -153,73 +140,6 @@ function DivisionStageManagementContent() {
       }
     }
   }, [selectedDivisionId, tournamentId, router])
-
-  // Check if tournament is IndyLeague (tournament is guaranteed to be defined after check above)
-  const isIndyLeague = tournament.format === 'INDY_LEAGUE'
-
-  // For IndyLeague, get match days and matchups
-  const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
-  const { data: matchDays } = trpc.matchDay.list.useQuery(
-    { tournamentId },
-    { enabled: isIndyLeague && !!tournamentId }
-  )
-
-  // Get matchups for selected match day and division
-  const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery(
-    { matchDayId: selectedMatchDayId },
-    { enabled: isIndyLeague && !!selectedMatchDayId }
-  )
-
-  // Filter matchups by selected division
-  const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
-
-  // Set first match day as default
-  useEffect(() => {
-    if (isIndyLeague && matchDays && matchDays.length > 0 && !selectedMatchDayId) {
-      setSelectedMatchDayId(matchDays[0].id)
-    }
-  }, [isIndyLeague, matchDays, selectedMatchDayId])
-
-  // Update game score mutation
-  const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
-    onSuccess: () => {
-      refetchMatchups()
-    },
-    onError: (error) => {
-      alert('Error updating score: ' + error.message)
-    },
-  })
-
-  // Update tie break mutation
-  const updateTieBreak = trpc.indyMatchup.updateTieBreak.useMutation({
-    onSuccess: () => {
-      refetchMatchups()
-    },
-    onError: (error) => {
-      alert('Error updating tie-break: ' + error.message)
-    },
-  })
-
-  const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
-    updateGameScore.mutate({
-      gameId,
-      homeScore,
-      awayScore,
-    })
-  }
-
-  const handleTieBreakChange = (matchupId: string, winnerTeamId: string) => {
-    updateTieBreak.mutate({
-      matchupId,
-      tieBreakWinnerTeamId: winnerTeamId,
-    })
-  }
-
-  // Format date helper
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -322,18 +242,6 @@ function DivisionStageManagementContent() {
     }
   })
 
-  // Check if division data is loaded
-  if (!divisionData) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading division data...</p>
-        </div>
-      </div>
-    )
-  }
-
   // Calculate statistics
   const division = divisionData
   
@@ -421,8 +329,8 @@ function DivisionStageManagementContent() {
     if (!m.games || m.games.length === 0) return false
     
     // For MLP matches, check if all 4 games are completed
-    // Get tournament format safely (tournament is guaranteed to be defined)
-    const tournamentFormat = tournament.format
+    // Get tournament format safely
+    const tournamentFormat = tournament?.format
     const isMLP = tournamentFormat === 'MLP'
     const matchGamesCount = m.gamesCount || m.games.length
     const isMLPMatch = isMLP && matchGamesCount === 4
@@ -540,7 +448,7 @@ function DivisionStageManagementContent() {
 
   // Function to upload tournament results to DUPR
   const handleUploadToDupr = async () => {
-    if (!tournamentId || !tournament.allowDuprSubmission) return
+    if (!tournamentId || !tournament?.allowDuprSubmission) return
 
     setIsUploadingToDupr(true)
     setDuprUploadLog([])
@@ -585,12 +493,12 @@ function DivisionStageManagementContent() {
   }
   const targetBracketSize = getTargetBracketSize(teamCount)
   // For MLP tournaments, Play-In is not used - always go directly to Play-Off
-  const isMLPTournament = tournament.format === 'MLP'
+  const isMLPTournament = tournament?.format === 'MLP'
   const needsPlayIn = !isMLPTournament && teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = (tournament.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
+  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
@@ -751,7 +659,7 @@ function DivisionStageManagementContent() {
     // Check if all 4 games are completed
     if (!match.games || match.games.length !== 4) return false
     const allGamesCompleted = match.games.every((g: any) => 
-      ((g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)) && g.scoreA !== g.scoreB
+      (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0) && g.scoreA !== g.scoreB
     )
     if (!allGamesCompleted) return false
     
@@ -947,7 +855,7 @@ function DivisionStageManagementContent() {
     !isMLPTournament && currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
   ) || (
     !isMLPTournament && needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
-  );
+  )
 
   // Debug button availability
   console.log('Button availability debug:', {
@@ -978,6 +886,17 @@ function DivisionStageManagementContent() {
     playInMatches: playInMatches.length
   })
 
+  if (!tournament) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading tournament data...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Check if user has access to any divisions
   if (tournament.divisions.length === 0) {
     return (
@@ -1006,15 +925,26 @@ function DivisionStageManagementContent() {
     )
   }
 
+  if (!division) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading division data...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
       <TournamentNavBar
-        tournamentTitle={tournament.title}
+        tournamentTitle={tournament?.title}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament.format}
+        tournamentFormat={tournament?.format}
       />
       
       {/* Top panel */}
@@ -1041,7 +971,7 @@ function DivisionStageManagementContent() {
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
             {/* DUPR Upload buttons */}
-            {tournament.allowDuprSubmission && allMatchesCompleted && (
+            {tournament?.allowDuprSubmission && allMatchesCompleted && (
               <>
                 <Button
                   variant="outline"
@@ -1105,248 +1035,10 @@ function DivisionStageManagementContent() {
             </div>
           </div>
         </div>
-
-        {/* Match Day switcher for IndyLeague */}
-        {isIndyLeague && matchDays && matchDays.length > 0 && (
-          <div className="flex items-center space-x-2 mt-4 pb-2 border-b border-gray-200">
-            <span className="text-sm font-medium text-gray-700">Match Day:</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const currentIndex = matchDays.findIndex((d: any) => d.id === selectedMatchDayId)
-                const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDays.length - 1
-                setSelectedMatchDayId(matchDays[prevIndex].id)
-              }}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            
-            <select
-              value={selectedMatchDayId}
-              onChange={(e) => setSelectedMatchDayId(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-            >
-              {matchDays.map((day: any) => (
-                <option key={day.id} value={day.id}>
-                  {formatDate(day.date)} ({day.matchups?.length || 0} matchups)
-                </option>
-              ))}
-            </select>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const currentIndex = matchDays.findIndex((d: any) => d.id === selectedMatchDayId)
-                const nextIndex = currentIndex < matchDays.length - 1 ? currentIndex + 1 : 0
-                setSelectedMatchDayId(matchDays[nextIndex].id)
-              }}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* IndyLeague Score Input */}
-        {isIndyLeague ? (
-          <div className="space-y-6">
-            {divisionMatchups.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-gray-600">No matchups found for this division and match day.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {/* Tabs for matchups */}
-                <div className="border-b border-gray-200">
-                  <nav className="-mb-px flex space-x-8 overflow-x-auto">
-                    {divisionMatchups.map((matchup: any, index: number) => (
-                      <button
-                        key={matchup.id}
-                        onClick={() => {
-                          // Scroll to matchup section
-                          const element = document.getElementById(`matchup-${matchup.id}`)
-                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                        }}
-                        className={cn(
-                          "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm",
-                          index === 0
-                            ? "border-blue-500 text-blue-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                        )}
-                      >
-                        {matchup.homeTeam.name} vs {matchup.awayTeam.name}
-                        <span className="ml-2 text-xs text-gray-400">
-                          ({matchup.gamesWonHome} - {matchup.gamesWonAway})
-                        </span>
-                      </button>
-                    ))}
-                  </nav>
-                </div>
-
-                {/* Matchups */}
-                {divisionMatchups.map((matchup: any) => {
-                  // Get rosters for this matchup
-                  const homeRosters = matchup.rosters?.filter((r: any) => r.teamId === matchup.homeTeamId && r.isActive) || []
-                  const awayRosters = matchup.rosters?.filter((r: any) => r.teamId === matchup.awayTeamId && r.isActive) || []
-                  
-                  // Create player map for letters
-                  const playerLetterMap = new Map<string, string>()
-                  homeRosters.forEach((r: any) => {
-                    if (r.letter) playerLetterMap.set(r.playerId, r.letter)
-                  })
-                  awayRosters.forEach((r: any) => {
-                    if (r.letter) playerLetterMap.set(r.playerId, r.letter)
-                  })
-
-                  // Helper to get player name with letter
-                  const getPlayerDisplay = (pair: string, isHome: boolean) => {
-                    const rosters = isHome ? homeRosters : awayRosters
-                    const players = pair.split('').map(letter => {
-                      const roster = rosters.find((r: any) => r.letter === letter)
-                      if (!roster) return null
-                      const player = roster.player
-                      return `${player.firstName} ${player.lastName} (${letter})`
-                    }).filter(Boolean)
-                    return players.join(' & ') || pair
-                  }
-
-                  const needsTieBreak = matchup.gamesWonHome === 6 && matchup.gamesWonAway === 6 && !matchup.tieBreakWinnerTeamId
-
-                  return (
-                    <Card key={matchup.id} id={`matchup-${matchup.id}`} className="scroll-mt-8">
-                      <CardHeader>
-                        <CardTitle className="flex items-center justify-between">
-                          <div>
-                            <div className="text-xl">
-                              {matchup.homeTeam.name} vs {matchup.awayTeam.name}
-                            </div>
-                            <div className="text-sm text-gray-500 mt-1">
-                              {matchup.division.name} • {matchup.gamesWonHome} - {matchup.gamesWonAway}
-                            </div>
-                          </div>
-                          <Badge variant={matchup.status === 'COMPLETED' ? 'default' : 'outline'}>
-                            {matchup.status}
-                          </Badge>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-6">
-                        {/* Tie-break */}
-                        {needsTieBreak && (
-                          <Alert className="border-yellow-300 bg-yellow-50">
-                            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                            <AlertDescription>
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium">Tie-break required (6-6)</span>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant={matchup.tieBreakWinnerTeamId === matchup.homeTeamId ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => handleTieBreakChange(matchup.id, matchup.homeTeamId)}
-                                  >
-                                    {matchup.homeTeam.name}
-                                  </Button>
-                                  <Button
-                                    variant={matchup.tieBreakWinnerTeamId === matchup.awayTeamId ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => handleTieBreakChange(matchup.id, matchup.awayTeamId)}
-                                  >
-                                    {matchup.awayTeam.name}
-                                  </Button>
-                                </div>
-                              </div>
-                            </AlertDescription>
-                          </Alert>
-                        )}
-
-                        {/* Games */}
-                        {matchup.games && matchup.games.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {matchup.games.map((game: any) => (
-                              <Card key={game.id} className="border">
-                                <CardContent className="pt-4">
-                                  <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                      <div>
-                                        <div className="font-semibold text-sm">
-                                          Game {game.order} • Court {game.court}
-                                        </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                          {getPlayerDisplay(game.homePair, true)} vs {getPlayerDisplay(game.awayPair, false)}
-                                        </div>
-                                      </div>
-                                      {game.homeScore !== null && game.awayScore !== null && (
-                                        <div className="flex items-center gap-1">
-                                          {game.homeScore > game.awayScore ? (
-                                            <CheckCircle className="h-4 w-4 text-green-500" />
-                                          ) : (
-                                            <XCircle className="h-4 w-4 text-red-500" />
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1">
-                                        <label className="text-xs text-gray-500">Home</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={game.homeScore ?? ''}
-                                          onChange={(e) => {
-                                            const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                            if (value !== null && value === game.awayScore) {
-                                              alert('Ties are not allowed')
-                                              return
-                                            }
-                                            handleGameScoreChange(game.id, value, game.awayScore)
-                                          }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
-                                        />
-                                      </div>
-                                      <span className="text-gray-400 pt-5">-</span>
-                                      <div className="flex-1">
-                                        <label className="text-xs text-gray-500">Away</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={game.awayScore ?? ''}
-                                          onChange={(e) => {
-                                            const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                            if (value !== null && value === game.homeScore) {
-                                              alert('Ties are not allowed')
-                                              return
-                                            }
-                                            handleGameScoreChange(game.id, game.homeScore, value)
-                                          }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
-                                        />
-                                      </div>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center text-gray-500 py-8">
-                            No games generated yet. Generate games from the matchup detail page.
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Round Robin Block */}
-            {!isIndyLeague && (
+        {/* Round Robin Block */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -1834,10 +1526,10 @@ function DivisionStageManagementContent() {
               </div>
             </CardContent>
           </Card>
-            )}
+        )}
 
         {/* Play-In Block - show only if B < N < 2B */}
-        {!isIndyLeague && needsPlayIn && (
+        {needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -2039,7 +1731,6 @@ function DivisionStageManagementContent() {
         )}
 
         {/* Play-Off Block */}
-        {!isIndyLeague && (
         <Card className={
           // Block if:
           // 1. RR is in progress AND not all matches completed (for both MLP and non-MLP)
@@ -2365,14 +2056,10 @@ function DivisionStageManagementContent() {
             )}
           </CardContent>
         </Card>
-            )}
-          </>
-        )}
       </div>
-    }
 
       {/* Score input modal */}
-      {!isIndyLeague && showScoreModal && selectedMatch && (() => {
+      {showScoreModal && selectedMatch && (() => {
         const isMLP = tournament?.format === 'MLP'
         const matchGamesCount = selectedMatch.gamesCount || (selectedMatch.games?.length || 0)
         const isMLPMatch = isMLP && matchGamesCount === 4
@@ -2446,7 +2133,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* Playoff swap modal */}
-      {!isIndyLeague && showPlayoffSwapModal && (() => {
+      {showPlayoffSwapModal && (() => {
         // Get only teams that participate in Play-Off
         const playoffTeamIds = new Set<string>()
         eliminationMatches.forEach(match => {
@@ -2474,7 +2161,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* RR swap modal */}
-      {!isIndyLeague && showEditRRPairsModal && (
+      {showEditRRPairsModal && (
         <PlayoffSwapModal
           isOpen={showEditRRPairsModal}
           onClose={() => setShowEditRRPairsModal(false)}
@@ -2520,7 +2207,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* Unmerge Division Modal */}
-      {!isIndyLeague && showUnmergeModal && currentDivision && (
+      {showUnmergeModal && currentDivision && (
         <UnmergeDivisionModal
           isOpen={showUnmergeModal}
           onClose={() => setShowUnmergeModal(false)}
@@ -2534,7 +2221,7 @@ function DivisionStageManagementContent() {
       )}
 
       {/* Bracket Modal */}
-      {!isIndyLeague && showBracketModal && selectedDivisionId && (
+      {showBracketModal && selectedDivisionId && (
         <BracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -2543,7 +2230,7 @@ function DivisionStageManagementContent() {
       )}
 
       {/* Tiebreaker Modal */}
-      {!isIndyLeague && showTiebreakerModal && selectedTiebreakerMatch && (() => {
+      {showTiebreakerModal && selectedTiebreakerMatch && (() => {
         const teamAPlayers = selectedTiebreakerMatch.teamA?.teamPlayers?.map((tp: any) => ({
           id: tp.player?.id || '',
           firstName: tp.player?.firstName || '',
@@ -2582,7 +2269,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* Regeneration confirmation modal */}
-      {!isIndyLeague && showRegenerateModal && (
+      {showRegenerateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">
