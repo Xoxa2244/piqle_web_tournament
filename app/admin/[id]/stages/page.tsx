@@ -142,6 +142,73 @@ function DivisionStageManagementContent() {
     }
   }, [selectedDivisionId, tournamentId, router])
 
+  // Check if tournament is IndyLeague
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+
+  // For IndyLeague, get match days and matchups
+  const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
+  const { data: matchDays } = trpc.matchDay.list.useQuery(
+    { tournamentId },
+    { enabled: isIndyLeague && !!tournamentId }
+  )
+
+  // Get matchups for selected match day and division
+  const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery(
+    { matchDayId: selectedMatchDayId },
+    { enabled: isIndyLeague && !!selectedMatchDayId }
+  )
+
+  // Filter matchups by selected division
+  const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
+
+  // Set first match day as default
+  useEffect(() => {
+    if (isIndyLeague && matchDays && matchDays.length > 0 && !selectedMatchDayId) {
+      setSelectedMatchDayId(matchDays[0].id)
+    }
+  }, [isIndyLeague, matchDays, selectedMatchDayId])
+
+  // Update game score mutation
+  const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+    },
+    onError: (error) => {
+      alert('Error updating score: ' + error.message)
+    },
+  })
+
+  // Update tie break mutation
+  const updateTieBreak = trpc.indyMatchup.updateTieBreak.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+    },
+    onError: (error) => {
+      alert('Error updating tie-break: ' + error.message)
+    },
+  })
+
+  const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
+    updateGameScore.mutate({
+      gameId,
+      homeScore,
+      awayScore,
+    })
+  }
+
+  const handleTieBreakChange = (matchupId: string, winnerTeamId: string) => {
+    updateTieBreak.mutate({
+      matchupId,
+      tieBreakWinnerTeamId: winnerTeamId,
+    })
+  }
+
+  // Format date helper
+  const formatDate = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
     { divisionId: selectedDivisionId },
@@ -926,17 +993,6 @@ function DivisionStageManagementContent() {
     )
   }
 
-  if (!division) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading division data...</p>
-        </div>
-      </div>
-    )
-  }
-
   // Check if tournament is IndyLeague
   const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
 
@@ -1002,6 +1058,17 @@ function DivisionStageManagementContent() {
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  if (!division) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading division data...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
