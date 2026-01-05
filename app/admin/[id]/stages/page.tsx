@@ -938,11 +938,11 @@ function DivisionStageManagementContent() {
   // 3. OR Play-In is complete
   // 4. OR Play-In matches are all completed (if Play-In is needed)
   const canGeneratePlayoff = (
-    (currentStage === 'RR_IN_PROGRESS' || currentStage === 'RR_COMPLETE') && 
+    ((currentStage === 'RR_IN_PROGRESS' || currentStage === 'RR_COMPLETE') && 
     completedRRMatches.length === rrMatches.length && 
     rrMatches.length > 0 && 
     !eliminationMatches.length &&
-    (isMLPTournament || !needsPlayIn)  // For MLP, always allow; for non-MLP, only if no Play-In needed
+    (isMLPTournament || !needsPlayIn))  // For MLP, always allow; for non-MLP, only if no Play-In needed
   ) || (
     !isMLPTournament && currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
   ) || (
