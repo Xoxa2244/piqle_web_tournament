@@ -1798,6 +1798,7 @@ function DivisionStageManagementContent() {
             )}
           </CardContent>
         </Card>
+            )}
 
         {/* Information banner if not enough teams */}
         {teamCount < targetBracketSize && (
