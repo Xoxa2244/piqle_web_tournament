@@ -421,8 +421,8 @@ function DivisionStageManagementContent() {
     if (!m.games || m.games.length === 0) return false
     
     // For MLP matches, check if all 4 games are completed
-    // Get tournament format safely
-    const tournamentFormat = tournament?.format
+    // Get tournament format safely (tournament is guaranteed to be defined)
+    const tournamentFormat = tournament.format
     const isMLP = tournamentFormat === 'MLP'
     const matchGamesCount = m.gamesCount || m.games.length
     const isMLPMatch = isMLP && matchGamesCount === 4
@@ -540,7 +540,7 @@ function DivisionStageManagementContent() {
 
   // Function to upload tournament results to DUPR
   const handleUploadToDupr = async () => {
-    if (!tournamentId || !tournament?.allowDuprSubmission) return
+    if (!tournamentId || !tournament.allowDuprSubmission) return
 
     setIsUploadingToDupr(true)
     setDuprUploadLog([])
@@ -585,12 +585,12 @@ function DivisionStageManagementContent() {
   }
   const targetBracketSize = getTargetBracketSize(teamCount)
   // For MLP tournaments, Play-In is not used - always go directly to Play-Off
-  const isMLPTournament = tournament?.format === 'MLP'
+  const isMLPTournament = tournament.format === 'MLP'
   const needsPlayIn = !isMLPTournament && teamCount > targetBracketSize && teamCount < targetBracketSize * 2
   const playInExcess = teamCount - targetBracketSize
 
   // Find current division in tournament for additional information
-  const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
+  const currentDivision = (tournament.divisions as any[])?.find((d: any) => d.id === selectedDivisionId)
   
   // Determine current stage
   const currentStage = division?.stage || 'RR_IN_PROGRESS'
@@ -1041,7 +1041,7 @@ function DivisionStageManagementContent() {
           {/* Right part - quick actions */}
           <div className="flex items-center space-x-3">
             {/* DUPR Upload buttons */}
-            {tournament?.allowDuprSubmission && allMatchesCompleted && (
+            {tournament.allowDuprSubmission && allMatchesCompleted && (
               <>
                 <Button
                   variant="outline"
