@@ -1006,7 +1006,7 @@ function DivisionStageManagementContent() {
     )
   }
 
-  // Main return statement
+  // Add missing closing brace for function
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
