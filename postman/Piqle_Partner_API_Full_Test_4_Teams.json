@@ -302,7 +302,7 @@
       }
     },
     {
-      "name": "7. Create Rosters - Matchup 1 (Team 1 vs Team 2)",
+      "name": "7. Create All Rosters (4 Teams)",
       "event": [
         {
           "listen": "prerequest",
@@ -331,7 +331,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team1-player-001\"},\n        {\"externalPlayerId\": \"team1-player-002\"},\n        {\"externalPlayerId\": \"team1-player-003\"},\n        {\"externalPlayerId\": \"team1-player-004\"},\n        {\"externalPlayerId\": \"team1-player-005\"},\n        {\"externalPlayerId\": \"team1-player-006\"},\n        {\"externalPlayerId\": \"team1-player-007\"},\n        {\"externalPlayerId\": \"team1-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team1-player-001\",\n        \"team1-player-002\",\n        \"team1-player-003\",\n        \"team1-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team2-player-001\"},\n        {\"externalPlayerId\": \"team2-player-002\"},\n        {\"externalPlayerId\": \"team2-player-003\"},\n        {\"externalPlayerId\": \"team2-player-004\"},\n        {\"externalPlayerId\": \"team2-player-005\"},\n        {\"externalPlayerId\": \"team2-player-006\"},\n        {\"externalPlayerId\": \"team2-player-007\"},\n        {\"externalPlayerId\": \"team2-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team2-player-001\",\n        \"team2-player-002\",\n        \"team2-player-003\",\n        \"team2-player-004\"\n      ]\n    }\n  ]\n}"
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team1-player-001\"},\n        {\"externalPlayerId\": \"team1-player-002\"},\n        {\"externalPlayerId\": \"team1-player-003\"},\n        {\"externalPlayerId\": \"team1-player-004\"},\n        {\"externalPlayerId\": \"team1-player-005\"},\n        {\"externalPlayerId\": \"team1-player-006\"},\n        {\"externalPlayerId\": \"team1-player-007\"},\n        {\"externalPlayerId\": \"team1-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team1-player-001\",\n        \"team1-player-002\",\n        \"team1-player-003\",\n        \"team1-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team2-player-001\"},\n        {\"externalPlayerId\": \"team2-player-002\"},\n        {\"externalPlayerId\": \"team2-player-003\"},\n        {\"externalPlayerId\": \"team2-player-004\"},\n        {\"externalPlayerId\": \"team2-player-005\"},\n        {\"externalPlayerId\": \"team2-player-006\"},\n        {\"externalPlayerId\": \"team2-player-007\"},\n        {\"externalPlayerId\": \"team2-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team2-player-001\",\n        \"team2-player-002\",\n        \"team2-player-003\",\n        \"team2-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_3}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team3-player-001\"},\n        {\"externalPlayerId\": \"team3-player-002\"},\n        {\"externalPlayerId\": \"team3-player-003\"},\n        {\"externalPlayerId\": \"team3-player-004\"},\n        {\"externalPlayerId\": \"team3-player-005\"},\n        {\"externalPlayerId\": \"team3-player-006\"},\n        {\"externalPlayerId\": \"team3-player-007\"},\n        {\"externalPlayerId\": \"team3-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team3-player-001\",\n        \"team3-player-002\",\n        \"team3-player-003\",\n        \"team3-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_4}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team4-player-001\"},\n        {\"externalPlayerId\": \"team4-player-002\"},\n        {\"externalPlayerId\": \"team4-player-003\"},\n        {\"externalPlayerId\": \"team4-player-004\"},\n        {\"externalPlayerId\": \"team4-player-005\"},\n        {\"externalPlayerId\": \"team4-player-006\"},\n        {\"externalPlayerId\": \"team4-player-007\"},\n        {\"externalPlayerId\": \"team4-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team4-player-001\",\n        \"team4-player-002\",\n        \"team4-player-003\",\n        \"team4-player-004\"\n      ]\n    }\n  ]\n}"
         },
         "url": {
           "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
@@ -341,46 +341,7 @@
       }
     },
     {
-      "name": "8. Create Rosters - Matchup 2 (Team 3 vs Team 4)",
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "exec": [
-              "pm.request.headers.add({",
-              "    key: 'Authorization',",
-              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
-              "});",
-              "pm.request.headers.add({",
-              "    key: 'Idempotency-Key',",
-              "    value: pm.variables.replaceIn('{{$guid}}')",
-              "});"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_3}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team3-player-001\"},\n        {\"externalPlayerId\": \"team3-player-002\"},\n        {\"externalPlayerId\": \"team3-player-003\"},\n        {\"externalPlayerId\": \"team3-player-004\"},\n        {\"externalPlayerId\": \"team3-player-005\"},\n        {\"externalPlayerId\": \"team3-player-006\"},\n        {\"externalPlayerId\": \"team3-player-007\"},\n        {\"externalPlayerId\": \"team3-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team3-player-001\",\n        \"team3-player-002\",\n        \"team3-player-003\",\n        \"team3-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_4}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team4-player-001\"},\n        {\"externalPlayerId\": \"team4-player-002\"},\n        {\"externalPlayerId\": \"team4-player-003\"},\n        {\"externalPlayerId\": \"team4-player-004\"},\n        {\"externalPlayerId\": \"team4-player-005\"},\n        {\"externalPlayerId\": \"team4-player-006\"},\n        {\"externalPlayerId\": \"team4-player-007\"},\n        {\"externalPlayerId\": \"team4-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team4-player-001\",\n        \"team4-player-002\",\n        \"team4-player-003\",\n        \"team4-player-004\"\n      ]\n    }\n  ]\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
-          "host": ["{{base_url}}"],
-          "path": ["api", "v1", "partners", "indyleague", "rosters", "upsert"]
-        }
-      }
-    },
-    {
-      "name": "9. Get Day Status",
+      "name": "8. Get Day Status",
       "event": [
         {
           "listen": "prerequest",
@@ -406,7 +367,7 @@
       }
     },
     {
-      "name": "10. Get Day Results",
+      "name": "9. Get Day Results",
       "event": [
         {
           "listen": "prerequest",
