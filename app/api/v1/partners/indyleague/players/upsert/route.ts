@@ -94,10 +94,91 @@ export const POST = withPartnerAuth(
                 tournamentId, // Update tournament association
               },
             })
-            results.push({
-              externalPlayerId: player.externalPlayerId,
-              status: 'updated',
-            })
+
+            // If externalTeamId is provided, ensure player is in team
+            if (player.externalTeamId) {
+              const teamId = await getInternalId(
+                context.partnerId,
+                'TEAM',
+                player.externalTeamId
+              )
+
+              if (teamId) {
+                // Get team to check division and tournament format
+                const team = await prisma.team.findUnique({
+                  where: { id: teamId },
+                  include: {
+                    division: {
+                      include: {
+                        tournament: {
+                          select: { format: true },
+                        },
+                      },
+                    },
+                    teamPlayers: true,
+                  },
+                })
+
+                if (team) {
+                  // Check team capacity: 8 for IndyLeague, otherwise based on teamKind
+                  const maxPlayers =
+                    team.division.tournament.format === 'INDY_LEAGUE'
+                      ? 8
+                      : team.division.teamKind === 'SINGLES_1v1'
+                        ? 1
+                        : team.division.teamKind === 'DOUBLES_2v2'
+                          ? 2
+                          : team.division.teamKind === 'SQUAD_4v4'
+                            ? 4
+                            : 2
+
+                  if (team.teamPlayers.length >= maxPlayers) {
+                    // Team is full, add warning but still update player
+                    results.push({
+                      externalPlayerId: player.externalPlayerId,
+                      status: 'updated',
+                      warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player updated but not added to team.`,
+                    })
+                  } else {
+                    // Check if player is already in team
+                    const existingTeamPlayer = await prisma.teamPlayer.findUnique({
+                      where: {
+                        teamId_playerId: {
+                          teamId,
+                          playerId: existingInternalId,
+                        },
+                      },
+                    })
+
+                    if (!existingTeamPlayer) {
+                      await prisma.teamPlayer.create({
+                        data: {
+                          teamId,
+                          playerId: existingInternalId,
+                          role: 'PLAYER',
+                        },
+                      })
+                    }
+                  }
+                }
+              } else {
+                // Team not found, add warning
+                results.push({
+                  externalPlayerId: player.externalPlayerId,
+                  status: 'updated',
+                  warning: `Team ${player.externalTeamId} not found. Player updated but not added to team.`,
+                })
+              }
+            }
+
+            // Only add success result if not already added (with warning)
+            const alreadyAdded = results.some(r => r.externalPlayerId === player.externalPlayerId)
+            if (!alreadyAdded) {
+              results.push({
+                externalPlayerId: player.externalPlayerId,
+                status: 'updated',
+              })
+            }
           } else {
             // Mapping exists but player was deleted - create new one
             // First, remove old mapping
