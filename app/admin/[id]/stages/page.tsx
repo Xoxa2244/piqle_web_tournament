@@ -154,8 +154,8 @@ function DivisionStageManagementContent() {
     }
   }, [selectedDivisionId, tournamentId, router])
 
-  // Check if tournament is IndyLeague
-  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  // Check if tournament is IndyLeague (tournament is guaranteed to be defined after check above)
+  const isIndyLeague = tournament.format === 'INDY_LEAGUE'
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
@@ -1010,11 +1010,11 @@ function DivisionStageManagementContent() {
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
       <TournamentNavBar
-        tournamentTitle={tournament?.title}
+        tournamentTitle={tournament.title}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
+        tournamentFormat={tournament.format}
       />
       
       {/* Top panel */}
