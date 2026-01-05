@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
@@ -94,6 +94,15 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     },
   })
 
+  const deleteMatchup = trpc.indyMatchup.delete.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+    },
+    onError: (error) => {
+      alert('Error deleting matchup: ' + error.message)
+    },
+  })
+
   const generateGames = trpc.indyMatchup.generateGames.useMutation({
     onSuccess: () => {
       refetchMatchups()
@@ -124,6 +133,12 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
 
   const handleSwap = (matchupId: string) => {
     swapHomeAway.mutate({ matchupId })
+  }
+
+  const handleDelete = (matchupId: string) => {
+    if (confirm('Are you sure you want to delete this matchup? This action cannot be undone.')) {
+      deleteMatchup.mutate({ matchupId })
+    }
   }
 
   const handleGenerateGames = (matchupId: string) => {
@@ -436,6 +451,16 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                           >
                             <RefreshCw className="h-4 w-4 mr-1" />
                             Swap
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(matchup.id)}
+                            disabled={deleteMatchup.isPending}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
                           </Button>
                           <Button
                             variant="outline"

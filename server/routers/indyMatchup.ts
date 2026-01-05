@@ -879,6 +879,63 @@ export const indyMatchupRouter = createTRPCRouter({
 
       return updated
     }),
+
+  delete: tdProcedure
+    .input(z.object({
+      matchupId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const matchup = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true, userId: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (!matchup) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Matchup not found',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+
+      // Cannot delete matchup if match day is finalized
+      if (matchup.matchDay.status === 'FINALIZED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete matchup from finalized match day',
+        })
+      }
+
+      await ctx.prisma.indyMatchup.delete({
+        where: { id: input.matchupId },
+      })
+
+      // Log the deletion
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: matchup.matchDay.tournament.id,
+          action: 'DELETE_INDY_MATCHUP',
+          entityType: 'IndyMatchup',
+          entityId: input.matchupId,
+          payload: {
+            matchDayId: matchup.matchDayId,
+            divisionId: matchup.divisionId,
+          },
+        },
+      })
+
+      return { success: true }
+    }),
 })
 
 // Helper function to recalculate games won
