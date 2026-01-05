@@ -165,6 +165,62 @@ export const indyMatchupRouter = createTRPCRouter({
       })
     }),
 
+  get: protectedProcedure
+    .input(z.object({
+      matchupId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const matchup = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          division: true,
+          homeTeam: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
+          awayTeam: {
+            include: {
+              teamPlayers: {
+                include: {
+                  player: true,
+                },
+              },
+            },
+          },
+          rosters: {
+            include: {
+              player: true,
+              team: true,
+            },
+          },
+          games: {
+            orderBy: { order: 'asc' },
+          },
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true, title: true, format: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (!matchup) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Matchup not found',
+        })
+      }
+
+      return matchup
+    }),
+
   swapHomeAway: tdProcedure
     .input(z.object({
       matchupId: z.string(),

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Save, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
+import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchupDetailPage({ params }: { params: Promise<{ id: string; matchupId: string }> }) {
   const router = useRouter()
@@ -20,22 +21,13 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
     })
   }, [params])
 
-  // Get matchup data - find it from all match days
-  const { data: matchDays } = trpc.matchDay.list.useQuery({ tournamentId })
-  
-  // Find matchup by searching through match days
-  let currentMatchup: any = null
-  let foundMatchDayId = ''
-  
-  for (const day of matchDays || []) {
-    const { data: matchups } = trpc.indyMatchup.list.useQuery({ matchDayId: day.id })
-    const matchup = matchups?.find((m: any) => m.id === matchupId)
-    if (matchup) {
-      currentMatchup = matchup
-      foundMatchDayId = day.id
-      break
+  // Get matchup data directly by ID
+  const { data: currentMatchup } = trpc.indyMatchup.get.useQuery(
+    { matchupId },
+    {
+      enabled: !!matchupId, // Only run query when matchupId is available
     }
-  }
+  )
 
   const [homeRosters, setHomeRosters] = useState<any[]>([])
   const [awayRosters, setAwayRosters] = useState<any[]>([])
@@ -170,14 +162,42 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  // Get tournament data for nav bar
+  const { data: tournament } = trpc.tournament.get.useQuery(
+    { id: tournamentId },
+    {
+      enabled: !!tournamentId,
+    }
+  )
+
+  // Check if user has admin access
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+
+  // Get pending access requests count (only for owner)
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
   if (!currentMatchup) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-gray-600">Loading matchup...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gray-50">
+        <TournamentNavBar
+          tournamentTitle={tournament?.title}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          pendingRequestsCount={pendingRequestsCount}
+          tournamentFormat={tournament?.format}
+        />
+        <div className="max-w-6xl mx-auto p-6">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-gray-600">Loading matchup...</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -188,7 +208,17 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
     !currentMatchup.tieBreakWinnerTeamId
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <TournamentNavBar
+        tournamentTitle={tournament?.title}
+        isAdmin={isAdmin}
+        isOwner={isOwner}
+        pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament?.format}
+      />
+
+      <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
         <Button
           variant="outline"
@@ -453,6 +483,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   )
 }
