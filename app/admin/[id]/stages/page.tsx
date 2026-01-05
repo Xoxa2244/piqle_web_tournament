@@ -2367,7 +2367,8 @@ function DivisionStageManagementContent() {
         </Card>
             )}
           </>
-        )}
+        )
+      }
 
       {/* Score input modal */}
       {!isIndyLeague && showScoreModal && selectedMatch && (() => {
