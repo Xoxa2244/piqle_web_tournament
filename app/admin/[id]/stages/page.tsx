@@ -947,7 +947,7 @@ function DivisionStageManagementContent() {
     !isMLPTournament && currentStage === 'PLAY_IN_COMPLETE' && !eliminationMatches.length
   ) || (
     !isMLPTournament && needsPlayIn && completedPlayInMatches.length === playInMatches.length && playInMatches.length > 0 && !eliminationMatches.length
-  );
+  )
 
   // Debug button availability
   console.log('Button availability debug:', {
