@@ -2369,6 +2369,7 @@ function DivisionStageManagementContent() {
           </>
         )}
       </div>
+    }
 
       {/* Score input modal */}
       {!isIndyLeague && showScoreModal && selectedMatch && (() => {
