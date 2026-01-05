@@ -751,7 +751,7 @@ function DivisionStageManagementContent() {
     // Check if all 4 games are completed
     if (!match.games || match.games.length !== 4) return false
     const allGamesCompleted = match.games.every((g: any) => 
-      (g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0) && g.scoreA !== g.scoreB
+      ((g.scoreA !== null && g.scoreA !== undefined && g.scoreA > 0) || (g.scoreB !== null && g.scoreB !== undefined && g.scoreB > 0)) && g.scoreA !== g.scoreB
     )
     if (!allGamesCompleted) return false
     
