@@ -76,9 +76,21 @@ function DivisionStageManagementContent() {
     { enabled: !!tournamentId }
   )
   
+  // Early return if tournament is not loaded
+  if (!tournament) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading tournament data...</p>
+        </div>
+      </div>
+    )
+  }
+  
   // Get access info for nav bar (must be before any conditional returns)
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
+  const isAdmin = tournament.userAccessInfo?.isOwner || tournament.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament.userAccessInfo?.isOwner
   const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
     { enabled: !!isOwner && !!tournamentId }
@@ -965,17 +977,6 @@ function DivisionStageManagementContent() {
     completedPlayInMatches: completedPlayInMatches.length,
     playInMatches: playInMatches.length
   })
-
-  if (!tournament) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading tournament data...</p>
-        </div>
-      </div>
-    )
-  }
 
   // Check if user has access to any divisions
   if (tournament.divisions.length === 0) {
