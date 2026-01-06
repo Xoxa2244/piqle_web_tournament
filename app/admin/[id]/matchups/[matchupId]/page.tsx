@@ -65,32 +65,42 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
   // Initialize rosters from matchup data
   useEffect(() => {
     if (currentMatchup) {
-      const home = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.homeTeamId) || []
-      const away = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.awayTeamId) || []
+      const homeRostersFromDb = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.homeTeamId) || []
+      const awayRostersFromDb = currentMatchup.rosters?.filter((r: any) => r.teamId === currentMatchup.awayTeamId) || []
 
-      // If no rosters exist, create them from team players
-      if (home.length === 0 && currentMatchup.homeTeam?.teamPlayers) {
-        const newHome = currentMatchup.homeTeam.teamPlayers.map((tp: any) => ({
-          playerId: tp.player.id,
-          teamId: currentMatchup.homeTeamId,
-          isActive: false,
-          letter: null,
-        }))
+      // Create a map of existing rosters by playerId to preserve letters
+      const homeRosterMap = new Map(homeRostersFromDb.map((r: any) => [r.playerId, r]))
+      const awayRosterMap = new Map(awayRostersFromDb.map((r: any) => [r.playerId, r]))
+
+      // Always create rosters for all team players, preserving existing letters
+      if (currentMatchup.homeTeam?.teamPlayers) {
+        const newHome = currentMatchup.homeTeam.teamPlayers.map((tp: any) => {
+          const existingRoster = homeRosterMap.get(tp.player.id)
+          return {
+            playerId: tp.player.id,
+            teamId: currentMatchup.homeTeamId,
+            isActive: existingRoster?.isActive || false,
+            letter: existingRoster?.letter || null,
+          }
+        })
         setHomeRosters(newHome)
       } else {
-        setHomeRosters(home)
+        setHomeRosters(homeRostersFromDb)
       }
 
-      if (away.length === 0 && currentMatchup.awayTeam?.teamPlayers) {
-        const newAway = currentMatchup.awayTeam.teamPlayers.map((tp: any) => ({
-          playerId: tp.player.id,
-          teamId: currentMatchup.awayTeamId,
-          isActive: false,
-          letter: null,
-        }))
+      if (currentMatchup.awayTeam?.teamPlayers) {
+        const newAway = currentMatchup.awayTeam.teamPlayers.map((tp: any) => {
+          const existingRoster = awayRosterMap.get(tp.player.id)
+          return {
+            playerId: tp.player.id,
+            teamId: currentMatchup.awayTeamId,
+            isActive: existingRoster?.isActive || false,
+            letter: existingRoster?.letter || null,
+          }
+        })
         setAwayRosters(newAway)
       } else {
-        setAwayRosters(away.map((r: any) => ({
+        setAwayRosters(awayRostersFromDb.map((r: any) => ({
           playerId: r.playerId,
           teamId: r.teamId,
           isActive: r.isActive,

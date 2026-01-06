@@ -188,6 +188,28 @@ function DivisionStageManagementContent() {
     },
   })
 
+  // Generate games for division
+  const generateGamesForDivision = trpc.indyMatchup.generateGamesForDivision.useMutation({
+    onSuccess: (result) => {
+      refetchMatchups()
+      alert(`Games generated: ${result.generated}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`)
+    },
+    onError: (error) => {
+      alert('Error generating games: ' + error.message)
+    },
+  })
+
+  // Regenerate games for a matchup
+  const regenerateGames = trpc.indyMatchup.regenerateGames.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+      alert('Games regenerated successfully. All scores for this matchup have been reset.')
+    },
+    onError: (error) => {
+      alert('Error regenerating games: ' + error.message)
+    },
+  })
+
   const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
     updateGameScore.mutate({
       gameId,
@@ -1159,6 +1181,35 @@ function DivisionStageManagementContent() {
               </Card>
             ) : (
               <div className="space-y-6">
+                {/* Generate Games button for division */}
+                {selectedDivisionId && selectedMatchDayId && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">
+                            Generate games for all READY matchups in this division
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            if (confirm('Generate games for all READY matchups in this division?')) {
+                              generateGamesForDivision.mutate({
+                                divisionId: selectedDivisionId,
+                                matchDayId: selectedMatchDayId,
+                              })
+                            }
+                          }}
+                          disabled={generateGamesForDivision.isPending}
+                          className="flex items-center space-x-2"
+                        >
+                          <Play className="h-4 w-4" />
+                          <span>Generate Games</span>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
                 {/* Tabs for matchups */}
                 <div className="border-b border-gray-200">
                   <nav className="-mb-px flex space-x-8 overflow-x-auto">
@@ -1221,11 +1272,30 @@ function DivisionStageManagementContent() {
                               Score: {gamesWonHome} - {gamesWonAway}
                             </div>
                           </div>
-                          {matchup.status && (
-                            <Badge variant={matchup.status === 'COMPLETED' ? 'default' : 'outline'}>
-                              {matchup.status}
-                            </Badge>
-                          )}
+                          <div className="flex items-center space-x-2">
+                            {matchup.status && (
+                              <Badge variant={matchup.status === 'COMPLETED' ? 'default' : 'outline'}>
+                                {matchup.status}
+                              </Badge>
+                            )}
+                            {/* Regenerate Games button - only show if games exist */}
+                            {matchup.games && matchup.games.length > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm('Regenerate games for this matchup? This will reset all scores for this matchup.')) {
+                                    regenerateGames.mutate({ matchupId: matchup.id })
+                                  }
+                                }}
+                                disabled={regenerateGames.isPending}
+                                className="flex items-center space-x-1"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                                <span>Regenerate Games</span>
+                              </Button>
+                            )}
+                          </div>
                         </CardTitle>
                       </CardHeader>
                       <CardContent>

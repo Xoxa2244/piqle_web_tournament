@@ -577,6 +577,243 @@ export const indyMatchupRouter = createTRPCRouter({
       return updated
     }),
 
+  generateGamesForDivision: tdProcedure
+    .input(z.object({
+      divisionId: z.string(),
+      matchDayId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Get division with tournament
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        include: {
+          tournament: {
+            select: { id: true, userId: true },
+          },
+        },
+      })
+
+      if (!division) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Division not found',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+
+      // Get all READY matchups for this division and match day
+      const matchups = await ctx.prisma.indyMatchup.findMany({
+        where: {
+          divisionId: input.divisionId,
+          matchDayId: input.matchDayId,
+          status: 'READY',
+        },
+        include: {
+          rosters: {
+            where: { isActive: true },
+          },
+          games: true,
+        },
+      })
+
+      const results: Array<{
+        matchupId: string
+        status: 'generated' | 'skipped' | 'error'
+        message: string
+      }> = []
+
+      for (const matchup of matchups) {
+        try {
+          // Skip if games already exist
+          if (matchup.games.length > 0) {
+            results.push({
+              matchupId: matchup.id,
+              status: 'skipped',
+              message: 'Games already generated',
+            })
+            continue
+          }
+
+          // Validate rosters
+          const homeRosters = matchup.rosters.filter((r) => r.teamId === matchup.homeTeamId)
+          const awayRosters = matchup.rosters.filter((r) => r.teamId === matchup.awayTeamId)
+
+          if (homeRosters.length !== 4 || awayRosters.length !== 4) {
+            results.push({
+              matchupId: matchup.id,
+              status: 'error',
+              message: 'Both teams must have exactly 4 active players with letters',
+            })
+            continue
+          }
+
+          // Create 12 games according to fixed schema
+          await Promise.all(
+            GAMES_SCHEMA.map((gameSchema) =>
+              ctx.prisma.indyGame.create({
+                data: {
+                  matchupId: matchup.id,
+                  order: gameSchema.order,
+                  court: gameSchema.court,
+                  homePair: gameSchema.homePair,
+                  awayPair: gameSchema.awayPair,
+                },
+              })
+            )
+          )
+
+          // Update matchup status to IN_PROGRESS
+          await ctx.prisma.indyMatchup.update({
+            where: { id: matchup.id },
+            data: { status: 'IN_PROGRESS' },
+          })
+
+          // Log the generation
+          await ctx.prisma.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: division.tournament.id,
+              action: 'GENERATE_INDY_GAMES',
+              entityType: 'IndyMatchup',
+              entityId: matchup.id,
+              payload: {},
+            },
+          })
+
+          results.push({
+            matchupId: matchup.id,
+            status: 'generated',
+            message: 'Games generated successfully',
+          })
+        } catch (error: any) {
+          results.push({
+            matchupId: matchup.id,
+            status: 'error',
+            message: error.message || 'Unknown error',
+          })
+        }
+      }
+
+      return {
+        success: true,
+        results,
+        generated: results.filter((r) => r.status === 'generated').length,
+        skipped: results.filter((r) => r.status === 'skipped').length,
+        errors: results.filter((r) => r.status === 'error').length,
+      }
+    }),
+
+  regenerateGames: tdProcedure
+    .input(z.object({
+      matchupId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const matchup = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true, userId: true },
+              },
+            },
+          },
+          rosters: {
+            where: { isActive: true },
+            include: {
+              player: true,
+              team: true,
+            },
+          },
+          games: true,
+        },
+      })
+
+      if (!matchup) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Matchup not found',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+
+      // Check if matchup is READY or IN_PROGRESS
+      if (matchup.status !== 'READY' && matchup.status !== 'IN_PROGRESS') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Matchup must be READY or IN_PROGRESS to regenerate games',
+        })
+      }
+
+      // Validate rosters
+      const homeRosters = matchup.rosters.filter((r) => r.teamId === matchup.homeTeamId)
+      const awayRosters = matchup.rosters.filter((r) => r.teamId === matchup.awayTeamId)
+
+      if (homeRosters.length !== 4 || awayRosters.length !== 4) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Both teams must have exactly 4 active players with letters',
+        })
+      }
+
+      // Delete existing games (this will reset all scores)
+      await ctx.prisma.indyGame.deleteMany({
+        where: { matchupId: input.matchupId },
+      })
+
+      // Reset matchup scores
+      await ctx.prisma.indyMatchup.update({
+        where: { id: input.matchupId },
+        data: {
+          gamesWonHome: 0,
+          gamesWonAway: 0,
+          tieBreakWinnerTeamId: null,
+          status: 'IN_PROGRESS',
+        },
+      })
+
+      // Create 12 games according to fixed schema
+      await Promise.all(
+        GAMES_SCHEMA.map((gameSchema) =>
+          ctx.prisma.indyGame.create({
+            data: {
+              matchupId: input.matchupId,
+              order: gameSchema.order,
+              court: gameSchema.court,
+              homePair: gameSchema.homePair,
+              awayPair: gameSchema.awayPair,
+            },
+          })
+        )
+      )
+
+      // Get updated matchup
+      const updated = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          games: {
+            orderBy: { order: 'asc' },
+          },
+        },
+      })
+
+      // Log the regeneration
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: matchup.matchDay.tournament.id,
+          action: 'REGENERATE_INDY_GAMES',
+          entityType: 'IndyMatchup',
+          entityId: input.matchupId,
+          payload: {},
+        },
+      })
+
+      return updated
+    }),
+
   updateGameScore: protectedProcedure
     .input(z.object({
       gameId: z.string(),

@@ -103,15 +103,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     },
   })
 
-  const generateGames = trpc.indyMatchup.generateGames.useMutation({
-    onSuccess: () => {
-      refetchMatchups()
-    },
-    onError: (error) => {
-      alert('Error generating games: ' + error.message)
-    },
-  })
-
   const handleCreate = () => {
     if (!selectedDivisionId || !selectedHomeTeamId || !selectedAwayTeamId) {
       alert('Please select division and both teams')
@@ -139,13 +130,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     if (confirm('Are you sure you want to delete this matchup? This action cannot be undone.')) {
       deleteMatchup.mutate({ matchupId })
     }
-  }
-
-  const handleGenerateGames = (matchupId: string) => {
-    if (!confirm('Generate 12 games for this matchup? This action cannot be undone.')) {
-      return
-    }
-    generateGames.mutate({ matchupId })
   }
 
   const formatDate = (date: Date | string) => {
@@ -432,17 +416,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                           {getStatusBadge(matchup.status)}
                         </div>
                         <div className="flex items-center gap-2">
-                          {matchup.status === 'READY' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleGenerateGames(matchup.id)}
-                              disabled={generateGames.isPending}
-                            >
-                              <Play className="h-4 w-4 mr-1" />
-                              Generate Games
-                            </Button>
-                          )}
                           <Button
                             variant="outline"
                             size="sm"
