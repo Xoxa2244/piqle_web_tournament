@@ -1,0 +1,449 @@
+{
+  "info": {
+    "name": "Piqle Partner API - Create Tournament: 4 Teams x 8 Players",
+    "description": "Simple collection for creating a new tournament: 4 teams with 8 players each. Rosters created in a single request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://rtest.piqle.io",
+      "type": "string"
+    },
+    {
+      "key": "key_id",
+      "value": "pk_baa72f0edf3776b57fb5f015dbf76ea9",
+      "type": "string"
+    },
+    {
+      "key": "secret",
+      "value": "sk_3633d7f17a962cdd17684dc71153d7f49bac4cb7bf34992477a830637585fec3",
+      "type": "string"
+    },
+    {
+      "key": "external_tournament_id",
+      "value": "test-tournament-new",
+      "type": "string"
+    },
+    {
+      "key": "external_division_id",
+      "value": "test-div-new",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_1",
+      "value": "test-team-001",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_2",
+      "value": "test-team-002",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_3",
+      "value": "test-team-003",
+      "type": "string"
+    },
+    {
+      "key": "external_team_id_4",
+      "value": "test-team-004",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id",
+      "value": "test-day-new",
+      "type": "string"
+    },
+    {
+      "key": "external_matchup_id_1",
+      "value": "test-matchup-001",
+      "type": "string"
+    },
+    {
+      "key": "external_matchup_id_2",
+      "value": "test-matchup-002",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Cleanup Tournament (Optional)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/tournaments/{{external_tournament_id}}/cleanup",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "tournaments",
+            "{{external_tournament_id}}",
+            "cleanup"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. Create Tournament",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"name\": \"New Tournament - 4 Teams\",\n  \"seasonLabel\": \"Season 2024\",\n  \"timezone\": \"America/New_York\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/tournaments/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "tournaments",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Create Division",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"divisions\": [\n    {\n      \"externalDivisionId\": \"{{external_division_id}}\",\n      \"name\": \"Main Division\",\n      \"orderIndex\": 1\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/divisions/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "divisions",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Create 4 Teams",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"teams\": [\n    {\n      \"externalTeamId\": \"{{external_team_id_1}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Alpha\",\n      \"clubName\": \"Alpha Club\",\n      \"eventType\": \"men\"\n    },\n    {\n      \"externalTeamId\": \"{{external_team_id_2}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Beta\",\n      \"clubName\": \"Beta Club\",\n      \"eventType\": \"men\"\n    },\n    {\n      \"externalTeamId\": \"{{external_team_id_3}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Gamma\",\n      \"clubName\": \"Gamma Club\",\n      \"eventType\": \"men\"\n    },\n    {\n      \"externalTeamId\": \"{{external_team_id_4}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"name\": \"Team Delta\",\n      \"clubName\": \"Delta Club\",\n      \"eventType\": \"men\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/teams/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "teams",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Create All Players (32 players - 4 teams x 8)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"team1-player-001\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john.doe@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10001\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-002\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\",\n      \"email\": \"jane.smith@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10002\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-003\",\n      \"firstName\": \"Bob\",\n      \"lastName\": \"Johnson\",\n      \"email\": \"bob.johnson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10003\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-004\",\n      \"firstName\": \"Alice\",\n      \"lastName\": \"Williams\",\n      \"email\": \"alice.williams@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10004\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-005\",\n      \"firstName\": \"Charlie\",\n      \"lastName\": \"Brown\",\n      \"email\": \"charlie.brown@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10005\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-006\",\n      \"firstName\": \"Diana\",\n      \"lastName\": \"Davis\",\n      \"email\": \"diana.davis@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10006\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-007\",\n      \"firstName\": \"Edward\",\n      \"lastName\": \"Miller\",\n      \"email\": \"edward.miller@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"10007\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team1-player-008\",\n      \"firstName\": \"Fiona\",\n      \"lastName\": \"Wilson\",\n      \"email\": \"fiona.wilson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"10008\",\n      \"externalTeamId\": \"{{external_team_id_1}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-001\",\n      \"firstName\": \"George\",\n      \"lastName\": \"Moore\",\n      \"email\": \"george.moore@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20001\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-002\",\n      \"firstName\": \"Helen\",\n      \"lastName\": \"Taylor\",\n      \"email\": \"helen.taylor@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20002\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-003\",\n      \"firstName\": \"Ivan\",\n      \"lastName\": \"Anderson\",\n      \"email\": \"ivan.anderson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20003\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-004\",\n      \"firstName\": \"Julia\",\n      \"lastName\": \"Thomas\",\n      \"email\": \"julia.thomas@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20004\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-005\",\n      \"firstName\": \"Kevin\",\n      \"lastName\": \"Jackson\",\n      \"email\": \"kevin.jackson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20005\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-006\",\n      \"firstName\": \"Laura\",\n      \"lastName\": \"White\",\n      \"email\": \"laura.white@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20006\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-007\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Harris\",\n      \"email\": \"michael.harris@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"20007\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team2-player-008\",\n      \"firstName\": \"Nancy\",\n      \"lastName\": \"Martin\",\n      \"email\": \"nancy.martin@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"20008\",\n      \"externalTeamId\": \"{{external_team_id_2}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-001\",\n      \"firstName\": \"Oliver\",\n      \"lastName\": \"Thompson\",\n      \"email\": \"oliver.thompson@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30001\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-002\",\n      \"firstName\": \"Patricia\",\n      \"lastName\": \"Garcia\",\n      \"email\": \"patricia.garcia@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30002\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-003\",\n      \"firstName\": \"Quinn\",\n      \"lastName\": \"Martinez\",\n      \"email\": \"quinn.martinez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30003\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-004\",\n      \"firstName\": \"Rachel\",\n      \"lastName\": \"Robinson\",\n      \"email\": \"rachel.robinson@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30004\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-005\",\n      \"firstName\": \"Samuel\",\n      \"lastName\": \"Clark\",\n      \"email\": \"samuel.clark@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30005\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-006\",\n      \"firstName\": \"Tina\",\n      \"lastName\": \"Rodriguez\",\n      \"email\": \"tina.rodriguez@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30006\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-007\",\n      \"firstName\": \"Ulysses\",\n      \"lastName\": \"Lewis\",\n      \"email\": \"ulysses.lewis@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"30007\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team3-player-008\",\n      \"firstName\": \"Victoria\",\n      \"lastName\": \"Lee\",\n      \"email\": \"victoria.lee@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"30008\",\n      \"externalTeamId\": \"{{external_team_id_3}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-001\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Walker\",\n      \"email\": \"william.walker@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40001\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-002\",\n      \"firstName\": \"Xena\",\n      \"lastName\": \"Hall\",\n      \"email\": \"xena.hall@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40002\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-003\",\n      \"firstName\": \"Yuki\",\n      \"lastName\": \"Allen\",\n      \"email\": \"yuki.allen@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40003\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-004\",\n      \"firstName\": \"Zoe\",\n      \"lastName\": \"Young\",\n      \"email\": \"zoe.young@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40004\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-005\",\n      \"firstName\": \"Adam\",\n      \"lastName\": \"King\",\n      \"email\": \"adam.king@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40005\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-006\",\n      \"firstName\": \"Bella\",\n      \"lastName\": \"Wright\",\n      \"email\": \"bella.wright@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40006\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-007\",\n      \"firstName\": \"Chris\",\n      \"lastName\": \"Lopez\",\n      \"email\": \"chris.lopez@test.com\",\n      \"gender\": \"M\",\n      \"duprId\": \"40007\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    },\n    {\n      \"externalPlayerId\": \"team4-player-008\",\n      \"firstName\": \"Dana\",\n      \"lastName\": \"Hill\",\n      \"email\": \"dana.hill@test.com\",\n      \"gender\": \"F\",\n      \"duprId\": \"40008\",\n      \"externalTeamId\": \"{{external_team_id_4}}\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "players",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Create Match Day",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"days\": [\n    {\n      \"externalDayId\": \"{{external_day_id}}\",\n      \"date\": \"2024-12-27\",\n      \"statusHint\": \"scheduled\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/days/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "days",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Create Matchups (2 matches)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"matchups\": [\n    {\n      \"externalMatchupId\": \"{{external_matchup_id_1}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"homeTeamExternalId\": \"{{external_team_id_1}}\",\n      \"awayTeamExternalId\": \"{{external_team_id_2}}\",\n      \"site\": \"Court 1\",\n      \"courtGroup\": \"A\",\n      \"startTime\": \"2024-12-27T10:00:00Z\"\n    },\n    {\n      \"externalMatchupId\": \"{{external_matchup_id_2}}\",\n      \"divisionExternalId\": \"{{external_division_id}}\",\n      \"homeTeamExternalId\": \"{{external_team_id_3}}\",\n      \"awayTeamExternalId\": \"{{external_team_id_4}}\",\n      \"site\": \"Court 2\",\n      \"courtGroup\": \"B\",\n      \"startTime\": \"2024-12-27T11:00:00Z\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/matchups/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "matchups",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Create All Rosters (4 Teams - Single Request)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"{{external_team_id_1}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team1-player-001\"},\n        {\"externalPlayerId\": \"team1-player-002\"},\n        {\"externalPlayerId\": \"team1-player-003\"},\n        {\"externalPlayerId\": \"team1-player-004\"},\n        {\"externalPlayerId\": \"team1-player-005\"},\n        {\"externalPlayerId\": \"team1-player-006\"},\n        {\"externalPlayerId\": \"team1-player-007\"},\n        {\"externalPlayerId\": \"team1-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team1-player-001\",\n        \"team1-player-002\",\n        \"team1-player-003\",\n        \"team1-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_2}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team2-player-001\"},\n        {\"externalPlayerId\": \"team2-player-002\"},\n        {\"externalPlayerId\": \"team2-player-003\"},\n        {\"externalPlayerId\": \"team2-player-004\"},\n        {\"externalPlayerId\": \"team2-player-005\"},\n        {\"externalPlayerId\": \"team2-player-006\"},\n        {\"externalPlayerId\": \"team2-player-007\"},\n        {\"externalPlayerId\": \"team2-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team2-player-001\",\n        \"team2-player-002\",\n        \"team2-player-003\",\n        \"team2-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_3}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team3-player-001\"},\n        {\"externalPlayerId\": \"team3-player-002\"},\n        {\"externalPlayerId\": \"team3-player-003\"},\n        {\"externalPlayerId\": \"team3-player-004\"},\n        {\"externalPlayerId\": \"team3-player-005\"},\n        {\"externalPlayerId\": \"team3-player-006\"},\n        {\"externalPlayerId\": \"team3-player-007\"},\n        {\"externalPlayerId\": \"team3-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team3-player-001\",\n        \"team3-player-002\",\n        \"team3-player-003\",\n        \"team3-player-004\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"{{external_team_id_4}}\",\n      \"players\": [\n        {\"externalPlayerId\": \"team4-player-001\"},\n        {\"externalPlayerId\": \"team4-player-002\"},\n        {\"externalPlayerId\": \"team4-player-003\"},\n        {\"externalPlayerId\": \"team4-player-004\"},\n        {\"externalPlayerId\": \"team4-player-005\"},\n        {\"externalPlayerId\": \"team4-player-006\"},\n        {\"externalPlayerId\": \"team4-player-007\"},\n        {\"externalPlayerId\": \"team4-player-008\"}\n      ],\n      \"activePlayerExternalIds\": [\n        \"team4-player-001\",\n        \"team4-player-002\",\n        \"team4-player-003\",\n        \"team4-player-004\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    }
+  ]
+}
+
