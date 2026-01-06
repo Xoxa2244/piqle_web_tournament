@@ -168,12 +168,36 @@ function DivisionStageManagementContent() {
     }
   }, [isIndyLeague, matchDays, selectedMatchDayId])
 
-  // Update game score mutation
+  // Local state for optimistic updates
+  const [localGameScores, setLocalGameScores] = useState<Record<string, { homeScore: number | null; awayScore: number | null }>>({})
+
+  // Update game score mutation with optimistic updates
   const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
-    onSuccess: () => {
-      refetchMatchups()
+    onMutate: async (variables) => {
+      // Optimistically update local state immediately
+      setLocalGameScores((prev) => ({
+        ...prev,
+        [variables.gameId]: {
+          homeScore: variables.homeScore,
+          awayScore: variables.awayScore,
+        },
+      }))
     },
-    onError: (error) => {
+    onSuccess: () => {
+      // Refetch to sync with server
+      refetchMatchups()
+      // Clear local state after successful update
+      setTimeout(() => {
+        setLocalGameScores({})
+      }, 100)
+    },
+    onError: (error, variables) => {
+      // Revert optimistic update on error
+      setLocalGameScores((prev) => {
+        const newState = { ...prev }
+        delete newState[variables.gameId]
+        return newState
+      })
       alert('Error updating score: ' + error.message)
     },
   })
@@ -210,7 +234,20 @@ function DivisionStageManagementContent() {
     },
   })
 
+  // Helper to get game score (from local state if available, otherwise from game data)
+  const getGameScore = (game: any) => {
+    const localScore = localGameScores[game.id]
+    if (localScore) {
+      return localScore
+    }
+    return {
+      homeScore: game.homeScore,
+      awayScore: game.awayScore,
+    }
+  }
+
   const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
+    // Update immediately with optimistic update
     updateGameScore.mutate({
       gameId,
       homeScore,
@@ -1314,90 +1351,86 @@ function DivisionStageManagementContent() {
                                 awayActivePlayers.find((p: any) => p.letter === letter)
                               ).filter(Boolean)
                               
-                              const homeWon = game.homeScore !== null && game.awayScore !== null && game.homeScore > game.awayScore
-                              const awayWon = game.homeScore !== null && game.awayScore !== null && game.awayScore > game.homeScore
+                              // Get current scores (from local state if available)
+                              const currentScores = getGameScore(game)
+                              const homeWon = currentScores.homeScore !== null && currentScores.awayScore !== null && currentScores.homeScore > currentScores.awayScore
+                              const awayWon = currentScores.homeScore !== null && currentScores.awayScore !== null && currentScores.awayScore > currentScores.homeScore
 
                               return (
                                 <Card key={game.id} className="border-2">
                                   <CardContent className="pt-4">
-                                    <div className="space-y-3">
-                                      {/* Home team */}
-                                      <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                          <div className="font-semibold text-sm">{matchup.homeTeam.name}</div>
-                                          {homeWon ? (
-                                            <CheckCircle className="h-4 w-4 text-green-500" />
-                                          ) : awayWon ? (
-                                            <XCircle className="h-4 w-4 text-red-500" />
-                                          ) : null}
-                                        </div>
-                                        <div className="text-xs text-gray-600">
+                                    <div className="flex items-start gap-4">
+                                      {/* Home team - left side */}
+                                      <div className="flex-1 space-y-1">
+                                        <div className="font-semibold text-sm">{matchup.homeTeam.name}</div>
+                                        <div className="text-xs text-gray-600 space-y-0.5">
                                           {homePairPlayers.length > 0 ? (
-                                            homePairPlayers.map((p: any, idx: number) => (
-                                              <span key={p.id}>
+                                            homePairPlayers.map((p: any) => (
+                                              <div key={p.id}>
                                                 {p.name} ({p.letter})
-                                                {idx < homePairPlayers.length - 1 ? ' & ' : ''}
-                                              </span>
+                                              </div>
                                             ))
                                           ) : (
-                                            <span className="text-gray-400">Unknown players</span>
+                                            <div className="text-gray-400">Unknown players</div>
                                           )}
                                         </div>
                                       </div>
 
-                                      {/* Score inputs */}
-                                      <div className="flex items-center space-x-2">
+                                      {/* Score inputs - center */}
+                                      <div className="flex items-center space-x-2 flex-shrink-0">
+                                        <div className="flex items-center space-x-1">
+                                          {homeWon && <CheckCircle className="h-4 w-4 text-green-500" />}
+                                          {awayWon && <XCircle className="h-4 w-4 text-red-500" />}
+                                        </div>
                                         <input
                                           type="number"
                                           min="0"
-                                          value={game.homeScore ?? ''}
+                                          max="11"
+                                          value={currentScores.homeScore ?? ''}
                                           onChange={(e) => {
                                             const value = e.target.value === '' ? null : parseInt(e.target.value)
                                             if (value !== null && (value < 0 || value > 11)) {
                                               alert('Score must be between 0 and 11')
                                               return
                                             }
-                                            handleGameScoreChange(game.id, value, game.awayScore)
+                                            handleGameScoreChange(game.id, value, currentScores.awayScore)
                                           }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          className="w-16 px-2 py-1 border rounded text-sm text-center"
                                         />
                                         <span className="text-gray-500">-</span>
                                         <input
                                           type="number"
                                           min="0"
-                                          value={game.awayScore ?? ''}
+                                          max="11"
+                                          value={currentScores.awayScore ?? ''}
                                           onChange={(e) => {
                                             const value = e.target.value === '' ? null : parseInt(e.target.value)
                                             if (value !== null && (value < 0 || value > 11)) {
                                               alert('Score must be between 0 and 11')
                                               return
                                             }
-                                            handleGameScoreChange(game.id, game.homeScore, value)
+                                            handleGameScoreChange(game.id, currentScores.homeScore, value)
                                           }}
-                                          className="w-full px-2 py-1 border rounded text-sm"
+                                          className="w-16 px-2 py-1 border rounded text-sm text-center"
                                         />
+                                        <div className="flex items-center space-x-1">
+                                          {awayWon && <CheckCircle className="h-4 w-4 text-green-500" />}
+                                          {homeWon && <XCircle className="h-4 w-4 text-red-500" />}
+                                        </div>
                                       </div>
 
-                                      {/* Away team */}
-                                      <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                          <div className="font-semibold text-sm">{matchup.awayTeam.name}</div>
-                                          {awayWon ? (
-                                            <CheckCircle className="h-4 w-4 text-green-500" />
-                                          ) : homeWon ? (
-                                            <XCircle className="h-4 w-4 text-red-500" />
-                                          ) : null}
-                                        </div>
-                                        <div className="text-xs text-gray-600">
+                                      {/* Away team - right side */}
+                                      <div className="flex-1 space-y-1 text-right">
+                                        <div className="font-semibold text-sm">{matchup.awayTeam.name}</div>
+                                        <div className="text-xs text-gray-600 space-y-0.5">
                                           {awayPairPlayers.length > 0 ? (
-                                            awayPairPlayers.map((p: any, idx: number) => (
-                                              <span key={p.id}>
+                                            awayPairPlayers.map((p: any) => (
+                                              <div key={p.id}>
                                                 {p.name} ({p.letter})
-                                                {idx < awayPairPlayers.length - 1 ? ' & ' : ''}
-                                              </span>
+                                              </div>
                                             ))
                                           ) : (
-                                            <span className="text-gray-400">Unknown players</span>
+                                            <div className="text-gray-400">Unknown players</div>
                                           )}
                                         </div>
                                       </div>
