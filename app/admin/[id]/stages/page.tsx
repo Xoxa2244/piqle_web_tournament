@@ -1302,9 +1302,17 @@ function DivisionStageManagementContent() {
                         {matchup.games && matchup.games.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {matchup.games.map((game: any) => {
-                              // Find players for this game
-                              const homePlayer = homeActivePlayers.find((p: any) => p.letter === game.homePlayerLetter)
-                              const awayPlayer = awayActivePlayers.find((p: any) => p.letter === game.awayPlayerLetter)
+                              // Get players for home pair (e.g., "AB" -> players with letters A and B)
+                              const homePairLetters = game.homePair?.split('') || []
+                              const homePairPlayers = homePairLetters.map((letter: string) => 
+                                homeActivePlayers.find((p: any) => p.letter === letter)
+                              ).filter(Boolean)
+                              
+                              // Get players for away pair (e.g., "AB" -> players with letters A and B)
+                              const awayPairLetters = game.awayPair?.split('') || []
+                              const awayPairPlayers = awayPairLetters.map((letter: string) => 
+                                awayActivePlayers.find((p: any) => p.letter === letter)
+                              ).filter(Boolean)
                               
                               const homeWon = game.homeScore !== null && game.awayScore !== null && game.homeScore > game.awayScore
                               const awayWon = game.homeScore !== null && game.awayScore !== null && game.awayScore > game.homeScore
@@ -1313,17 +1321,28 @@ function DivisionStageManagementContent() {
                                 <Card key={game.id} className="border-2">
                                   <CardContent className="pt-4">
                                     <div className="space-y-3">
-                                      {/* Home player */}
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-2">
-                                          <span className="font-semibold text-sm">{homePlayer?.letter || '?'}</span>
-                                          <span className="text-sm">{homePlayer?.name || 'Unknown'}</span>
+                                      {/* Home team */}
+                                      <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <div className="font-semibold text-sm">{matchup.homeTeam.name}</div>
+                                          {homeWon ? (
+                                            <CheckCircle className="h-4 w-4 text-green-500" />
+                                          ) : awayWon ? (
+                                            <XCircle className="h-4 w-4 text-red-500" />
+                                          ) : null}
                                         </div>
-                                        {homeWon ? (
-                                          <CheckCircle className="h-4 w-4 text-green-500" />
-                                        ) : awayWon ? (
-                                          <XCircle className="h-4 w-4 text-red-500" />
-                                        ) : null}
+                                        <div className="text-xs text-gray-600">
+                                          {homePairPlayers.length > 0 ? (
+                                            homePairPlayers.map((p: any, idx: number) => (
+                                              <span key={p.id}>
+                                                {p.name} ({p.letter})
+                                                {idx < homePairPlayers.length - 1 ? ' & ' : ''}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span className="text-gray-400">Unknown players</span>
+                                          )}
+                                        </div>
                                       </div>
 
                                       {/* Score inputs */}
@@ -1359,17 +1378,28 @@ function DivisionStageManagementContent() {
                                         />
                                       </div>
 
-                                      {/* Away player */}
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-2">
-                                          <span className="font-semibold text-sm">{awayPlayer?.letter || '?'}</span>
-                                          <span className="text-sm">{awayPlayer?.name || 'Unknown'}</span>
+                                      {/* Away team */}
+                                      <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <div className="font-semibold text-sm">{matchup.awayTeam.name}</div>
+                                          {awayWon ? (
+                                            <CheckCircle className="h-4 w-4 text-green-500" />
+                                          ) : homeWon ? (
+                                            <XCircle className="h-4 w-4 text-red-500" />
+                                          ) : null}
                                         </div>
-                                        {awayWon ? (
-                                          <CheckCircle className="h-4 w-4 text-green-500" />
-                                        ) : homeWon ? (
-                                          <XCircle className="h-4 w-4 text-red-500" />
-                                        ) : null}
+                                        <div className="text-xs text-gray-600">
+                                          {awayPairPlayers.length > 0 ? (
+                                            awayPairPlayers.map((p: any, idx: number) => (
+                                              <span key={p.id}>
+                                                {p.name} ({p.letter})
+                                                {idx < awayPairPlayers.length - 1 ? ' & ' : ''}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span className="text-gray-400">Unknown players</span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </CardContent>
