@@ -47,6 +47,7 @@ function DivisionStageManagementContent() {
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [selectedMatch, setSelectedMatch] = useState<any>(null)
+  const [selectedIndyGame, setSelectedIndyGame] = useState<any>(null)
   const [showTiebreakerModal, setShowTiebreakerModal] = useState(false)
   const [selectedTiebreakerMatch, setSelectedTiebreakerMatch] = useState<any>(null)
   const [showRRMatches, setShowRRMatches] = useState(true)
@@ -1372,17 +1373,48 @@ function DivisionStageManagementContent() {
                         {matchup.games && matchup.games.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {matchup.games.map((game: any) => {
-                              // Get players for home pair (e.g., "AB" -> players with letters A and B)
-                              const homePairLetters = game.homePair?.split('') || []
-                              const homePairPlayers = homePairLetters.map((letter: string) => 
-                                homeActivePlayers.find((p: any) => p.letter === letter)
-                              ).filter(Boolean)
+                              // Use saved players from game if available, otherwise fall back to current rosters
+                              const homePairPlayers = []
+                              if (game.homePlayer1 && game.homePlayer2) {
+                                homePairPlayers.push({
+                                  id: game.homePlayer1.id,
+                                  name: `${game.homePlayer1.firstName} ${game.homePlayer1.lastName}`,
+                                  letter: game.homePair[0]
+                                })
+                                homePairPlayers.push({
+                                  id: game.homePlayer2.id,
+                                  name: `${game.homePlayer2.firstName} ${game.homePlayer2.lastName}`,
+                                  letter: game.homePair[1]
+                                })
+                              } else {
+                                // Fallback to current rosters if saved players not available
+                                const homePairLetters = game.homePair?.split('') || []
+                                homePairLetters.forEach((letter: string) => {
+                                  const player = homeActivePlayers.find((p: any) => p.letter === letter)
+                                  if (player) homePairPlayers.push(player)
+                                })
+                              }
                               
-                              // Get players for away pair (e.g., "AB" -> players with letters A and B)
-                              const awayPairLetters = game.awayPair?.split('') || []
-                              const awayPairPlayers = awayPairLetters.map((letter: string) => 
-                                awayActivePlayers.find((p: any) => p.letter === letter)
-                              ).filter(Boolean)
+                              const awayPairPlayers = []
+                              if (game.awayPlayer1 && game.awayPlayer2) {
+                                awayPairPlayers.push({
+                                  id: game.awayPlayer1.id,
+                                  name: `${game.awayPlayer1.firstName} ${game.awayPlayer1.lastName}`,
+                                  letter: game.awayPair[0]
+                                })
+                                awayPairPlayers.push({
+                                  id: game.awayPlayer2.id,
+                                  name: `${game.awayPlayer2.firstName} ${game.awayPlayer2.lastName}`,
+                                  letter: game.awayPair[1]
+                                })
+                              } else {
+                                // Fallback to current rosters if saved players not available
+                                const awayPairLetters = game.awayPair?.split('') || []
+                                awayPairLetters.forEach((letter: string) => {
+                                  const player = awayActivePlayers.find((p: any) => p.letter === letter)
+                                  if (player) awayPairPlayers.push(player)
+                                })
+                              }
                               
                               // Get current scores (from local state if available)
                               const currentScores = getGameScore(game)
@@ -1428,60 +1460,37 @@ function DivisionStageManagementContent() {
                                         </div>
                                       </div>
 
-                                      {/* Score inputs - bottom */}
+                                      {/* Score display and button */}
                                       <div className="pt-2 border-t">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                              {matchup.homeTeam.name}
-                                            </label>
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              max="11"
-                                              value={currentScores.homeScore ?? ''}
-                                              onChange={(e) => {
-                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                                if (value !== null && (value < 0 || value > 11)) {
-                                                  alert('Score must be between 0 and 11')
-                                                  return
-                                                }
-                                                handleGameScoreChange(game.id, value, currentScores.awayScore)
+                                        {currentScores.homeScore !== null && currentScores.awayScore !== null ? (
+                                          <div className="space-y-2">
+                                            <div className="text-center text-sm font-medium">
+                                              {currentScores.homeScore} - {currentScores.awayScore}
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => {
+                                                setSelectedIndyGame({ game, matchup })
+                                                setShowScoreModal(true)
                                               }}
-                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                              placeholder="Score"
-                                            />
+                                              className="w-full"
+                                            >
+                                              Change Score
+                                            </Button>
                                           </div>
-                                          <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                              {matchup.awayTeam.name}
-                                            </label>
-                                            <input
-                                              type="number"
-                                              min="0"
-                                              max="11"
-                                              value={currentScores.awayScore ?? ''}
-                                              onChange={(e) => {
-                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                                if (value !== null && (value < 0 || value > 11)) {
-                                                  alert('Score must be between 0 and 11')
-                                                  return
-                                                }
-                                                handleGameScoreChange(game.id, currentScores.homeScore, value)
-                                              }}
-                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                              placeholder="Score"
-                                            />
-                                          </div>
-                                        </div>
-                                        {currentScores.homeScore !== null && currentScores.awayScore !== null && (
-                                          <div className="mt-2 text-xs text-gray-500 text-center">
-                                            {homeWon ? (
-                                              <span className="text-green-600">✓ {matchup.homeTeam.name} won</span>
-                                            ) : awayWon ? (
-                                              <span className="text-green-600">✓ {matchup.awayTeam.name} won</span>
-                                            ) : null}
-                                          </div>
+                                        ) : (
+                                          <Button
+                                            size="sm"
+                                            variant="default"
+                                            onClick={() => {
+                                              setSelectedIndyGame({ game, matchup })
+                                              setShowScoreModal(true)
+                                            }}
+                                            className="w-full bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Enter Score
+                                          </Button>
                                         )}
                                       </div>
                                     </div>
@@ -2611,6 +2620,11 @@ function DivisionStageManagementContent() {
           )
         }
 
+        // Don't show for Indy League if we have selectedIndyGame (use separate modal)
+        if (isIndyLeague && selectedIndyGame) {
+          return null
+        }
+
         return (
           <ScoreInputModal
             isOpen={showScoreModal}
@@ -2633,6 +2647,29 @@ function DivisionStageManagementContent() {
           />
         )
       })()}
+
+      {/* Indy League Game Score Modal */}
+      {isIndyLeague && selectedIndyGame && (
+        <ScoreInputModal
+          isOpen={showScoreModal}
+          onClose={() => {
+            setShowScoreModal(false)
+            setSelectedIndyGame(null)
+          }}
+          onSubmit={(scoreA, scoreB) => {
+            const { game } = selectedIndyGame
+            handleGameScoreChange(game.id, scoreA, scoreB)
+            setShowScoreModal(false)
+            setSelectedIndyGame(null)
+          }}
+          teamAName={selectedIndyGame.matchup.homeTeam.name}
+          teamBName={selectedIndyGame.matchup.awayTeam.name}
+          poolName={`Game ${selectedIndyGame.game.order} • Court ${selectedIndyGame.game.court}`}
+          existingScoreA={selectedIndyGame.game.homeScore ?? null}
+          existingScoreB={selectedIndyGame.game.awayScore ?? null}
+          isLoading={updateGameScore.isPending}
+        />
+      )}
 
       {/* Playoff swap modal */}
       {showPlayoffSwapModal && (() => {

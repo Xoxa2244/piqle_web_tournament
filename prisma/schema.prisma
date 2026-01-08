@@ -222,23 +222,27 @@ model Team {
 }
 
 model Player {
-  id           String       @id @default(uuid())
-  firstName    String       @map("firstName")
-  lastName     String       @map("lastName")
-  email        String?
-  gender       Gender?
-  birthDate    DateTime?    @map("birthDate")
-  externalId   String?      @map("externalId")
-  createdAt    DateTime     @default(now()) @map("createdAt")
-  updatedAt    DateTime     @updatedAt @map("updatedAt")
-  duprRating   Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
-  isPaid       Boolean?     @default(false) @map("is_paid")
-  isWaitlist   Boolean?     @default(false) @map("is_waitlist")
-  dupr         String?      @db.VarChar
-  tournamentId String?      @map("tournament_id")
-  tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  teamPlayers  TeamPlayer[]
-  dayRosters   DayRoster[]
+  id                String       @id @default(uuid())
+  firstName         String       @map("firstName")
+  lastName          String       @map("lastName")
+  email             String?
+  gender            Gender?
+  birthDate         DateTime?    @map("birthDate")
+  externalId        String?      @map("externalId")
+  createdAt         DateTime     @default(now()) @map("createdAt")
+  updatedAt         DateTime     @updatedAt @map("updatedAt")
+  duprRating        Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
+  isPaid            Boolean?     @default(false) @map("is_paid")
+  isWaitlist        Boolean?     @default(false) @map("is_waitlist")
+  dupr              String?      @db.VarChar
+  tournamentId      String?      @map("tournament_id")
+  tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  teamPlayers       TeamPlayer[]
+  dayRosters        DayRoster[]
+  indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
+  indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
+  indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
+  indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
 
   @@map("players")
 }
@@ -521,17 +525,25 @@ model DayRoster {
 }
 
 model IndyGame {
-  id        String      @id @default(uuid())
-  matchupId String      @map("matchup_id")
-  order     Int         // 1-12
-  court     Int         // 1 or 2
-  homePair  String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
-  awayPair  String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
-  homeScore Int?        @map("home_score")
-  awayScore Int?        @map("away_score")
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  matchupId     String      @map("matchup_id")
+  order         Int         // 1-12
+  court         Int         // 1 or 2
+  homePair      String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  awayPair      String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  homePlayer1Id String?     @map("home_player1_id") // Player ID for first letter in homePair
+  homePlayer2Id String?     @map("home_player2_id") // Player ID for second letter in homePair
+  awayPlayer1Id String?     @map("away_player1_id") // Player ID for first letter in awayPair
+  awayPlayer2Id String?     @map("away_player2_id") // Player ID for second letter in awayPair
+  homeScore     Int?        @map("home_score")
+  awayScore     Int?        @map("away_score")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  matchup       IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  homePlayer1   Player?     @relation("IndyGameHomePlayer1", fields: [homePlayer1Id], references: [id], onDelete: SetNull)
+  homePlayer2   Player?     @relation("IndyGameHomePlayer2", fields: [homePlayer2Id], references: [id], onDelete: SetNull)
+  awayPlayer1   Player?     @relation("IndyGameAwayPlayer1", fields: [awayPlayer1Id], references: [id], onDelete: SetNull)
+  awayPlayer2   Player?     @relation("IndyGameAwayPlayer2", fields: [awayPlayer2Id], references: [id], onDelete: SetNull)
 
   @@unique([matchupId, order])
   @@map("indy_games")
