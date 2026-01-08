@@ -234,7 +234,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Roster Management */}
-      {currentMatchup.status === 'PENDING' || currentMatchup.status === 'READY' ? (
+      {currentMatchup.status === 'PENDING' || currentMatchup.status === 'READY' || currentMatchup.status === 'IN_PROGRESS' ? (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Assign Players & Letters</CardTitle>
