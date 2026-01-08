@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Save, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Save } from 'lucide-react'
 import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchupDetailPage({ params }: { params: Promise<{ id: string; matchupId: string }> }) {
@@ -39,16 +39,6 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
     },
     onError: (error) => {
       alert('Error updating roster: ' + error.message)
-    },
-  })
-
-  const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
-    onSuccess: () => {
-      // Refetch will happen automatically via React Query
-      window.location.reload() // Simple refresh for now
-    },
-    onError: (error) => {
-      alert('Error updating score: ' + error.message)
     },
   })
 
@@ -139,14 +129,6 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
         isActive: r.isActive,
         letter: r.letter as 'A' | 'B' | 'C' | 'D' | null,
       })),
-    })
-  }
-
-  const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
-    updateGameScore.mutate({
-      gameId,
-      homeScore,
-      awayScore,
     })
   }
 
@@ -412,83 +394,6 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
               >
                 {currentMatchup.awayTeam.name}
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Games */}
-      {currentMatchup.games && currentMatchup.games.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Games</CardTitle>
-            <CardDescription>Enter scores for each game (no ties allowed)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {currentMatchup.games.map((game: any) => (
-                <div
-                  key={game.id}
-                  className="border rounded-lg p-4"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <div className="font-semibold">
-                        Game {game.order} • Court {game.court}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {game.homePair} vs {game.awayPair}
-                      </div>
-                    </div>
-                    {game.homeScore !== null && game.awayScore !== null && (
-                      <div className="flex items-center gap-1">
-                        {game.homeScore > game.awayScore ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <label className="text-xs text-gray-500">Home</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={game.homeScore ?? ''}
-                        onChange={(e) => {
-                          const value = e.target.value === '' ? null : parseInt(e.target.value)
-                          if (value !== null && value === game.awayScore) {
-                            alert('Ties are not allowed')
-                            return
-                          }
-                          handleGameScoreChange(game.id, value, game.awayScore)
-                        }}
-                        className="w-full px-2 py-1 border rounded"
-                      />
-                    </div>
-                    <span className="text-gray-400">-</span>
-                    <div className="flex-1">
-                      <label className="text-xs text-gray-500">Away</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={game.awayScore ?? ''}
-                        onChange={(e) => {
-                          const value = e.target.value === '' ? null : parseInt(e.target.value)
-                          if (value !== null && value === game.homeScore) {
-                            alert('Ties are not allowed')
-                            return
-                          }
-                          handleGameScoreChange(game.id, game.homeScore, value)
-                        }}
-                        className="w-full px-2 py-1 border rounded"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>
