@@ -150,12 +150,6 @@ export const indyMatchupRouter = createTRPCRouter({
             },
             games: {
               orderBy: { order: 'asc' },
-              include: {
-                homePlayer1: true,
-                homePlayer2: true,
-                awayPlayer1: true,
-                awayPlayer2: true,
-              },
             },
           },
           orderBy: { createdAt: 'asc' },
