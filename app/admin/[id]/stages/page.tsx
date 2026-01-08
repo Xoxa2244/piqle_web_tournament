@@ -1218,35 +1218,68 @@ function DivisionStageManagementContent() {
               </Card>
             ) : (
               <div className="space-y-6">
-                {/* Generate Games button for division */}
-                {selectedDivisionId && selectedMatchDayId && (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">
-                            Generate games for all READY matchups in this division
-                          </p>
+                {/* Generate/Regenerate Games button for division */}
+                {selectedDivisionId && selectedMatchDayId && (() => {
+                  // Check if any matchup has games
+                  const hasGames = divisionMatchups.some((m: any) => m.games && m.games.length > 0)
+                  const matchupsWithGames = divisionMatchups.filter((m: any) => m.games && m.games.length > 0)
+                  
+                  return (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              {hasGames 
+                                ? 'Regenerate games for all matchups in this division (this will delete all existing games and scores)'
+                                : 'Generate games for all READY matchups in this division'}
+                            </p>
+                          </div>
+                          <Button
+                            onClick={async () => {
+                              if (hasGames) {
+                                if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
+                                  try {
+                                    // Regenerate games for each matchup that has games
+                                    await Promise.all(
+                                      matchupsWithGames.map((matchup: any) =>
+                                        regenerateGames.mutateAsync({ matchupId: matchup.id })
+                                      )
+                                    )
+                                    refetchMatchups()
+                                  } catch (error: any) {
+                                    alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
+                                  }
+                                }
+                              } else {
+                                if (confirm('Generate games for all READY matchups in this division?')) {
+                                  generateGamesForDivision.mutate({
+                                    divisionId: selectedDivisionId,
+                                    matchDayId: selectedMatchDayId,
+                                  })
+                                }
+                              }
+                            }}
+                            disabled={generateGamesForDivision.isPending || regenerateGames.isPending}
+                            className="flex items-center space-x-2"
+                          >
+                            {hasGames ? (
+                              <>
+                                <RotateCcw className="h-4 w-4" />
+                                <span>Regenerate Games</span>
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-4 w-4" />
+                                <span>Generate Games</span>
+                              </>
+                            )}
+                          </Button>
                         </div>
-                        <Button
-                          onClick={() => {
-                            if (confirm('Generate games for all READY matchups in this division?')) {
-                              generateGamesForDivision.mutate({
-                                divisionId: selectedDivisionId,
-                                matchDayId: selectedMatchDayId,
-                              })
-                            }
-                          }}
-                          disabled={generateGamesForDivision.isPending}
-                          className="flex items-center space-x-2"
-                        >
-                          <Play className="h-4 w-4" />
-                          <span>Generate Games</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                      </CardContent>
+                    </Card>
+                  )
+                })()}
                 {/* Tabs for matchups */}
                 <div className="border-b border-gray-200">
                   <nav className="-mb-px flex space-x-8 overflow-x-auto">
@@ -1396,46 +1429,60 @@ function DivisionStageManagementContent() {
                                       </div>
 
                                       {/* Score inputs - bottom */}
-                                      <div className="flex items-center justify-center space-x-2 pt-2 border-t">
-                                        <div className="flex items-center space-x-1">
-                                          {homeWon && <CheckCircle className="h-4 w-4 text-green-500" />}
-                                          {awayWon && <XCircle className="h-4 w-4 text-red-500" />}
+                                      <div className="pt-2 border-t">
+                                        <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                              {matchup.homeTeam.name}
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max="11"
+                                              value={currentScores.homeScore ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                if (value !== null && (value < 0 || value > 11)) {
+                                                  alert('Score must be between 0 and 11')
+                                                  return
+                                                }
+                                                handleGameScoreChange(game.id, value, currentScores.awayScore)
+                                              }}
+                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              placeholder="Score"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                              {matchup.awayTeam.name}
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max="11"
+                                              value={currentScores.awayScore ?? ''}
+                                              onChange={(e) => {
+                                                const value = e.target.value === '' ? null : parseInt(e.target.value)
+                                                if (value !== null && (value < 0 || value > 11)) {
+                                                  alert('Score must be between 0 and 11')
+                                                  return
+                                                }
+                                                handleGameScoreChange(game.id, currentScores.homeScore, value)
+                                              }}
+                                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                              placeholder="Score"
+                                            />
+                                          </div>
                                         </div>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="11"
-                                          value={currentScores.homeScore ?? ''}
-                                          onChange={(e) => {
-                                            const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                            if (value !== null && (value < 0 || value > 11)) {
-                                              alert('Score must be between 0 and 11')
-                                              return
-                                            }
-                                            handleGameScoreChange(game.id, value, currentScores.awayScore)
-                                          }}
-                                          className="w-20 px-3 py-2 border rounded text-sm text-center"
-                                        />
-                                        <span className="text-gray-500 font-medium">-</span>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="11"
-                                          value={currentScores.awayScore ?? ''}
-                                          onChange={(e) => {
-                                            const value = e.target.value === '' ? null : parseInt(e.target.value)
-                                            if (value !== null && (value < 0 || value > 11)) {
-                                              alert('Score must be between 0 and 11')
-                                              return
-                                            }
-                                            handleGameScoreChange(game.id, currentScores.homeScore, value)
-                                          }}
-                                          className="w-20 px-3 py-2 border rounded text-sm text-center"
-                                        />
-                                        <div className="flex items-center space-x-1">
-                                          {awayWon && <CheckCircle className="h-4 w-4 text-green-500" />}
-                                          {homeWon && <XCircle className="h-4 w-4 text-red-500" />}
-                                        </div>
+                                        {currentScores.homeScore !== null && currentScores.awayScore !== null && (
+                                          <div className="mt-2 text-xs text-gray-500 text-center">
+                                            {homeWon ? (
+                                              <span className="text-green-600">✓ {matchup.homeTeam.name} won</span>
+                                            ) : awayWon ? (
+                                              <span className="text-green-600">✓ {matchup.awayTeam.name} won</span>
+                                            ) : null}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   </CardContent>

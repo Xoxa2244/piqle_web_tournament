@@ -442,7 +442,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                               router.push(`/admin/${tournamentId}/matchups/${matchup.id}`)
                             }
                           >
-                            Manage Roster & Scores
+                            Manage Roster
                           </Button>
                         </div>
                       </div>
