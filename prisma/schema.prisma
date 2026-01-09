@@ -239,11 +239,10 @@ model Player {
   tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   teamPlayers       TeamPlayer[]
   dayRosters        DayRoster[]
-  // TODO: Uncomment after migration add-player-ids-to-indy-games.sql is applied
-  // indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
-  // indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
-  // indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
-  // indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
+  indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
+  indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
+  indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
+  indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
 
   @@map("players")
 }
@@ -537,15 +536,14 @@ model IndyGame {
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
   matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
-  // TODO: Uncomment after migration add-player-ids-to-indy-games.sql is applied
-  // homePlayer1Id String?     @map("home_player1_id") // Player ID for first letter in homePair
-  // homePlayer2Id String?     @map("home_player2_id") // Player ID for second letter in homePair
-  // awayPlayer1Id String?     @map("away_player1_id") // Player ID for first letter in awayPair
-  // awayPlayer2Id String?     @map("away_player2_id") // Player ID for second letter in awayPair
-  // homePlayer1   Player?     @relation("IndyGameHomePlayer1", fields: [homePlayer1Id], references: [id], onDelete: SetNull)
-  // homePlayer2   Player?     @relation("IndyGameHomePlayer2", fields: [homePlayer2Id], references: [id], onDelete: SetNull)
-  // awayPlayer1   Player?     @relation("IndyGameAwayPlayer1", fields: [awayPlayer1Id], references: [id], onDelete: SetNull)
-  // awayPlayer2   Player?     @relation("IndyGameAwayPlayer2", fields: [awayPlayer2Id], references: [id], onDelete: SetNull)
+  homePlayer1Id String?     @map("home_player1_id") // Player ID for first letter in homePair
+  homePlayer2Id String?     @map("home_player2_id") // Player ID for second letter in homePair
+  awayPlayer1Id String?     @map("away_player1_id") // Player ID for first letter in awayPair
+  awayPlayer2Id String?     @map("away_player2_id") // Player ID for second letter in awayPair
+  homePlayer1   Player?     @relation("IndyGameHomePlayer1", fields: [homePlayer1Id], references: [id], onDelete: SetNull)
+  homePlayer2   Player?     @relation("IndyGameHomePlayer2", fields: [homePlayer2Id], references: [id], onDelete: SetNull)
+  awayPlayer1   Player?     @relation("IndyGameAwayPlayer1", fields: [awayPlayer1Id], references: [id], onDelete: SetNull)
+  awayPlayer2   Player?     @relation("IndyGameAwayPlayer2", fields: [awayPlayer2Id], references: [id], onDelete: SetNull)
 
   @@unique([matchupId, order])
   @@map("indy_games")

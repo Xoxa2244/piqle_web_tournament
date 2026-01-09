@@ -150,6 +150,12 @@ export const indyMatchupRouter = createTRPCRouter({
             },
             games: {
               orderBy: { order: 'asc' },
+              include: {
+                homePlayer1: true,
+                homePlayer2: true,
+                awayPlayer1: true,
+                awayPlayer2: true,
+              },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -218,6 +224,12 @@ export const indyMatchupRouter = createTRPCRouter({
           },
           games: {
             orderBy: { order: 'asc' },
+            include: {
+              homePlayer1: true,
+              homePlayer2: true,
+              awayPlayer1: true,
+              awayPlayer2: true,
+            },
           },
           matchDay: {
             include: {
@@ -256,6 +268,12 @@ export const indyMatchupRouter = createTRPCRouter({
           },
           games: {
             orderBy: { order: 'asc' },
+            include: {
+              homePlayer1: true,
+              homePlayer2: true,
+              awayPlayer1: true,
+              awayPlayer2: true,
+            },
           },
         },
       })
@@ -558,6 +576,12 @@ export const indyMatchupRouter = createTRPCRouter({
         include: {
           games: {
             orderBy: { order: 'asc' },
+            include: {
+              homePlayer1: true,
+              homePlayer2: true,
+              awayPlayer1: true,
+              awayPlayer2: true,
+            },
           },
         },
       })
@@ -648,20 +672,51 @@ export const indyMatchupRouter = createTRPCRouter({
             continue
           }
 
-          // Create 12 games according to fixed schema
-          // TODO: After migration add-player-ids-to-indy-games.sql is applied, save player IDs here
+          // Create a map of playerId by letter for home and away teams
+          const homePlayerMap = new Map<string, string>()
+          const awayPlayerMap = new Map<string, string>()
+
+          homeRosters.forEach((r) => {
+            if (r.letter) {
+              homePlayerMap.set(r.letter, r.playerId)
+            }
+          })
+
+          awayRosters.forEach((r) => {
+            if (r.letter) {
+              awayPlayerMap.set(r.letter, r.playerId)
+            }
+          })
+
+          // Create 12 games according to fixed schema, saving player IDs
           await Promise.all(
-            GAMES_SCHEMA.map((gameSchema) =>
-              ctx.prisma.indyGame.create({
+            GAMES_SCHEMA.map((gameSchema) => {
+              // Get player IDs for home pair (e.g., "AB" -> [playerA, playerB])
+              const homeLetter1 = gameSchema.homePair[0]
+              const homeLetter2 = gameSchema.homePair[1]
+              const homePlayer1Id = homePlayerMap.get(homeLetter1) || null
+              const homePlayer2Id = homePlayerMap.get(homeLetter2) || null
+              
+              // Get player IDs for away pair
+              const awayLetter1 = gameSchema.awayPair[0]
+              const awayLetter2 = gameSchema.awayPair[1]
+              const awayPlayer1Id = awayPlayerMap.get(awayLetter1) || null
+              const awayPlayer2Id = awayPlayerMap.get(awayLetter2) || null
+
+              return ctx.prisma.indyGame.create({
                 data: {
                   matchupId: matchup.id,
                   order: gameSchema.order,
                   court: gameSchema.court,
                   homePair: gameSchema.homePair,
                   awayPair: gameSchema.awayPair,
+                  homePlayer1Id,
+                  homePlayer2Id,
+                  awayPlayer1Id,
+                  awayPlayer2Id,
                 },
               })
-            )
+            })
           )
 
           // Update matchup status to IN_PROGRESS
@@ -775,20 +830,51 @@ export const indyMatchupRouter = createTRPCRouter({
         },
       })
 
-      // Create 12 games according to fixed schema
-      // TODO: After migration add-player-ids-to-indy-games.sql is applied, save player IDs here
+      // Create a map of playerId by letter for home and away teams
+      const homePlayerMap = new Map<string, string>()
+      const awayPlayerMap = new Map<string, string>()
+
+      homeRosters.forEach((r) => {
+        if (r.letter) {
+          homePlayerMap.set(r.letter, r.playerId)
+        }
+      })
+
+      awayRosters.forEach((r) => {
+        if (r.letter) {
+          awayPlayerMap.set(r.letter, r.playerId)
+        }
+      })
+
+      // Create 12 games according to fixed schema, saving player IDs
       await Promise.all(
-        GAMES_SCHEMA.map((gameSchema) =>
-          ctx.prisma.indyGame.create({
+        GAMES_SCHEMA.map((gameSchema) => {
+          // Get player IDs for home pair (e.g., "AB" -> [playerA, playerB])
+          const homeLetter1 = gameSchema.homePair[0]
+          const homeLetter2 = gameSchema.homePair[1]
+          const homePlayer1Id = homePlayerMap.get(homeLetter1) || null
+          const homePlayer2Id = homePlayerMap.get(homeLetter2) || null
+          
+          // Get player IDs for away pair
+          const awayLetter1 = gameSchema.awayPair[0]
+          const awayLetter2 = gameSchema.awayPair[1]
+          const awayPlayer1Id = awayPlayerMap.get(awayLetter1) || null
+          const awayPlayer2Id = awayPlayerMap.get(awayLetter2) || null
+
+          return ctx.prisma.indyGame.create({
             data: {
               matchupId: input.matchupId,
               order: gameSchema.order,
               court: gameSchema.court,
               homePair: gameSchema.homePair,
               awayPair: gameSchema.awayPair,
+              homePlayer1Id,
+              homePlayer2Id,
+              awayPlayer1Id,
+              awayPlayer2Id,
             },
           })
-        )
+        })
       )
 
       // Get updated matchup
@@ -797,6 +883,12 @@ export const indyMatchupRouter = createTRPCRouter({
         include: {
           games: {
             orderBy: { order: 'asc' },
+            include: {
+              homePlayer1: true,
+              homePlayer2: true,
+              awayPlayer1: true,
+              awayPlayer2: true,
+            },
           },
         },
       })
