@@ -169,7 +169,7 @@ function DivisionDashboardContent() {
     {
       tournamentId,
       divisionId: selectedDivisionId || undefined,
-      matchDayId: selectedDayId || undefined,
+      matchDayId: viewMode === 'DAY_ONLY' ? (selectedDayId || undefined) : undefined,
       mode: viewMode,
     },
     { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
