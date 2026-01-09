@@ -100,13 +100,28 @@ export const indyStandingsRouter = createTRPCRouter({
               
               if (!allGamesCompleted) continue
 
+              // Calculate games won by each team from actual game scores
+              let gamesWonHome = 0
+              let gamesWonAway = 0
+              
+              for (const game of matchup.games) {
+                if (game.homeScore !== null && game.awayScore !== null) {
+                  if (game.homeScore > game.awayScore) {
+                    gamesWonHome++
+                  } else if (game.awayScore > game.homeScore) {
+                    gamesWonAway++
+                  }
+                  // If scores are equal, neither team wins (shouldn't happen in Indy League, but handle it)
+                }
+              }
+
               // Determine winner
               let winnerTeamId: string | null = null
-              if (matchup.gamesWonHome > matchup.gamesWonAway) {
+              if (gamesWonHome > gamesWonAway) {
                 winnerTeamId = matchup.homeTeamId
-              } else if (matchup.gamesWonAway > matchup.gamesWonHome) {
+              } else if (gamesWonAway > gamesWonHome) {
                 winnerTeamId = matchup.awayTeamId
-              } else if (matchup.gamesWonHome === 6 && matchup.gamesWonAway === 6) {
+              } else if (gamesWonHome === 6 && gamesWonAway === 6) {
                 // 6-6, use tie-break winner
                 winnerTeamId = matchup.tieBreakWinnerTeamId
               }
