@@ -30,7 +30,7 @@ export const indyStandingsRouter = createTRPCRouter({
           matchDays = [matchDay]
         }
       } else {
-        // SEASON_TO_DATE: get all finalized and in-progress days up to today
+        // SEASON_TO_DATE: get all days up to today (including DRAFT days that might have completed matchups)
         const today = new Date()
         today.setHours(23, 59, 59, 999)
 
@@ -38,7 +38,6 @@ export const indyStandingsRouter = createTRPCRouter({
           where: {
             tournamentId: input.tournamentId,
             date: { lte: today },
-            status: { in: ['IN_PROGRESS', 'FINALIZED'] },
           },
           orderBy: { date: 'asc' },
         })
@@ -79,6 +78,7 @@ export const indyStandingsRouter = createTRPCRouter({
 
           // Get all matchups for this team in the selected match days
           for (const matchDay of matchDays) {
+            // Get all matchups (not just COMPLETED status) and check if they're actually completed
             const matchups = await ctx.prisma.indyMatchup.findMany({
               where: {
                 matchDayId: matchDay.id,
@@ -87,7 +87,6 @@ export const indyStandingsRouter = createTRPCRouter({
                   { homeTeamId: team.id },
                   { awayTeamId: team.id },
                 ],
-                status: 'COMPLETED',
               },
               include: {
                 games: true,
@@ -95,6 +94,12 @@ export const indyStandingsRouter = createTRPCRouter({
             })
 
             for (const matchup of matchups) {
+              // Check if matchup is actually completed (all games have scores)
+              const allGamesCompleted = matchup.games.length > 0 && 
+                matchup.games.every((g: any) => g.homeScore !== null && g.awayScore !== null)
+              
+              if (!allGamesCompleted) continue
+
               // Determine winner
               let winnerTeamId: string | null = null
               if (matchup.gamesWonHome > matchup.gamesWonAway) {
