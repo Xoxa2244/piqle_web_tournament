@@ -39,6 +39,71 @@ import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
 
+// Helper function to check roster changes (moved outside component to avoid React hooks issues)
+const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
+  // Check if any games are missing saved players (old games before migration)
+  const gamesWithoutPlayers = games.filter((g: any) => 
+    !g.homePlayer1 || !g.homePlayer2 || !g.awayPlayer1 || !g.awayPlayer2
+  )
+  
+  // Check if roster has changed (saved players don't match current roster)
+  const rosterChanged = games.some((game: any) => {
+    if (!game.homePlayer1 || !game.homePlayer2 || !game.awayPlayer1 || !game.awayPlayer2) {
+      return false // Skip games without saved players
+    }
+    
+    // Check home team players
+    const homeLetter1 = game.homePair?.[0]
+    const homeLetter2 = game.homePair?.[1]
+    const currentHomePlayer1 = homePlayers.find((p: any) => p.letter === homeLetter1)
+    const currentHomePlayer2 = homePlayers.find((p: any) => p.letter === homeLetter2)
+    
+    // Check away team players
+    const awayLetter1 = game.awayPair?.[0]
+    const awayLetter2 = game.awayPair?.[1]
+    const currentAwayPlayer1 = awayPlayers.find((p: any) => p.letter === awayLetter1)
+    const currentAwayPlayer2 = awayPlayers.find((p: any) => p.letter === awayLetter2)
+    
+    // If any saved player doesn't match current roster player with same letter
+    return (
+      (currentHomePlayer1 && game.homePlayer1.id !== currentHomePlayer1.id) ||
+      (currentHomePlayer2 && game.homePlayer2.id !== currentHomePlayer2.id) ||
+      (currentAwayPlayer1 && game.awayPlayer1.id !== currentAwayPlayer1.id) ||
+      (currentAwayPlayer2 && game.awayPlayer2.id !== currentAwayPlayer2.id)
+    )
+  })
+  
+  if (gamesWithoutPlayers.length > 0) {
+    return (
+      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
+        <div className="flex items-center gap-2 text-sm text-yellow-800">
+          <span className="font-semibold">⚠️ Warning:</span>
+          <span>
+            {gamesWithoutPlayers.length} {gamesWithoutPlayers.length === 1 ? 'game' : 'games'} {gamesWithoutPlayers.length === 1 ? 'was' : 'were'} created before player tracking was enabled. 
+            Player names may change if roster is updated. Please click &quot;Regenerate Games&quot; to lock in current roster players.
+          </span>
+        </div>
+      </div>
+    )
+  }
+  
+  if (rosterChanged) {
+    return (
+      <div className="mb-4 p-3 bg-orange-50 border border-orange-300 rounded-md">
+        <div className="flex items-center gap-2 text-sm text-orange-800">
+          <span className="font-semibold">⚠️ Roster Changed:</span>
+          <span>
+            The roster has been updated since games were generated. Games are still showing players from the old roster. 
+            Please click &quot;Regenerate Games&quot; to update games with the current roster players.
+          </span>
+        </div>
+      </div>
+    )
+  }
+  
+  return null
+}
+
 function DivisionStageManagementContent() {
   const router = useRouter()
   const params = useParams()
@@ -1330,71 +1395,6 @@ function DivisionStageManagementContent() {
                   const gamesWonHome = matchup.gamesWonHome || 0
                   const gamesWonAway = matchup.gamesWonAway || 0
                   const needsTieBreak = gamesWonHome === 6 && gamesWonAway === 6
-                  
-                  // Helper function to check roster changes
-                  const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
-                    // Check if any games are missing saved players (old games before migration)
-                    const gamesWithoutPlayers = games.filter((g: any) => 
-                      !g.homePlayer1 || !g.homePlayer2 || !g.awayPlayer1 || !g.awayPlayer2
-                    )
-                    
-                    // Check if roster has changed (saved players don't match current roster)
-                    const rosterChanged = games.some((game: any) => {
-                      if (!game.homePlayer1 || !game.homePlayer2 || !game.awayPlayer1 || !game.awayPlayer2) {
-                        return false // Skip games without saved players
-                      }
-                      
-                      // Check home team players
-                      const homeLetter1 = game.homePair?.[0]
-                      const homeLetter2 = game.homePair?.[1]
-                      const currentHomePlayer1 = homePlayers.find((p: any) => p.letter === homeLetter1)
-                      const currentHomePlayer2 = homePlayers.find((p: any) => p.letter === homeLetter2)
-                      
-                      // Check away team players
-                      const awayLetter1 = game.awayPair?.[0]
-                      const awayLetter2 = game.awayPair?.[1]
-                      const currentAwayPlayer1 = awayPlayers.find((p: any) => p.letter === awayLetter1)
-                      const currentAwayPlayer2 = awayPlayers.find((p: any) => p.letter === awayLetter2)
-                      
-                      // If any saved player doesn't match current roster player with same letter
-                      return (
-                        (currentHomePlayer1 && game.homePlayer1.id !== currentHomePlayer1.id) ||
-                        (currentHomePlayer2 && game.homePlayer2.id !== currentHomePlayer2.id) ||
-                        (currentAwayPlayer1 && game.awayPlayer1.id !== currentAwayPlayer1.id) ||
-                        (currentAwayPlayer2 && game.awayPlayer2.id !== currentAwayPlayer2.id)
-                      )
-                    })
-                    
-                    if (gamesWithoutPlayers.length > 0) {
-                      return (
-                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
-                          <div className="flex items-center gap-2 text-sm text-yellow-800">
-                            <span className="font-semibold">⚠️ Warning:</span>
-                            <span>
-                              {gamesWithoutPlayers.length} {gamesWithoutPlayers.length === 1 ? 'game' : 'games'} {gamesWithoutPlayers.length === 1 ? 'was' : 'were'} created before player tracking was enabled. 
-                              Player names may change if roster is updated. Please click &quot;Regenerate Games&quot; to lock in current roster players.
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    }
-                    
-                    if (rosterChanged) {
-                      return (
-                        <div className="mb-4 p-3 bg-orange-50 border border-orange-300 rounded-md">
-                          <div className="flex items-center gap-2 text-sm text-orange-800">
-                            <span className="font-semibold">⚠️ Roster Changed:</span>
-                            <span>
-                              The roster has been updated since games were generated. Games are still showing players from the old roster. 
-                              Please click &quot;Regenerate Games&quot; to update games with the current roster players.
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    }
-                    
-                    return null
-                  }
 
                   return (
                     <Card key={matchup.id} id={`matchup-${matchup.id}`} className="scroll-mt-8">

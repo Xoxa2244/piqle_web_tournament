@@ -575,7 +575,7 @@ export default function TournamentDetailPage() {
       {/* Edit Tournament Modal */}
       {showEditTournament && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-white/20 max-h-[90vh] overflow-y-auto custom-scrollbar relative">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-white/20 relative">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
             <div className="flex items-center mb-6 relative z-10">
