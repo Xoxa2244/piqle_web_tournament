@@ -1371,11 +1371,37 @@ function DivisionStageManagementContent() {
                       </CardHeader>
                       <CardContent>
                         {matchup.games && matchup.games.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <>
+                            {/* Check if any games are missing saved players (old games before migration) */}
+                            {(() => {
+                              const gamesWithoutPlayers = matchup.games.filter((g: any) => 
+                                !g.homePlayer1 || !g.homePlayer2 || !g.awayPlayer1 || !g.awayPlayer2
+                              )
+                              if (gamesWithoutPlayers.length > 0) {
+                                return (
+                                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
+                                    <div className="flex items-center gap-2 text-sm text-yellow-800">
+                                      <span className="font-semibold">⚠️ Warning:</span>
+                                      <span>
+                                        {gamesWithoutPlayers.length} {gamesWithoutPlayers.length === 1 ? 'game' : 'games'} {gamesWithoutPlayers.length === 1 ? 'was' : 'were'} created before player tracking was enabled. 
+                                        Player names may change if roster is updated. Please click "Regenerate Games" to lock in current roster players.
+                                      </span>
+                                    </div>
+                                  </div>
+                                )
+                              }
+                              return null
+                            })()}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {matchup.games.map((game: any) => {
-                              // Use saved players from game if available, otherwise fall back to current rosters
+                              // Use ONLY saved players from game (frozen at generation time)
+                              // If saved players are not available, show warning that games need to be regenerated
                               const homePairPlayers = []
-                              if (game.homePlayer1 && game.homePlayer2) {
+                              const awayPairPlayers = []
+                              const hasSavedPlayers = game.homePlayer1 && game.homePlayer2 && game.awayPlayer1 && game.awayPlayer2
+                              
+                              if (hasSavedPlayers) {
+                                // Use saved players (frozen at generation time)
                                 homePairPlayers.push({
                                   id: game.homePlayer1.id,
                                   name: `${game.homePlayer1.firstName} ${game.homePlayer1.lastName}`,
@@ -1386,17 +1412,7 @@ function DivisionStageManagementContent() {
                                   name: `${game.homePlayer2.firstName} ${game.homePlayer2.lastName}`,
                                   letter: game.homePair[1]
                                 })
-                              } else {
-                                // Fallback to current rosters if saved players not available
-                                const homePairLetters = game.homePair?.split('') || []
-                                homePairLetters.forEach((letter: string) => {
-                                  const player = homeActivePlayers.find((p: any) => p.letter === letter)
-                                  if (player) homePairPlayers.push(player)
-                                })
-                              }
-                              
-                              const awayPairPlayers = []
-                              if (game.awayPlayer1 && game.awayPlayer2) {
+                                
                                 awayPairPlayers.push({
                                   id: game.awayPlayer1.id,
                                   name: `${game.awayPlayer1.firstName} ${game.awayPlayer1.lastName}`,
@@ -1407,14 +1423,8 @@ function DivisionStageManagementContent() {
                                   name: `${game.awayPlayer2.firstName} ${game.awayPlayer2.lastName}`,
                                   letter: game.awayPair[1]
                                 })
-                              } else {
-                                // Fallback to current rosters if saved players not available
-                                const awayPairLetters = game.awayPair?.split('') || []
-                                awayPairLetters.forEach((letter: string) => {
-                                  const player = awayActivePlayers.find((p: any) => p.letter === letter)
-                                  if (player) awayPairPlayers.push(player)
-                                })
                               }
+                              // If no saved players, arrays remain empty and warning will be shown in UI
                               
                               // Get current scores (from local state if available)
                               const currentScores = getGameScore(game)
@@ -1425,6 +1435,13 @@ function DivisionStageManagementContent() {
                                 <Card key={game.id} className="border-2">
                                   <CardContent className="pt-4">
                                     <div className="space-y-3">
+                                      {/* Warning if games don't have saved players (old games before migration) */}
+                                      {!hasSavedPlayers && (
+                                        <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                                          ⚠️ These games were created before player tracking was enabled. Please regenerate games to lock in current roster players.
+                                        </div>
+                                      )}
+                                      
                                       {/* Teams and players - top */}
                                       <div className="flex items-start gap-4">
                                         {/* Home team - left */}
@@ -1438,7 +1455,7 @@ function DivisionStageManagementContent() {
                                                 </div>
                                               ))
                                             ) : (
-                                              <div className="text-gray-400">Unknown players</div>
+                                              <div className="text-gray-400 italic">Players not saved - regenerate games</div>
                                             )}
                                           </div>
                                         </div>
@@ -1454,7 +1471,7 @@ function DivisionStageManagementContent() {
                                                 </div>
                                               ))
                                             ) : (
-                                              <div className="text-gray-400">Unknown players</div>
+                                              <div className="text-gray-400 italic">Players not saved - regenerate games</div>
                                             )}
                                           </div>
                                         </div>
@@ -1498,7 +1515,8 @@ function DivisionStageManagementContent() {
                                 </Card>
                               )
                             })}
-                          </div>
+                            </div>
+                          </>
                         ) : (
                           <div className="text-center text-gray-500 py-8">
                             No games generated yet. Generate games from the matchup detail page.
