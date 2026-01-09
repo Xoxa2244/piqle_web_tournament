@@ -30,17 +30,15 @@ export const indyStandingsRouter = createTRPCRouter({
           matchDays = [matchDay]
         }
       } else {
-        // SEASON_TO_DATE: get all days up to today (including DRAFT days that might have completed matchups)
-        const today = new Date()
-        today.setHours(23, 59, 59, 999)
-
+        // SEASON_TO_DATE: get ALL days (don't filter by date - we want all days with scores)
         matchDays = await ctx.prisma.matchDay.findMany({
           where: {
             tournamentId: input.tournamentId,
-            date: { lte: today },
           },
           orderBy: { date: 'asc' },
         })
+        
+        console.log(`[INDY_STANDINGS] SEASON_TO_DATE: Found ${matchDays.length} total match days for tournament ${input.tournamentId}`)
       }
 
       // Get all teams in division(s)
