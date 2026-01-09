@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -75,6 +75,7 @@ function DivisionDashboardContent() {
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>('SEASON_TO_DATE')
   const isUpdatingFromUrl = useRef(false)
+  const previousDivisionFromUrl = useRef<string | null>(null)
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -87,18 +88,20 @@ function DivisionDashboardContent() {
     { enabled: !!tournamentId }
   )
 
-  // Get division from URL (memoized to avoid unnecessary re-renders)
-  const divisionFromUrl = useMemo(() => searchParams.get('division'), [searchParams])
+  // Get division from URL - read it once per render
+  const divisionFromUrl = searchParams.get('division')
 
   // Sync division between URL and state
   useEffect(() => {
     if (!tournament || (tournament.divisions as any[]).length === 0) return
     
     const divisions = tournament.divisions as any[]
+    const urlChanged = previousDivisionFromUrl.current !== divisionFromUrl
+    previousDivisionFromUrl.current = divisionFromUrl
     
     if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
-      // Division from URL is valid - use it
-      if (selectedDivisionId !== divisionFromUrl) {
+      // Division from URL is valid - use it (only if URL actually changed)
+      if (urlChanged && selectedDivisionId !== divisionFromUrl) {
         isUpdatingFromUrl.current = true
         setSelectedDivisionId(divisionFromUrl)
       }
@@ -108,8 +111,8 @@ function DivisionDashboardContent() {
       isUpdatingFromUrl.current = true
       setSelectedDivisionId(firstDivisionId)
       router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
-    } else if (selectedDivisionId && !isUpdatingFromUrl.current) {
-      // Division changed via selector - update URL
+    } else if (selectedDivisionId && !isUpdatingFromUrl.current && !urlChanged) {
+      // Division changed via selector - update URL (only if URL didn't change from external source)
       if (divisionFromUrl !== selectedDivisionId) {
         router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
       }
@@ -119,7 +122,6 @@ function DivisionDashboardContent() {
     if (isUpdatingFromUrl.current) {
       isUpdatingFromUrl.current = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [divisionFromUrl, tournament, selectedDivisionId, router, tournamentId])
 
   // Set first division as default
@@ -144,6 +146,35 @@ function DivisionDashboardContent() {
     { enabled: !!currentDivision?.id }
   )
 
+  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
+  // Calculate tournament format flags BEFORE conditional returns (Rules of Hooks)
+  const isMLP = tournament?.format === 'MLP'
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+
+  // IndyLeague queries - MUST be before conditional returns (Rules of Hooks)
+  const { data: matchDays } = trpc.matchDay.list.useQuery(
+    { tournamentId },
+    { enabled: isIndyLeague && !!tournamentId }
+  )
+  
+  const { data: indyStandings } = trpc.indyStandings.get.useQuery(
+    {
+      tournamentId,
+      divisionId: selectedDivisionId || undefined,
+      matchDayId: selectedDayId || undefined,
+      mode: viewMode,
+    },
+    { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
+  )
+
   // Mutations
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
     onSuccess: () => {
@@ -165,15 +196,6 @@ function DivisionDashboardContent() {
       alert(`Error: ${error.message}`)
     },
   })
-
-  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
     setScoreModal({
@@ -249,9 +271,6 @@ function DivisionDashboardContent() {
   const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
   const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
 
-  const isMLP = tournament?.format === 'MLP'
-  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
-
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
   // Calculate Play-In logic based on team count and target bracket size
@@ -271,22 +290,6 @@ function DivisionDashboardContent() {
   const hasPlayIn = needsPlayIn
   const isPlayInComplete = divisionStage?.stage === 'PLAY_IN_COMPLETE'
   const currentStage = divisionStage?.stage || 'RR_IN_PROGRESS'
-
-  // IndyLeague queries
-  const { data: matchDays } = trpc.matchDay.list.useQuery(
-    { tournamentId },
-    { enabled: isIndyLeague && !!tournamentId }
-  )
-  
-  const { data: indyStandings } = trpc.indyStandings.get.useQuery(
-    {
-      tournamentId,
-      divisionId: selectedDivisionId || undefined,
-      matchDayId: selectedDayId || undefined,
-      mode: viewMode,
-    },
-    { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
-  )
 
   return (
     <div className="min-h-screen bg-gray-50">
