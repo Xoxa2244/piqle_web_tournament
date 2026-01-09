@@ -69,99 +69,108 @@ export const indyStandingsRouter = createTRPCRouter({
         pointDiff: number
       }> = []
 
-      // Get all match day IDs for efficient querying
-      const matchDayIds = matchDays.map((md: any) => md.id)
+      // Helper function to calculate stats for a single match day
+      const calculateStatsForDay = async (matchDayId: string, divisionId: string, teamId: string) => {
+        const matchups = await ctx.prisma.indyMatchup.findMany({
+          where: {
+            matchDayId: matchDayId,
+            divisionId: divisionId,
+            OR: [
+              { homeTeamId: teamId },
+              { awayTeamId: teamId },
+            ],
+          },
+          include: {
+            games: true,
+          },
+        })
+
+        let wins = 0
+        let losses = 0
+        let pointsFor = 0
+        let pointsAgainst = 0
+
+        for (const matchup of matchups) {
+          // Count completed games (games with both scores)
+          const completedGames = matchup.games.filter(
+            (g: any) => g.homeScore !== null && g.awayScore !== null
+          )
+          
+          // If no games have scores, skip this matchup
+          if (completedGames.length === 0) continue
+
+          // Calculate games won by each team from actual game scores
+          let gamesWonHome = 0
+          let gamesWonAway = 0
+          
+          for (const game of completedGames) {
+            if (game.homeScore === null || game.awayScore === null) continue
+            
+            if (game.homeScore > game.awayScore) {
+              gamesWonHome++
+            } else if (game.awayScore > game.homeScore) {
+              gamesWonAway++
+            }
+          }
+
+          // Calculate points for this matchup (only from completed games)
+          let teamPointsFor = 0
+          let teamPointsAgainst = 0
+
+          for (const game of completedGames) {
+            if (game.homeScore === null || game.awayScore === null) continue
+            
+            if (matchup.homeTeamId === teamId) {
+              teamPointsFor += game.homeScore
+              teamPointsAgainst += game.awayScore
+            } else if (matchup.awayTeamId === teamId) {
+              teamPointsFor += game.awayScore
+              teamPointsAgainst += game.homeScore
+            }
+          }
+
+          pointsFor += teamPointsFor
+          pointsAgainst += teamPointsAgainst
+
+          // Determine winner only if all games are completed (12 games total)
+          const allGamesCompleted = matchup.games.length > 0 && 
+            matchup.games.length === completedGames.length
+          
+          if (allGamesCompleted) {
+            let winnerTeamId: string | null = null
+            if (gamesWonHome > gamesWonAway) {
+              winnerTeamId = matchup.homeTeamId
+            } else if (gamesWonAway > gamesWonHome) {
+              winnerTeamId = matchup.awayTeamId
+            } else if (gamesWonHome === 6 && gamesWonAway === 6) {
+              winnerTeamId = matchup.tieBreakWinnerTeamId
+            }
+
+            if (winnerTeamId === teamId) {
+              wins++
+            } else if (winnerTeamId) {
+              losses++
+            }
+          }
+        }
+
+        return { wins, losses, pointsFor, pointsAgainst }
+      }
 
       for (const division of divisions) {
         for (const team of division.teams) {
-          let wins = 0
-          let losses = 0
-          let pointsFor = 0
-          let pointsAgainst = 0
+          let totalWins = 0
+          let totalLosses = 0
+          let totalPointsFor = 0
+          let totalPointsAgainst = 0
 
-          // Get all matchups for this team in all selected match days in one query
-          const matchups = await ctx.prisma.indyMatchup.findMany({
-            where: {
-              matchDayId: { in: matchDayIds },
-              divisionId: division.id,
-              OR: [
-                { homeTeamId: team.id },
-                { awayTeamId: team.id },
-              ],
-            },
-            include: {
-              games: true,
-            },
-          })
-
-          for (const matchup of matchups) {
-            // Count completed games (games with both scores)
-            const completedGames = matchup.games.filter(
-              (g: any) => g.homeScore !== null && g.awayScore !== null
-            )
-            
-            // If no games have scores, skip this matchup
-            if (completedGames.length === 0) continue
-
-            // Calculate games won by each team from actual game scores
-            let gamesWonHome = 0
-            let gamesWonAway = 0
-            
-            for (const game of completedGames) {
-              // TypeScript guard: we already filtered for non-null scores
-              if (game.homeScore === null || game.awayScore === null) continue
-              
-              if (game.homeScore > game.awayScore) {
-                gamesWonHome++
-              } else if (game.awayScore > game.homeScore) {
-                gamesWonAway++
-              }
-              // If scores are equal, neither team wins (shouldn't happen in Indy League, but handle it)
-            }
-
-            // Calculate points for this matchup (only from completed games)
-            let teamPointsFor = 0
-            let teamPointsAgainst = 0
-
-            for (const game of completedGames) {
-              // TypeScript guard: we already filtered for non-null scores
-              if (game.homeScore === null || game.awayScore === null) continue
-              
-              if (matchup.homeTeamId === team.id) {
-                teamPointsFor += game.homeScore
-                teamPointsAgainst += game.awayScore
-              } else if (matchup.awayTeamId === team.id) {
-                teamPointsFor += game.awayScore
-                teamPointsAgainst += game.homeScore
-              }
-            }
-
-            pointsFor += teamPointsFor
-            pointsAgainst += teamPointsAgainst
-
-            // Determine winner only if all games are completed (12 games total)
-            // Otherwise, we still count points but don't count win/loss
-            const allGamesCompleted = matchup.games.length > 0 && 
-              matchup.games.length === completedGames.length
-            
-            if (allGamesCompleted) {
-              let winnerTeamId: string | null = null
-              if (gamesWonHome > gamesWonAway) {
-                winnerTeamId = matchup.homeTeamId
-              } else if (gamesWonAway > gamesWonHome) {
-                winnerTeamId = matchup.awayTeamId
-              } else if (gamesWonHome === 6 && gamesWonAway === 6) {
-                // 6-6, use tie-break winner
-                winnerTeamId = matchup.tieBreakWinnerTeamId
-              }
-
-              // Update wins/losses only if matchup is fully completed
-              if (winnerTeamId === team.id) {
-                wins++
-              } else if (winnerTeamId) {
-                losses++
-              }
-            }
+          // Calculate stats for each day and sum them up
+          for (const matchDay of matchDays) {
+            const dayStats = await calculateStatsForDay(matchDay.id, division.id, team.id)
+            totalWins += dayStats.wins
+            totalLosses += dayStats.losses
+            totalPointsFor += dayStats.pointsFor
+            totalPointsAgainst += dayStats.pointsAgainst
           }
 
           standings.push({
@@ -169,11 +178,11 @@ export const indyStandingsRouter = createTRPCRouter({
             teamName: team.name,
             divisionId: division.id,
             divisionName: division.name,
-            wins,
-            losses,
-            pointsFor,
-            pointsAgainst,
-            pointDiff: pointsFor - pointsAgainst,
+            wins: totalWins,
+            losses: totalLosses,
+            pointsFor: totalPointsFor,
+            pointsAgainst: totalPointsAgainst,
+            pointDiff: totalPointsFor - totalPointsAgainst,
           })
         }
       }
