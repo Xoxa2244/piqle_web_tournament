@@ -107,6 +107,9 @@ export const indyStandingsRouter = createTRPCRouter({
               let gamesWonAway = 0
               
               for (const game of completedGames) {
+                // TypeScript guard: we already filtered for non-null scores
+                if (game.homeScore === null || game.awayScore === null) continue
+                
                 if (game.homeScore > game.awayScore) {
                   gamesWonHome++
                 } else if (game.awayScore > game.homeScore) {
@@ -120,6 +123,9 @@ export const indyStandingsRouter = createTRPCRouter({
               let teamPointsAgainst = 0
 
               for (const game of completedGames) {
+                // TypeScript guard: we already filtered for non-null scores
+                if (game.homeScore === null || game.awayScore === null) continue
+                
                 if (matchup.homeTeamId === team.id) {
                   teamPointsFor += game.homeScore
                   teamPointsAgainst += game.awayScore
