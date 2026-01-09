@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -74,6 +74,7 @@ function DivisionDashboardContent() {
   // IndyLeague specific state
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>('SEASON_TO_DATE')
+  const isUpdatingFromUrl = useRef(false)
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -86,43 +87,40 @@ function DivisionDashboardContent() {
     { enabled: !!tournamentId }
   )
 
-  // Read division from URL params on mount and when URL changes
-  const divisionFromUrl = searchParams.get('division')
+  // Get division from URL (memoized to avoid unnecessary re-renders)
+  const divisionFromUrl = useMemo(() => searchParams.get('division'), [searchParams])
+
+  // Sync division between URL and state
   useEffect(() => {
     if (!tournament || (tournament.divisions as any[]).length === 0) return
     
     const divisions = tournament.divisions as any[]
+    
     if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
       // Division from URL is valid - use it
       if (selectedDivisionId !== divisionFromUrl) {
+        isUpdatingFromUrl.current = true
         setSelectedDivisionId(divisionFromUrl)
       }
     } else if (!selectedDivisionId && divisions.length > 0) {
       // No division in URL and no selected division - set first one and update URL
       const firstDivisionId = divisions[0]?.id || ''
+      isUpdatingFromUrl.current = true
       setSelectedDivisionId(firstDivisionId)
-      if (!divisionFromUrl) {
-        router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+      router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+    } else if (selectedDivisionId && !isUpdatingFromUrl.current) {
+      // Division changed via selector - update URL
+      if (divisionFromUrl !== selectedDivisionId) {
+        router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [divisionFromUrl, tournament, router, tournamentId])
-
-  // Update URL when division changes via selector (not from URL read)
-  useEffect(() => {
-    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
-      const divisionFromUrlParam = searchParams.get('division')
-      // Only update URL if it's different and division was not just set from URL
-      if (divisionFromUrlParam !== selectedDivisionId) {
-        // Small delay to avoid race condition with URL reading
-        const timeoutId = setTimeout(() => {
-          router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
-        }, 0)
-        return () => clearTimeout(timeoutId)
-      }
+    
+    // Reset flag after processing
+    if (isUpdatingFromUrl.current) {
+      isUpdatingFromUrl.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDivisionId, tournamentId, router, tournament])
+  }, [divisionFromUrl, tournament, selectedDivisionId, router, tournamentId])
 
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
