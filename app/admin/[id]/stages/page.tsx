@@ -1537,8 +1537,14 @@ function DivisionStageManagementContent() {
                                       <div className="pt-2 border-t">
                                         {currentScores.homeScore !== null && currentScores.awayScore !== null ? (
                                           <div className="space-y-2">
-                                            <div className="text-center text-sm font-medium">
-                                              {currentScores.homeScore} - {currentScores.awayScore}
+                                            <div className="text-center text-sm font-medium flex items-center justify-center gap-2">
+                                              <span className={currentScores.homeScore > currentScores.awayScore ? 'text-green-600 font-bold' : currentScores.homeScore < currentScores.awayScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.homeScore}
+                                              </span>
+                                              <span className="text-gray-400">-</span>
+                                              <span className={currentScores.awayScore > currentScores.homeScore ? 'text-green-600 font-bold' : currentScores.awayScore < currentScores.homeScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.awayScore}
+                                              </span>
                                             </div>
                                             <Button
                                               size="sm"
