@@ -87,11 +87,11 @@ function DivisionDashboardContent() {
   )
 
   // Read division from URL params on mount and when URL changes
+  const divisionFromUrl = searchParams.get('division')
   useEffect(() => {
     if (!tournament || (tournament.divisions as any[]).length === 0) return
     
     const divisions = tournament.divisions as any[]
-    const divisionFromUrl = searchParams.get('division')
     if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
       // Division from URL is valid - use it
       if (selectedDivisionId !== divisionFromUrl) {
@@ -105,14 +105,15 @@ function DivisionDashboardContent() {
         router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
       }
     }
-  }, [searchParams, tournament])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionFromUrl, tournament, router, tournamentId])
 
   // Update URL when division changes via selector (not from URL read)
   useEffect(() => {
     if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
-      const divisionFromUrl = searchParams.get('division')
+      const divisionFromUrlParam = searchParams.get('division')
       // Only update URL if it's different and division was not just set from URL
-      if (divisionFromUrl !== selectedDivisionId) {
+      if (divisionFromUrlParam !== selectedDivisionId) {
         // Small delay to avoid race condition with URL reading
         const timeoutId = setTimeout(() => {
           router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
@@ -120,7 +121,8 @@ function DivisionDashboardContent() {
         return () => clearTimeout(timeoutId)
       }
     }
-  }, [selectedDivisionId, tournamentId, router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDivisionId, tournamentId, router, tournament])
 
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
