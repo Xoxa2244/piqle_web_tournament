@@ -174,10 +174,10 @@ function DivisionStageManagementContent() {
   }, [tournament?.divisions])
 
   // Read division from URL params on mount and when URL changes
+  const divisionFromUrl = searchParams.get('division')
   useEffect(() => {
     if (visibleDivisions.length === 0) return
     
-    const divisionFromUrl = searchParams.get('division')
     if (divisionFromUrl && visibleDivisions.some((d: any) => d.id === divisionFromUrl)) {
       // Division from URL is valid - use it
       if (selectedDivisionId !== divisionFromUrl) {
@@ -191,7 +191,8 @@ function DivisionStageManagementContent() {
         router.replace(`/admin/${tournamentId}/stages?division=${firstDivisionId}`, { scroll: false })
       }
     }
-  }, [searchParams, visibleDivisions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionFromUrl, visibleDivisions, router, tournamentId])
 
   // Update URL when division changes via selector (not from URL read)
   useEffect(() => {
