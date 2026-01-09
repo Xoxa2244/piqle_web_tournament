@@ -94,64 +94,66 @@ export const indyStandingsRouter = createTRPCRouter({
             })
 
             for (const matchup of matchups) {
-              // Check if matchup is actually completed (all games have scores)
-              const allGamesCompleted = matchup.games.length > 0 && 
-                matchup.games.every((g: any) => g.homeScore !== null && g.awayScore !== null)
+              // Count completed games (games with both scores)
+              const completedGames = matchup.games.filter(
+                (g: any) => g.homeScore !== null && g.awayScore !== null
+              )
               
-              if (!allGamesCompleted) continue
+              // If no games have scores, skip this matchup
+              if (completedGames.length === 0) continue
 
               // Calculate games won by each team from actual game scores
               let gamesWonHome = 0
               let gamesWonAway = 0
               
-              for (const game of matchup.games) {
-                if (game.homeScore !== null && game.awayScore !== null) {
-                  if (game.homeScore > game.awayScore) {
-                    gamesWonHome++
-                  } else if (game.awayScore > game.homeScore) {
-                    gamesWonAway++
-                  }
-                  // If scores are equal, neither team wins (shouldn't happen in Indy League, but handle it)
+              for (const game of completedGames) {
+                if (game.homeScore > game.awayScore) {
+                  gamesWonHome++
+                } else if (game.awayScore > game.homeScore) {
+                  gamesWonAway++
                 }
+                // If scores are equal, neither team wins (shouldn't happen in Indy League, but handle it)
               }
 
-              // Determine winner
-              let winnerTeamId: string | null = null
-              if (gamesWonHome > gamesWonAway) {
-                winnerTeamId = matchup.homeTeamId
-              } else if (gamesWonAway > gamesWonHome) {
-                winnerTeamId = matchup.awayTeamId
-              } else if (gamesWonHome === 6 && gamesWonAway === 6) {
-                // 6-6, use tie-break winner
-                winnerTeamId = matchup.tieBreakWinnerTeamId
-              }
-
-              if (!winnerTeamId) continue
-
-              // Calculate points for this matchup
+              // Calculate points for this matchup (only from completed games)
               let teamPointsFor = 0
               let teamPointsAgainst = 0
 
-              for (const game of matchup.games) {
-                if (game.homeScore !== null && game.awayScore !== null) {
-                  if (matchup.homeTeamId === team.id) {
-                    teamPointsFor += game.homeScore
-                    teamPointsAgainst += game.awayScore
-                  } else if (matchup.awayTeamId === team.id) {
-                    teamPointsFor += game.awayScore
-                    teamPointsAgainst += game.homeScore
-                  }
+              for (const game of completedGames) {
+                if (matchup.homeTeamId === team.id) {
+                  teamPointsFor += game.homeScore
+                  teamPointsAgainst += game.awayScore
+                } else if (matchup.awayTeamId === team.id) {
+                  teamPointsFor += game.awayScore
+                  teamPointsAgainst += game.homeScore
                 }
               }
 
               pointsFor += teamPointsFor
               pointsAgainst += teamPointsAgainst
 
-              // Update wins/losses
-              if (winnerTeamId === team.id) {
-                wins++
-              } else {
-                losses++
+              // Determine winner only if all games are completed (12 games total)
+              // Otherwise, we still count points but don't count win/loss
+              const allGamesCompleted = matchup.games.length > 0 && 
+                matchup.games.length === completedGames.length
+              
+              if (allGamesCompleted) {
+                let winnerTeamId: string | null = null
+                if (gamesWonHome > gamesWonAway) {
+                  winnerTeamId = matchup.homeTeamId
+                } else if (gamesWonAway > gamesWonHome) {
+                  winnerTeamId = matchup.awayTeamId
+                } else if (gamesWonHome === 6 && gamesWonAway === 6) {
+                  // 6-6, use tie-break winner
+                  winnerTeamId = matchup.tieBreakWinnerTeamId
+                }
+
+                // Update wins/losses only if matchup is fully completed
+                if (winnerTeamId === team.id) {
+                  wins++
+                } else if (winnerTeamId) {
+                  losses++
+                }
               }
             }
           }
