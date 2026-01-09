@@ -70,7 +70,9 @@ export const indyStandingsRouter = createTRPCRouter({
       }> = []
 
       // Helper function to calculate stats for a single match day
-      const calculateStatsForDay = async (matchDayId: string, divisionId: string, teamId: string) => {
+      const calculateStatsForDay = async (matchDayId: string, matchDayDate: Date, divisionId: string, teamId: string) => {
+        console.log(`[INDY_STANDINGS] Calculating stats for day ${matchDayId}, date: ${matchDayDate.toISOString()}, division: ${divisionId}, team: ${teamId}`)
+        
         const matchups = await ctx.prisma.indyMatchup.findMany({
           where: {
             matchDayId: matchDayId,
@@ -85,6 +87,8 @@ export const indyStandingsRouter = createTRPCRouter({
           },
         })
 
+        console.log(`[INDY_STANDINGS] Found ${matchups.length} matchups for day ${matchDayId}, team ${teamId}`)
+
         let wins = 0
         let losses = 0
         let pointsFor = 0
@@ -95,6 +99,8 @@ export const indyStandingsRouter = createTRPCRouter({
           const completedGames = matchup.games.filter(
             (g: any) => g.homeScore !== null && g.awayScore !== null
           )
+          
+          console.log(`[INDY_STANDINGS] Matchup ${matchup.id}: total games: ${matchup.games.length}, completed games: ${completedGames.length}`)
           
           // If no games have scores, skip this matchup
           if (completedGames.length === 0) continue
@@ -132,6 +138,8 @@ export const indyStandingsRouter = createTRPCRouter({
           pointsFor += teamPointsFor
           pointsAgainst += teamPointsAgainst
 
+          console.log(`[INDY_STANDINGS] Matchup ${matchup.id}: gamesWonHome=${gamesWonHome}, gamesWonAway=${gamesWonAway}, teamPointsFor=${teamPointsFor}, teamPointsAgainst=${teamPointsAgainst}`)
+
           // Determine winner only if all games are completed (12 games total)
           const allGamesCompleted = matchup.games.length > 0 && 
             matchup.games.length === completedGames.length
@@ -148,17 +156,27 @@ export const indyStandingsRouter = createTRPCRouter({
 
             if (winnerTeamId === teamId) {
               wins++
+              console.log(`[INDY_STANDINGS] Matchup ${matchup.id}: Team ${teamId} WON`)
             } else if (winnerTeamId) {
               losses++
+              console.log(`[INDY_STANDINGS] Matchup ${matchup.id}: Team ${teamId} LOST`)
             }
           }
         }
 
+        console.log(`[INDY_STANDINGS] Day ${matchDayId} stats: wins=${wins}, losses=${losses}, pointsFor=${pointsFor}, pointsAgainst=${pointsAgainst}`)
         return { wins, losses, pointsFor, pointsAgainst }
       }
 
+      console.log(`[INDY_STANDINGS] Mode: ${input.mode}, Found ${matchDays.length} match days`)
+      matchDays.forEach((md: any, idx: number) => {
+        console.log(`[INDY_STANDINGS] MatchDay ${idx + 1}: id=${md.id}, date=${md.date}, status=${md.status}`)
+      })
+
       for (const division of divisions) {
+        console.log(`[INDY_STANDINGS] Processing division: ${division.id} (${division.name})`)
         for (const team of division.teams) {
+          console.log(`[INDY_STANDINGS] Processing team: ${team.id} (${team.name})`)
           let totalWins = 0
           let totalLosses = 0
           let totalPointsFor = 0
@@ -166,12 +184,15 @@ export const indyStandingsRouter = createTRPCRouter({
 
           // Calculate stats for each day and sum them up
           for (const matchDay of matchDays) {
-            const dayStats = await calculateStatsForDay(matchDay.id, division.id, team.id)
+            const dayStats = await calculateStatsForDay(matchDay.id, matchDay.date, division.id, team.id)
             totalWins += dayStats.wins
             totalLosses += dayStats.losses
             totalPointsFor += dayStats.pointsFor
             totalPointsAgainst += dayStats.pointsAgainst
+            console.log(`[INDY_STANDINGS] Team ${team.id} after day ${matchDay.id}: totalWins=${totalWins}, totalLosses=${totalLosses}, totalPointsFor=${totalPointsFor}, totalPointsAgainst=${totalPointsAgainst}`)
           }
+          
+          console.log(`[INDY_STANDINGS] Team ${team.id} FINAL stats: wins=${totalWins}, losses=${totalLosses}, pointsFor=${totalPointsFor}, pointsAgainst=${totalPointsAgainst}`)
 
           standings.push({
             teamId: team.id,
@@ -195,7 +216,24 @@ export const indyStandingsRouter = createTRPCRouter({
         return b.pointDiff - a.pointDiff
       })
 
-      return standings
+      // Debug: log final standings
+      console.log(`[INDY_STANDINGS] FINAL standings for mode ${input.mode}:`, JSON.stringify(standings, null, 2))
+
+      // Return standings with debug info
+      return {
+        standings,
+        debug: {
+          mode: input.mode,
+          matchDaysCount: matchDays.length,
+          matchDays: matchDays.map((md: any) => ({
+            id: md.id,
+            date: md.date,
+            status: md.status,
+          })),
+          divisionsCount: divisions.length,
+          teamsCount: divisions.reduce((sum: number, d: any) => sum + d.teams.length, 0),
+        },
+      } as any
     }),
 
   calculate: protectedProcedure

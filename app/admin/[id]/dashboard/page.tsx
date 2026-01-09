@@ -165,7 +165,7 @@ function DivisionDashboardContent() {
     { enabled: isIndyLeague && !!tournamentId }
   )
   
-  const { data: indyStandings } = trpc.indyStandings.get.useQuery(
+  const { data: indyStandingsData } = trpc.indyStandings.get.useQuery(
     {
       tournamentId,
       divisionId: selectedDivisionId || undefined,
@@ -174,6 +174,17 @@ function DivisionDashboardContent() {
     },
     { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
   )
+
+  // Extract standings and debug info
+  const indyStandings = Array.isArray(indyStandingsData) 
+    ? indyStandingsData 
+    : indyStandingsData?.standings || []
+
+  // Log debug info to browser console
+  if (indyStandingsData && typeof indyStandingsData === 'object' && 'debug' in indyStandingsData) {
+    console.log('[INDY_STANDINGS DEBUG]', indyStandingsData.debug)
+    console.log('[INDY_STANDINGS RESULT]', indyStandings)
+  }
 
   // Mutations
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
