@@ -1372,11 +1372,40 @@ function DivisionStageManagementContent() {
                       <CardContent>
                         {matchup.games && matchup.games.length > 0 ? (
                           <>
-                            {/* Check if any games are missing saved players (old games before migration) */}
+                            {/* Check if roster has changed since games were generated */}
                             {(() => {
+                              // Check if any games are missing saved players (old games before migration)
                               const gamesWithoutPlayers = matchup.games.filter((g: any) => 
                                 !g.homePlayer1 || !g.homePlayer2 || !g.awayPlayer1 || !g.awayPlayer2
                               )
+                              
+                              // Check if roster has changed (saved players don't match current roster)
+                              const rosterChanged = matchup.games.some((game: any) => {
+                                if (!game.homePlayer1 || !game.homePlayer2 || !game.awayPlayer1 || !game.awayPlayer2) {
+                                  return false // Skip games without saved players
+                                }
+                                
+                                // Check home team players
+                                const homeLetter1 = game.homePair?.[0]
+                                const homeLetter2 = game.homePair?.[1]
+                                const currentHomePlayer1 = homeActivePlayers.find((p: any) => p.letter === homeLetter1)
+                                const currentHomePlayer2 = homeActivePlayers.find((p: any) => p.letter === homeLetter2)
+                                
+                                // Check away team players
+                                const awayLetter1 = game.awayPair?.[0]
+                                const awayLetter2 = game.awayPair?.[1]
+                                const currentAwayPlayer1 = awayActivePlayers.find((p: any) => p.letter === awayLetter1)
+                                const currentAwayPlayer2 = awayActivePlayers.find((p: any) => p.letter === awayLetter2)
+                                
+                                // If any saved player doesn't match current roster player with same letter
+                                return (
+                                  (currentHomePlayer1 && game.homePlayer1.id !== currentHomePlayer1.id) ||
+                                  (currentHomePlayer2 && game.homePlayer2.id !== currentHomePlayer2.id) ||
+                                  (currentAwayPlayer1 && game.awayPlayer1.id !== currentAwayPlayer1.id) ||
+                                  (currentAwayPlayer2 && game.awayPlayer2.id !== currentAwayPlayer2.id)
+                                )
+                              })
+                              
                               if (gamesWithoutPlayers.length > 0) {
                                 return (
                                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
@@ -1390,6 +1419,21 @@ function DivisionStageManagementContent() {
                                   </div>
                                 )
                               }
+                              
+                              if (rosterChanged) {
+                                return (
+                                  <div className="mb-4 p-3 bg-orange-50 border border-orange-300 rounded-md">
+                                    <div className="flex items-center gap-2 text-sm text-orange-800">
+                                      <span className="font-semibold">⚠️ Roster Changed:</span>
+                                      <span>
+                                        The roster has been updated since games were generated. Games are still showing players from the old roster. 
+                                        Please click &quot;Regenerate Games&quot; to update games with the current roster players.
+                                      </span>
+                                    </div>
+                                  </div>
+                                )
+                              }
+                              
                               return null
                             })()}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
