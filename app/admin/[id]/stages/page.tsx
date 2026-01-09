@@ -1384,7 +1384,7 @@ function DivisionStageManagementContent() {
                                       <span className="font-semibold">⚠️ Warning:</span>
                                       <span>
                                         {gamesWithoutPlayers.length} {gamesWithoutPlayers.length === 1 ? 'game' : 'games'} {gamesWithoutPlayers.length === 1 ? 'was' : 'were'} created before player tracking was enabled. 
-                                        Player names may change if roster is updated. Please click "Regenerate Games" to lock in current roster players.
+                                        Player names may change if roster is updated. Please click &quot;Regenerate Games&quot; to lock in current roster players.
                                       </span>
                                     </div>
                                   </div>
