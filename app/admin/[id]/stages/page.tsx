@@ -1402,27 +1402,35 @@ function DivisionStageManagementContent() {
                               
                               if (hasSavedPlayers) {
                                 // Use saved players (frozen at generation time)
-                                homePairPlayers.push({
-                                  id: game.homePlayer1.id,
-                                  name: `${game.homePlayer1.firstName} ${game.homePlayer1.lastName}`,
-                                  letter: game.homePair[0]
-                                })
-                                homePairPlayers.push({
-                                  id: game.homePlayer2.id,
-                                  name: `${game.homePlayer2.firstName} ${game.homePlayer2.lastName}`,
-                                  letter: game.homePair[1]
-                                })
+                                if (game.homePlayer1) {
+                                  homePairPlayers.push({
+                                    id: game.homePlayer1.id,
+                                    name: `${game.homePlayer1.firstName || ''} ${game.homePlayer1.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.homePair?.[0] || ''
+                                  })
+                                }
+                                if (game.homePlayer2) {
+                                  homePairPlayers.push({
+                                    id: game.homePlayer2.id,
+                                    name: `${game.homePlayer2.firstName || ''} ${game.homePlayer2.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.homePair?.[1] || ''
+                                  })
+                                }
                                 
-                                awayPairPlayers.push({
-                                  id: game.awayPlayer1.id,
-                                  name: `${game.awayPlayer1.firstName} ${game.awayPlayer1.lastName}`,
-                                  letter: game.awayPair[0]
-                                })
-                                awayPairPlayers.push({
-                                  id: game.awayPlayer2.id,
-                                  name: `${game.awayPlayer2.firstName} ${game.awayPlayer2.lastName}`,
-                                  letter: game.awayPair[1]
-                                })
+                                if (game.awayPlayer1) {
+                                  awayPairPlayers.push({
+                                    id: game.awayPlayer1.id,
+                                    name: `${game.awayPlayer1.firstName || ''} ${game.awayPlayer1.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.awayPair?.[0] || ''
+                                  })
+                                }
+                                if (game.awayPlayer2) {
+                                  awayPairPlayers.push({
+                                    id: game.awayPlayer2.id,
+                                    name: `${game.awayPlayer2.firstName || ''} ${game.awayPlayer2.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.awayPair?.[1] || ''
+                                  })
+                                }
                               }
                               // If no saved players, arrays remain empty and warning will be shown in UI
                               
