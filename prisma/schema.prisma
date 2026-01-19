@@ -107,8 +107,21 @@ model Tournament {
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
   matchDays               MatchDay[]
+  courts                  Court[]
 
   @@map("tournaments")
+}
+
+model Court {
+  id           String      @id @default(uuid())
+  tournamentId String      @map("tournament_id")
+  name         String
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchups     IndyMatchup[]
+
+  @@map("courts")
 }
 
 model Prize {
@@ -490,6 +503,7 @@ model IndyMatchup {
   divisionId          String           @map("division_id")
   homeTeamId          String           @map("home_team_id")
   awayTeamId          String           @map("away_team_id")
+  courtId             String?          @map("court_id")
   tieBreakWinnerTeamId String?         @map("tie_break_winner_team_id")
   gamesWonHome        Int             @default(0) @map("games_won_home")
   gamesWonAway        Int             @default(0) @map("games_won_away")
@@ -500,6 +514,7 @@ model IndyMatchup {
   division            Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   homeTeam            Team             @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
   awayTeam            Team             @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
+  court               Court?           @relation(fields: [courtId], references: [id], onDelete: SetNull)
   tieBreakWinnerTeam  Team?            @relation("TieBreakWinnerTeam", fields: [tieBreakWinnerTeamId], references: [id], onDelete: SetNull)
   rosters             DayRoster[]
   games                IndyGame[]

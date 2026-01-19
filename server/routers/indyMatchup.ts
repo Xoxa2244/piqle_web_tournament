@@ -124,6 +124,7 @@ export const indyMatchupRouter = createTRPCRouter({
           where: { matchDayId: input.matchDayId },
           include: {
             division: true,
+            court: true,
             homeTeam: {
               include: {
                 teamPlayers: {
@@ -231,6 +232,7 @@ export const indyMatchupRouter = createTRPCRouter({
               awayPlayer2: true,
             },
           },
+          court: true,
           matchDay: {
             include: {
               tournament: {
@@ -1035,6 +1037,120 @@ export const indyMatchupRouter = createTRPCRouter({
       await checkAndUpdateMatchupStatus(ctx.prisma, input.matchupId)
 
       return updated
+    }),
+
+  setCourt: tdProcedure
+    .input(z.object({
+      matchupId: z.string(),
+      courtId: z.string().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const matchup = await ctx.prisma.indyMatchup.findUnique({
+        where: { id: input.matchupId },
+        include: {
+          matchDay: {
+            include: {
+              tournament: {
+                select: { id: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (!matchup) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Matchup not found',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+
+      if (input.courtId) {
+        const court = await ctx.prisma.court.findUnique({
+          where: { id: input.courtId },
+          select: { tournamentId: true },
+        })
+
+        if (!court || court.tournamentId !== matchup.matchDay.tournament.id) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Court does not belong to this tournament',
+          })
+        }
+      }
+
+      return ctx.prisma.indyMatchup.update({
+        where: { id: input.matchupId },
+        data: { courtId: input.courtId },
+        include: {
+          court: true,
+        },
+      })
+    }),
+
+  assignCourts: tdProcedure
+    .input(z.object({
+      matchDayId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const matchDay = await ctx.prisma.matchDay.findUnique({
+        where: { id: input.matchDayId },
+        include: {
+          tournament: {
+            select: { id: true, format: true },
+          },
+        },
+      })
+
+      if (!matchDay) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Match day not found',
+        })
+      }
+
+      if (matchDay.tournament.format !== 'INDY_LEAGUE') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This endpoint is only for IndyLeague tournaments',
+        })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id)
+
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: matchDay.tournament.id },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      if (courts.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'No courts available. Create courts first.',
+        })
+      }
+
+      const matchups = await ctx.prisma.indyMatchup.findMany({
+        where: { matchDayId: input.matchDayId },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      if (matchups.length === 0) {
+        return { updated: 0 }
+      }
+
+      await Promise.all(
+        matchups.map((matchup, index) =>
+          ctx.prisma.indyMatchup.update({
+            where: { id: matchup.id },
+            data: { courtId: courts[index % courts.length].id },
+          })
+        )
+      )
+
+      return { updated: matchups.length }
     }),
 
   finalize: tdProcedure
