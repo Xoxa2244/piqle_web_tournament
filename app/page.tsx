@@ -7,7 +7,8 @@ export default function HomePage() {
   const [isDevHost, setIsDevHost] = useState(false)
 
   useEffect(() => {
-    setIsDevHost(window.location.hostname === 'dev.piqle.io')
+    const hostname = window.location.hostname
+    setIsDevHost(hostname === 'dev.piqle.io' || hostname.endsWith('.vercel.app'))
   }, [])
 
   return (
