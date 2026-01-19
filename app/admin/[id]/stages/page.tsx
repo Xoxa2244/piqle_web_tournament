@@ -1406,7 +1406,9 @@ function DivisionStageManagementContent() {
                               {matchup.homeTeam.name} vs {matchup.awayTeam.name}
                             </div>
                             <div className="text-sm text-gray-500 mt-1">
-                              Score: {gamesWonHome} - {gamesWonAway}
+                              <span>Score: {gamesWonHome} - {gamesWonAway}</span>
+                              <span className="mx-2">•</span>
+                              <span>Court: {matchup.court?.name || 'Unassigned'}</span>
                             </div>
                           </div>
                           <div className="flex items-center space-x-2">
