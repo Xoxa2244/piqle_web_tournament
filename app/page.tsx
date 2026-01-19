@@ -1,14 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
 
 export default function HomePage() {
-  const [isDevHost, setIsDevHost] = useState(false)
-
-  useEffect(() => {
-    setIsDevHost(window.location.hostname === 'dev.piqle.io')
-  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -46,11 +40,6 @@ export default function HomePage() {
                   Public Scoreboard
                 </Link>
               </div>
-              {isDevHost && (
-                <div className="mt-6 flex justify-center">
-                  <div className="h-16 w-16 rounded bg-red-600" />
-                </div>
-              )}
             </div>
           </div>
         </div>
