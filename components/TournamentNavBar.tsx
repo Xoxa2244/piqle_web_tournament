@@ -13,7 +13,8 @@ import {
   Globe,
   Edit,
   ArrowLeft,
-  Calendar
+  Calendar,
+  Target
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -184,6 +185,19 @@ function TournamentNavBarContent({
                 >
                   <Calendar className="w-4 h-4" />
                   <span>Match Days</span>
+                </Button>
+              </Link>
+            )}
+
+            {tournamentFormat === 'INDY_LEAGUE' && isAdmin && (
+              <Link href={`/admin/${tournamentId}/courts`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-slate-50 hover:border-slate-200 transition-all"
+                >
+                  <Target className="w-4 h-4" />
+                  <span>Courts</span>
                 </Button>
               </Link>
             )}

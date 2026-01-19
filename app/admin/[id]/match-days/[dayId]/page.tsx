@@ -103,6 +103,18 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     },
   })
 
+  const assignCourts = trpc.indyMatchup.assignCourts.useMutation({
+    onSuccess: (data) => {
+      refetchMatchups()
+      if (data.updated === 0) {
+        alert('No matchups to assign courts to.')
+      }
+    },
+    onError: (error) => {
+      alert('Error assigning courts: ' + error.message)
+    },
+  })
+
   const handleCreate = () => {
     if (!selectedDivisionId || !selectedHomeTeamId || !selectedAwayTeamId) {
       alert('Please select division and both teams')
@@ -370,13 +382,22 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
 
       <div className="mb-4 flex justify-between items-center">
         <h2 className="text-xl font-semibold">Matchups</h2>
-        <Button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Add Matchup
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => assignCourts.mutate({ matchDayId })}
+            disabled={assignCourts.isPending}
+          >
+            {assignCourts.isPending ? 'Assigning...' : 'Assign Courts'}
+          </Button>
+          <Button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Matchup
+          </Button>
+        </div>
       </div>
 
       {!matchups || matchups.length === 0 ? (
@@ -411,6 +432,9 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                             </div>
                             <div className="text-sm text-gray-500 mt-1">
                               {matchup.gamesWonHome} - {matchup.gamesWonAway}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              Court: {matchup.court?.name || 'Unassigned'}
                             </div>
                           </div>
                           {getStatusBadge(matchup.status)}

@@ -13,6 +13,8 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
   const [matchupId, setMatchupId] = useState<string>('')
+  const [showCourtModal, setShowCourtModal] = useState(false)
+  const [selectedCourtId, setSelectedCourtId] = useState<string>('')
   
   useEffect(() => {
     params.then((p) => {
@@ -59,6 +61,17 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
     },
     onError: (error) => {
       alert('Error updating tie-break: ' + error.message)
+    },
+  })
+
+  const setCourt = trpc.indyMatchup.setCourt.useMutation({
+    onSuccess: () => {
+      setShowCourtModal(false)
+      setSelectedCourtId('')
+      window.location.reload()
+    },
+    onError: (error) => {
+      alert('Error updating court: ' + error.message)
     },
   })
 
@@ -191,6 +204,11 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
   )
   const pendingRequestsCount = accessRequests?.length || 0
 
+  const { data: courts } = trpc.indyCourt.list.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
+
   if (!currentMatchup) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -246,10 +264,77 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
             <p className="text-gray-600 mt-2">
               {currentMatchup.division.name} • {currentMatchup.gamesWonHome} - {currentMatchup.gamesWonAway}
             </p>
+            <p className="text-gray-600 mt-1">
+              Court: {currentMatchup.court?.name || 'Unassigned'}
+            </p>
           </div>
-          {getStatusBadge(currentMatchup.status)}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedCourtId(currentMatchup.court?.id || '')
+                setShowCourtModal(true)
+              }}
+            >
+              Change Court
+            </Button>
+            {getStatusBadge(currentMatchup.status)}
+          </div>
         </div>
       </div>
+
+      {showCourtModal && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Change Court</CardTitle>
+            <CardDescription>
+              Select a court for this matchup. Multiple matchups can share the same court.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!courts || courts.length === 0 ? (
+              <p className="text-gray-600">No courts available. Create courts first.</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <select
+                  value={selectedCourtId}
+                  onChange={(e) => setSelectedCourtId(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">Unassigned</option>
+                  {courts.map((court: any) => (
+                    <option key={court.id} value={court.id}>
+                      {court.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCourtModal(false)
+                      setSelectedCourtId('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      setCourt.mutate({
+                        matchupId,
+                        courtId: selectedCourtId ? selectedCourtId : null,
+                      })
+                    }
+                    disabled={setCourt.isPending}
+                  >
+                    {setCourt.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Roster Management */}
       {currentMatchup.status === 'PENDING' || currentMatchup.status === 'READY' ? (
