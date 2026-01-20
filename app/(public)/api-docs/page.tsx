@@ -968,6 +968,95 @@ Best regards,
                 </CardContent>
               </Card>
 
+              {/* Tournament Schedule */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-blue-600">GET</Badge>
+                    <CardTitle className="mb-0">Get Tournament Schedule</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-gray-700">
+                    Returns the full tournament schedule for IndyLeague: match days, matchups, courts, and team rosters
+                    with player letters. Court can be <code className="bg-gray-100 px-1 py-0.5 rounded">null</code>
+                    when not assigned. Use this to retrieve the complete schedule structure for partner integrations.
+                  </p>
+                  <div>
+                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">/tournaments/{`{externalTournamentId}`}/schedule</code>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Example Request:</h3>
+                    <CodeBlock
+                      id="schedule-request"
+                      code={`GET /api/v1/partners/indyleague/tournaments/tournament-001/schedule`}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Response (200):</h3>
+                    <CodeBlock
+                      id="schedule-response"
+                      code={JSON.stringify({
+                        externalTournamentId: "tournament-001",
+                        tournamentName: "IndyLeague - Spring 2024",
+                        generatedAt: "2024-03-15T12:34:56.000Z",
+                        days: [
+                          {
+                            externalDayId: "day-001",
+                            date: "2024-03-15",
+                            status: "IN_PROGRESS",
+                            matchups: [
+                              {
+                                externalMatchupId: "matchup-001",
+                                division: {
+                                  id: "division-uuid",
+                                  externalId: "division-001",
+                                  name: "Main Division"
+                                },
+                                homeTeam: {
+                                  id: "team-home-uuid",
+                                  externalId: "team-001",
+                                  name: "Team Alpha"
+                                },
+                                awayTeam: {
+                                  id: "team-away-uuid",
+                                  externalId: "team-002",
+                                  name: "Team Beta"
+                                },
+                                court: {
+                                  id: "court-uuid",
+                                  name: "Court #1"
+                                },
+                                status: "IN_PROGRESS",
+                                gamesWonHome: 3,
+                                gamesWonAway: 2,
+                                rosters: [
+                                  {
+                                    teamId: "team-home-uuid",
+                                    teamExternalId: "team-001",
+                                    teamName: "Team Alpha",
+                                    players: [
+                                      {
+                                        playerId: "player-uuid-1",
+                                        externalPlayerId: "team1-player-001",
+                                        firstName: "John",
+                                        lastName: "Doe",
+                                        letter: "A",
+                                        isActive: true
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }, null, 2)}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Cleanup Tournament */}
               <Card>
                 <CardHeader>

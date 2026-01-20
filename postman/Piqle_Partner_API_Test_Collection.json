@@ -422,6 +422,32 @@
           ]
         }
       }
+    },
+    {
+      "name": "10. Get Tournament Schedule",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/tournaments/{{external_tournament_id}}/schedule",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "partners", "indyleague", "tournaments", "{{external_tournament_id}}", "schedule"]
+        }
+      }
     }
   ]
 }
