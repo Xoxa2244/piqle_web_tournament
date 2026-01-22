@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
+import { sendPartnerWebhookForTournament } from '../utils/partnerWebhooks'
 
 // Fixed schema for 12 games
 const GAMES_SCHEMA = [
@@ -110,6 +111,13 @@ export const indyMatchupRouter = createTRPCRouter({
           },
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: input.matchDayId, matchupId: matchup.id }
+      )
 
       return matchup
     }),
@@ -330,6 +338,13 @@ export const indyMatchupRouter = createTRPCRouter({
           payload: {},
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
 
       return updated
     }),
@@ -1088,6 +1103,13 @@ export const indyMatchupRouter = createTRPCRouter({
         },
       })
 
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'results.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
+
       return updated
     }),
 
@@ -1156,6 +1178,13 @@ export const indyMatchupRouter = createTRPCRouter({
       // Recalculate games won for the matchup
       await recalculateMatchupGamesWon(ctx.prisma, game.matchupId)
 
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        game.matchup.matchDay.tournament.id,
+        'results.updated',
+        { matchDayId: game.matchup.matchDayId, matchupId: game.matchupId }
+      )
+
       return updated
     }),
 
@@ -1217,6 +1246,13 @@ export const indyMatchupRouter = createTRPCRouter({
       // Check if matchup can be completed
       await checkAndUpdateMatchupStatus(ctx.prisma, input.matchupId)
 
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'results.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
+
       return updated
     }),
 
@@ -1262,13 +1298,22 @@ export const indyMatchupRouter = createTRPCRouter({
         }
       }
 
-      return ctx.prisma.indyMatchup.update({
+      const updated = await ctx.prisma.indyMatchup.update({
         where: { id: input.matchupId },
         data: { courtId: input.courtId },
         include: {
           court: true,
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
+
+      return updated
     }),
 
   assignCourts: tdProcedure
@@ -1329,6 +1374,13 @@ export const indyMatchupRouter = createTRPCRouter({
             data: { courtId: courts[index % courts.length].id },
           })
         )
+      )
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: input.matchDayId }
       )
 
       return { updated: matchups.length }
@@ -1400,6 +1452,13 @@ export const indyMatchupRouter = createTRPCRouter({
           payload: {},
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'results.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
 
       return updated
     }),
@@ -1635,6 +1694,13 @@ export const indyMatchupRouter = createTRPCRouter({
           },
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
 
       return { success: true }
     }),

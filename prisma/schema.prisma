@@ -705,6 +705,11 @@ enum MatchupStatus {
   COMPLETED
 }
 
+enum PartnerWebhookEvent {
+  SCHEDULE_UPDATED
+  RESULTS_UPDATED
+}
+
 model Partner {
   id              String       @id @default(uuid())
   name            String
@@ -718,10 +723,26 @@ model Partner {
   apps            PartnerApp[]
   externalMappings ExternalIdMapping[]
   apiRequestLogs  ApiRequestLog[]
+  webhooks        PartnerWebhook[]
   director        User?        @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
 
   @@index([directorUserId])
   @@map("partners")
+}
+
+model PartnerWebhook {
+  id        String               @id @default(uuid())
+  partnerId String               @map("partner_id")
+  eventType PartnerWebhookEvent  @map("event_type")
+  url       String
+  secret    String
+  isActive  Boolean              @default(true) @map("is_active")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  partner   Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, eventType])
+  @@map("partner_webhooks")
 }
 
 model PartnerApp {

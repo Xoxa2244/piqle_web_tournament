@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
+import { sendPartnerWebhookForTournament } from '../utils/partnerWebhooks'
 
 export const matchDayRouter = createTRPCRouter({
   create: tdProcedure
@@ -75,6 +76,13 @@ export const matchDayRouter = createTRPCRouter({
           },
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        input.tournamentId,
+        'schedule.updated',
+        { matchDayId: matchDay.id }
+      )
 
       return matchDay
     }),
@@ -256,6 +264,13 @@ export const matchDayRouter = createTRPCRouter({
         },
       })
 
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: input.matchDayId }
+      )
+
       return updated
     }),
 
@@ -305,6 +320,13 @@ export const matchDayRouter = createTRPCRouter({
           payload: {},
         },
       })
+
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: input.matchDayId }
+      )
 
       return { success: true }
     }),

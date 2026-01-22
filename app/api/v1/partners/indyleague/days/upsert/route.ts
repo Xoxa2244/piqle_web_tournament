@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withPartnerAuth } from '@/server/utils/partnerApiMiddleware'
 import { prisma } from '@/lib/prisma'
 import { setExternalIdMapping, getInternalId } from '@/server/utils/externalIdMapping'
+import { sendPartnerWebhookForPartner } from '@/server/utils/partnerWebhooks'
 import { z } from 'zod'
 
 const upsertDaysSchema = z.object({
@@ -116,6 +117,13 @@ export const POST = withPartnerAuth(
             externalDayId: day.externalDayId,
             status: 'updated',
           })
+          await sendPartnerWebhookForPartner(
+            prisma,
+            context.partnerId,
+            validated.externalTournamentId,
+            'schedule.updated',
+            { matchDayId: existingDayByDate.id }
+          )
           continue
         }
 
@@ -138,6 +146,13 @@ export const POST = withPartnerAuth(
               externalDayId: day.externalDayId,
               status: 'updated',
             })
+            await sendPartnerWebhookForPartner(
+              prisma,
+              context.partnerId,
+              validated.externalTournamentId,
+              'schedule.updated',
+              { matchDayId: existingInternalId }
+            )
           } else {
             // Mapping exists but day was deleted - create new one
             // First, remove old mapping
@@ -170,6 +185,13 @@ export const POST = withPartnerAuth(
               externalDayId: day.externalDayId,
               status: 'created',
             })
+            await sendPartnerWebhookForPartner(
+              prisma,
+              context.partnerId,
+              validated.externalTournamentId,
+              'schedule.updated',
+              { matchDayId: newDay.id }
+            )
           }
         } else {
           // Create new day
@@ -193,6 +215,13 @@ export const POST = withPartnerAuth(
             externalDayId: day.externalDayId,
             status: 'created',
           })
+          await sendPartnerWebhookForPartner(
+            prisma,
+            context.partnerId,
+            validated.externalTournamentId,
+            'schedule.updated',
+            { matchDayId: newDay.id }
+          )
         }
       } catch (error: any) {
         results.push({

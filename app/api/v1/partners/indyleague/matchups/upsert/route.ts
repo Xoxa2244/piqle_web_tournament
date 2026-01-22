@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withPartnerAuth } from '@/server/utils/partnerApiMiddleware'
 import { prisma } from '@/lib/prisma'
 import { setExternalIdMapping, getInternalId, getInternalIds } from '@/server/utils/externalIdMapping'
+import { sendPartnerWebhookForPartner } from '@/server/utils/partnerWebhooks'
 import { z } from 'zod'
 
 const upsertMatchupsSchema = z.object({
@@ -46,8 +47,8 @@ export const POST = withPartnerAuth(
     // Get all division and team external IDs
     const divisionExternalIds = Array.from(new Set(validated.matchups.map(m => m.divisionExternalId)))
     const teamExternalIds = Array.from(new Set([
-      ...validated.matchups.map(m => m.homeTeamExternalId),
-      ...validated.matchups.map(m => m.awayTeamExternalId),
+        ...validated.matchups.map(m => m.homeTeamExternalId),
+        ...validated.matchups.map(m => m.awayTeamExternalId),
     ]))
 
     const divisionMap = await getInternalIds(
@@ -107,26 +108,33 @@ export const POST = withPartnerAuth(
           if (existing) {
             // Update existing matchup (only if not completed)
             if (existing.status === 'COMPLETED') {
-              results.push({
-                externalMatchupId: matchup.externalMatchupId,
-                status: 'updated',
-                error: 'Cannot update completed matchup',
-              })
-              continue
-            }
-
-            await prisma.indyMatchup.update({
-              where: { id: existingInternalId },
-              data: {
-                divisionId,
-                homeTeamId,
-                awayTeamId,
-              },
-            })
             results.push({
               externalMatchupId: matchup.externalMatchupId,
               status: 'updated',
+              error: 'Cannot update completed matchup',
             })
+            continue
+          }
+
+          await prisma.indyMatchup.update({
+            where: { id: existingInternalId },
+            data: {
+              divisionId,
+              homeTeamId,
+              awayTeamId,
+            },
+          })
+          results.push({
+            externalMatchupId: matchup.externalMatchupId,
+            status: 'updated',
+          })
+          await sendPartnerWebhookForPartner(
+            prisma,
+            context.partnerId,
+            validated.externalTournamentId,
+            'schedule.updated',
+            { matchDayId, matchupId: existingInternalId }
+          )
           } else {
             // Mapping exists but matchup was deleted - create new one
             // First, remove old mapping
@@ -161,6 +169,13 @@ export const POST = withPartnerAuth(
               externalMatchupId: matchup.externalMatchupId,
               status: 'created',
             })
+            await sendPartnerWebhookForPartner(
+              prisma,
+              context.partnerId,
+              validated.externalTournamentId,
+              'schedule.updated',
+              { matchDayId, matchupId: newMatchup.id }
+            )
           }
         } else {
           // Create new matchup
@@ -186,6 +201,13 @@ export const POST = withPartnerAuth(
             externalMatchupId: matchup.externalMatchupId,
             status: 'created',
           })
+          await sendPartnerWebhookForPartner(
+            prisma,
+            context.partnerId,
+            validated.externalTournamentId,
+            'schedule.updated',
+            { matchDayId, matchupId: newMatchup.id }
+          )
         }
       } catch (error: any) {
         results.push({
