@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
@@ -134,6 +134,7 @@ function DivisionStageManagementContent() {
     error?: string | null
   }>>([])
   const [isUploadingToDupr, setIsUploadingToDupr] = useState(false)
+  const suppressRegenerateAlertRef = useRef(false)
 
 
   // Load tournament data
@@ -315,7 +316,9 @@ function DivisionStageManagementContent() {
   const regenerateGames = trpc.indyMatchup.regenerateGames.useMutation({
     onSuccess: () => {
       refetchMatchups()
-      alert('Games regenerated successfully. All scores for this matchup have been reset.')
+      if (!suppressRegenerateAlertRef.current) {
+        alert('Games regenerated successfully. All scores for this matchup have been reset.')
+      }
     },
     onError: (error) => {
       alert('Error regenerating games: ' + error.message)
@@ -1355,6 +1358,7 @@ function DivisionStageManagementContent() {
                               }
                               if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
                                 try {
+                                  suppressRegenerateAlertRef.current = true
                                   // Regenerate games for each matchup that has games
                                   await Promise.all(
                                     matchupsWithGames.map((matchup: any) =>
@@ -1362,8 +1366,11 @@ function DivisionStageManagementContent() {
                                     )
                                   )
                                   refetchMatchups()
+                                  alert(`Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`)
                                 } catch (error: any) {
                                   alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
+                                } finally {
+                                  suppressRegenerateAlertRef.current = false
                                 }
                               }
                             }}
