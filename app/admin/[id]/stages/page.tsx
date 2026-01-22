@@ -1187,10 +1187,10 @@ function DivisionStageManagementContent() {
           </div>
 
           {/* Right part - quick actions */}
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col items-end gap-3">
             {/* DUPR Upload buttons */}
             {tournament?.allowDuprSubmission && allMatchesCompleted && (
-              <>
+              <div className="flex items-center space-x-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1210,102 +1210,103 @@ function DivisionStageManagementContent() {
                   <FileText className="h-4 w-4" />
                   <span>Show upload log</span>
                 </Button>
-              </>
+              </div>
             )}
             
-          {/* Division switcher */}
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-medium text-gray-700">Division:</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
-                  setSelectedDivisionId(visibleDivisions[prevIndex].id)
-                }}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <select
-                value={selectedDivisionId}
-                onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                {visibleDivisions.map((div: any) => (
-                  <option key={div.id} value={div.id}>
-                    {div.name} ({div.teams?.length || 0} teams)
-                  </option>
-                ))}
-              </select>
-              
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(visibleDivisions[nextIndex].id)
-                }}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+            <div className="flex flex-col items-end gap-2">
+              {/* Division switcher */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-700">Division:</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                    const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
+                    setSelectedDivisionId(visibleDivisions[prevIndex].id)
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <select
+                  value={selectedDivisionId}
+                  onChange={(e) => setSelectedDivisionId(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                >
+                  {visibleDivisions.map((div: any) => (
+                    <option key={div.id} value={div.id}>
+                      {div.name} ({div.teams?.length || 0} teams)
+                    </option>
+                  ))}
+                </select>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                    const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
+                    setSelectedDivisionId(visibleDivisions[nextIndex].id)
+                  }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Match Day switcher for IndyLeague */}
+              {isIndyLeague && (
+                matchDaysForDivision.length > 0 ? (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">Match Day:</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={matchDaysForDivision.length <= 1}
+                      onClick={() => {
+                        const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDaysForDivision.length - 1
+                        setSelectedMatchDayId(matchDaysForDivision[prevIndex].id)
+                      }}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    <select
+                      value={selectedMatchDayId}
+                      onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                    >
+                      {matchDaysForDivision.map((day: any) => (
+                        <option key={day.id} value={day.id}>
+                          {formatDate(day.date)} ({getDivisionMatchupCount(day)} matchups)
+                        </option>
+                      ))}
+                    </select>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={matchDaysForDivision.length <= 1}
+                      onClick={() => {
+                        const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                        const nextIndex = currentIndex < matchDaysForDivision.length - 1 ? currentIndex + 1 : 0
+                        setSelectedMatchDayId(matchDaysForDivision[nextIndex].id)
+                      }}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    No match days with matchups for this division.
+                  </p>
+                )
+              )}
             </div>
           </div>
         </div>
 
-        {/* Match Day switcher for IndyLeague */}
-        {isIndyLeague && (
-          matchDaysForDivision.length > 0 ? (
-          <div className="flex items-center space-x-2 mt-3 pb-2 border-b border-gray-200">
-              <span className="text-sm font-medium text-gray-700">Match Day:</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={matchDaysForDivision.length <= 1}
-                onClick={() => {
-                  const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDaysForDivision.length - 1
-                  setSelectedMatchDayId(matchDaysForDivision[prevIndex].id)
-                }}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <select
-                value={selectedMatchDayId}
-                onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                {matchDaysForDivision.map((day: any) => (
-                  <option key={day.id} value={day.id}>
-                    {formatDate(day.date)} ({getDivisionMatchupCount(day)} matchups)
-                  </option>
-                ))}
-              </select>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={matchDaysForDivision.length <= 1}
-                onClick={() => {
-                  const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
-                  const nextIndex = currentIndex < matchDaysForDivision.length - 1 ? currentIndex + 1 : 0
-                  setSelectedMatchDayId(matchDaysForDivision[nextIndex].id)
-                }}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="mt-4 pb-2 border-b border-gray-200">
-              <p className="text-sm text-gray-600">
-                No match days with matchups for this division.
-              </p>
-            </div>
-          )
-        )}
         {isIndyLeague && (
           <div className="mt-4 flex justify-end">
             <Button
