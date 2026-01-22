@@ -556,19 +556,49 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      // Create 12 games according to fixed schema
+      // Create a map of playerId by letter for home and away teams
+      const homePlayerMap = new Map<string, string>()
+      const awayPlayerMap = new Map<string, string>()
+
+      homeRosters.forEach((r) => {
+        if (r.letter) {
+          homePlayerMap.set(r.letter, r.playerId)
+        }
+      })
+
+      awayRosters.forEach((r) => {
+        if (r.letter) {
+          awayPlayerMap.set(r.letter, r.playerId)
+        }
+      })
+
+      // Create 12 games according to fixed schema, saving player IDs
       await Promise.all(
-        GAMES_SCHEMA.map((gameSchema) =>
-          ctx.prisma.indyGame.create({
+        GAMES_SCHEMA.map((gameSchema) => {
+          const homeLetter1 = gameSchema.homePair[0]
+          const homeLetter2 = gameSchema.homePair[1]
+          const homePlayer1Id = homePlayerMap.get(homeLetter1) || null
+          const homePlayer2Id = homePlayerMap.get(homeLetter2) || null
+
+          const awayLetter1 = gameSchema.awayPair[0]
+          const awayLetter2 = gameSchema.awayPair[1]
+          const awayPlayer1Id = awayPlayerMap.get(awayLetter1) || null
+          const awayPlayer2Id = awayPlayerMap.get(awayLetter2) || null
+
+          return ctx.prisma.indyGame.create({
             data: {
               matchupId: input.matchupId,
               order: gameSchema.order,
               court: gameSchema.court,
               homePair: gameSchema.homePair,
               awayPair: gameSchema.awayPair,
+              homePlayer1Id,
+              homePlayer2Id,
+              awayPlayer1Id,
+              awayPlayer2Id,
             },
           })
-        )
+        })
       )
 
       // Update matchup status to IN_PROGRESS
@@ -831,18 +861,47 @@ export const indyMatchupRouter = createTRPCRouter({
             continue
           }
 
+          const homePlayerMap = new Map<string, string>()
+          const awayPlayerMap = new Map<string, string>()
+
+          homeRosters.forEach((r) => {
+            if (r.letter) {
+              homePlayerMap.set(r.letter, r.playerId)
+            }
+          })
+
+          awayRosters.forEach((r) => {
+            if (r.letter) {
+              awayPlayerMap.set(r.letter, r.playerId)
+            }
+          })
+
           await Promise.all(
-            GAMES_SCHEMA.map((gameSchema) =>
-              ctx.prisma.indyGame.create({
+            GAMES_SCHEMA.map((gameSchema) => {
+              const homeLetter1 = gameSchema.homePair[0]
+              const homeLetter2 = gameSchema.homePair[1]
+              const homePlayer1Id = homePlayerMap.get(homeLetter1) || null
+              const homePlayer2Id = homePlayerMap.get(homeLetter2) || null
+
+              const awayLetter1 = gameSchema.awayPair[0]
+              const awayLetter2 = gameSchema.awayPair[1]
+              const awayPlayer1Id = awayPlayerMap.get(awayLetter1) || null
+              const awayPlayer2Id = awayPlayerMap.get(awayLetter2) || null
+
+              return ctx.prisma.indyGame.create({
                 data: {
                   matchupId: matchup.id,
                   order: gameSchema.order,
                   court: gameSchema.court,
                   homePair: gameSchema.homePair,
                   awayPair: gameSchema.awayPair,
+                  homePlayer1Id,
+                  homePlayer2Id,
+                  awayPlayer1Id,
+                  awayPlayer2Id,
                 },
               })
-            )
+            })
           )
 
           await ctx.prisma.indyMatchup.update({
