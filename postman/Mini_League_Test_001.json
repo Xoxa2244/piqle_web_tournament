@@ -34,6 +34,46 @@
       "key": "external_division_id_2",
       "value": "div-40-coed",
       "type": "string"
+    },
+    {
+      "key": "external_day_id_1",
+      "value": "day-2026-02-17",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_2",
+      "value": "day-2026-02-19",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_3",
+      "value": "day-2026-02-24",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_4",
+      "value": "day-2026-02-26",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_5",
+      "value": "day-2026-03-03",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_6",
+      "value": "day-2026-03-05",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_7",
+      "value": "day-2026-03-10",
+      "type": "string"
+    },
+    {
+      "key": "external_day_id_8",
+      "value": "day-2026-03-12",
+      "type": "string"
     }
   ],
   "item": [
@@ -228,8 +268,7 @@
           ]
         }
       }
-    }
-    ,
+    },
     {
       "name": "5. Get Tournament Schedule",
       "event": [
@@ -262,6 +301,390 @@
             "tournaments",
             "{{external_tournament_id}}",
             "schedule"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Assign Rosters (Day 1 - 2026-02-17)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_1}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-35-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-go-west-p1\",\n        \"div-35-coed-go-west-p2\",\n        \"div-35-coed-go-west-p3\",\n        \"div-35-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-3rd-shot-p1\",\n        \"div-35-coed-3rd-shot-p2\",\n        \"div-35-coed-3rd-shot-p3\",\n        \"div-35-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-south-p1\",\n        \"div-35-coed-ipc-south-p2\",\n        \"div-35-coed-ipc-south-p3\",\n        \"div-35-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-east-p1\",\n        \"div-35-coed-ipc-east-p2\",\n        \"div-35-coed-ipc-east-p3\",\n        \"div-35-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-dink-house-p1\",\n        \"div-35-coed-dink-house-p2\",\n        \"div-35-coed-dink-house-p3\",\n        \"div-35-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-pickle-on-penn-p1\",\n        \"div-35-coed-pickle-on-penn-p2\",\n        \"div-35-coed-pickle-on-penn-p3\",\n        \"div-35-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Assign Rosters (Day 2 - 2026-02-19)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_2}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-40-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-go-west-p1\",\n        \"div-40-coed-go-west-p2\",\n        \"div-40-coed-go-west-p3\",\n        \"div-40-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-3rd-shot-p1\",\n        \"div-40-coed-3rd-shot-p2\",\n        \"div-40-coed-3rd-shot-p3\",\n        \"div-40-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-south-p1\",\n        \"div-40-coed-ipc-south-p2\",\n        \"div-40-coed-ipc-south-p3\",\n        \"div-40-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-east-p1\",\n        \"div-40-coed-ipc-east-p2\",\n        \"div-40-coed-ipc-east-p3\",\n        \"div-40-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-dink-house-p1\",\n        \"div-40-coed-dink-house-p2\",\n        \"div-40-coed-dink-house-p3\",\n        \"div-40-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-pickle-on-penn-p1\",\n        \"div-40-coed-pickle-on-penn-p2\",\n        \"div-40-coed-pickle-on-penn-p3\",\n        \"div-40-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "7. Assign Rosters (Day 3 - 2026-02-24)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_3}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-35-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-go-west-p1\",\n        \"div-35-coed-go-west-p2\",\n        \"div-35-coed-go-west-p3\",\n        \"div-35-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-3rd-shot-p1\",\n        \"div-35-coed-3rd-shot-p2\",\n        \"div-35-coed-3rd-shot-p3\",\n        \"div-35-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-south-p1\",\n        \"div-35-coed-ipc-south-p2\",\n        \"div-35-coed-ipc-south-p3\",\n        \"div-35-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-east-p1\",\n        \"div-35-coed-ipc-east-p2\",\n        \"div-35-coed-ipc-east-p3\",\n        \"div-35-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-dink-house-p1\",\n        \"div-35-coed-dink-house-p2\",\n        \"div-35-coed-dink-house-p3\",\n        \"div-35-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-pickle-on-penn-p1\",\n        \"div-35-coed-pickle-on-penn-p2\",\n        \"div-35-coed-pickle-on-penn-p3\",\n        \"div-35-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Assign Rosters (Day 4 - 2026-02-26)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_4}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-40-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-go-west-p1\",\n        \"div-40-coed-go-west-p2\",\n        \"div-40-coed-go-west-p3\",\n        \"div-40-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-3rd-shot-p1\",\n        \"div-40-coed-3rd-shot-p2\",\n        \"div-40-coed-3rd-shot-p3\",\n        \"div-40-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-south-p1\",\n        \"div-40-coed-ipc-south-p2\",\n        \"div-40-coed-ipc-south-p3\",\n        \"div-40-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-east-p1\",\n        \"div-40-coed-ipc-east-p2\",\n        \"div-40-coed-ipc-east-p3\",\n        \"div-40-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-dink-house-p1\",\n        \"div-40-coed-dink-house-p2\",\n        \"div-40-coed-dink-house-p3\",\n        \"div-40-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-pickle-on-penn-p1\",\n        \"div-40-coed-pickle-on-penn-p2\",\n        \"div-40-coed-pickle-on-penn-p3\",\n        \"div-40-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "9. Assign Rosters (Day 5 - 2026-03-03)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_5}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-35-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-go-west-p1\",\n        \"div-35-coed-go-west-p2\",\n        \"div-35-coed-go-west-p3\",\n        \"div-35-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-3rd-shot-p1\",\n        \"div-35-coed-3rd-shot-p2\",\n        \"div-35-coed-3rd-shot-p3\",\n        \"div-35-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-south-p1\",\n        \"div-35-coed-ipc-south-p2\",\n        \"div-35-coed-ipc-south-p3\",\n        \"div-35-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-east-p1\",\n        \"div-35-coed-ipc-east-p2\",\n        \"div-35-coed-ipc-east-p3\",\n        \"div-35-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-dink-house-p1\",\n        \"div-35-coed-dink-house-p2\",\n        \"div-35-coed-dink-house-p3\",\n        \"div-35-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-pickle-on-penn-p1\",\n        \"div-35-coed-pickle-on-penn-p2\",\n        \"div-35-coed-pickle-on-penn-p3\",\n        \"div-35-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. Assign Rosters (Day 6 - 2026-03-05)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_6}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-40-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-go-west-p1\",\n        \"div-40-coed-go-west-p2\",\n        \"div-40-coed-go-west-p3\",\n        \"div-40-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-3rd-shot-p1\",\n        \"div-40-coed-3rd-shot-p2\",\n        \"div-40-coed-3rd-shot-p3\",\n        \"div-40-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-south-p1\",\n        \"div-40-coed-ipc-south-p2\",\n        \"div-40-coed-ipc-south-p3\",\n        \"div-40-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-east-p1\",\n        \"div-40-coed-ipc-east-p2\",\n        \"div-40-coed-ipc-east-p3\",\n        \"div-40-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-dink-house-p1\",\n        \"div-40-coed-dink-house-p2\",\n        \"div-40-coed-dink-house-p3\",\n        \"div-40-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-pickle-on-penn-p1\",\n        \"div-40-coed-pickle-on-penn-p2\",\n        \"div-40-coed-pickle-on-penn-p3\",\n        \"div-40-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "11. Assign Rosters (Day 7 - 2026-03-10)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_7}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-35-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-go-west-p1\",\n        \"div-35-coed-go-west-p2\",\n        \"div-35-coed-go-west-p3\",\n        \"div-35-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-3rd-shot-p1\",\n        \"div-35-coed-3rd-shot-p2\",\n        \"div-35-coed-3rd-shot-p3\",\n        \"div-35-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-south-p1\",\n        \"div-35-coed-ipc-south-p2\",\n        \"div-35-coed-ipc-south-p3\",\n        \"div-35-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-ipc-east-p1\",\n        \"div-35-coed-ipc-east-p2\",\n        \"div-35-coed-ipc-east-p3\",\n        \"div-35-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-dink-house-p1\",\n        \"div-35-coed-dink-house-p2\",\n        \"div-35-coed-dink-house-p3\",\n        \"div-35-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-35-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-35-coed-pickle-on-penn-p1\",\n        \"div-35-coed-pickle-on-penn-p2\",\n        \"div-35-coed-pickle-on-penn-p3\",\n        \"div-35-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "12. Assign Rosters (Day 8 - 2026-03-12)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"externalDayId\": \"{{external_day_id_8}}\",\n  \"rosters\": [\n    {\n      \"teamExternalId\": \"div-40-coed-go-west\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-go-west-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-go-west-p1\",\n        \"div-40-coed-go-west-p2\",\n        \"div-40-coed-go-west-p3\",\n        \"div-40-coed-go-west-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-3rd-shot\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-3rd-shot-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-3rd-shot-p1\",\n        \"div-40-coed-3rd-shot-p2\",\n        \"div-40-coed-3rd-shot-p3\",\n        \"div-40-coed-3rd-shot-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-south\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-south-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-south-p1\",\n        \"div-40-coed-ipc-south-p2\",\n        \"div-40-coed-ipc-south-p3\",\n        \"div-40-coed-ipc-south-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-ipc-east\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-ipc-east-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-ipc-east-p1\",\n        \"div-40-coed-ipc-east-p2\",\n        \"div-40-coed-ipc-east-p3\",\n        \"div-40-coed-ipc-east-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-dink-house\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-dink-house-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-dink-house-p1\",\n        \"div-40-coed-dink-house-p2\",\n        \"div-40-coed-dink-house-p3\",\n        \"div-40-coed-dink-house-p4\"\n      ]\n    },\n    {\n      \"teamExternalId\": \"div-40-coed-pickle-on-penn\",\n      \"players\": [\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p1\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p2\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p3\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p4\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p5\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p6\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p7\"\n        },\n        {\n          \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p8\"\n        }\n      ],\n      \"activePlayerExternalIds\": [\n        \"div-40-coed-pickle-on-penn-p1\",\n        \"div-40-coed-pickle-on-penn-p2\",\n        \"div-40-coed-pickle-on-penn-p3\",\n        \"div-40-coed-pickle-on-penn-p4\"\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/rosters/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "rosters",
+            "upsert"
           ]
         }
       }
