@@ -1,0 +1,233 @@
+{
+  "info": {
+    "name": "Mini League Test 001",
+    "description": "Create Mini League IL Test 001 tournament with divisions, teams, and 8 unique players per team.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://rtest.piqle.io",
+      "type": "string"
+    },
+    {
+      "key": "key_id",
+      "value": "pk_baa72f0edf3776b57fb5f015dbf76ea9",
+      "type": "string"
+    },
+    {
+      "key": "secret",
+      "value": "sk_3633d7f17a962cdd17684dc71153d7f49bac4cb7bf34992477a830637585fec3",
+      "type": "string"
+    },
+    {
+      "key": "external_tournament_id",
+      "value": "mini-league-il-test-001",
+      "type": "string"
+    },
+    {
+      "key": "external_division_id_1",
+      "value": "div-35-coed",
+      "type": "string"
+    },
+    {
+      "key": "external_division_id_2",
+      "value": "div-40-coed",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create Tournament",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"name\": \"Mini League IL Test 001\",\n  \"seasonLabel\": \"Mini League 2024\",\n  \"timezone\": \"America/New_York\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/tournaments/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "tournaments",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Create Divisions",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"divisions\": [\n    {\n      \"externalDivisionId\": \"{{external_division_id_1}}\",\n      \"name\": \"3.5 Coed\",\n      \"orderIndex\": 1\n    },\n    {\n      \"externalDivisionId\": \"{{external_division_id_2}}\",\n      \"name\": \"4.0 Coed\",\n      \"orderIndex\": 2\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/divisions/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "divisions",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Create Teams",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"teams\": [\n    {\n      \"externalTeamId\": \"div-35-coed-go-west\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"Go West\",\n      \"clubName\": \"Go West\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-35-coed-3rd-shot\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"3rd Shot\",\n      \"clubName\": \"3rd Shot\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-35-coed-ipc-south\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"IPC South\",\n      \"clubName\": \"IPC South\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-35-coed-ipc-east\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"IPC East\",\n      \"clubName\": \"IPC East\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-35-coed-dink-house\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"Dink House\",\n      \"clubName\": \"Dink House\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\",\n      \"divisionExternalId\": \"div-35-coed\",\n      \"name\": \"Pickle on Penn\",\n      \"clubName\": \"Pickle on Penn\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-go-west\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"Go West\",\n      \"clubName\": \"Go West\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-3rd-shot\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"3rd Shot\",\n      \"clubName\": \"3rd Shot\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-ipc-south\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"IPC South\",\n      \"clubName\": \"IPC South\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-ipc-east\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"IPC East\",\n      \"clubName\": \"IPC East\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-dink-house\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"Dink House\",\n      \"clubName\": \"Dink House\",\n      \"eventType\": \"coed\"\n    },\n    {\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\",\n      \"divisionExternalId\": \"div-40-coed\",\n      \"name\": \"Pickle on Penn\",\n      \"clubName\": \"Pickle on Penn\",\n      \"eventType\": \"coed\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/teams/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "teams",
+            "upsert"
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Create Players (8 per team)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.headers.add({",
+              "    key: 'Authorization',",
+              "    value: 'Bearer ' + pm.collectionVariables.get('key_id') + ':' + pm.collectionVariables.get('secret')",
+              "});",
+              "pm.request.headers.add({",
+              "    key: 'Idempotency-Key',",
+              "    value: pm.variables.replaceIn('{{$guid}}')",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalTournamentId\": \"{{external_tournament_id}}\",\n  \"players\": [\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p1\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p2\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p3\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p4\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p5\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p6\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p7\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-go-west-p8\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p1\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p2\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p3\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p4\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Smith\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p5\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p6\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p7\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-3rd-shot-p8\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p1\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p2\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p3\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p4\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p5\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p6\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p7\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-south-p8\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Johnson\",\n      \"externalTeamId\": \"div-35-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p1\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p2\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p3\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p4\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p5\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p6\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p7\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-ipc-east-p8\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p1\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p2\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p3\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p4\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Williams\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p5\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p6\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p7\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-dink-house-p8\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p1\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p2\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p3\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p4\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p5\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p6\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p7\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-35-coed-pickle-on-penn-p8\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Brown\",\n      \"externalTeamId\": \"div-35-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p1\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p2\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p3\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p4\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p5\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p6\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p7\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-go-west-p8\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-go-west\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p1\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p2\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p3\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p4\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Jones\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p5\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p6\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p7\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-3rd-shot-p8\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-3rd-shot\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p1\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p2\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p3\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p4\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p5\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p6\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p7\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-south-p8\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Miller\",\n      \"externalTeamId\": \"div-40-coed-ipc-south\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p1\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p2\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p3\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p4\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p5\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p6\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p7\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-ipc-east-p8\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-ipc-east\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p1\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p2\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p3\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p4\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Davis\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p5\",\n      \"firstName\": \"James\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p6\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p7\",\n      \"firstName\": \"Robert\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-dink-house-p8\",\n      \"firstName\": \"Michael\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-dink-house\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p1\",\n      \"firstName\": \"William\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p2\",\n      \"firstName\": \"David\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p3\",\n      \"firstName\": \"Richard\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p4\",\n      \"firstName\": \"Joseph\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p5\",\n      \"firstName\": \"Thomas\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p6\",\n      \"firstName\": \"Charles\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p7\",\n      \"firstName\": \"Christopher\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    },\n    {\n      \"externalPlayerId\": \"div-40-coed-pickle-on-penn-p8\",\n      \"firstName\": \"Daniel\",\n      \"lastName\": \"Garcia\",\n      \"externalTeamId\": \"div-40-coed-pickle-on-penn\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/partners/indyleague/players/upsert",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "partners",
+            "indyleague",
+            "players",
+            "upsert"
+          ]
+        }
+      }
+    }
+  ]
+}
