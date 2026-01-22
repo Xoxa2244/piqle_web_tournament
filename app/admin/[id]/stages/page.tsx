@@ -1213,8 +1213,9 @@ function DivisionStageManagementContent() {
               </>
             )}
             
-            {/* Division switcher */}
-            <div className="flex items-center space-x-2">
+          {/* Division switcher */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm font-medium text-gray-700">Division:</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1239,7 +1240,7 @@ function DivisionStageManagementContent() {
                 ))}
               </select>
               
-              <Button
+            <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -1257,7 +1258,7 @@ function DivisionStageManagementContent() {
         {/* Match Day switcher for IndyLeague */}
         {isIndyLeague && (
           matchDaysForDivision.length > 0 ? (
-            <div className="flex items-center space-x-2 mt-4 pb-2 border-b border-gray-200">
+          <div className="flex items-center space-x-2 mt-3 pb-2 border-b border-gray-200">
               <span className="text-sm font-medium text-gray-700">Match Day:</span>
               <Button
                 variant="ghost"
