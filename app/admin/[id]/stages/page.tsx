@@ -280,7 +280,7 @@ function DivisionStageManagementContent() {
   })
 
   // Generate games for division
-  const generateGamesForDivision = trpc.indyMatchup.generateGamesForDivision.useMutation({
+  const generateGamesForTournament = trpc.indyMatchup.generateGamesForTournament.useMutation({
     onSuccess: (result) => {
       refetchMatchups()
       alert(`Games generated: ${result.generated}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`)
@@ -1271,6 +1271,22 @@ function DivisionStageManagementContent() {
             </Button>
           </div>
         )}
+        {isIndyLeague && (
+          <div className="mt-4 flex justify-end">
+            <Button
+              onClick={() => {
+                if (confirm('Generate games for all READY matchups across all days and divisions?')) {
+                  generateGamesForTournament.mutate({ tournamentId })
+                }
+              }}
+              disabled={generateGamesForTournament.isPending}
+              className="flex items-center space-x-2"
+            >
+              <Play className="h-4 w-4" />
+              <span>Generate All Games</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
@@ -1285,7 +1301,7 @@ function DivisionStageManagementContent() {
               </Card>
             ) : (
               <div className="space-y-6">
-                {/* Generate/Regenerate Games button for division */}
+                {/* Regenerate Games button for division */}
                 {selectedDivisionId && selectedMatchDayId && (() => {
                   // Check if any matchup has games
                   const hasGames = divisionMatchups.some((m: any) => m.games && m.games.length > 0)
@@ -1297,50 +1313,34 @@ function DivisionStageManagementContent() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm text-gray-600">
-                              {hasGames 
-                                ? 'Regenerate games for all matchups in this division (this will delete all existing games and scores)'
-                                : 'Generate games for all READY matchups in this division'}
+                              Regenerate games for all matchups in this division (this will delete all existing games and scores)
                             </p>
                           </div>
                           <Button
                             onClick={async () => {
-                              if (hasGames) {
-                                if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
-                                  try {
-                                    // Regenerate games for each matchup that has games
-                                    await Promise.all(
-                                      matchupsWithGames.map((matchup: any) =>
-                                        regenerateGames.mutateAsync({ matchupId: matchup.id })
-                                      )
+                              if (!hasGames) {
+                                alert('No games to regenerate for this division. Use "Generate All Games" above first.')
+                                return
+                              }
+                              if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
+                                try {
+                                  // Regenerate games for each matchup that has games
+                                  await Promise.all(
+                                    matchupsWithGames.map((matchup: any) =>
+                                      regenerateGames.mutateAsync({ matchupId: matchup.id })
                                     )
-                                    refetchMatchups()
-                                  } catch (error: any) {
-                                    alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
-                                  }
-                                }
-                              } else {
-                                if (confirm('Generate games for all READY matchups in this division?')) {
-                                  generateGamesForDivision.mutate({
-                                    divisionId: selectedDivisionId,
-                                    matchDayId: selectedMatchDayId,
-                                  })
+                                  )
+                                  refetchMatchups()
+                                } catch (error: any) {
+                                  alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
                                 }
                               }
                             }}
-                            disabled={generateGamesForDivision.isPending || regenerateGames.isPending}
+                            disabled={regenerateGames.isPending}
                             className="flex items-center space-x-2"
                           >
-                            {hasGames ? (
-                              <>
-                                <RotateCcw className="h-4 w-4" />
-                                <span>Regenerate Games</span>
-                              </>
-                            ) : (
-                              <>
-                                <Play className="h-4 w-4" />
-                                <span>Generate Games</span>
-                              </>
-                            )}
+                            <RotateCcw className="h-4 w-4" />
+                            <span>Regenerate Games</span>
                           </Button>
                         </div>
                       </CardContent>
