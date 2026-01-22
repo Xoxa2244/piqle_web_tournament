@@ -1,12 +1,12 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Calendar, Trash2, Edit } from 'lucide-react'
+import { Plus, Calendar, Trash2, Edit, Upload } from 'lucide-react'
 import TournamentNavBar from '@/components/TournamentNavBar'
 
 export default function MatchDaysPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +21,9 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [newDate, setNewDate] = useState('')
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: tournament } = trpc.tournament.get.useQuery(
     { id: tournamentId },
@@ -35,6 +38,10 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
     {
       enabled: !!tournamentId, // Only run query when tournamentId is available
     }
+  )
+  const { data: divisions } = trpc.division.list.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
   )
 
   // Check if user has admin access
@@ -58,6 +65,8 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       alert('Error creating match day: ' + error.message)
     },
   })
+
+  const createMatchup = trpc.indyMatchup.create.useMutation()
 
   const deleteMatchDay = trpc.matchDay.delete.useMutation({
     onSuccess: () => {
@@ -87,6 +96,160 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       tournamentId,
       date: newDate,
     })
+  }
+
+  const normalizeName = (value: string) => value.trim().toLowerCase()
+
+  const parseMatchupCsv = (csvText: string) => {
+    const lines = csvText.split('\n').map((line) => line.trim()).filter(Boolean)
+    if (lines.length === 0) {
+      throw new Error('CSV file is empty')
+    }
+
+    const headerLine = lines[0]
+    const delimiter = headerLine.includes(';') ? ';' : ','
+    const headers = headerLine.split(delimiter).map((h) => h.trim())
+    const requiredHeaders = ['Division', 'Date', 'Team 1', 'Team 2']
+    const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h))
+    if (missingHeaders.length > 0) {
+      throw new Error(`Missing required headers: ${missingHeaders.join(', ')}`)
+    }
+
+    const headerIndex = new Map(headers.map((h, idx) => [h, idx]))
+    const rows = lines.slice(1).map((line) => line.split(delimiter).map((v) => v.trim()))
+
+    return rows.map((row, index) => ({
+      divisionName: row[headerIndex.get('Division') ?? -1],
+      dateRaw: row[headerIndex.get('Date') ?? -1],
+      team1Name: row[headerIndex.get('Team 1') ?? -1],
+      team2Name: row[headerIndex.get('Team 2') ?? -1],
+      rowNumber: index + 2,
+    }))
+  }
+
+  const parseDateWithYear = (value: string, year: number) => {
+    if (!value) {
+      return null
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parsed = new Date(value)
+      return Number.isNaN(parsed.getTime()) ? null : parsed
+    }
+
+    const parts = value.split(',').map((part) => part.trim())
+    const datePart = parts.length > 1 ? parts.slice(1).join(' ') : value
+    const parsed = new Date(`${datePart}, ${year}`)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+
+  const handleCsvImport = async () => {
+    if (!csvFile) {
+      alert('Please select a CSV file')
+      return
+    }
+    if (!divisions || divisions.length === 0) {
+      alert('No divisions found. Please create divisions first.')
+      return
+    }
+    if (!matchDays) {
+      alert('Match days data is not loaded yet.')
+      return
+    }
+
+    setIsImporting(true)
+    try {
+      const csvText = await csvFile.text()
+      const entries = parseMatchupCsv(csvText)
+
+      const divisionMap = new Map(divisions.map((division: any) => [normalizeName(division.name), division]))
+      const teamMapByDivision = new Map(
+        divisions.map((division: any) => [
+          division.id,
+          new Map(division.teams.map((team: any) => [normalizeName(team.name), team])),
+        ])
+      )
+
+      const year = tournament?.startDate ? new Date(tournament.startDate).getFullYear() : new Date().getFullYear()
+      const existingDaysByDate = new Map(
+        matchDays.map((day) => [
+          new Date(day.date).toISOString().split('T')[0],
+          day,
+        ])
+      )
+
+      const existingMatchups = new Set<string>()
+      matchDays.forEach((day) => {
+        day.matchups?.forEach((matchup: any) => {
+          existingMatchups.add(`${day.id}:${matchup.homeTeamId}:${matchup.awayTeamId}`)
+          existingMatchups.add(`${day.id}:${matchup.awayTeamId}:${matchup.homeTeamId}`)
+        })
+      })
+
+      const createdDays = new Map<string, string>()
+      let createdMatchups = 0
+      const errors: string[] = []
+
+      for (const entry of entries) {
+        const division = divisionMap.get(normalizeName(entry.divisionName))
+        if (!division) {
+          errors.push(`Row ${entry.rowNumber}: Division not found - ${entry.divisionName}`)
+          continue
+        }
+
+        const teamMap = teamMapByDivision.get(division.id) || new Map()
+        const homeTeam = teamMap.get(normalizeName(entry.team1Name))
+        const awayTeam = teamMap.get(normalizeName(entry.team2Name))
+        if (!homeTeam || !awayTeam) {
+          errors.push(`Row ${entry.rowNumber}: Team not found - ${entry.team1Name} vs ${entry.team2Name}`)
+          continue
+        }
+
+        const parsedDate = parseDateWithYear(entry.dateRaw, year)
+        if (!parsedDate) {
+          errors.push(`Row ${entry.rowNumber}: Invalid date - ${entry.dateRaw}`)
+          continue
+        }
+
+        const dateKey = parsedDate.toISOString().split('T')[0]
+        let dayId = existingDaysByDate.get(dateKey)?.id || createdDays.get(dateKey)
+        if (!dayId) {
+          const createdDay = await createMatchDay.mutateAsync({
+            tournamentId,
+            date: dateKey,
+          })
+          dayId = createdDay.id
+          createdDays.set(dateKey, dayId)
+        }
+
+        const matchupKey = `${dayId}:${homeTeam.id}:${awayTeam.id}`
+        if (existingMatchups.has(matchupKey)) {
+          continue
+        }
+
+        await createMatchup.mutateAsync({
+          matchDayId: dayId,
+          divisionId: division.id,
+          homeTeamId: homeTeam.id,
+          awayTeamId: awayTeam.id,
+        })
+        existingMatchups.add(matchupKey)
+        existingMatchups.add(`${dayId}:${awayTeam.id}:${homeTeam.id}`)
+        createdMatchups += 1
+      }
+
+      await refetchMatchDays()
+      setCsvFile(null)
+
+      if (errors.length > 0) {
+        alert(`Import completed with warnings:\n${errors.join('\n')}`)
+      } else {
+        alert(`Import completed. Matchups created: ${createdMatchups}`)
+      }
+    } catch (error: any) {
+      alert(error?.message || 'CSV import failed')
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   const handleDelete = (matchDayId: string) => {
@@ -157,13 +320,37 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
               Manage match days for {tournament?.title}
             </p>
           </div>
-        <Button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Add Match Day
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            CSV Import
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleCsvImport}
+            disabled={!csvFile || isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Upload'}
+          </Button>
+          <Button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Match Day
+          </Button>
+        </div>
       </div>
 
       {showAddModal && (
