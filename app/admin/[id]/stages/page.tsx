@@ -225,15 +225,36 @@ function DivisionStageManagementContent() {
     { enabled: isIndyLeague && !!selectedMatchDayId }
   )
 
+  const matchDaysForDivision = useMemo(() => {
+    if (!matchDays) return []
+    if (!selectedDivisionId) return matchDays
+    return matchDays.filter((day: any) =>
+      (day.matchups || []).some((m: any) => m.divisionId === selectedDivisionId)
+    )
+  }, [matchDays, selectedDivisionId])
+
+  const getDivisionMatchupCount = (day: any) => {
+    if (!selectedDivisionId) return day.matchups?.length || 0
+    return (day.matchups || []).filter((m: any) => m.divisionId === selectedDivisionId).length
+  }
+
   // Filter matchups by selected division
   const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
 
-  // Set first match day as default
+  // Set first match day as default for selected division
   useEffect(() => {
-    if (isIndyLeague && matchDays && matchDays.length > 0 && !selectedMatchDayId) {
-      setSelectedMatchDayId(matchDays[0].id)
+    if (!isIndyLeague) return
+    if (!matchDaysForDivision || matchDaysForDivision.length === 0) {
+      if (selectedMatchDayId) {
+        setSelectedMatchDayId('')
+      }
+      return
     }
-  }, [isIndyLeague, matchDays, selectedMatchDayId])
+    const isSelectedDayValid = matchDaysForDivision.some((day: any) => day.id === selectedMatchDayId)
+    if (!selectedMatchDayId || !isSelectedDayValid) {
+      setSelectedMatchDayId(matchDaysForDivision[0].id)
+    }
+  }, [isIndyLeague, matchDaysForDivision, selectedMatchDayId])
 
   // Local state for optimistic updates
   const [localGameScores, setLocalGameScores] = useState<Record<string, { homeScore: number | null; awayScore: number | null }>>({})
@@ -1231,45 +1252,55 @@ function DivisionStageManagementContent() {
         </div>
 
         {/* Match Day switcher for IndyLeague */}
-        {isIndyLeague && matchDays && matchDays.length > 0 && (
-          <div className="flex items-center space-x-2 mt-4 pb-2 border-b border-gray-200">
-            <span className="text-sm font-medium text-gray-700">Match Day:</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const currentIndex = matchDays.findIndex((d: any) => d.id === selectedMatchDayId)
-                const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDays.length - 1
-                setSelectedMatchDayId(matchDays[prevIndex].id)
-              }}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            
-            <select
-              value={selectedMatchDayId}
-              onChange={(e) => setSelectedMatchDayId(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-            >
-              {matchDays.map((day: any) => (
-                <option key={day.id} value={day.id}>
-                  {formatDate(day.date)} ({day.matchups?.length || 0} matchups)
-                </option>
-              ))}
-            </select>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const currentIndex = matchDays.findIndex((d: any) => d.id === selectedMatchDayId)
-                const nextIndex = currentIndex < matchDays.length - 1 ? currentIndex + 1 : 0
-                setSelectedMatchDayId(matchDays[nextIndex].id)
-              }}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+        {isIndyLeague && (
+          matchDaysForDivision.length > 0 ? (
+            <div className="flex items-center space-x-2 mt-4 pb-2 border-b border-gray-200">
+              <span className="text-sm font-medium text-gray-700">Match Day:</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={matchDaysForDivision.length <= 1}
+                onClick={() => {
+                  const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDaysForDivision.length - 1
+                  setSelectedMatchDayId(matchDaysForDivision[prevIndex].id)
+                }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              
+              <select
+                value={selectedMatchDayId}
+                onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+              >
+                {matchDaysForDivision.map((day: any) => (
+                  <option key={day.id} value={day.id}>
+                    {formatDate(day.date)} ({getDivisionMatchupCount(day)} matchups)
+                  </option>
+                ))}
+              </select>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={matchDaysForDivision.length <= 1}
+                onClick={() => {
+                  const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                  const nextIndex = currentIndex < matchDaysForDivision.length - 1 ? currentIndex + 1 : 0
+                  setSelectedMatchDayId(matchDaysForDivision[nextIndex].id)
+                }}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-4 pb-2 border-b border-gray-200">
+              <p className="text-sm text-gray-600">
+                No match days with matchups for this division.
+              </p>
+            </div>
+          )
         )}
         {isIndyLeague && (
           <div className="mt-4 flex justify-end">
