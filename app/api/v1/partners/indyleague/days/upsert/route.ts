@@ -57,18 +57,64 @@ export const POST = withPartnerAuth(
           },
         })
 
+        const existingMappingByInternalId = existingDayByDate
+          ? await prisma.externalIdMapping.findFirst({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'MATCH_DAY',
+                internalId: existingDayByDate.id,
+              },
+            })
+          : null
+
         const existingInternalId = await getInternalId(
           context.partnerId,
           'MATCH_DAY',
           day.externalDayId
         )
 
-        if (existingDayByDate && existingDayByDate.id !== existingInternalId) {
+        if (
+          existingDayByDate &&
+          existingInternalId &&
+          existingDayByDate.id !== existingInternalId
+        ) {
           // Conflict: another day exists on this date
           results.push({
             externalDayId: day.externalDayId,
             status: 'updated',
             error: `A match day already exists for date ${day.date} in this tournament`,
+          })
+          continue
+        }
+
+        if (existingDayByDate && !existingInternalId) {
+          if (existingMappingByInternalId?.externalId?.startsWith('auto-')) {
+            await prisma.externalIdMapping.deleteMany({
+              where: {
+                partnerId: context.partnerId,
+                entityType: 'MATCH_DAY',
+                internalId: existingDayByDate.id,
+              },
+            })
+          } else if (existingMappingByInternalId) {
+            results.push({
+              externalDayId: day.externalDayId,
+              status: 'updated',
+              error: `Match day ${day.date} already mapped to external ID ${existingMappingByInternalId.externalId}`,
+            })
+            continue
+          }
+
+          await setExternalIdMapping(
+            context.partnerId,
+            'MATCH_DAY',
+            day.externalDayId,
+            existingDayByDate.id
+          )
+
+          results.push({
+            externalDayId: day.externalDayId,
+            status: 'updated',
           })
           continue
         }

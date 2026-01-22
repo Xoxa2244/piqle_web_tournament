@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withPartnerAuth } from '@/server/utils/partnerApiMiddleware'
 import { prisma } from '@/lib/prisma'
-import { getInternalId } from '@/server/utils/externalIdMapping'
+import { getInternalId, setExternalIdMapping } from '@/server/utils/externalIdMapping'
 import { ExternalEntityType } from '@prisma/client'
 
 async function getExternalIdMap(
@@ -27,6 +27,12 @@ async function getExternalIdMap(
 
   return new Map(mappings.map((m) => [m.internalId, m.externalId]))
 }
+
+const normalizeExternalId = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
 
 export async function GET(
   req: NextRequest,
@@ -128,6 +134,36 @@ export async function GET(
           getExternalIdMap(context.partnerId, 'DIVISION', Array.from(divisionIds)),
           getExternalIdMap(context.partnerId, 'TEAM', Array.from(teamIds)),
         ])
+
+      for (const day of matchDays) {
+        if (dayExternalIds.get(day.id)) continue
+
+        const dateKey = day.date.toISOString().split('T')[0]
+        const baseExternalId = `auto-${normalizeExternalId(externalTournamentId)}-day-${dateKey}`
+        let externalId = baseExternalId
+
+        const existingMapping = await prisma.externalIdMapping.findUnique({
+          where: {
+            partnerId_entityType_externalId: {
+              partnerId: context.partnerId,
+              entityType: 'MATCH_DAY',
+              externalId,
+            },
+          },
+        })
+
+        if (existingMapping && existingMapping.internalId !== day.id) {
+          externalId = `${baseExternalId}-${day.id.slice(0, 8)}`
+        }
+
+        await setExternalIdMapping(
+          context.partnerId,
+          'MATCH_DAY',
+          externalId,
+          day.id
+        )
+        dayExternalIds.set(day.id, externalId)
+      }
 
       const response = {
         externalTournamentId,
