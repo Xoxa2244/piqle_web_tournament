@@ -977,6 +977,89 @@ Email турнирного директора: director@example.com
                 </CardContent>
               </Card>
 
+              {/* Подписка на вебхуки */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-green-600">POST</Badge>
+                    <CardTitle className="mb-0">Подписка на вебхуки</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-gray-700">
+                    Регистрация URL для вебхуков расписания и результатов. При изменениях Piqle отправляет POST
+                    на URL партнера с подписанным payload. Секрет возвращается только при первом создании.
+                  </p>
+                  <div>
+                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">/partners/webhooks</code>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">События:</h3>
+                    <ul className="list-disc list-inside text-gray-700 space-y-1">
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">schedule.updated</code></li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">results.updated</code></li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Пример запроса:</h3>
+                    <CodeBlock
+                      id="webhooks-request"
+                      code={JSON.stringify({
+                        scheduleUpdatedUrl: "https://partner.example.com/webhooks/schedule",
+                        resultsUpdatedUrl: "https://partner.example.com/webhooks/results"
+                      }, null, 2)}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Ответ (200):</h3>
+                    <CodeBlock
+                      id="webhooks-response"
+                      code={JSON.stringify({
+                        webhooks: [
+                          {
+                            event: "schedule.updated",
+                            url: "https://partner.example.com/webhooks/schedule",
+                            isActive: true,
+                            secret: "returned-only-on-create"
+                          },
+                          {
+                            event: "results.updated",
+                            url: "https://partner.example.com/webhooks/results",
+                            isActive: true,
+                            secret: "returned-only-on-create"
+                          }
+                        ]
+                      }, null, 2)}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Заголовки доставки:</h3>
+                    <CodeBlock
+                      id="webhooks-headers"
+                      code={`X-Piqle-Event: schedule.updated | results.updated
+X-Piqle-Timestamp: 2026-02-17T10:25:00Z
+X-Piqle-Signature: sha256=...`}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Payload доставки:</h3>
+                    <CodeBlock
+                      id="webhooks-payload"
+                      code={JSON.stringify({
+                        event: "schedule.updated",
+                        partnerId: "partner_123",
+                        tournamentExternalId: "tournament-001",
+                        changedAt: "2026-02-17T10:25:00Z",
+                        details: {
+                          matchDayExternalId: "day-001",
+                          matchupExternalId: "matchup-001"
+                        }
+                      }, null, 2)}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Cleanup Tournament */}
               <Card>
                 <CardHeader>
