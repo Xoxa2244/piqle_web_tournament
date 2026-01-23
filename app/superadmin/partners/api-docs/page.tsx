@@ -159,7 +159,7 @@ Email турнирного директора: director@example.com
                       <span className="text-red-600 font-semibold"> ⚠️ Храните в секрете!</span>
                     </li>
                     <li>
-                      <strong>Base URL</strong> — адрес API (например: <code className="bg-green-100 px-1 py-0.5 rounded">https://rtest.piqle.io/api/v1/partners/indyleague</code>)
+                      <strong>Base URL</strong> — адрес API (например: <code className="bg-green-100 px-1 py-0.5 rounded">https://dev.piqle.io/api/v1/partners/indyleague</code>)
                     </li>
                   </ul>
                 </div>
@@ -460,7 +460,7 @@ Email турнирного директора: director@example.com
               <CardContent>
                 <CodeBlock
                   id="base-url"
-                  code={`https://rtest.piqle.io/api/v1/partners/indyleague`}
+                  code={`https://dev.piqle.io/api/v1/partners/indyleague`}
                 />
               </CardContent>
             </Card>

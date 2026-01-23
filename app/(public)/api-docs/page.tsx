@@ -150,7 +150,7 @@ Best regards,
                       <span className="text-red-600 font-semibold"> ⚠️ Keep secret!</span>
                     </li>
                     <li>
-                      <strong>Base URL</strong> — API address (e.g., <code className="bg-green-100 px-1 py-0.5 rounded">https://rtest.piqle.io/api/v1/partners/indyleague</code>)
+                      <strong>Base URL</strong> — API address (e.g., <code className="bg-green-100 px-1 py-0.5 rounded">https://dev.piqle.io/api/v1/partners/indyleague</code>)
                     </li>
                   </ul>
                 </div>
@@ -451,7 +451,7 @@ Best regards,
               <CardContent>
                 <CodeBlock
                   id="base-url"
-                  code={`https://rtest.piqle.io/api/v1/partners/indyleague`}
+                  code={`https://dev.piqle.io/api/v1/partners/indyleague`}
                 />
               </CardContent>
             </Card>
