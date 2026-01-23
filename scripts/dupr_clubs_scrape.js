@@ -131,9 +131,25 @@ async function run() {
 
   await page.goto(CLUBS_URL, { waitUntil: 'domcontentloaded' })
   await loginIfNeeded(page, email, password)
+  console.log(`After login, URL: ${page.url()}`)
 
   await page.waitForTimeout(2000)
   const clubLinks = await collectClubLinks(page)
+  console.log(`Found ${clubLinks.length} club links`)
+
+  if (clubLinks.length === 0) {
+    try {
+      const debugDir = path.dirname(outPath)
+      const screenshotPath = path.join(debugDir, 'dupr_clubs_debug.png')
+      const htmlPath = path.join(debugDir, 'dupr_clubs_debug.html')
+      await page.screenshot({ path: screenshotPath, fullPage: true })
+      fs.writeFileSync(htmlPath, await page.content(), 'utf8')
+      console.log(`Saved debug snapshot: ${screenshotPath}`)
+      console.log(`Saved debug HTML: ${htmlPath}`)
+    } catch (error) {
+      console.log('Failed to save debug artifacts', error)
+    }
+  }
 
   const rows = []
   for (const link of clubLinks) {
