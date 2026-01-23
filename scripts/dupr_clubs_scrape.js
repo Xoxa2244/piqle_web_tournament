@@ -46,6 +46,14 @@ async function loginIfNeeded(page, email, password) {
   }
 }
 
+async function waitForEnter(promptText) {
+  return new Promise((resolve) => {
+    process.stdout.write(promptText)
+    process.stdin.setEncoding('utf8')
+    process.stdin.once('data', () => resolve())
+  })
+}
+
 async function collectClubLinks(page) {
   const links = new Set()
   let lastCount = 0
@@ -123,6 +131,8 @@ async function run() {
   const email = requireEnv('DUPR_EMAIL')
   const password = requireEnv('DUPR_PASSWORD')
   const headless = process.env.HEADLESS === '1'
+  const manualLogin = process.env.MANUAL_LOGIN === '1'
+  const waitForUser = process.env.WAIT_FOR_USER === '1'
   const outPath = process.env.OUTPUT_CSV || path.join('InLg', 'dupr_clubs.csv')
 
   const browser = await chromium.launch({ headless })
@@ -130,7 +140,16 @@ async function run() {
   const page = await context.newPage()
 
   await page.goto(CLUBS_URL, { waitUntil: 'domcontentloaded' })
-  await loginIfNeeded(page, email, password)
+  if (manualLogin) {
+    await acceptCookiesIfPresent(page)
+    console.log('Manual login enabled. Please log in in the opened browser window.')
+    await page.waitForURL(/dashboard\/browse\/clubs/, { timeout: 0 })
+  } else {
+    await loginIfNeeded(page, email, password)
+  }
+  if (waitForUser && !headless) {
+    await waitForEnter('Press Enter to continue after you see the Clubs page...\n')
+  }
   console.log(`After login, URL: ${page.url()}`)
 
   await page.waitForTimeout(2000)
