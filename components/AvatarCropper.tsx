@@ -46,14 +46,14 @@ export default function AvatarCropper({
       const containerHeight = containerRef.current.clientHeight
       
       // Fit image to container while maintaining aspect ratio
-      const scale = Math.min(
+      const baseScale = Math.min(
         containerWidth / naturalWidth,
         containerHeight / naturalHeight,
         1 // Don't scale up
       )
       
-      const displayedWidth = naturalWidth * scale
-      const displayedHeight = naturalHeight * scale
+      const displayedWidth = naturalWidth * baseScale * zoom
+      const displayedHeight = naturalHeight * baseScale * zoom
       setDisplayedImageSize({ width: displayedWidth, height: displayedHeight })
       
       // Center crop area initially, but ensure it's within image bounds
@@ -64,12 +64,18 @@ export default function AvatarCropper({
       const cropX = imageLeft + (displayedWidth - cropSize) / 2
       const cropY = imageTop + (displayedHeight - cropSize) / 2
       
+      // Ensure crop is within image bounds
+      const minX = Math.max(0, imageLeft)
+      const maxX = Math.min(containerWidth - cropSize, imageLeft + displayedWidth - cropSize)
+      const minY = Math.max(0, imageTop)
+      const maxY = Math.min(containerHeight - cropSize, imageTop + displayedHeight - cropSize)
+      
       setCrop({
-        x: Math.max(imageLeft, Math.min(containerWidth - cropSize, cropX)),
-        y: Math.max(imageTop, Math.min(containerHeight - cropSize, cropY)),
+        x: Math.max(minX, Math.min(maxX, cropX)),
+        y: Math.max(minY, Math.min(maxY, cropY)),
       })
     }
-  }, [])
+  }, [zoom])
 
   // Handle crop area dragging
   const handleCropMouseDown = (e: React.MouseEvent) => {
@@ -78,8 +84,8 @@ export default function AvatarCropper({
     setDragStart({ x: e.clientX - crop.x, y: e.clientY - crop.y })
   }
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !containerRef.current || !imageRef.current) return
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || !containerRef.current) return
     
     const newX = e.clientX - dragStart.x
     const newY = e.clientY - dragStart.y
@@ -90,22 +96,39 @@ export default function AvatarCropper({
     const displayedWidth = displayedImageSize.width
     const displayedHeight = displayedImageSize.height
     
+    // If image not loaded yet, just constrain to container
+    if (displayedWidth === 0 || displayedHeight === 0) {
+      setCrop({
+        x: Math.max(0, Math.min(containerWidth - cropSize, newX)),
+        y: Math.max(0, Math.min(containerHeight - cropSize, newY)),
+      })
+      return
+    }
+    
     const imageLeft = (containerWidth - displayedWidth) / 2
     const imageTop = (containerHeight - displayedHeight) / 2
     const imageRight = imageLeft + displayedWidth
     const imageBottom = imageTop + displayedHeight
     
     // Crop area must stay within image bounds
-    const minX = imageLeft
-    const maxX = imageRight - cropSize
-    const minY = imageTop
-    const maxY = imageBottom - cropSize
+    // Calculate valid range for crop position
+    const minX = Math.max(0, imageLeft)
+    const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
+    const minY = Math.max(0, imageTop)
+    const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
     
+    // Ensure bounds are valid (max >= min)
+    const validMinX = Math.min(minX, maxX)
+    const validMaxX = Math.max(minX, maxX)
+    const validMinY = Math.min(minY, maxY)
+    const validMaxY = Math.max(minY, maxY)
+    
+    // Constrain crop to image bounds
     setCrop({
-      x: Math.max(minX, Math.min(maxX, newX)),
-      y: Math.max(minY, Math.min(maxY, newY)),
+      x: Math.max(validMinX, Math.min(validMaxX, newX)),
+      y: Math.max(validMinY, Math.min(validMaxY, newY)),
     })
-  }
+  }, [isDragging, dragStart, displayedImageSize])
 
   const handleMouseUp = () => {
     setIsDragging(false)
@@ -113,35 +136,40 @@ export default function AvatarCropper({
 
   // Update displayed size when zoom changes
   useEffect(() => {
-    if (imageRef.current && imageSize.width > 0) {
+    if (imageRef.current && imageSize.width > 0 && containerRef.current) {
       const naturalWidth = imageSize.width
       const naturalHeight = imageSize.height
+      const containerWidth = containerRef.current.clientWidth
+      const containerHeight = containerRef.current.clientHeight
       
-      if (containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth
-        const containerHeight = containerRef.current.clientHeight
+      const baseScale = Math.min(
+        containerWidth / naturalWidth,
+        containerHeight / naturalHeight,
+        1
+      )
+      const scale = baseScale * zoom
+      
+      const displayedWidth = naturalWidth * scale
+      const displayedHeight = naturalHeight * scale
+      setDisplayedImageSize({ width: displayedWidth, height: displayedHeight })
+      
+      // Adjust crop position to stay within image bounds
+      const imageLeft = (containerWidth - displayedWidth) / 2
+      const imageTop = (containerHeight - displayedHeight) / 2
+      const imageRight = imageLeft + displayedWidth
+      const imageBottom = imageTop + displayedHeight
+      
+      setCrop(prev => {
+        const minX = Math.max(0, imageLeft)
+        const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
+        const minY = Math.max(0, imageTop)
+        const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
         
-        const scale = Math.min(
-          containerWidth / naturalWidth,
-          containerHeight / naturalHeight,
-          1
-        ) * zoom
-        
-        const displayedWidth = naturalWidth * scale
-        const displayedHeight = naturalHeight * scale
-        setDisplayedImageSize({ width: displayedWidth, height: displayedHeight })
-        
-        // Adjust crop position to stay within image bounds
-        const imageLeft = (containerWidth - displayedWidth) / 2
-        const imageTop = (containerHeight - displayedHeight) / 2
-        const imageRight = imageLeft + displayedWidth
-        const imageBottom = imageTop + displayedHeight
-        
-        setCrop(prev => ({
-          x: Math.max(imageLeft, Math.min(imageRight - cropSize, prev.x)),
-          y: Math.max(imageTop, Math.min(imageBottom - cropSize, prev.y)),
-        }))
-      }
+        return {
+          x: Math.max(minX, Math.min(maxX, prev.x)),
+          y: Math.max(minY, Math.min(maxY, prev.y)),
+        }
+      })
     }
   }, [zoom, imageSize])
 
@@ -234,6 +262,7 @@ export default function AvatarCropper({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            style={{ userSelect: 'none' }}
           >
             {/* Image - fixed position, scaled by zoom */}
             <div
@@ -263,16 +292,69 @@ export default function AvatarCropper({
 
             {/* Crop Overlay - draggable */}
             <div
-              className="absolute border-2 border-white shadow-lg cursor-move"
+              className="absolute border-2 border-white shadow-lg"
               style={{
                 left: `${crop.x}px`,
                 top: `${crop.y}px`,
                 width: `${cropSize}px`,
                 height: `${cropSize}px`,
                 boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
-                cursor: isDragging ? 'grabbing' : 'grab',
+                cursor: isDragging ? 'grabbing' : 'move',
+                touchAction: 'none',
               }}
               onMouseDown={handleCropMouseDown}
+              onTouchStart={(e) => {
+                e.preventDefault()
+                const touch = e.touches[0]
+                setIsDragging(true)
+                setDragStart({ x: touch.clientX - crop.x, y: touch.clientY - crop.y })
+              }}
+              onTouchMove={(e) => {
+                if (!isDragging) return
+                e.preventDefault()
+                const touch = e.touches[0]
+                if (!containerRef.current) return
+                
+                const newX = touch.clientX - dragStart.x
+                const newY = touch.clientY - dragStart.y
+                
+                const containerWidth = containerRef.current.clientWidth
+                const containerHeight = containerRef.current.clientHeight
+                const displayedWidth = displayedImageSize.width
+                const displayedHeight = displayedImageSize.height
+                
+                if (displayedWidth === 0 || displayedHeight === 0) {
+                  setCrop({
+                    x: Math.max(0, Math.min(containerWidth - cropSize, newX)),
+                    y: Math.max(0, Math.min(containerHeight - cropSize, newY)),
+                  })
+                  return
+                }
+                
+                const imageLeft = (containerWidth - displayedWidth) / 2
+                const imageTop = (containerHeight - displayedHeight) / 2
+                const imageRight = imageLeft + displayedWidth
+                const imageBottom = imageTop + displayedHeight
+                
+                const minX = Math.max(0, imageLeft)
+                const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
+                const minY = Math.max(0, imageTop)
+                const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
+                
+                // Ensure bounds are valid (max >= min)
+                const validMinX = Math.min(minX, maxX)
+                const validMaxX = Math.max(minX, maxX)
+                const validMinY = Math.min(minY, maxY)
+                const validMaxY = Math.max(minY, maxY)
+                
+                setCrop({
+                  x: Math.max(validMinX, Math.min(validMaxX, newX)),
+                  y: Math.max(validMinY, Math.min(validMaxY, newY)),
+                })
+              }}
+              onTouchEnd={() => {
+                setIsDragging(false)
+              }}
             >
               <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
                 {[...Array(9)].map((_, i) => (
