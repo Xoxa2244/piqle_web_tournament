@@ -12,12 +12,12 @@ export const publicRouter = createTRPCRouter({
         id: true,
         title: true,
         description: true,
-        image: true,
         venueName: true,
         startDate: true,
         endDate: true,
         entryFee: true,
         publicSlug: true,
+        image: true,
         user: {
           select: {
             id: true,

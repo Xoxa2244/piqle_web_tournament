@@ -5,15 +5,69 @@ import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import ImageCropper from '@/components/ImageCropper'
-import { Camera, X } from 'lucide-react'
+import AvatarCropper from '@/components/AvatarCropper'
 import Image from 'next/image'
+import { Upload, X } from 'lucide-react'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
 
+// Helper function to resize image on client side
+function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        // Calculate new dimensions if image is too large
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height / width) * maxSize
+            width = maxSize
+          } else {
+            width = (width / height) * maxSize
+            height = maxSize
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob'))
+            }
+          },
+          'image/jpeg',
+          0.85 // Quality
+        )
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      if (e.target?.result) {
+        img.src = e.target.result as string
+      }
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function NewTournamentPage() {
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -32,7 +86,6 @@ export default function NewTournamentPage() {
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const createTournament = trpc.tournament.create.useMutation({
     onSuccess: (tournament) => {
@@ -61,10 +114,10 @@ export default function NewTournamentPage() {
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
+      image: formData.image || undefined,
       format: formData.format,
       seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
       timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
-      image: formData.image || undefined,
     })
   }
 
@@ -80,21 +133,32 @@ export default function NewTournamentPage() {
     router.back()
   }, [router])
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Please select an image file')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      setCropperImageSrc(e.target?.result as string)
-      setShowCropper(true)
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
     }
-    reader.readAsDataURL(file)
+
+    // Resize image before showing cropper
+    try {
+      const resizedBlob = await resizeImage(file, 1920)
+      const resizedUrl = URL.createObjectURL(resizedBlob)
+      setCropperImageSrc(resizedUrl)
+      setShowCropper(true)
+    } catch (error) {
+      console.error('Error resizing image:', error)
+      alert('Failed to process image. Please try again.')
+    }
   }
 
   const handleCropComplete = async (croppedImageUrl: string) => {
@@ -105,9 +169,15 @@ export default function NewTournamentPage() {
       // Convert blob URL to File
       const response = await fetch(croppedImageUrl)
       const blob = await response.blob()
-      const file = new File([blob], 'tournament-image.jpg', { type: 'image/jpeg' })
+      
+      // Resize cropped image to max 1920px before upload
+      const resizedBlob = await resizeImage(
+        new File([blob], 'tournament-image.jpg', { type: 'image/jpeg' }),
+        1920
+      )
+      const file = new File([resizedBlob], 'tournament-image.jpg', { type: 'image/jpeg' })
 
-      // Upload cropped file
+      // Upload cropped and resized file
       const formData = new FormData()
       formData.append('file', file)
 
@@ -125,13 +195,15 @@ export default function NewTournamentPage() {
       setImagePreview(data.url)
       setFormData(prev => ({ ...prev, image: data.url }))
       
-      // Clean up blob URL
+      // Clean up blob URLs
       URL.revokeObjectURL(croppedImageUrl)
+      if (cropperImageSrc) {
+        URL.revokeObjectURL(cropperImageSrc)
+      }
     } catch (error) {
       console.error('Upload error:', error)
       alert('Failed to upload image. Please try again.')
       setImagePreview(null)
-      setFormData(prev => ({ ...prev, image: '' }))
     } finally {
       setIsUploadingImage(false)
       setCropperImageSrc(null)
@@ -140,6 +212,9 @@ export default function NewTournamentPage() {
 
   const handleCropperClose = () => {
     setShowCropper(false)
+    if (cropperImageSrc) {
+      URL.revokeObjectURL(cropperImageSrc)
+    }
     setCropperImageSrc(null)
     // Reset file input
     if (fileInputRef.current) {
@@ -202,23 +277,25 @@ export default function NewTournamentPage() {
               />
             </div>
 
+            {/* Tournament Image */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tournament Image
               </label>
               {imagePreview ? (
                 <div className="relative inline-block">
-                  <Image
-                    src={imagePreview}
-                    alt="Tournament preview"
-                    width={200}
-                    height={200}
-                    className="rounded-lg object-cover border border-gray-300"
-                  />
+                  <div className="relative w-48 h-48 rounded-lg overflow-hidden border border-gray-300">
+                    <Image
+                      src={imagePreview}
+                      alt="Tournament preview"
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleRemoveImage}
-                    className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -231,22 +308,23 @@ export default function NewTournamentPage() {
                     accept="image/*"
                     onChange={handleImageChange}
                     className="hidden"
-                    id="image-upload"
+                    id="tournament-image"
                   />
                   <label
-                    htmlFor="image-upload"
-                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50"
+                    htmlFor="tournament-image"
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors"
                   >
-                    <Camera className="h-5 w-5 text-gray-500" />
-                    <span className="text-sm text-gray-700">
-                      {isUploadingImage ? 'Uploading...' : 'Upload Image'}
-                    </span>
+                    <Upload className="h-4 w-4" />
+                    <span>Upload Image</span>
                   </label>
-                  <p className="text-xs text-gray-500">
-                    Square image recommended (will be cropped to 800x800px)
-                  </p>
+                  {isUploadingImage && (
+                    <span className="text-sm text-gray-500">Uploading...</span>
+                  )}
                 </div>
               )}
+              <p className="mt-1 text-sm text-gray-500">
+                Upload a square image for your tournament (max 5MB). Image will be cropped to square.
+              </p>
             </div>
 
             <div>
@@ -422,13 +500,15 @@ export default function NewTournamentPage() {
         </CardContent>
       </Card>
 
+      {/* Image Cropper Modal */}
       {cropperImageSrc && (
-        <ImageCropper
+        <AvatarCropper
           imageSrc={cropperImageSrc}
           isOpen={showCropper}
           onClose={handleCropperClose}
           onCrop={handleCropComplete}
-          maxSize={800}
+          aspectRatio={1}
+          title="Crop Tournament Image"
         />
       )}
     </div>

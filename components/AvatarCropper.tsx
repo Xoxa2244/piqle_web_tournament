@@ -11,6 +11,7 @@ interface AvatarCropperProps {
   onClose: () => void
   onCrop: (croppedImageUrl: string) => void
   aspectRatio?: number
+  title?: string
 }
 
 export default function AvatarCropper({
@@ -19,6 +20,7 @@ export default function AvatarCropper({
   onClose,
   onCrop,
   aspectRatio = 1,
+  title = 'Crop Avatar',
 }: AvatarCropperProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -143,16 +145,32 @@ export default function AvatarCropper({
   const handleMove = (direction: 'up' | 'down' | 'left' | 'right') => {
     const step = 10
     setCrop((prev) => {
-      const maxX = (containerRef.current?.clientWidth || 600) - cropSize
-      const maxY = (containerRef.current?.clientHeight || 400) - cropSize
+      if (!containerRef.current || !imageRef.current) return prev
+      
+      const containerWidth = containerRef.current.clientWidth
+      const containerHeight = containerRef.current.clientHeight
+      
+      // Calculate image bounds considering zoom and position
+      const displayedWidth = imageRef.current.clientWidth * zoom
+      const displayedHeight = imageRef.current.clientHeight * zoom
+      const imageLeft = imagePosition.x
+      const imageTop = imagePosition.y
+      const imageRight = imageLeft + displayedWidth
+      const imageBottom = imageTop + displayedHeight
+      
+      // Crop area must stay within image bounds
+      const minX = Math.max(0, imageLeft)
+      const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
+      const minY = Math.max(0, imageTop)
+      const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
       
       switch (direction) {
         case 'up':
-          return { ...prev, y: Math.max(0, prev.y - step) }
+          return { ...prev, y: Math.max(minY, prev.y - step) }
         case 'down':
           return { ...prev, y: Math.min(maxY, prev.y + step) }
         case 'left':
-          return { ...prev, x: Math.max(0, prev.x - step) }
+          return { ...prev, x: Math.max(minX, prev.x - step) }
         case 'right':
           return { ...prev, x: Math.min(maxX, prev.x + step) }
         default:
@@ -167,7 +185,7 @@ export default function AvatarCropper({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
-          <CardTitle>Crop Avatar</CardTitle>
+          <CardTitle>{title}</CardTitle>
           <Button
             variant="ghost"
             size="sm"

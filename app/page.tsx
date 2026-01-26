@@ -402,10 +402,10 @@ export default function HomePage() {
                     />
                   </div>
                 )}
-                {tournament.image && (
+                {(tournament as any).image && (
                   <div className="w-full h-48 relative overflow-hidden rounded-t-lg">
                     <Image
-                      src={tournament.image}
+                      src={(tournament as any).image}
                       alt={tournament.title}
                       fill
                       className="object-cover"
@@ -610,10 +610,10 @@ export default function HomePage() {
                 <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
                     {/* Tournament Image */}
-                    {tournament.image && (
+                    {(tournament as any).image && (
                       <div className="w-full aspect-square relative overflow-hidden rounded-lg">
                         <Image
-                          src={tournament.image}
+                          src={(tournament as any).image}
                           alt={tournament.title}
                           fill
                           className="object-cover"

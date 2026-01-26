@@ -82,7 +82,6 @@ model Tournament {
   id                      String                    @id @default(uuid())
   title                   String
   description             String?
-  image                   String?
   rulesUrl                String?
   venueName               String?
   venueAddress            String?
@@ -91,6 +90,7 @@ model Tournament {
   entryFee                Decimal?                  @db.Decimal(10, 2)
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
+  image                   String?
   format                  TournamentFormat          @default(SINGLE_ELIMINATION)
   allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
   seasonLabel             String?                   @map("season_label")

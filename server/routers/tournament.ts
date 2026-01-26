@@ -13,7 +13,6 @@ export const tournamentRouter = createTRPCRouter({
     .input(z.object({
       title: z.string().min(1),
       description: z.string().optional(),
-      image: z.string().url().optional(),
       rulesUrl: z.string().url().optional(),
       venueName: z.string().optional(),
       venueAddress: z.string().optional(),
@@ -23,6 +22,7 @@ export const tournamentRouter = createTRPCRouter({
       isPublicBoardEnabled: z.boolean().default(false),
       allowDuprSubmission: z.boolean().default(false),
       publicSlug: z.string().optional(),
+      image: z.string().url().optional(),
       format: z.enum(['SINGLE_ELIMINATION', 'MLP', 'INDY_LEAGUE']).default('SINGLE_ELIMINATION'),
       seasonLabel: z.string().optional(),
       timezone: z.string().optional(),
@@ -43,7 +43,6 @@ export const tournamentRouter = createTRPCRouter({
         data: {
           title: input.title,
           description: input.description,
-          image: input.image,
           rulesUrl: input.rulesUrl,
           venueName: input.venueName,
           venueAddress: input.venueAddress,
@@ -52,6 +51,7 @@ export const tournamentRouter = createTRPCRouter({
           entryFee: input.entryFee,
           isPublicBoardEnabled: input.isPublicBoardEnabled,
           allowDuprSubmission: input.allowDuprSubmission,
+          image: input.image,
           format: input.format,
           seasonLabel: input.seasonLabel,
           timezone: input.timezone,

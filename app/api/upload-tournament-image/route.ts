@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Maximum file size: 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -23,9 +26,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File must be an image' }, { status: 400 })
     }
 
-    // Validate file size (max 2MB - should be already resized on client)
-    if (file.size > 2 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File size must be less than 2MB' }, { status: 400 })
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'File size must be less than 5MB' }, { status: 400 })
     }
 
     // Convert file to buffer
@@ -33,14 +36,14 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer)
 
     // Generate unique filename
-    const fileExt = 'jpg' // Always use jpg for consistency
+    const fileExt = file.name.split('.').pop() || 'jpg'
     const fileName = `tournament-${session.user.id}-${Date.now()}.${fileExt}`
 
-    // Upload to Supabase Storage (tournament-images bucket)
+    // Upload to Supabase Storage
     const { data, error } = await supabaseAdmin.storage
       .from('tournament-images')
       .upload(fileName, buffer, {
-        contentType: 'image/jpeg',
+        contentType: file.type,
         upsert: false
       })
 
