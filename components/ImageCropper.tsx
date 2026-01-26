@@ -60,7 +60,7 @@ export default function ImageCropper({
   }
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !containerRef.current) return
+    if (!isDragging || !containerRef.current || !imageRef.current) return
     
     const newX = e.clientX - dragStart.x
     const newY = e.clientY - dragStart.y
@@ -70,23 +70,45 @@ export default function ImageCropper({
     
     // Calculate image dimensions with zoom
     const img = imageRef.current
-    if (!img) return
-    
     const imgWidth = img.clientWidth * zoom
     const imgHeight = img.clientHeight * zoom
     
-    // Constrain image position so crop area always covers part of image
+    // Crop area position (centered)
     const cropX = (containerWidth - cropSize) / 2
     const cropY = (containerHeight - cropSize) / 2
     
+    // Calculate bounds to ensure crop area is always fully within image
+    // The crop square must be completely inside the image
+    // minX: when right edge of image aligns with right edge of crop (image.x = cropX + cropSize - imgWidth)
+    // maxX: when left edge of image aligns with left edge of crop (image.x = cropX)
     const minX = cropX + cropSize - imgWidth
     const maxX = cropX
     const minY = cropY + cropSize - imgHeight
     const maxY = cropY
     
+    // Clamp position to ensure crop area is always fully on image
+    let clampedX = newX
+    let clampedY = newY
+    
+    if (imgWidth >= cropSize) {
+      // Image is wide enough - constrain horizontally
+      clampedX = Math.max(minX, Math.min(maxX, newX))
+    } else {
+      // Image is narrower than crop - center it horizontally
+      clampedX = cropX + (cropSize - imgWidth) / 2
+    }
+    
+    if (imgHeight >= cropSize) {
+      // Image is tall enough - constrain vertically
+      clampedY = Math.max(minY, Math.min(maxY, newY))
+    } else {
+      // Image is shorter than crop - center it vertically
+      clampedY = cropY + (cropSize - imgHeight) / 2
+    }
+    
     setImagePosition({
-      x: Math.max(minX, Math.min(maxX, newX)),
-      y: Math.max(minY, Math.min(maxY, newY)),
+      x: clampedX,
+      y: clampedY,
     })
   }, [isDragging, dragStart, zoom, cropSize])
 
@@ -173,7 +195,7 @@ export default function ImageCropper({
     setZoom((prev) => {
       const newZoom = Math.max(1, Math.min(3, prev + delta))
       
-      // Adjust image position when zooming to keep crop area centered on image
+      // Adjust image position when zooming to keep crop area fully on image
       if (containerRef.current && imageRef.current) {
         const containerWidth = containerRef.current.clientWidth
         const containerHeight = containerRef.current.clientHeight
@@ -184,11 +206,29 @@ export default function ImageCropper({
         const imgWidth = img.clientWidth * newZoom
         const imgHeight = img.clientHeight * newZoom
         
-        // Center image on crop area
-        setImagePosition({
-          x: cropX + (cropSize - imgWidth) / 2,
-          y: cropY + (cropSize - imgHeight) / 2,
-        })
+        // Calculate bounds
+        const minX = cropX + cropSize - imgWidth
+        const maxX = cropX
+        const minY = cropY + cropSize - imgHeight
+        const maxY = cropY
+        
+        // If image is smaller than crop, center it; otherwise constrain to bounds
+        let newX = imagePosition.x
+        let newY = imagePosition.y
+        
+        if (imgWidth < cropSize) {
+          newX = cropX + (cropSize - imgWidth) / 2
+        } else {
+          newX = Math.max(minX, Math.min(maxX, imagePosition.x))
+        }
+        
+        if (imgHeight < cropSize) {
+          newY = cropY + (cropSize - imgHeight) / 2
+        } else {
+          newY = Math.max(minY, Math.min(maxY, imagePosition.y))
+        }
+        
+        setImagePosition({ x: newX, y: newY })
       }
       
       return newZoom
