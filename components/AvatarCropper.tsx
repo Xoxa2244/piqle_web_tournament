@@ -64,11 +64,11 @@ export default function AvatarCropper({
       const cropX = imageLeft + (displayedWidth - cropSize) / 2
       const cropY = imageTop + (displayedHeight - cropSize) / 2
       
-      // Ensure crop is within image bounds
-      const minX = Math.max(0, imageLeft)
-      const maxX = Math.min(containerWidth - cropSize, imageLeft + displayedWidth - cropSize)
-      const minY = Math.max(0, imageTop)
-      const maxY = Math.min(containerHeight - cropSize, imageTop + displayedHeight - cropSize)
+      // Ensure crop is within image bounds (allow full range of displayed image)
+      const minX = imageLeft
+      const maxX = imageLeft + displayedWidth - cropSize
+      const minY = imageTop
+      const maxY = imageTop + displayedHeight - cropSize
       
       setCrop({
         x: Math.max(minX, Math.min(maxX, cropX)),
@@ -105,28 +105,23 @@ export default function AvatarCropper({
       return
     }
     
+    // Image center position in container
     const imageLeft = (containerWidth - displayedWidth) / 2
     const imageTop = (containerHeight - displayedHeight) / 2
     const imageRight = imageLeft + displayedWidth
     const imageBottom = imageTop + displayedHeight
     
     // Crop area must stay within image bounds
-    // Calculate valid range for crop position
-    const minX = Math.max(0, imageLeft)
-    const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
-    const minY = Math.max(0, imageTop)
-    const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
+    // Allow crop to move anywhere within the displayed image, even if image extends beyond container
+    const minX = imageLeft
+    const maxX = imageRight - cropSize
+    const minY = imageTop
+    const maxY = imageBottom - cropSize
     
-    // Ensure bounds are valid (max >= min)
-    const validMinX = Math.min(minX, maxX)
-    const validMaxX = Math.max(minX, maxX)
-    const validMinY = Math.min(minY, maxY)
-    const validMaxY = Math.max(minY, maxY)
-    
-    // Constrain crop to image bounds
+    // Constrain crop to image bounds (not container bounds)
     setCrop({
-      x: Math.max(validMinX, Math.min(validMaxX, newX)),
-      y: Math.max(validMinY, Math.min(validMaxY, newY)),
+      x: Math.max(minX, Math.min(maxX, newX)),
+      y: Math.max(minY, Math.min(maxY, newY)),
     })
   }, [isDragging, dragStart, displayedImageSize])
 
@@ -160,10 +155,11 @@ export default function AvatarCropper({
       const imageBottom = imageTop + displayedHeight
       
       setCrop(prev => {
-        const minX = Math.max(0, imageLeft)
-        const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
-        const minY = Math.max(0, imageTop)
-        const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
+        // Allow crop to move anywhere within the displayed image
+        const minX = imageLeft
+        const maxX = imageRight - cropSize
+        const minY = imageTop
+        const maxY = imageBottom - cropSize
         
         return {
           x: Math.max(minX, Math.min(maxX, prev.x)),
@@ -336,20 +332,15 @@ export default function AvatarCropper({
                 const imageRight = imageLeft + displayedWidth
                 const imageBottom = imageTop + displayedHeight
                 
-                const minX = Math.max(0, imageLeft)
-                const maxX = Math.min(containerWidth - cropSize, imageRight - cropSize)
-                const minY = Math.max(0, imageTop)
-                const maxY = Math.min(containerHeight - cropSize, imageBottom - cropSize)
-                
-                // Ensure bounds are valid (max >= min)
-                const validMinX = Math.min(minX, maxX)
-                const validMaxX = Math.max(minX, maxX)
-                const validMinY = Math.min(minY, maxY)
-                const validMaxY = Math.max(minY, maxY)
+                // Allow crop to move anywhere within the displayed image
+                const minX = imageLeft
+                const maxX = imageRight - cropSize
+                const minY = imageTop
+                const maxY = imageBottom - cropSize
                 
                 setCrop({
-                  x: Math.max(validMinX, Math.min(validMaxX, newX)),
-                  y: Math.max(validMinY, Math.min(validMaxY, newY)),
+                  x: Math.max(minX, Math.min(maxX, newX)),
+                  y: Math.max(minY, Math.min(maxY, newY)),
                 })
               }}
               onTouchEnd={() => {
