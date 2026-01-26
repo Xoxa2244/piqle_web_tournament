@@ -82,6 +82,7 @@ model Tournament {
   id                      String                    @id @default(uuid())
   title                   String
   description             String?
+  image                   String?
   rulesUrl                String?
   venueName               String?
   venueAddress            String?

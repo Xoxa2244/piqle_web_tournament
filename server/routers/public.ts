@@ -12,6 +12,7 @@ export const publicRouter = createTRPCRouter({
         id: true,
         title: true,
         description: true,
+        image: true,
         venueName: true,
         startDate: true,
         endDate: true,

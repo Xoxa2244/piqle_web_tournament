@@ -402,6 +402,16 @@ export default function HomePage() {
                     />
                   </div>
                 )}
+                {tournament.image && (
+                  <div className="w-full h-48 relative overflow-hidden rounded-t-lg">
+                    <Image
+                      src={tournament.image}
+                      alt={tournament.title}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                )}
                 <CardHeader className="flex-shrink-0">
                   <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
                   <div className="mt-2 min-h-[4.5rem]">
@@ -599,6 +609,18 @@ export default function HomePage() {
                 {/* Left Side - Tournament Info */}
                 <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
+                    {/* Tournament Image */}
+                    {tournament.image && (
+                      <div className="w-full aspect-square relative overflow-hidden rounded-lg">
+                        <Image
+                          src={tournament.image}
+                          alt={tournament.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    
                     {/* Description */}
                     {tournament.description && (
                       <div>

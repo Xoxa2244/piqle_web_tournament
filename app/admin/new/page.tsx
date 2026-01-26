@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import ImageCropper from '@/components/ImageCropper'
+import { Camera, X } from 'lucide-react'
+import Image from 'next/image'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -23,7 +26,13 @@ export default function NewTournamentPage() {
     format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'MLP' | 'INDY_LEAGUE',
     seasonLabel: '',
     timezone: '',
+    image: '',
   })
+  const [showCropper, setShowCropper] = useState(false)
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const createTournament = trpc.tournament.create.useMutation({
     onSuccess: (tournament) => {
@@ -55,6 +64,7 @@ export default function NewTournamentPage() {
       format: formData.format,
       seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
       timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
+      image: formData.image || undefined,
     })
   }
 
@@ -69,6 +79,81 @@ export default function NewTournamentPage() {
   const handleCancel = useCallback(() => {
     router.back()
   }, [router])
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setCropperImageSrc(e.target?.result as string)
+      setShowCropper(true)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleCropComplete = async (croppedImageUrl: string) => {
+    setShowCropper(false)
+    setIsUploadingImage(true)
+
+    try {
+      // Convert blob URL to File
+      const response = await fetch(croppedImageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], 'tournament-image.jpg', { type: 'image/jpeg' })
+
+      // Upload cropped file
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-tournament-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json()
+        throw new Error(error.error || 'Failed to upload image')
+      }
+
+      const data = await uploadResponse.json()
+      setImagePreview(data.url)
+      setFormData(prev => ({ ...prev, image: data.url }))
+      
+      // Clean up blob URL
+      URL.revokeObjectURL(croppedImageUrl)
+    } catch (error) {
+      console.error('Upload error:', error)
+      alert('Failed to upload image. Please try again.')
+      setImagePreview(null)
+      setFormData(prev => ({ ...prev, image: '' }))
+    } finally {
+      setIsUploadingImage(false)
+      setCropperImageSrc(null)
+    }
+  }
+
+  const handleCropperClose = () => {
+    setShowCropper(false)
+    setCropperImageSrc(null)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveImage = () => {
+    setImagePreview(null)
+    setFormData(prev => ({ ...prev, image: '' }))
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -115,6 +200,53 @@ export default function NewTournamentPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Tournament description, rules, features..."
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tournament Image
+              </label>
+              {imagePreview ? (
+                <div className="relative inline-block">
+                  <Image
+                    src={imagePreview}
+                    alt="Tournament preview"
+                    width={200}
+                    height={200}
+                    className="rounded-lg object-cover border border-gray-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-4">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50"
+                  >
+                    <Camera className="h-5 w-5 text-gray-500" />
+                    <span className="text-sm text-gray-700">
+                      {isUploadingImage ? 'Uploading...' : 'Upload Image'}
+                    </span>
+                  </label>
+                  <p className="text-xs text-gray-500">
+                    Square image recommended (will be cropped to 800x800px)
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -289,6 +421,16 @@ export default function NewTournamentPage() {
           </form>
         </CardContent>
       </Card>
+
+      {cropperImageSrc && (
+        <ImageCropper
+          imageSrc={cropperImageSrc}
+          isOpen={showCropper}
+          onClose={handleCropperClose}
+          onCrop={handleCropComplete}
+          maxSize={800}
+        />
+      )}
     </div>
   )
 }

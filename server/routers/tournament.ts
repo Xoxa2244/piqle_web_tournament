@@ -13,6 +13,7 @@ export const tournamentRouter = createTRPCRouter({
     .input(z.object({
       title: z.string().min(1),
       description: z.string().optional(),
+      image: z.string().url().optional(),
       rulesUrl: z.string().url().optional(),
       venueName: z.string().optional(),
       venueAddress: z.string().optional(),
@@ -42,6 +43,7 @@ export const tournamentRouter = createTRPCRouter({
         data: {
           title: input.title,
           description: input.description,
+          image: input.image,
           rulesUrl: input.rulesUrl,
           venueName: input.venueName,
           venueAddress: input.venueAddress,
