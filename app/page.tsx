@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon } from 'lucide-react'
 import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
+import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 
 type FilterType = 'current' | 'past' | 'all'
@@ -58,6 +60,8 @@ function AvatarImage({
 
 export default function HomePage() {
   const { data: session } = useSession()
+  const router = useRouter()
+  const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [filter, setFilter] = useState<FilterType>('current')
   const [searchQuery, setSearchQuery] = useState('')
@@ -144,6 +148,15 @@ export default function HomePage() {
   }, [tournaments, filter, searchQuery])
   
   const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
+    if (!session) {
+      toast({
+        title: 'Login Required',
+        description: 'Please log in to like or dislike tournaments.',
+        variant: 'default',
+      })
+      return
+    }
+    
     try {
       await toggleRating.mutateAsync({ tournamentId, rating })
       // Refetch ratings after mutation
@@ -152,6 +165,7 @@ export default function HomePage() {
       console.error('Error toggling rating:', error)
     }
   }
+
 
   if (isLoading) {
     return (
@@ -226,17 +240,22 @@ export default function HomePage() {
               </div>
             </div>
             
-            {/* Create Tournament Button - only for logged in users */}
-            {session && (
-              <div className="mt-4">
-                <Link
-                  href="/admin/new"
-                  className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                >
-                  Create New Tournament
-                </Link>
-              </div>
-            )}
+            {/* Create Tournament Button */}
+            <div className="mt-4">
+              <button
+                onClick={(e) => {
+                  if (!session) {
+                    e.preventDefault()
+                    router.push('/auth/signin')
+                  } else {
+                    router.push('/admin/new')
+                  }
+                }}
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                Create New Tournament
+              </button>
+            </div>
             
             {/* Search Input */}
             <div className="mt-4">
