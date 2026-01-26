@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
@@ -69,6 +69,7 @@ export default function HomePage() {
   const [avatarError, setAvatarError] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
+  const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -112,6 +113,25 @@ export default function HomePage() {
       setCommentText('')
       refetchComments()
       utils.comment.getTournamentCommentCounts.invalidate({ tournamentIds })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const deleteComment = trpc.comment.deleteComment.useMutation({
+    onSuccess: () => {
+      setOpenCommentMenu(null)
+      refetchComments()
+      utils.comment.getTournamentCommentCounts.invalidate({ tournamentIds })
+      toast({
+        title: 'Success',
+        description: 'Comment deleted successfully',
+      })
     },
     onError: (error) => {
       toast({
@@ -670,31 +690,67 @@ export default function HomePage() {
                   {/* Comments List */}
                   <div className="flex-1 overflow-y-auto p-6 space-y-4">
                     {comments && comments.length > 0 ? (
-                      comments.map((comment) => (
-                        <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0">
-                          <div className="flex items-start space-x-3">
-                            <AvatarImage
-                              src={comment.user.image}
-                              alt={comment.user.name || comment.user.email || 'User'}
-                              userId={comment.user.id}
-                              size={32}
-                            />
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <span className="font-medium text-sm text-gray-900">
-                                  {comment.user.name || comment.user.email}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
-                                </span>
+                      comments.map((comment) => {
+                        const isOwnComment = session?.user?.id === comment.user.id
+                        return (
+                          <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
+                            <div className="flex items-start space-x-3">
+                              <AvatarImage
+                                src={comment.user.image}
+                                alt={comment.user.name || comment.user.email || 'User'}
+                                userId={comment.user.id}
+                                size={32}
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-medium text-sm text-gray-900">
+                                      {comment.user.name || comment.user.email}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
+                                    </span>
+                                  </div>
+                                  {isOwnComment && (
+                                    <div className="relative">
+                                      <button
+                                        onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </button>
+                                      {openCommentMenu === comment.id && (
+                                        <>
+                                          <div 
+                                            className="fixed inset-0 z-10" 
+                                            onClick={() => setOpenCommentMenu(null)}
+                                          />
+                                          <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                                            <button
+                                              onClick={() => {
+                                                if (confirm('Are you sure you want to delete this comment?')) {
+                                                  deleteComment.mutate({ commentId: comment.id })
+                                                }
+                                              }}
+                                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                              <span>Delete</span>
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                  {comment.text}
+                                </p>
                               </div>
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-                                {comment.text}
-                              </p>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        )
+                      })
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
