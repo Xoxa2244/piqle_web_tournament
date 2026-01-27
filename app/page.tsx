@@ -100,8 +100,76 @@ export default function HomePage() {
   )
   
   const toggleRating = trpc.rating.toggleRating.useMutation({
+    onMutate: async ({ tournamentId, rating }) => {
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await utils.rating.getTournamentRatings.cancel({ tournamentIds })
+
+      // Snapshot the previous value
+      const previousRatings = utils.rating.getTournamentRatings.getData({ tournamentIds })
+
+      // Optimistically update the cache
+      if (previousRatings) {
+        const currentRating = previousRatings[tournamentId]
+        if (currentRating) {
+          const newRating = { ...currentRating }
+          
+          // Determine the action based on current state
+          if (currentRating.userRating === rating) {
+            // Removing rating (clicking same button)
+            newRating.userRating = null
+            if (rating === 'LIKE') {
+              newRating.likes = Math.max(0, currentRating.likes - 1)
+            } else {
+              newRating.dislikes = Math.max(0, currentRating.dislikes - 1)
+            }
+          } else if (currentRating.userRating === null) {
+            // Adding new rating
+            newRating.userRating = rating
+            if (rating === 'LIKE') {
+              newRating.likes = currentRating.likes + 1
+            } else {
+              newRating.dislikes = currentRating.dislikes + 1
+            }
+          } else {
+            // Switching rating (from LIKE to DISLIKE or vice versa)
+            newRating.userRating = rating
+            if (rating === 'LIKE') {
+              newRating.likes = currentRating.likes + 1
+              newRating.dislikes = Math.max(0, currentRating.dislikes - 1)
+            } else {
+              newRating.dislikes = currentRating.dislikes + 1
+              newRating.likes = Math.max(0, currentRating.likes - 1)
+            }
+          }
+          
+          // Recalculate karma
+          newRating.karma = newRating.likes - newRating.dislikes
+          
+          // Update the cache
+          utils.rating.getTournamentRatings.setData(
+            { tournamentIds },
+            {
+              ...previousRatings,
+              [tournamentId]: newRating,
+            }
+          )
+        }
+      }
+
+      // Return context with the previous value for rollback
+      return { previousRatings }
+    },
+    onError: (err, variables, context) => {
+      // Rollback to previous value on error
+      if (context?.previousRatings) {
+        utils.rating.getTournamentRatings.setData(
+          { tournamentIds },
+          context.previousRatings
+        )
+      }
+    },
     onSuccess: () => {
-      // Invalidate and refetch ratings after mutation
+      // Invalidate and refetch ratings after mutation to ensure consistency
       utils.rating.getTournamentRatings.invalidate({ tournamentIds })
       // Also refetch tournaments to update karma sorting
       utils.public.listBoards.invalidate()
