@@ -402,18 +402,22 @@ export default function HomePage() {
                     />
                   </div>
                 )}
-                {(tournament as any).image && (
-                  <div className="w-full h-48 relative overflow-hidden rounded-t-lg">
-                    <Image
-                      src={(tournament as any).image}
-                      alt={tournament.title}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                )}
                 <CardHeader className="flex-shrink-0">
-                  <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
+                  <div className="flex items-start gap-4">
+                    {(tournament as any).image && (
+                      <div className="w-20 h-20 flex-shrink-0 relative overflow-hidden rounded-lg">
+                        <Image
+                          src={(tournament as any).image}
+                          alt={tournament.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
+                    </div>
+                  </div>
                   <div className="mt-2 min-h-[4.5rem]">
                     {tournament.description ? (
                       <>
