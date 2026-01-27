@@ -30,6 +30,7 @@ export default function AvatarCropper({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  const cropRef = useRef(crop)
 
   // Crop area size
   const cropSize = 300
@@ -77,8 +78,13 @@ export default function AvatarCropper({
     }
   }, [zoom])
 
+  // Update cropRef whenever crop changes
+  useEffect(() => {
+    cropRef.current = crop
+  }, [crop])
+
   // Handle crop area dragging
-  const handleCropMouseDown = (e: React.MouseEvent) => {
+  const handleCropMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
     if (!containerRef.current) return
@@ -88,11 +94,17 @@ export default function AvatarCropper({
     const relativeY = e.clientY - rect.top
     
     setIsDragging(true)
-    setDragStart({ x: relativeX - crop.x, y: relativeY - crop.y })
-  }
+    setDragStart({ 
+      x: relativeX - cropRef.current.x, 
+      y: relativeY - cropRef.current.y 
+    })
+  }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!isDragging || !containerRef.current) return
+    
+    e.preventDefault()
+    e.stopPropagation()
     
     const rect = containerRef.current.getBoundingClientRect()
     const relativeX = e.clientX - rect.left
@@ -129,10 +141,37 @@ export default function AvatarCropper({
     const minY = imageTop
     const maxY = imageBottom - cropSize
     
+    // Ensure valid ranges (max must be >= min)
+    const finalMinX = Math.min(minX, maxX)
+    const finalMaxX = Math.max(minX, maxX)
+    const finalMinY = Math.min(minY, maxY)
+    const finalMaxY = Math.max(minY, maxY)
+    
     // Constrain crop to image bounds (not container bounds)
-    setCrop({
-      x: Math.max(minX, Math.min(maxX, newX)),
-      y: Math.max(minY, Math.min(maxY, newY)),
+    setCrop(prev => {
+      const constrainedY = Math.max(finalMinY, Math.min(finalMaxY, newY))
+      const constrainedX = Math.max(finalMinX, Math.min(finalMaxX, newX))
+      
+      // Debug: log if Y movement is blocked
+      if (Math.abs(constrainedY - prev.y) < 0.1 && Math.abs(newY - prev.y) > 1) {
+        console.log('Y movement blocked:', {
+          newY,
+          prevY: prev.y,
+          constrainedY,
+          finalMinY,
+          finalMaxY,
+          range: finalMaxY - finalMinY,
+          displayedHeight,
+          imageTop,
+          imageBottom,
+          cropSize,
+        })
+      }
+      
+      return {
+        x: constrainedX,
+        y: constrainedY,
+      }
     })
   }, [isDragging, dragStart, displayedImageSize])
 
@@ -286,9 +325,6 @@ export default function AvatarCropper({
           <div
             ref={containerRef}
             className="relative w-full h-[400px] bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center"
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
             style={{ userSelect: 'none' }}
           >
             {/* Image - fixed position, scaled by zoom */}
@@ -378,9 +414,15 @@ export default function AvatarCropper({
                 const minY = imageTop
                 const maxY = imageBottom - cropSize
                 
+                // Ensure valid ranges (max must be >= min)
+                const finalMinX = Math.min(minX, maxX)
+                const finalMaxX = Math.max(minX, maxX)
+                const finalMinY = Math.min(minY, maxY)
+                const finalMaxY = Math.max(minY, maxY)
+                
                 setCrop({
-                  x: Math.max(minX, Math.min(maxX, newX)),
-                  y: Math.max(minY, Math.min(maxY, newY)),
+                  x: Math.max(finalMinX, Math.min(finalMaxX, newX)),
+                  y: Math.max(finalMinY, Math.min(finalMaxY, newY)),
                 })
               }}
               onTouchEnd={() => {
