@@ -80,15 +80,26 @@ export default function AvatarCropper({
   // Handle crop area dragging
   const handleCropMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation()
+    e.preventDefault()
+    if (!containerRef.current) return
+    
+    const rect = containerRef.current.getBoundingClientRect()
+    const relativeX = e.clientX - rect.left
+    const relativeY = e.clientY - rect.top
+    
     setIsDragging(true)
-    setDragStart({ x: e.clientX - crop.x, y: e.clientY - crop.y })
+    setDragStart({ x: relativeX - crop.x, y: relativeY - crop.y })
   }
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!isDragging || !containerRef.current) return
     
-    const newX = e.clientX - dragStart.x
-    const newY = e.clientY - dragStart.y
+    const rect = containerRef.current.getBoundingClientRect()
+    const relativeX = e.clientX - rect.left
+    const relativeY = e.clientY - rect.top
+    
+    const newX = relativeX - dragStart.x
+    const newY = relativeY - dragStart.y
     
     // Calculate image bounds
     const containerWidth = containerRef.current.clientWidth
@@ -125,9 +136,29 @@ export default function AvatarCropper({
     })
   }, [isDragging, dragStart, displayedImageSize])
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false)
-  }
+  }, [])
+
+  // Add global mouse move and up handlers for better dragging
+  useEffect(() => {
+    if (isDragging) {
+      const handleGlobalMouseMove = (e: MouseEvent) => {
+        handleMouseMove(e)
+      }
+      const handleGlobalMouseUp = () => {
+        setIsDragging(false)
+      }
+      
+      document.addEventListener('mousemove', handleGlobalMouseMove)
+      document.addEventListener('mouseup', handleGlobalMouseUp)
+      
+      return () => {
+        document.removeEventListener('mousemove', handleGlobalMouseMove)
+        document.removeEventListener('mouseup', handleGlobalMouseUp)
+      }
+    }
+  }, [isDragging, handleMouseMove])
 
   // Update displayed size when zoom changes
   useEffect(() => {
@@ -301,9 +332,14 @@ export default function AvatarCropper({
               onMouseDown={handleCropMouseDown}
               onTouchStart={(e) => {
                 e.preventDefault()
+                if (!containerRef.current) return
                 const touch = e.touches[0]
+                const rect = containerRef.current.getBoundingClientRect()
+                const relativeX = touch.clientX - rect.left
+                const relativeY = touch.clientY - rect.top
+                
                 setIsDragging(true)
-                setDragStart({ x: touch.clientX - crop.x, y: touch.clientY - crop.y })
+                setDragStart({ x: relativeX - crop.x, y: relativeY - crop.y })
               }}
               onTouchMove={(e) => {
                 if (!isDragging) return
@@ -311,8 +347,12 @@ export default function AvatarCropper({
                 const touch = e.touches[0]
                 if (!containerRef.current) return
                 
-                const newX = touch.clientX - dragStart.x
-                const newY = touch.clientY - dragStart.y
+                const rect = containerRef.current.getBoundingClientRect()
+                const relativeX = touch.clientX - rect.left
+                const relativeY = touch.clientY - rect.top
+                
+                const newX = relativeX - dragStart.x
+                const newY = relativeY - dragStart.y
                 
                 const containerWidth = containerRef.current.clientWidth
                 const containerHeight = containerRef.current.clientHeight
