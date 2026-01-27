@@ -270,6 +270,12 @@ export default function HomePage() {
                 <p className="text-gray-600 mt-2">Select a tournament to view results</p>
               </div>
               <div className="flex items-center gap-3">
+                <Link
+                  href="/admin"
+                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Tournaments
+                </Link>
                 {session ? (
                   <>
                 <Link
