@@ -240,13 +240,13 @@ export default function HomePage() {
 
 
   if (isLoading) {
-    return (
+  return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading tournaments...</p>
         </div>
-      </div>
+        </div>
     )
   }
 
@@ -265,14 +265,14 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
             <div className="flex items-center justify-between">
-              <div>
+            <div>
                 <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
                 <p className="text-gray-600 mt-2">Select a tournament to view results</p>
               </div>
               <div className="flex items-center gap-3">
                 {session ? (
                   <>
-                    <Link
+                <Link
                       href="/profile"
                       className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                     >
@@ -293,7 +293,7 @@ export default function HomePage() {
                       <span className="hidden sm:inline">
                         {session?.user?.name || 'Profile'}
                       </span>
-                    </Link>
+                </Link>
                     <button
                       onClick={handleLogout}
                       className="text-red-600 hover:text-red-900 px-3 py-2 rounded-md text-sm font-medium"
@@ -302,12 +302,12 @@ export default function HomePage() {
                     </button>
                   </>
                 ) : (
-                  <Link
-                    href="/auth/signin"
+                <Link
+                  href="/auth/signin"
                     className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                  >
+                >
                     Login
-                  </Link>
+                </Link>
                 )}
               </div>
             </div>
@@ -375,8 +375,8 @@ export default function HomePage() {
               >
                 All Tournaments
               </button>
+              </div>
             </div>
-          </div>
         </div>
       </div>
 
@@ -816,9 +816,9 @@ export default function HomePage() {
                       </Link>
                     </div>
                   )}
-                </div>
-              </div>
-            </div>
+          </div>
+        </div>
+      </div>
           </div>
         )
       })()}

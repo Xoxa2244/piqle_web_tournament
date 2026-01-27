@@ -26,6 +26,7 @@ export default function AvatarCropper({
   const [zoom, setZoom] = useState(1)
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [displayedImageSize, setDisplayedImageSize] = useState({ width: 0, height: 0 })
+  const [baseDisplayedSize, setBaseDisplayedSize] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -41,7 +42,7 @@ export default function AvatarCropper({
     const naturalHeight = img.naturalHeight
     setImageSize({ width: naturalWidth, height: naturalHeight })
     
-    // Calculate displayed size (fit to container)
+    // Calculate displayed size (fit to container) - base size without zoom
     if (containerRef.current) {
       const containerWidth = containerRef.current.clientWidth
       const containerHeight = containerRef.current.clientHeight
@@ -53,8 +54,14 @@ export default function AvatarCropper({
         1 // Don't scale up
       )
       
-      const displayedWidth = naturalWidth * baseScale * zoom
-      const displayedHeight = naturalHeight * baseScale * zoom
+      // Base displayed size (without zoom - zoom is applied via CSS transform)
+      const baseDisplayedWidth = naturalWidth * baseScale
+      const baseDisplayedHeight = naturalHeight * baseScale
+      setBaseDisplayedSize({ width: baseDisplayedWidth, height: baseDisplayedHeight })
+      
+      // Actual displayed size with zoom (for calculations)
+      const displayedWidth = baseDisplayedWidth * zoom
+      const displayedHeight = baseDisplayedHeight * zoom
       setDisplayedImageSize({ width: displayedWidth, height: displayedHeight })
       
       // Center crop area initially, but ensure it's within image bounds
@@ -212,10 +219,15 @@ export default function AvatarCropper({
         containerHeight / naturalHeight,
         1
       )
-      const scale = baseScale * zoom
       
-      const displayedWidth = naturalWidth * scale
-      const displayedHeight = naturalHeight * scale
+      // Base displayed size (without zoom)
+      const baseDisplayedWidth = naturalWidth * baseScale
+      const baseDisplayedHeight = naturalHeight * baseScale
+      setBaseDisplayedSize({ width: baseDisplayedWidth, height: baseDisplayedHeight })
+      
+      // Actual displayed size with zoom (for calculations)
+      const displayedWidth = baseDisplayedWidth * zoom
+      const displayedHeight = baseDisplayedHeight * zoom
       setDisplayedImageSize({ width: displayedWidth, height: displayedHeight })
       
       // Adjust crop position to stay within image bounds
@@ -251,17 +263,18 @@ export default function AvatarCropper({
     canvas.width = cropSize
     canvas.height = cropSize
 
-    // Calculate image position in container
+    // Calculate image position in container (with zoom)
     const containerWidth = containerRef.current.clientWidth
     const containerHeight = containerRef.current.clientHeight
     const imageLeft = (containerWidth - displayedImageSize.width) / 2
     const imageTop = (containerHeight - displayedImageSize.height) / 2
 
-    // Calculate crop area relative to image
+    // Calculate crop area relative to image (in displayed coordinates with zoom)
     const cropAreaX = crop.x - imageLeft
     const cropAreaY = crop.y - imageTop
 
-    // Calculate scale from displayed size to natural size
+    // Calculate scale from displayed size (with zoom) to natural size
+    // displayedImageSize already includes zoom, so we need to account for that
     const scaleX = imageSize.width / displayedImageSize.width
     const scaleY = imageSize.height / displayedImageSize.height
 
@@ -346,8 +359,8 @@ export default function AvatarCropper({
                 className="max-w-none select-none pointer-events-none"
                 draggable={false}
                 style={{
-                  width: displayedImageSize.width || 'auto',
-                  height: displayedImageSize.height || 'auto',
+                  width: baseDisplayedSize.width || 'auto',
+                  height: baseDisplayedSize.height || 'auto',
                   userSelect: 'none',
                 }}
               />
