@@ -71,7 +71,7 @@ export default function HomePage() {
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
-  const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string} | null>(null)
+  const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string, authorEmail: string} | null>(null)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -847,7 +847,8 @@ export default function HomePage() {
                                               setReportCommentModal({
                                                 commentId: comment.id,
                                                 commentText: comment.text,
-                                                authorName: comment.user.name || 'Unknown'
+                                                authorName: comment.user.name || 'Unknown',
+                                                authorEmail: comment.user.email || ''
                                               })
                                             }}
                                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
@@ -957,6 +958,7 @@ export default function HomePage() {
             commentId={reportCommentModal.commentId}
             commentText={reportCommentModal.commentText}
             commentAuthorName={reportCommentModal.authorName}
+            commentAuthorEmail={reportCommentModal.authorEmail}
           />
         )
       })()}

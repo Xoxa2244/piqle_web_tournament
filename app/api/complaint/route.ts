@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     const commentId = formData.get('commentId') as string | null
     const commentText = formData.get('commentText') as string | null
     const commentAuthorName = formData.get('commentAuthorName') as string | null
+    const commentAuthorEmail = formData.get('commentAuthorEmail') as string | null
     const imageFile = formData.get('image') as File | null
 
     if (!message || !tournamentId) {
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
           <div style="background-color: #fff7ed; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
             <h3 style="margin-top: 0; color: #f59e0b;">Reported Comment</h3>
             <p><strong>Comment ID:</strong> ${commentId}</p>
-            ${commentAuthorName ? `<p><strong>Author:</strong> ${commentAuthorName}</p>` : ''}
+            ${commentAuthorName ? `<p><strong>Author:</strong> ${commentAuthorName}${commentAuthorEmail ? ` (${commentAuthorEmail})` : ''}</p>` : ''}
             <p style="background-color: #ffffff; padding: 10px; border-radius: 4px; margin-top: 10px; font-style: italic; border: 1px solid #e5e7eb;">
               "${commentText ? commentText.replace(/\n/g, '<br>') : 'N/A'}"
             </p>
