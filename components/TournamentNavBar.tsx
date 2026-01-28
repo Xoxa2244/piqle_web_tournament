@@ -108,28 +108,19 @@ function TournamentNavBarContent({
               />
             )}
             
-            <div className="flex flex-col items-end space-y-1">
-              <Link
-                href="/admin"
-                className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-                Back
-              </Link>
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="flex items-center justify-center w-8 h-8 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200"
-                title="Report"
-              >
-                <AlertTriangle className="w-4 h-4" />
-              </button>
-            </div>
+            <Link
+              href="/admin"
+              className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+              Back
+            </Link>
           </div>
         </div>
 
         {/* Bottom row: Quick Actions */}
         <div className="border-t border-slate-200 py-2">
-          <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center justify-between space-x-2 overflow-x-auto scrollbar-hide">
             {isAdmin && (
               <Link href={`/admin/${tournamentId}/divisions`}>
                 <Button 
@@ -231,6 +222,14 @@ function TournamentNavBarContent({
                 )}
               </Link>
             )}
+            
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="flex items-center justify-center w-8 h-8 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 ml-auto"
+              title="Report"
+            >
+              <AlertTriangle className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
