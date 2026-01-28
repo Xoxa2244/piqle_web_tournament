@@ -108,13 +108,22 @@ function TournamentNavBarContent({
               />
             )}
             
-            <Link
-              href="/admin"
-              className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-              Back
-            </Link>
+            <div className="flex flex-col items-end space-y-1">
+              <Link
+                href="/admin"
+                className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+                Back
+              </Link>
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="flex items-center justify-center w-8 h-8 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200"
+                title="Report"
+              >
+                <AlertTriangle className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -222,16 +231,6 @@ function TournamentNavBarContent({
                 )}
               </Link>
             )}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowReportModal(true)}
-              className="flex items-center space-x-2 whitespace-nowrap hover:bg-yellow-50 hover:border-yellow-200 transition-all"
-            >
-              <AlertTriangle className="w-4 h-4" />
-              <span>Report</span>
-            </Button>
           </div>
         </div>
       </div>
