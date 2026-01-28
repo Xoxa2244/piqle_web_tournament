@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import nodemailer from 'nodemailer'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import * as nodemailer from 'nodemailer'
 
 export async function POST(req: NextRequest) {
   try {
