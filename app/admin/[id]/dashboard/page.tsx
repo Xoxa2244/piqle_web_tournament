@@ -158,6 +158,7 @@ function DivisionDashboardContent() {
   // Calculate tournament format flags BEFORE conditional returns (Rules of Hooks)
   const isMLP = tournament?.format === 'MLP'
   const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
 
   // IndyLeague queries - MUST be before conditional returns (Rules of Hooks)
   const { data: matchDays } = trpc.matchDay.list.useQuery(
@@ -498,16 +499,6 @@ function DivisionDashboardContent() {
                           <p>Target bracket: {targetBracketSize}</p>
                         </div>
                         
-                        {!isRRComplete && (
-                          <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                            <div className="flex items-center space-x-1">
-                              <AlertCircle className="h-4 w-4 text-yellow-600" />
-                              <span className="text-sm text-yellow-800">
-                                Not all results entered — seeding and playoffs unavailable
-                              </span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -538,7 +529,6 @@ function DivisionDashboardContent() {
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
                               <th className="text-center py-2">H2H Diff</th>
-                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -558,23 +548,6 @@ function DivisionDashboardContent() {
                                   </span>
                                 </td>
                                 <td className="py-2 text-center">—</td>
-                                {!isMLP && (
-                                  <td className="py-2 text-center">
-                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Auto-qualified
-                                      </Badge>
-                                    ) : hasPlayIn ? (
-                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                        Play-in
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Qualified
-                                      </Badge>
-                                    )}
-                                  </td>
-                                )}
                               </tr>
                               )
                             })}
@@ -586,8 +559,8 @@ function DivisionDashboardContent() {
                 </div>
               </div>
 
-              {/* Play-In Section */}
-              {hasPlayIn && (
+              {/* Play-In Section - hide for Round Robin */}
+              {!isRoundRobin && hasPlayIn && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -688,55 +661,57 @@ function DivisionDashboardContent() {
                 </Card>
               )}
 
-              {/* Bracket Section */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Playoff Bracket</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <BracketPyramid
-                    matches={playoffMatches.map(match => ({
-                      id: match.id,
-                      teamA: match.teamA ? {
-                        id: match.teamA.id,
-                        name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
-                        seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                      } : null,
-                      teamB: match.teamB ? {
-                        id: match.teamB.id,
-                        name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
-                        seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                      } : null,
-                      games: (match.games || []).map((g: any) => ({
-                        scoreA: g.scoreA,
-                        scoreB: g.scoreB,
-                        winner: g.winner as 'A' | 'B' | null | undefined
-                      })),
-                      roundIndex: match.roundIndex,
-                      stage: match.stage,
-                      note: (match as any).note,
-                      tiebreaker: (match as any).tiebreaker,
-                      winnerTeamId: (match as any).winnerTeamId,
-                      gamesCount: (match as any).gamesCount,
-                      isMLP: tournament?.format === 'MLP'
-                    }))}
-                    showConnectingLines={showConnectingLines}
-                    onMatchClick={(matchId) => {
-                      // Handle match click - could open score input modal
-                      console.log('Match clicked:', matchId)
-                    }}
-                  />
-                </CardContent>
-              </Card>
+              {/* Bracket Section - hide for Round Robin */}
+              {!isRoundRobin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Playoff Bracket</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <BracketPyramid
+                      matches={playoffMatches.map(match => ({
+                        id: match.id,
+                        teamA: match.teamA ? {
+                          id: match.teamA.id,
+                          name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
+                          seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                        } : null,
+                        teamB: match.teamB ? {
+                          id: match.teamB.id,
+                          name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
+                          seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                        } : null,
+                        games: (match.games || []).map((g: any) => ({
+                          scoreA: g.scoreA,
+                          scoreB: g.scoreB,
+                          winner: g.winner as 'A' | 'B' | null | undefined
+                        })),
+                        roundIndex: match.roundIndex,
+                        stage: match.stage,
+                        note: (match as any).note,
+                        tiebreaker: (match as any).tiebreaker,
+                        winnerTeamId: (match as any).winnerTeamId,
+                        gamesCount: (match as any).gamesCount,
+                        isMLP: tournament?.format === 'MLP'
+                      }))}
+                      showConnectingLines={showConnectingLines}
+                      onMatchClick={(matchId) => {
+                        // Handle match click - could open score input modal
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className={`grid w-full ${isRoundRobin ? 'grid-cols-1' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>
-                  <TabsTrigger value="bracket">Bracket</TabsTrigger>
+                  {!isRoundRobin && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
+                  {!isRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
                 </TabsList>
                 
                 <TabsContent value="rr" className="space-y-4">
@@ -757,59 +732,63 @@ function DivisionDashboardContent() {
                   </Card>
                 </TabsContent>
                 
-                <TabsContent value="playin">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Play-In</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center text-gray-500 py-8">
-                        <p>Play-In matches will be shown here</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {!isRoundRobin && (
+                  <TabsContent value="playin">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Play-In</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-center text-gray-500 py-8">
+                          <p>Play-In matches will be shown here</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
                 
-                <TabsContent value="bracket">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Bracket</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <BracketPyramid
-                        matches={playoffMatches.map(match => ({
-                          id: match.id,
-                          teamA: match.teamA ? {
-                            id: match.teamA.id,
-                            name: match.teamA.name,
-                            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                          } : null,
-                          teamB: match.teamB ? {
-                            id: match.teamB.id,
-                            name: match.teamB.name,
-                            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                          } : null,
-                          games: (match.games || []).map((g: any) => ({
-                            scoreA: g.scoreA,
-                            scoreB: g.scoreB,
-                            winner: g.winner as 'A' | 'B' | null | undefined
-                          })),
-                          roundIndex: match.roundIndex,
-                          stage: match.stage,
-                          note: (match as any).note,
-                          tiebreaker: (match as any).tiebreaker,
-                          winnerTeamId: (match as any).winnerTeamId,
-                          gamesCount: (match as any).gamesCount,
-                          isMLP: tournament?.format === 'MLP'
-                        }))}
-                        showConnectingLines={showConnectingLines}
-                        onMatchClick={(matchId) => {
-                          console.log('Match clicked:', matchId)
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {!isRoundRobin && (
+                  <TabsContent value="bracket">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Bracket</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <BracketPyramid
+                          matches={playoffMatches.map(match => ({
+                            id: match.id,
+                            teamA: match.teamA ? {
+                              id: match.teamA.id,
+                              name: match.teamA.name,
+                              seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                            } : null,
+                            teamB: match.teamB ? {
+                              id: match.teamB.id,
+                              name: match.teamB.name,
+                              seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                            } : null,
+                            games: (match.games || []).map((g: any) => ({
+                              scoreA: g.scoreA,
+                              scoreB: g.scoreB,
+                              winner: g.winner as 'A' | 'B' | null | undefined
+                            })),
+                            roundIndex: match.roundIndex,
+                            stage: match.stage,
+                            note: (match as any).note,
+                            tiebreaker: (match as any).tiebreaker,
+                            winnerTeamId: (match as any).winnerTeamId,
+                            gamesCount: (match as any).gamesCount,
+                            isMLP: tournament?.format === 'MLP'
+                          }))}
+                          showConnectingLines={showConnectingLines}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
               </>
