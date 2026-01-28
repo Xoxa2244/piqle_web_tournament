@@ -685,7 +685,7 @@ export const standingsRouter = createTRPCRouter({
           throw new Error(`MLP format requires 1 or 2 pools, got ${poolCount}`)
         }
       } else {
-        // Single Elimination format: standard logic
+        // Single Elimination and Round Robin format: standard logic
         if (N === B) {
           // No play-in needed, direct playoffs
           const playoffMatches = generateSingleEliminationMatches(standings, 0)

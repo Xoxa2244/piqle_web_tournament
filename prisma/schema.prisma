@@ -693,6 +693,7 @@ enum RatingType {
 
 enum TournamentFormat {
   SINGLE_ELIMINATION
+  ROUND_ROBIN
   MLP
   INDY_LEAGUE
 }

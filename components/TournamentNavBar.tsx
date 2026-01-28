@@ -27,7 +27,7 @@ interface TournamentNavBarProps {
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
   publicScoreboardUrl?: string
-  tournamentFormat?: 'SINGLE_ELIMINATION' | 'MLP' | 'INDY_LEAGUE'
+  tournamentFormat?: 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE'
 }
 
 function TournamentNavBarContent({
