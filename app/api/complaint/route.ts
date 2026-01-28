@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import * as nodemailer from 'nodemailer'
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,31 +65,124 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Configure email transporter
-    const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_SERVER_HOST,
-      port: parseInt(process.env.EMAIL_SERVER_PORT || '587'),
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: process.env.EMAIL_SERVER_USER,
-        pass: process.env.EMAIL_SERVER_PASSWORD,
-      },
-    })
-
-    // Send email to both recipients
-    const recipients = ['rg@piqle.io', 'ds@piqle.io']
+    // Get recipients from environment variable or use defaults
+    const recipientsEnv = process.env.COMPLAINT_EMAIL_RECIPIENTS
+    const recipients = recipientsEnv 
+      ? recipientsEnv.split(',').map(email => email.trim()).filter(email => email.length > 0)
+      : ['rg@piqle.io', 'ds@piqle.io'] // Default recipients
     
-    const emailPromises = recipients.map((recipient) =>
-      transporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_SERVER_USER,
-        to: recipient,
-        subject: `Complaint from Tournament: ${tournamentTitle}`,
-        html: emailHtml,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      })
-    )
+    if (recipients.length === 0) {
+      return NextResponse.json(
+        { error: 'No email recipients configured' },
+        { status: 500 }
+      )
+    }
 
-    await Promise.all(emailPromises)
+    // Try Resend API first (simpler, no SMTP needed)
+    const resendApiKey = process.env.RESEND_API_KEY
+    
+    if (resendApiKey) {
+      // Use Resend API
+      const fromEmail = process.env.EMAIL_FROM || 'noreply@piqle.io'
+      
+      // Prepare attachments for Resend
+      const resendAttachments: any[] = []
+      if (imageFile) {
+        const imageBuffer = await imageFile.arrayBuffer()
+        resendAttachments.push({
+          filename: imageFile.name,
+          content: Buffer.from(imageBuffer).toString('base64'),
+        })
+      }
+
+      const emailPromises = recipients.map((recipient) =>
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: recipient,
+            subject: `Complaint from Tournament: ${tournamentTitle}`,
+            html: emailHtml,
+            attachments: resendAttachments.length > 0 ? resendAttachments : undefined,
+          }),
+        })
+      )
+
+      const results = await Promise.all(emailPromises)
+      
+      // Check if all emails were sent successfully
+      for (const result of results) {
+        if (!result.ok) {
+          const errorData = await result.json()
+          throw new Error(`Resend API error: ${errorData.message || 'Failed to send email'}`)
+        }
+      }
+    } else {
+      // Fallback to SMTP (if configured)
+      const emailHost = process.env.EMAIL_SERVER_HOST
+      const emailUser = process.env.EMAIL_SERVER_USER
+      const emailPassword = process.env.EMAIL_SERVER_PASSWORD
+
+      if (!emailHost || !emailUser || !emailPassword) {
+        console.error('Email configuration missing. Complaint data:', {
+          tournamentId,
+          tournamentTitle,
+          userName,
+          userEmail,
+          message: message.substring(0, 100) + '...',
+          hasImage: !!imageFile,
+        })
+        
+        // In development, log the complaint instead of failing
+        if (process.env.NODE_ENV === 'development') {
+          console.log('=== COMPLAINT (Email not configured) ===')
+          console.log('Tournament:', tournamentTitle, `(${tournamentId})`)
+          console.log('User:', userName, `(${userEmail})`)
+          console.log('Message:', message)
+          console.log('========================================')
+          
+          return NextResponse.json({
+            success: true,
+            message: 'Complaint logged (email not configured in development)',
+          })
+        }
+        
+        return NextResponse.json(
+          { error: 'Email service is not configured. Please set RESEND_API_KEY or SMTP credentials.' },
+          { status: 503 }
+        )
+      }
+
+      // Use SMTP with nodemailer
+      const nodemailer = await import('nodemailer')
+      const transporter = nodemailer.default.createTransport({
+        host: emailHost,
+        port: parseInt(process.env.EMAIL_SERVER_PORT || '587'),
+        secure: process.env.EMAIL_SERVER_PORT === '465',
+        auth: {
+          user: emailUser,
+          pass: emailPassword,
+        },
+      })
+
+      const fromEmail = process.env.EMAIL_FROM || emailUser
+      
+      const emailPromises = recipients.map((recipient) =>
+        transporter.sendMail({
+          from: fromEmail,
+          to: recipient,
+          subject: `Complaint from Tournament: ${tournamentTitle}`,
+          html: emailHtml,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        })
+      )
+
+      await Promise.all(emailPromises)
+    }
 
     return NextResponse.json({
       success: true,
