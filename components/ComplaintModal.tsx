@@ -208,12 +208,7 @@ export default function ComplaintModal({
               <p className="text-sm font-medium text-gray-700 mb-2">Reported Comment:</p>
               <p className="text-sm text-gray-600 italic">&ldquo;{commentText}&rdquo;</p>
               {commentAuthorName && (
-                <p className="text-xs text-gray-500 mt-2">
-                  By: {commentAuthorName}
-                  {commentAuthorEmail && (
-                    <span className="ml-2">({commentAuthorEmail})</span>
-                  )}
-                </p>
+                <p className="text-xs text-gray-500 mt-2">By: {commentAuthorName}</p>
               )}
             </div>
           )}
