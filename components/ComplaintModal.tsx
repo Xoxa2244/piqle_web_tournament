@@ -12,13 +12,19 @@ interface ComplaintModalProps {
   onClose: () => void
   tournamentId: string
   tournamentTitle?: string
+  commentId?: string
+  commentText?: string
+  commentAuthorName?: string
 }
 
 export default function ComplaintModal({
   isOpen,
   onClose,
   tournamentId,
-  tournamentTitle
+  tournamentTitle,
+  commentId,
+  commentText,
+  commentAuthorName
 }: ComplaintModalProps) {
   const [message, setMessage] = useState('')
   const [image, setImage] = useState<File | null>(null)
@@ -91,6 +97,15 @@ export default function ComplaintModal({
       formData.append('tournamentId', tournamentId)
       if (tournamentTitle) {
         formData.append('tournamentTitle', tournamentTitle)
+      }
+      if (commentId) {
+        formData.append('commentId', commentId)
+      }
+      if (commentText) {
+        formData.append('commentText', commentText)
+      }
+      if (commentAuthorName) {
+        formData.append('commentAuthorName', commentAuthorName)
       }
       if (image) {
         formData.append('image', image)
@@ -169,7 +184,9 @@ export default function ComplaintModal({
         <div className="flex items-center justify-between p-6 border-b">
           <div className="flex items-center space-x-2">
             <AlertTriangle className="h-5 w-5 text-red-600" />
-            <h2 className="text-xl font-bold text-gray-900">Submit Complaint</h2>
+            <h2 className="text-xl font-bold text-gray-900">
+              {commentId ? 'Report Comment' : 'Submit Complaint'}
+            </h2>
           </div>
           <button
             onClick={handleClose}
@@ -181,9 +198,18 @@ export default function ComplaintModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {commentId && commentText && (
+            <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-4">
+              <p className="text-sm font-medium text-gray-700 mb-2">Reported Comment:</p>
+              <p className="text-sm text-gray-600 italic">"{commentText}"</p>
+              {commentAuthorName && (
+                <p className="text-xs text-gray-500 mt-2">By: {commentAuthorName}</p>
+              )}
+            </div>
+          )}
           <div>
             <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-2">
-              Complaint Message <span className="text-red-500">*</span>
+              {commentId ? 'Reason for reporting' : 'Complaint Message'} <span className="text-red-500">*</span>
             </label>
             <textarea
               id="message"
@@ -191,7 +217,7 @@ export default function ComplaintModal({
               onChange={(e) => setMessage(e.target.value)}
               rows={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              placeholder="Please describe your complaint in detail..."
+              placeholder={commentId ? "Please explain why you're reporting this comment..." : "Please describe your complaint in detail..."}
               required
               disabled={isSubmitting}
             />

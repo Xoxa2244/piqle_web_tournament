@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
     const message = formData.get('message') as string
     const tournamentId = formData.get('tournamentId') as string
     const tournamentTitle = formData.get('tournamentTitle') as string || 'Unknown Tournament'
+    const commentId = formData.get('commentId') as string | null
+    const commentText = formData.get('commentText') as string | null
+    const commentAuthorName = formData.get('commentAuthorName') as string | null
     const imageFile = formData.get('image') as File | null
 
     if (!message || !tournamentId) {
@@ -32,22 +35,33 @@ export async function POST(req: NextRequest) {
     const userImage = session.user.image || ''
 
     // Create email HTML
+    const complaintType = commentId ? 'Comment Report' : 'Complaint'
     let emailHtml = `
       <html>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-          <h2 style="color: #dc2626;">New Complaint Submitted</h2>
+          <h2 style="color: #dc2626;">New ${complaintType} Submitted</h2>
           <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="margin-top: 0;">Tournament Information</h3>
             <p><strong>Tournament ID:</strong> ${tournamentId}</p>
             <p><strong>Tournament Title:</strong> ${tournamentTitle}</p>
           </div>
+          ${commentId ? `
+          <div style="background-color: #fff7ed; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+            <h3 style="margin-top: 0; color: #f59e0b;">Reported Comment</h3>
+            <p><strong>Comment ID:</strong> ${commentId}</p>
+            ${commentAuthorName ? `<p><strong>Author:</strong> ${commentAuthorName}</p>` : ''}
+            <p style="background-color: #ffffff; padding: 10px; border-radius: 4px; margin-top: 10px; font-style: italic; border: 1px solid #e5e7eb;">
+              "${commentText ? commentText.replace(/\n/g, '<br>') : 'N/A'}"
+            </p>
+          </div>
+          ` : ''}
           <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="margin-top: 0;">User Information</h3>
             <p><strong>Name:</strong> ${userName}</p>
             <p><strong>Email:</strong> ${userEmail}</p>
           </div>
           <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
-            <h3 style="margin-top: 0; color: #dc2626;">Complaint Message</h3>
+            <h3 style="margin-top: 0; color: #dc2626;">${commentId ? 'Reason for Reporting' : 'Complaint Message'}</h3>
             <p style="white-space: pre-wrap;">${message.replace(/\n/g, '<br>')}</p>
           </div>
         </body>
@@ -105,7 +119,9 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: fromEmail,
             to: recipient,
-            subject: `Complaint from Tournament: ${tournamentTitle}`,
+            subject: commentId 
+              ? `Comment Report from Tournament: ${tournamentTitle}`
+              : `Complaint from Tournament: ${tournamentTitle}`,
             html: emailHtml,
             attachments: resendAttachments.length > 0 ? resendAttachments : undefined,
           }),
@@ -175,7 +191,9 @@ export async function POST(req: NextRequest) {
         transporter.sendMail({
           from: fromEmail,
           to: recipient,
-          subject: `Complaint from Tournament: ${tournamentTitle}`,
+          subject: commentId 
+            ? `Comment Report from Tournament: ${tournamentTitle}`
+            : `Complaint from Tournament: ${tournamentTitle}`,
           html: emailHtml,
           attachments: attachments.length > 0 ? attachments : undefined,
         })

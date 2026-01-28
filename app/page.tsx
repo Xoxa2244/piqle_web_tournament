@@ -9,11 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2 } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle } from 'lucide-react'
 import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
+import ComplaintModal from '@/components/ComplaintModal'
 
 type FilterType = 'current' | 'past' | 'all'
 
@@ -70,6 +71,7 @@ export default function HomePage() {
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
+  const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string} | null>(null)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -811,23 +813,24 @@ export default function HomePage() {
                                       {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
                                     </span>
                                   </div>
-                                  {isOwnComment && (
-                                    <div className="relative">
-                                      <button
-                                        onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
-                                        className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-                                      >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </button>
-                                      {openCommentMenu === comment.id && (
-                                        <>
-                                          <div 
-                                            className="fixed inset-0 z-10" 
-                                            onClick={() => setOpenCommentMenu(null)}
-                                          />
-                                          <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                                  <div className="relative">
+                                    <button
+                                      onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
+                                      className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                    >
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                    {openCommentMenu === comment.id && (
+                                      <>
+                                        <div 
+                                          className="fixed inset-0 z-10" 
+                                          onClick={() => setOpenCommentMenu(null)}
+                                        />
+                                        <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                                          {isOwnComment && (
                                             <button
                                               onClick={() => {
+                                                setOpenCommentMenu(null)
                                                 if (confirm('Are you sure you want to delete this comment?')) {
                                                   deleteComment.mutate({ commentId: comment.id })
                                                 }
@@ -837,11 +840,25 @@ export default function HomePage() {
                                               <Trash2 className="h-4 w-4" />
                                               <span>Delete</span>
                                             </button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              setOpenCommentMenu(null)
+                                              setReportCommentModal({
+                                                commentId: comment.id,
+                                                commentText: comment.text,
+                                                authorName: comment.user.name || 'Unknown'
+                                              })
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                                          >
+                                            <AlertTriangle className="h-4 w-4" />
+                                            <span>Report</span>
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                                 <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
                                   {comment.text}
@@ -927,6 +944,22 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Comment Report Modal */}
+      {reportCommentModal && selectedTournament && (() => {
+        const tournament = tournaments?.find(t => t.id === selectedTournament)
+        return (
+          <ComplaintModal
+            isOpen={!!reportCommentModal}
+            onClose={() => setReportCommentModal(null)}
+            tournamentId={selectedTournament}
+            tournamentTitle={tournament?.title}
+            commentId={reportCommentModal.commentId}
+            commentText={reportCommentModal.commentText}
+            commentAuthorName={reportCommentModal.authorName}
+          />
+        )
+      })()}
     </div>
   )
 }
