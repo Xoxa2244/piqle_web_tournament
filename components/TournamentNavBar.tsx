@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
-import ReportModal from './ReportModal'
 import { 
   Settings,
   Users,
@@ -20,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
+import ComplaintModal from '@/components/ComplaintModal'
 
 interface TournamentNavBarProps {
   tournamentTitle?: string
@@ -47,7 +47,7 @@ function TournamentNavBarContent({
   const tournamentId = params.id as string
   const divisionParam = searchParams.get('division')
   const divisionQuery = divisionParam ? `?division=${divisionParam}` : ''
-  const [showReportModal, setShowReportModal] = useState(false)
+  const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false)
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
@@ -115,12 +115,20 @@ function TournamentNavBarContent({
               <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
               Back
             </Link>
+
+            <button
+              onClick={() => setIsComplaintModalOpen(true)}
+              className="flex items-center justify-center w-10 h-10 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+              title="Submit Complaint"
+            >
+              <AlertTriangle className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
         {/* Bottom row: Quick Actions */}
         <div className="border-t border-slate-200 py-2">
-          <div className="flex items-center justify-between space-x-2 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide">
             {isAdmin && (
               <Link href={`/admin/${tournamentId}/divisions`}>
                 <Button 
@@ -222,21 +230,13 @@ function TournamentNavBarContent({
                 )}
               </Link>
             )}
-            
-            <button
-              onClick={() => setShowReportModal(true)}
-              className="flex items-center justify-center w-8 h-8 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 ml-auto"
-              title="Report"
-            >
-              <AlertTriangle className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
-      
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
+
+      <ComplaintModal
+        isOpen={isComplaintModalOpen}
+        onClose={() => setIsComplaintModalOpen(false)}
         tournamentId={tournamentId}
         tournamentTitle={tournamentTitle}
       />
