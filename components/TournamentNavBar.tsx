@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
+import ReportModal from './ReportModal'
 import { 
   Settings,
   Users,
@@ -14,7 +15,8 @@ import {
   Edit,
   ArrowLeft,
   Calendar,
-  Target
+  Target,
+  AlertTriangle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -45,6 +47,7 @@ function TournamentNavBarContent({
   const tournamentId = params.id as string
   const divisionParam = searchParams.get('division')
   const divisionQuery = divisionParam ? `?division=${divisionParam}` : ''
+  const [showReportModal, setShowReportModal] = useState(false)
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
@@ -219,9 +222,26 @@ function TournamentNavBarContent({
                 )}
               </Link>
             )}
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowReportModal(true)}
+              className="flex items-center space-x-2 whitespace-nowrap hover:bg-yellow-50 hover:border-yellow-200 transition-all"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              <span>Report</span>
+            </Button>
           </div>
         </div>
       </div>
+      
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        tournamentId={tournamentId}
+        tournamentTitle={tournamentTitle}
+      />
     </div>
   )
 }
