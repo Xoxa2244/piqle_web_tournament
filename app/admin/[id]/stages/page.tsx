@@ -212,6 +212,8 @@ function DivisionStageManagementContent() {
 
   // Check if tournament is IndyLeague
   const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  // Check if tournament is Round Robin
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
@@ -2092,7 +2094,9 @@ function DivisionStageManagementContent() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Complete all Round Robin matches to proceed to Play-In/Play-Off.
+                  {isRoundRobin 
+                    ? 'Complete all Round Robin matches to finish the tournament. Winners will be determined by standings.'
+                    : 'Complete all Round Robin matches to proceed to Play-In/Play-Off.'}
                 </AlertDescription>
               </Alert>
             )}
@@ -2142,7 +2146,7 @@ function DivisionStageManagementContent() {
                   </h3>
                   <p className="text-sm text-gray-600">
                     Round Robin is complete. You can now split this merged division back into the original two divisions.
-                    Each division will have separate Play-In and Play-Off brackets.
+                    {!isRoundRobin && ' Each division will have separate Play-In and Play-Off brackets.'}
                   </p>
                 </div>
                 <Button
@@ -2157,8 +2161,8 @@ function DivisionStageManagementContent() {
           </Card>
             )}
 
-        {/* Play-In Block - show only if B < N < 2B */}
-        {!isIndyLeague && needsPlayIn && (
+        {/* Play-In Block - show only if B < N < 2B and not Round Robin */}
+        {!isIndyLeague && !isRoundRobin && needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -2359,8 +2363,8 @@ function DivisionStageManagementContent() {
           </Card>
         )}
 
-        {/* Play-Off Block */}
-        {!isIndyLeague && (
+        {/* Play-Off Block - hide for Round Robin */}
+        {!isIndyLeague && !isRoundRobin && (
         <Card className={
           // Block if:
           // 1. RR is in progress AND not all matches completed (for both MLP and non-MLP)
