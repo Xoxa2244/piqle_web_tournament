@@ -201,7 +201,7 @@ export default function ComplaintModal({
           {commentId && commentText && (
             <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Reported Comment:</p>
-              <p className="text-sm text-gray-600 italic">"{commentText}"</p>
+              <p className="text-sm text-gray-600 italic">&ldquo;{commentText}&rdquo;</p>
               {commentAuthorName && (
                 <p className="text-xs text-gray-500 mt-2">By: {commentAuthorName}</p>
               )}
@@ -255,6 +255,7 @@ export default function ComplaintModal({
               </div>
               {imagePreview && (
                 <div className="relative mt-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imagePreview}
                     alt="Preview"
