@@ -152,9 +152,10 @@ export default function PublicCoursePage() {
   }
   
   const isMLP = tournament?.format === 'MLP'
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
 
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && !isRoundRobin && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
@@ -310,7 +311,6 @@ export default function PublicCoursePage() {
                               <th className="text-center py-2">PF</th>
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
-                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -327,23 +327,6 @@ export default function PublicCoursePage() {
                                     {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
                                   </span>
                                 </td>
-                                {!isMLP && (
-                                  <td className="py-2 text-center">
-                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Auto-qualified
-                                      </Badge>
-                                    ) : hasPlayIn ? (
-                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                        Play-in
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Qualified
-                                      </Badge>
-                                    )}
-                                  </td>
-                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -354,8 +337,8 @@ export default function PublicCoursePage() {
                 </div>
               </div>
 
-              {/* Play-In Section */}
-              {hasPlayIn && !isMLP && (
+              {/* Play-In Section - hide for Round Robin */}
+              {!isRoundRobin && hasPlayIn && !isMLP && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -456,48 +439,50 @@ export default function PublicCoursePage() {
                 </Card>
               )}
 
-              {/* Bracket Section */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Playoff Bracket</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {bracketLoading ? (
-                    <div className="py-8 text-center text-gray-500">Loading bracket…</div>
-                  ) : bracketMatches.length > 0 ? (
-                    <BracketPyramidNew
-                      matches={bracketMatches}
-                      showConnectingLines={showConnectingLines}
-                      totalTeams={bracketData?.standings?.length}
-                      bracketSize={bracketData?.bracketSize}
-                      onMatchClick={(matchId) => {
-                        console.log('Match clicked:', matchId)
-                      }}
-                    />
-                  ) : legacyBracketMatches.length > 0 ? (
-                    <BracketPyramid
-                      matches={legacyBracketMatches}
-                      showConnectingLines={showConnectingLines}
-                      onMatchClick={(matchId) => {
-                        console.log('Match clicked:', matchId)
-                      }}
-                    />
-                  ) : (
-                    <div className="py-8 text-center text-gray-500">
-                      Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Bracket Section - hide for Round Robin */}
+              {!isRoundRobin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Playoff Bracket</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {bracketLoading ? (
+                      <div className="py-8 text-center text-gray-500">Loading bracket…</div>
+                    ) : bracketMatches.length > 0 ? (
+                      <BracketPyramidNew
+                        matches={bracketMatches}
+                        showConnectingLines={showConnectingLines}
+                        totalTeams={bracketData?.standings?.length}
+                        bracketSize={bracketData?.bracketSize}
+                        onMatchClick={(matchId) => {
+                          console.log('Match clicked:', matchId)
+                        }}
+                      />
+                    ) : legacyBracketMatches.length > 0 ? (
+                      <BracketPyramid
+                        matches={legacyBracketMatches}
+                        showConnectingLines={showConnectingLines}
+                        onMatchClick={(matchId) => {
+                          console.log('Match clicked:', matchId)
+                        }}
+                      />
+                    ) : (
+                      <div className="py-8 text-center text-gray-500">
+                        Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className={`grid w-full ${isMLP ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${isRoundRobin ? 'grid-cols-1' : isMLP ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  {!isMLP && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
-                  <TabsTrigger value="bracket">Bracket</TabsTrigger>
+                  {!isRoundRobin && !isMLP && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
+                  {!isRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
                 </TabsList>
                 
                 <TabsContent value="rr" className="space-y-4">
@@ -517,7 +502,6 @@ export default function PublicCoursePage() {
                               <th className="text-center py-2">PF</th>
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
-                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -534,23 +518,6 @@ export default function PublicCoursePage() {
                                     {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
                                   </span>
                                 </td>
-                                {!isMLP && (
-                                  <td className="py-2 text-center">
-                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                      <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                                        Auto
-                                      </Badge>
-                                    ) : hasPlayIn ? (
-                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
-                                        Play-in
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
-                                        Qualified
-                                      </Badge>
-                                    )}
-                                  </td>
-                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -560,7 +527,8 @@ export default function PublicCoursePage() {
                   </Card>
                 </TabsContent>
                 
-                <TabsContent value="playin">
+                {!isRoundRobin && (
+                  <TabsContent value="playin">
                   <Card>
                     <CardHeader>
                       <CardTitle>Play-In</CardTitle>
@@ -666,42 +634,45 @@ export default function PublicCoursePage() {
                       )}
                     </CardContent>
                   </Card>
-                </TabsContent>
+                  </TabsContent>
+                )}
                 
-                <TabsContent value="bracket">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Bracket</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {bracketLoading ? (
-                        <div className="py-6 text-center text-gray-500 text-sm">Loading bracket…</div>
-                      ) : bracketMatches.length > 0 ? (
-                        <BracketPyramidNew
-                          matches={bracketMatches}
-                          showConnectingLines={showConnectingLines}
-                          totalTeams={bracketData?.standings?.length}
-                          bracketSize={bracketData?.bracketSize}
-                          onMatchClick={(matchId) => {
-                            console.log('Match clicked:', matchId)
-                          }}
-                        />
-                      ) : legacyBracketMatches.length > 0 ? (
-                        <BracketPyramid
-                          matches={legacyBracketMatches}
-                          showConnectingLines={showConnectingLines}
-                          onMatchClick={(matchId) => {
-                            console.log('Match clicked:', matchId)
-                          }}
-                        />
-                      ) : (
-                        <div className="py-6 text-center text-gray-500 text-sm">
-                          Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {!isRoundRobin && (
+                  <TabsContent value="bracket">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Bracket</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {bracketLoading ? (
+                          <div className="py-6 text-center text-gray-500 text-sm">Loading bracket…</div>
+                        ) : bracketMatches.length > 0 ? (
+                          <BracketPyramidNew
+                            matches={bracketMatches}
+                            showConnectingLines={showConnectingLines}
+                            totalTeams={bracketData?.standings?.length}
+                            bracketSize={bracketData?.bracketSize}
+                            onMatchClick={(matchId) => {
+                              console.log('Match clicked:', matchId)
+                            }}
+                          />
+                        ) : legacyBracketMatches.length > 0 ? (
+                          <BracketPyramid
+                            matches={legacyBracketMatches}
+                            showConnectingLines={showConnectingLines}
+                            onMatchClick={(matchId) => {
+                              console.log('Match clicked:', matchId)
+                            }}
+                          />
+                        ) : (
+                          <div className="py-6 text-center text-gray-500 text-sm">
+                            Bracket not available yet. Generate Play-In or Play-Off matches to view the structure.
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
           </>
