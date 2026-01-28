@@ -118,7 +118,7 @@ function TournamentNavBarContent({
 
             <button
               onClick={() => setIsComplaintModalOpen(true)}
-              className="flex items-center justify-center w-10 h-10 text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+              className="flex items-center justify-center w-10 h-10 text-slate-600 hover:bg-slate-100 rounded-lg transition-all duration-200"
               title="Submit Complaint"
             >
               <AlertTriangle className="w-5 h-5" />
