@@ -74,6 +74,8 @@ export default function NewTournamentPage() {
     venueName: '',
     startDate: '',
     endDate: '',
+    registrationStartDate: '',
+    registrationEndDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
@@ -111,6 +113,8 @@ export default function NewTournamentPage() {
       venueName: formData.venueName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
+      registrationStartDate: formData.registrationStartDate || undefined,
+      registrationEndDate: formData.registrationEndDate || undefined,
       entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
@@ -369,6 +373,36 @@ export default function NewTournamentPage() {
                   value={formData.endDate}
                   onChange={handleChange}
                   required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="registrationStartDate" className="block text-sm font-medium text-gray-700 mb-2">
+                  Registration Start Date
+                </label>
+                <input
+                  type="date"
+                  id="registrationStartDate"
+                  name="registrationStartDate"
+                  value={formData.registrationStartDate}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="registrationEndDate" className="block text-sm font-medium text-gray-700 mb-2">
+                  Registration End Date
+                </label>
+                <input
+                  type="date"
+                  id="registrationEndDate"
+                  name="registrationEndDate"
+                  value={formData.registrationEndDate}
+                  onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

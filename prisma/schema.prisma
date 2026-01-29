@@ -101,6 +101,8 @@ model Tournament {
   venueAddress            String?
   startDate               DateTime
   endDate                 DateTime
+  registrationStartDate   DateTime?                 @map("registration_start_date")
+  registrationEndDate     DateTime?                 @map("registration_end_date")
   entryFee                Decimal?                  @db.Decimal(10, 2)
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique

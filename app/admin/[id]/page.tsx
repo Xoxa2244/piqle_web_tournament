@@ -95,6 +95,8 @@ export default function TournamentDetailPage() {
     venueName: '',
     startDate: '',
     endDate: '',
+    registrationStartDate: '',
+    registrationEndDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
@@ -198,6 +200,8 @@ export default function TournamentDetailPage() {
       venueName: tournament.venueName || '',
       startDate: new Date(tournament.startDate).toISOString().split('T')[0],
       endDate: new Date(tournament.endDate).toISOString().split('T')[0],
+      registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
+      registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
@@ -220,6 +224,8 @@ export default function TournamentDetailPage() {
       venueName: tournamentForm.venueName || undefined,
       startDate: tournamentForm.startDate,
       endDate: tournamentForm.endDate,
+      registrationStartDate: tournamentForm.registrationStartDate || null,
+      registrationEndDate: tournamentForm.registrationEndDate || null,
       entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
@@ -819,6 +825,34 @@ export default function TournamentDetailPage() {
                     type="date"
                     name="endDate"
                     value={tournamentForm.endDate}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Registration Start Date
+                  </label>
+                  <input
+                    type="date"
+                    name="registrationStartDate"
+                    value={tournamentForm.registrationStartDate}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Registration End Date
+                  </label>
+                  <input
+                    type="date"
+                    name="registrationEndDate"
+                    value={tournamentForm.registrationEndDate}
                     onChange={handleTournamentChange}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
