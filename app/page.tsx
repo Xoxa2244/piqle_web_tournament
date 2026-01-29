@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
@@ -529,6 +529,21 @@ export default function HomePage() {
                           {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
                         </span>
                       </div>
+                      
+                      {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <ClipboardList className="h-4 w-4 mr-2" />
+                          <span>
+                            Registration: {(tournament as any).registrationStartDate
+                              ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                              : '—'}
+                            {' – '}
+                            {(tournament as any).registrationEndDate
+                              ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                              : '—'}
+                          </span>
+                        </div>
+                      )}
                       
                       {tournament.venueName && (
                         <div className="flex items-center text-sm text-gray-600">
