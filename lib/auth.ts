@@ -166,6 +166,12 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
+    async jwt({ token, user }) {
+      if (user?.id) {
+        token.sub = user.id
+      }
+      return token
+    },
     async signIn({ user, account, profile }) {
       // Allow all sign-ins - PrismaAdapter will handle user creation
       return true
@@ -192,7 +198,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   session: {
-    strategy: "database",
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 }
