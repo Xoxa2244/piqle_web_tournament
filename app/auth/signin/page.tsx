@@ -68,40 +68,12 @@ export default function SignInPage() {
     setError(null)
     setIsVerifying(true)
     try {
-      const result = await signIn('email-password', {
+      await signIn('email-password', {
         email,
         password,
-        redirect: false,
         callbackUrl: '/admin',
       })
-
-      if (!result) {
-        setError('Sign in failed. Please try again.')
-        return
-      }
-
-      if (result.error) {
-        switch (result.error) {
-          case 'EMAIL_GOOGLE_ACCOUNT':
-            setError(
-              'This email is already linked to a Google account. Please sign in with Google.'
-            )
-            break
-          case 'EMAIL_PASSWORD_NOT_SET':
-            setError('This account does not have a password. Please sign up.')
-            break
-          default:
-            setError('Invalid email or password.')
-        }
-        return
-      }
-
-      if (!result.ok) {
-        setError('Sign in failed. Please try again.')
-        return
-      }
-
-      window.location.href = result.url || '/admin'
+      return
     } catch (err) {
       console.error(err)
       setError('Failed to sign in. Please try again.')
@@ -162,19 +134,12 @@ export default function SignInPage() {
         return
       }
 
-      const result = await signIn('email-password', {
+      await signIn('email-password', {
         email,
         password,
-        redirect: false,
         callbackUrl: '/admin',
       })
-
-      if (result?.error) {
-        setError('Sign in failed. Please try again.')
-        return
-      }
-
-      window.location.href = result?.url || '/admin'
+      return
     } catch (err) {
       console.error(err)
       setError('Failed to sign up. Please try again.')
