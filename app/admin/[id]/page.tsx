@@ -217,6 +217,48 @@ export default function TournamentDetailPage() {
       return
     }
 
+    // Validate dates
+    const startDate = new Date(tournamentForm.startDate)
+    const endDate = new Date(tournamentForm.endDate)
+    
+    // End date cannot be earlier than start date
+    if (endDate < startDate) {
+      alert('End date cannot be earlier than start date')
+      return
+    }
+
+    // Validate registration dates if provided
+    if (tournamentForm.registrationStartDate || tournamentForm.registrationEndDate) {
+      if (tournamentForm.registrationStartDate && tournamentForm.registrationEndDate) {
+        const regStartDate = new Date(tournamentForm.registrationStartDate)
+        const regEndDate = new Date(tournamentForm.registrationEndDate)
+        
+        // Registration end date cannot be earlier than registration start date
+        if (regEndDate < regStartDate) {
+          alert('Registration end date cannot be earlier than registration start date')
+          return
+        }
+      }
+      
+      if (tournamentForm.registrationStartDate) {
+        const regStartDate = new Date(tournamentForm.registrationStartDate)
+        // Registration start date cannot be later than tournament start date
+        if (regStartDate > startDate) {
+          alert('Registration start date cannot be later than tournament start date')
+          return
+        }
+      }
+      
+      if (tournamentForm.registrationEndDate) {
+        const regEndDate = new Date(tournamentForm.registrationEndDate)
+        // Registration end date cannot be later than tournament start date
+        if (regEndDate > startDate) {
+          alert('Registration end date cannot be later than tournament start date')
+          return
+        }
+      }
+    }
+
     updateTournament.mutate({
       id: tournamentId,
       title: tournamentForm.title,
@@ -826,6 +868,7 @@ export default function TournamentDetailPage() {
                     name="endDate"
                     value={tournamentForm.endDate}
                     onChange={handleTournamentChange}
+                    min={tournamentForm.startDate || undefined}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
@@ -841,6 +884,7 @@ export default function TournamentDetailPage() {
                     name="registrationStartDate"
                     value={tournamentForm.registrationStartDate}
                     onChange={handleTournamentChange}
+                    max={tournamentForm.startDate || undefined}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
@@ -854,6 +898,8 @@ export default function TournamentDetailPage() {
                     name="registrationEndDate"
                     value={tournamentForm.registrationEndDate}
                     onChange={handleTournamentChange}
+                    min={tournamentForm.registrationStartDate || undefined}
+                    max={tournamentForm.startDate || undefined}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>

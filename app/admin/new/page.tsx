@@ -107,6 +107,48 @@ export default function NewTournamentPage() {
       return
     }
 
+    // Validate dates
+    const startDate = new Date(formData.startDate)
+    const endDate = new Date(formData.endDate)
+    
+    // End date cannot be earlier than start date
+    if (endDate < startDate) {
+      alert('End date cannot be earlier than start date')
+      return
+    }
+
+    // Validate registration dates if provided
+    if (formData.registrationStartDate || formData.registrationEndDate) {
+      if (formData.registrationStartDate && formData.registrationEndDate) {
+        const regStartDate = new Date(formData.registrationStartDate)
+        const regEndDate = new Date(formData.registrationEndDate)
+        
+        // Registration end date cannot be earlier than registration start date
+        if (regEndDate < regStartDate) {
+          alert('Registration end date cannot be earlier than registration start date')
+          return
+        }
+      }
+      
+      if (formData.registrationStartDate) {
+        const regStartDate = new Date(formData.registrationStartDate)
+        // Registration start date cannot be later than tournament start date
+        if (regStartDate > startDate) {
+          alert('Registration start date cannot be later than tournament start date')
+          return
+        }
+      }
+      
+      if (formData.registrationEndDate) {
+        const regEndDate = new Date(formData.registrationEndDate)
+        // Registration end date cannot be later than tournament start date
+        if (regEndDate > startDate) {
+          alert('Registration end date cannot be later than tournament start date')
+          return
+        }
+      }
+    }
+
     createTournament.mutate({
       title: formData.title,
       description: formData.description || undefined,
@@ -373,6 +415,7 @@ export default function NewTournamentPage() {
                   value={formData.endDate}
                   onChange={handleChange}
                   required
+                  min={formData.startDate || undefined}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -389,6 +432,7 @@ export default function NewTournamentPage() {
                   name="registrationStartDate"
                   value={formData.registrationStartDate}
                   onChange={handleChange}
+                  max={formData.startDate || undefined}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -403,6 +447,8 @@ export default function NewTournamentPage() {
                   name="registrationEndDate"
                   value={formData.registrationEndDate}
                   onChange={handleChange}
+                  min={formData.registrationStartDate || undefined}
+                  max={formData.startDate || undefined}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

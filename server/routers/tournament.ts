@@ -30,6 +30,48 @@ export const tournamentRouter = createTRPCRouter({
       timezone: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Validate dates
+      // End date cannot be earlier than start date
+      if (input.endDate < input.startDate) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'End date cannot be earlier than start date',
+        })
+      }
+
+      // Validate registration dates if provided
+      if (input.registrationStartDate || input.registrationEndDate) {
+        if (input.registrationStartDate && input.registrationEndDate) {
+          // Registration end date cannot be earlier than registration start date
+          if (input.registrationEndDate < input.registrationStartDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration end date cannot be earlier than registration start date',
+            })
+          }
+        }
+        
+        if (input.registrationStartDate) {
+          // Registration start date cannot be later than tournament start date
+          if (input.registrationStartDate > input.startDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration start date cannot be later than tournament start date',
+            })
+          }
+        }
+        
+        if (input.registrationEndDate) {
+          // Registration end date cannot be later than tournament start date
+          if (input.registrationEndDate > input.startDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration end date cannot be later than tournament start date',
+            })
+          }
+        }
+      }
+
       // Generate unique publicSlug
       let publicSlug = input.publicSlug || input.title.toLowerCase().replace(/\s+/g, '-')
       
@@ -233,6 +275,76 @@ export const tournamentRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Check admin access
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id)
+
+      // Get current tournament data for validation
+      const currentTournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.id },
+        select: {
+          startDate: true,
+          endDate: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+        },
+      })
+
+      if (!currentTournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      // Use input values or fall back to current values
+      const startDate = input.startDate || currentTournament.startDate
+      const endDate = input.endDate || currentTournament.endDate
+      const registrationStartDate = input.registrationStartDate !== undefined 
+        ? input.registrationStartDate 
+        : currentTournament.registrationStartDate
+      const registrationEndDate = input.registrationEndDate !== undefined 
+        ? input.registrationEndDate 
+        : currentTournament.registrationEndDate
+
+      // Validate dates
+      // End date cannot be earlier than start date
+      if (endDate < startDate) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'End date cannot be earlier than start date',
+        })
+      }
+
+      // Validate registration dates if provided
+      if (registrationStartDate !== null || registrationEndDate !== null) {
+        if (registrationStartDate && registrationEndDate) {
+          // Registration end date cannot be earlier than registration start date
+          if (registrationEndDate < registrationStartDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration end date cannot be earlier than registration start date',
+            })
+          }
+        }
+        
+        if (registrationStartDate) {
+          // Registration start date cannot be later than tournament start date
+          if (registrationStartDate > startDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration start date cannot be later than tournament start date',
+            })
+          }
+        }
+        
+        if (registrationEndDate) {
+          // Registration end date cannot be later than tournament start date
+          if (registrationEndDate > startDate) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Registration end date cannot be later than tournament start date',
+            })
+          }
+        }
+      }
 
       const { id, ...data } = input
       const tournament = await ctx.prisma.tournament.update({
