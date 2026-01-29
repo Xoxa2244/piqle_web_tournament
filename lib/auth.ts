@@ -1,8 +1,10 @@
 import { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
+import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "./prisma"
+import { hashOtp, normalizeEmail } from "./emailOtp"
 
 // Ensure NEXTAUTH_SECRET is set
 if (!process.env.NEXTAUTH_SECRET) {
@@ -40,6 +42,74 @@ export const authOptions: NextAuthOptions = {
         },
       },
       from: process.env.EMAIL_FROM,
+    }),
+    CredentialsProvider({
+      id: 'email-otp',
+      name: 'Email OTP',
+      credentials: {
+        email: { label: 'Email', type: 'text' },
+        code: { label: 'Code', type: 'text' },
+      },
+      async authorize(credentials) {
+        const email = normalizeEmail(credentials?.email || '')
+        const code = `${credentials?.code || ''}`.trim()
+
+        if (!email || !code) {
+          throw new Error('EMAIL_CODE_INVALID')
+        }
+
+        const otp = await prisma.emailOtp.findUnique({ where: { email } })
+        if (!otp) {
+          throw new Error('EMAIL_CODE_INVALID')
+        }
+
+        if (otp.expiresAt.getTime() < Date.now()) {
+          await prisma.emailOtp.delete({ where: { email } })
+          throw new Error('EMAIL_CODE_EXPIRED')
+        }
+
+        if (otp.attemptsLeft <= 0) {
+          throw new Error('EMAIL_CODE_ATTEMPTS_EXCEEDED')
+        }
+
+        const expectedHash = hashOtp(email, code)
+        if (expectedHash !== otp.codeHash) {
+          await prisma.emailOtp.update({
+            where: { email },
+            data: { attemptsLeft: Math.max(otp.attemptsLeft - 1, 0) },
+          })
+          throw new Error('EMAIL_CODE_INVALID')
+        }
+
+        await prisma.emailOtp.delete({ where: { email } })
+
+        const existingUser = await prisma.user.findUnique({
+          where: { email },
+          include: { accounts: true },
+        })
+
+        if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
+          throw new Error('EMAIL_GOOGLE_ACCOUNT')
+        }
+
+        const user =
+          existingUser ??
+          (await prisma.user.create({
+            data: {
+              email,
+              emailVerified: new Date(),
+            },
+          }))
+
+        if (!user.emailVerified) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerified: new Date() },
+          })
+        }
+
+        return user
+      },
     }),
   ],
   pages: {

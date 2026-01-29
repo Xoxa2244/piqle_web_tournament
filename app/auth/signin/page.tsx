@@ -2,18 +2,96 @@
 
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 export default function SignInPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [error, setError] = useState<string | null>(null)
+  const [isSending, setIsSending] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl: '/admin' })
   }
 
-  const handleEmailSignIn = async (e: React.FormEvent) => {
+  const handleEmailSignIn = async (e: React.SyntheticEvent) => {
     e.preventDefault()
-    alert('This feature is not available yet, please sign in with Google')
+    setError(null)
+    setIsSending(true)
+    try {
+      const response = await fetch('/api/auth/email/request-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
+          setError(
+            'This email is already linked to a Google account. Please sign in with Google.'
+          )
+          return
+        }
+        if (payload?.error === 'CODE_COOLDOWN') {
+          setError('Please wait before requesting a new code.')
+          return
+        }
+        setError('Failed to send verification code. Please try again.')
+        return
+      }
+
+      setStep('code')
+    } catch (err) {
+      console.error(err)
+      setError('Failed to send verification code. Please try again.')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setIsVerifying(true)
+    try {
+      const result = await signIn('email-otp', {
+        email,
+        code,
+        redirect: false,
+        callbackUrl: '/admin',
+      })
+
+      if (result?.error) {
+        switch (result.error) {
+          case 'EMAIL_CODE_EXPIRED':
+            setError('This code has expired. Please request a new one.')
+            break
+          case 'EMAIL_CODE_ATTEMPTS_EXCEEDED':
+            setError('Too many attempts. Please request a new code.')
+            break
+          case 'EMAIL_GOOGLE_ACCOUNT':
+            setError(
+              'This email is already linked to a Google account. Please sign in with Google.'
+            )
+            break
+          default:
+            setError('Invalid code. Please try again.')
+        }
+        return
+      }
+
+      router.push(result?.url || '/admin')
+    } catch (err) {
+      console.error(err)
+      setError('Failed to verify code. Please try again.')
+    } finally {
+      setIsVerifying(false)
+    }
   }
 
   return (
@@ -53,46 +131,98 @@ export default function SignInPage() {
           </div>
 
           {/* Email Sign In */}
-          <form onSubmit={handleEmailSignIn} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="you@example.com"
-              />
+          {error && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
             </div>
+          )}
 
-            <Button
-              type="submit"
-              disabled={!email}
-              className="w-full bg-blue-600 hover:bg-blue-700"
-            >
-              Sign in with Email
-            </Button>
-          </form>
+          {step === 'email' && (
+            <form onSubmit={handleEmailSignIn} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!email || isSending}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isSending ? 'Sending code...' : 'Send verification code'}
+              </Button>
+            </form>
+          )}
+
+          {step === 'code' && (
+            <form onSubmit={handleVerifyCode} className="space-y-4">
+              <div>
+                <label htmlFor="code" className="block text-sm font-medium text-gray-700">
+                  Verification code
+                </label>
+                <input
+                  id="code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter 6-digit code"
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  We sent a code to {email}.
+                </p>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!code || isVerifying}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isVerifying ? 'Verifying...' : 'Verify and sign in'}
+              </Button>
+
+              <div className="flex justify-between text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('email')
+                    setCode('')
+                  }}
+                  className="text-blue-600 hover:text-blue-500"
+                >
+                  Change email
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEmailSignIn}
+                  className="text-blue-600 hover:text-blue-500"
+                  disabled={isSending}
+                >
+                  Resend code
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         <p className="mt-4 text-center text-sm text-gray-600">
-          New to Piqle?{" "}
-          <a 
-            href="#" 
-            onClick={(e) => {
-              e.preventDefault()
-              alert('This feature is not available yet, please sign in with Google')
-            }}
-            className="font-medium text-blue-600 hover:text-blue-500"
-          >
-            Create an account
-          </a>
+          New to Piqle? Use the email code above to create your account.
         </p>
       </div>
     </div>
