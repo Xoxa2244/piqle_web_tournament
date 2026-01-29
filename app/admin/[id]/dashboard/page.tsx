@@ -308,6 +308,7 @@ function DivisionDashboardContent() {
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
+        tournamentImage={tournament.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}

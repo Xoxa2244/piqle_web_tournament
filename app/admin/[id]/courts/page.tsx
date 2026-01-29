@@ -96,6 +96,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
     <div className="min-h-screen bg-gray-50">
       <TournamentNavBar
         tournamentTitle={tournament?.title}
+        tournamentImage={tournament?.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}

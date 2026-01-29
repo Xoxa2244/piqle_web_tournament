@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 import { 
@@ -23,6 +24,7 @@ import ComplaintModal from '@/components/ComplaintModal'
 
 interface TournamentNavBarProps {
   tournamentTitle?: string
+  tournamentImage?: string | null
   isAdmin?: boolean
   isOwner?: boolean
   pendingRequestsCount?: number
@@ -34,6 +36,7 @@ interface TournamentNavBarProps {
 
 function TournamentNavBarContent({
   tournamentTitle,
+  tournamentImage,
   isAdmin = false,
   isOwner = false,
   pendingRequestsCount = 0,
@@ -56,9 +59,21 @@ function TournamentNavBarContent({
         <div className="flex items-center justify-between py-3">
           <div className="flex items-center space-x-3">
             <Link href={`/admin/${tournamentId}`} className="flex items-center space-x-2 text-slate-700 hover:text-slate-900 transition-colors">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">P</span>
-              </div>
+              {tournamentImage ? (
+                <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                  <Image
+                    src={tournamentImage}
+                    alt={tournamentTitle || 'Tournament'}
+                    width={40}
+                    height={40}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-bold text-sm">P</span>
+                </div>
+              )}
               <div>
                 <h1 className="text-lg font-bold text-slate-900">
                   {tournamentTitle || 'Tournament'}

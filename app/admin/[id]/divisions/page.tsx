@@ -1412,6 +1412,7 @@ export default function DivisionsPage() {
       <div className="min-h-screen bg-gray-50">
         <TournamentNavBar
           tournamentTitle={tournament?.title}
+          tournamentImage={tournament?.image || undefined}
           isAdmin={false}
           isOwner={false}
           pendingRequestsCount={0}
@@ -1447,6 +1448,7 @@ export default function DivisionsPage() {
         <div className="min-h-screen bg-gray-50">
           <TournamentNavBar
             tournamentTitle={tournament.title}
+            tournamentImage={tournament.image || undefined}
             isAdmin={isAdmin}
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
@@ -1491,6 +1493,7 @@ export default function DivisionsPage() {
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
+        tournamentImage={tournament.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
