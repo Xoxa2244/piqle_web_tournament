@@ -36,6 +36,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (existingUser?.passwordHash) {
+      return NextResponse.json(
+        { error: 'USER_EXISTS', message: 'User already exists. Please sign in.' },
+        { status: 409 }
+      )
+    }
+
     const existingOtp = await prisma.emailOtp.findUnique({
       where: { email },
     })

@@ -13,6 +13,7 @@ model User {
   name                     String?
   image                    String?
   emailVerified            DateTime?
+  passwordHash             String?                   @map("password_hash")
   role                     UserRole                  @default(TD)
   isActive                 Boolean                   @default(true)
   gender                   Gender?

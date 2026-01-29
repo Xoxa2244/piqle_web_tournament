@@ -8,8 +8,13 @@ import { useState } from "react"
 export default function SignInPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [code, setCode] = useState('')
-  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [step, setStep] = useState<'email' | 'details'>('email')
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
@@ -18,7 +23,7 @@ export default function SignInPage() {
     signIn('google', { callbackUrl: '/admin' })
   }
 
-  const handleEmailSignIn = async (e: React.SyntheticEvent) => {
+  const handleRequestCode = async (e: React.SyntheticEvent) => {
     e.preventDefault()
     setError(null)
     setIsSending(true)
@@ -45,7 +50,7 @@ export default function SignInPage() {
         return
       }
 
-      setStep('code')
+      setStep('details')
     } catch (err) {
       console.error(err)
       setError('Failed to send verification code. Please try again.')
@@ -54,14 +59,14 @@ export default function SignInPage() {
     }
   }
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsVerifying(true)
     try {
-      const result = await signIn('email-otp', {
+      const result = await signIn('email-password', {
         email,
-        code,
+        password,
         redirect: false,
         callbackUrl: '/admin',
       })
@@ -73,16 +78,106 @@ export default function SignInPage() {
 
       if (result.error) {
         switch (result.error) {
-          case 'EMAIL_CODE_EXPIRED':
-            setError('This code has expired. Please request a new one.')
-            break
-          case 'EMAIL_CODE_ATTEMPTS_EXCEEDED':
-            setError('Too many attempts. Please request a new code.')
-            break
           case 'EMAIL_GOOGLE_ACCOUNT':
             setError(
               'This email is already linked to a Google account. Please sign in with Google.'
             )
+            break
+          case 'EMAIL_PASSWORD_NOT_SET':
+            setError('This account does not have a password. Please sign up.')
+            break
+          default:
+            setError('Invalid email or password.')
+        }
+        return
+      }
+
+      if (!result.ok) {
+        setError('Sign in failed. Please try again.')
+        return
+      }
+
+      window.location.href = result.url || '/admin'
+    } catch (err) {
+      console.error(err)
+      setError('Failed to sign in. Please try again.')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setIsVerifying(true)
+    try {
+      const response = await fetch('/api/auth/email/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          code,
+          firstName,
+          lastName,
+          password,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
+          setError(
+            'This email is already linked to a Google account. Please sign in with Google.'
+          )
+          return
+        }
+        if (payload?.error === 'USER_EXISTS') {
+          setError('User already exists. Please sign in.')
+          return
+        }
+        if (payload?.error === 'CODE_EXPIRED') {
+          setError('This code has expired. Please request a new one.')
+          return
+        }
+        if (payload?.error === 'CODE_ATTEMPTS_EXCEEDED') {
+          setError('Too many attempts. Please request a new code.')
+          return
+        }
+        setError('Failed to sign up. Please try again.')
+        return
+      }
+
+      const result = await signIn('email-password', {
+        email,
+        password,
+        redirect: false,
+        callbackUrl: '/admin',
+      })
+
+      if (result?.error) {
+        setError('Sign in failed. Please try again.')
+        return
+      }
+
+      window.location.href = result?.url || '/admin'
+    } catch (err) {
+      console.error(err)
+      setError('Failed to sign up. Please try again.')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
             break
           default:
             setError('Invalid code. Please try again.')
@@ -117,6 +212,37 @@ export default function SignInPage() {
         </div>
 
         <div className="space-y-4">
+          <div className="flex rounded-md border border-gray-200 bg-gray-50 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signin')
+                setError(null)
+              }}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+                mode === 'signin'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signup')
+                setError(null)
+              }}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
+                mode === 'signup'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
           {/* Google Sign In */}
           <Button
             onClick={handleGoogleSignIn}
@@ -147,14 +273,60 @@ export default function SignInPage() {
             </div>
           )}
 
-          {step === 'email' && (
-            <form onSubmit={handleEmailSignIn} className="space-y-4">
+          {mode === 'signin' && (
+            <form onSubmit={handlePasswordSignIn} className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                   Email address
                 </label>
                 <input
                   id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter your password"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!email || !password || isVerifying}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isVerifying ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </form>
+          )}
+
+          {mode === 'signup' && step === 'email' && (
+            <form onSubmit={handleRequestCode} className="space-y-4">
+              <div>
+                <label htmlFor="email-signup" className="block text-sm font-medium text-gray-700">
+                  Email address
+                </label>
+                <input
+                  id="email-signup"
                   name="email"
                   type="email"
                   autoComplete="email"
@@ -176,8 +348,8 @@ export default function SignInPage() {
             </form>
           )}
 
-          {step === 'code' && (
-            <form onSubmit={handleVerifyCode} className="space-y-4">
+          {mode === 'signup' && step === 'details' && (
+            <form onSubmit={handleSignUp} className="space-y-4">
               <div>
                 <label htmlFor="code" className="block text-sm font-medium text-gray-700">
                   Verification code
@@ -194,17 +366,78 @@ export default function SignInPage() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter 6-digit code"
                 />
-                <p className="mt-2 text-xs text-gray-500">
-                  We sent a code to {email}.
-                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                    First name
+                  </label>
+                  <input
+                    id="firstName"
+                    name="firstName"
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                    Last name
+                  </label>
+                  <input
+                    id="lastName"
+                    name="lastName"
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password-signup" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <input
+                  id="password-signup"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="At least 8 characters"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700">
+                  Confirm password
+                </label>
+                <input
+                  id="confirm-password"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
 
               <Button
                 type="submit"
-                disabled={!code || isVerifying}
+                disabled={!code || !firstName || !lastName || !password || !confirmPassword || isVerifying}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
-                {isVerifying ? 'Verifying...' : 'Verify and sign in'}
+                {isVerifying ? 'Creating account...' : 'Create account'}
               </Button>
 
               <div className="flex justify-between text-sm">
@@ -220,7 +453,7 @@ export default function SignInPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleEmailSignIn}
+                  onClick={handleRequestCode}
                   className="text-blue-600 hover:text-blue-500"
                   disabled={isSending}
                 >
@@ -232,7 +465,9 @@ export default function SignInPage() {
         </div>
 
         <p className="mt-4 text-center text-sm text-gray-600">
-          New to Piqle? Use the email code above to create your account.
+          {mode === 'signin'
+            ? 'Use your email and password or Google to sign in.'
+            : 'Create an account with email verification.'}
         </p>
       </div>
     </div>

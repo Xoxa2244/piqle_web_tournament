@@ -5,6 +5,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
+import bcrypt from 'bcryptjs'
 
 // Ensure NEXTAUTH_SECRET is set
 if (!process.env.NEXTAUTH_SECRET) {
@@ -100,6 +101,53 @@ export const authOptions: NextAuthOptions = {
               emailVerified: new Date(),
             },
           }))
+
+        if (!user.emailVerified) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { emailVerified: new Date() },
+          })
+        }
+
+        return user
+      },
+    }),
+    CredentialsProvider({
+      id: 'email-password',
+      name: 'Email Password',
+      credentials: {
+        email: { label: 'Email', type: 'text' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        const email = normalizeEmail(credentials?.email || '')
+        const password = `${credentials?.password || ''}`.trim()
+
+        if (!email || !password) {
+          throw new Error('EMAIL_PASSWORD_INVALID')
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email },
+          include: { accounts: true },
+        })
+
+        if (!user) {
+          throw new Error('EMAIL_PASSWORD_INVALID')
+        }
+
+        if (user.accounts?.some((account) => account.provider === 'google')) {
+          throw new Error('EMAIL_GOOGLE_ACCOUNT')
+        }
+
+        if (!user.passwordHash) {
+          throw new Error('EMAIL_PASSWORD_NOT_SET')
+        }
+
+        const isValid = await bcrypt.compare(password, user.passwordHash)
+        if (!isValid) {
+          throw new Error('EMAIL_PASSWORD_INVALID')
+        }
 
         if (!user.emailVerified) {
           await prisma.user.update({
