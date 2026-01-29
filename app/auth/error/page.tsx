@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Suspense } from 'react'
 
 const errorMessages: Record<string, string> = {
   CredentialsSignin: 'Invalid email or password.',
@@ -15,7 +16,7 @@ const errorMessages: Record<string, string> = {
   Default: 'Unable to sign in. Please try again.',
 }
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const params = useSearchParams()
   const error = params.get('error') || 'Default'
   const message = errorMessages[error] || errorMessages.Default
@@ -37,5 +38,19 @@ export default function AuthErrorPage() {
         </Button>
       </div>
     </div>
+  )
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      }
+    >
+      <AuthErrorContent />
+    </Suspense>
   )
 }
