@@ -182,26 +182,6 @@ export default function SignInPage() {
       setIsVerifying(false)
     }
   }
-            break
-          default:
-            setError('Invalid code. Please try again.')
-        }
-        return
-      }
-
-      if (!result.ok) {
-        setError('Sign in failed. Please try again.')
-        return
-      }
-
-      window.location.href = result.url || '/admin'
-    } catch (err) {
-      console.error(err)
-      setError('Failed to verify code. Please try again.')
-    } finally {
-      setIsVerifying(false)
-    }
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
