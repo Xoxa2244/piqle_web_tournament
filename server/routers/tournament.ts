@@ -222,6 +222,7 @@ export const tournamentRouter = createTRPCRouter({
       isPublicBoardEnabled: z.boolean().optional(),
       allowDuprSubmission: z.boolean().optional(),
       publicSlug: z.string().optional(),
+      image: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Check admin access
