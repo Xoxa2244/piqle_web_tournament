@@ -42,6 +42,10 @@ export default function SignInPage() {
           )
           return
         }
+        if (payload?.error === 'USER_EXISTS') {
+          setError('User already exists. Please sign in.')
+          return
+        }
         if (payload?.error === 'CODE_COOLDOWN') {
           setError('Please wait before requesting a new code.')
           return
