@@ -93,56 +93,67 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Try Resend API first (simpler, no SMTP needed)
-    const resendApiKey = process.env.RESEND_API_KEY
+    // Try Mailchimp Transactional (Mandrill) API first
+    const mailchimpApiKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
     
-    if (resendApiKey) {
-      // Use Resend API
-      const fromEmail = process.env.EMAIL_FROM || 'noreply@piqle.io'
+    if (mailchimpApiKey) {
+      // Use Mailchimp Transactional API (formerly Mandrill)
+      // From: SMTP_FROM / EMAIL_FROM, SMTP_FROM_NAME / EMAIL_FROM_NAME
+      const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@piqle.io'
+      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
       
-      // Prepare attachments for Resend
-      const resendAttachments: any[] = []
+      // Prepare attachments for Mailchimp (base64)
+      const mailchimpAttachments: { type: string; name: string; content: string }[] = []
       if (imageFile) {
         const imageBuffer = await imageFile.arrayBuffer()
-        resendAttachments.push({
-          filename: imageFile.name,
+        mailchimpAttachments.push({
+          type: imageFile.type || 'application/octet-stream',
+          name: imageFile.name,
           content: Buffer.from(imageBuffer).toString('base64'),
         })
       }
 
-      const emailPromises = recipients.map((recipient) =>
-        fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: fromEmail,
-            to: recipient,
-            subject: commentId 
-              ? `Comment Report from Tournament: ${tournamentTitle}`
-              : `Complaint from Tournament: ${tournamentTitle}`,
-            html: emailHtml,
-            attachments: resendAttachments.length > 0 ? resendAttachments : undefined,
-          }),
-        })
-      )
+      const subject = commentId 
+        ? `Comment Report from Tournament: ${tournamentTitle}`
+        : `Complaint from Tournament: ${tournamentTitle}`
 
-      const results = await Promise.all(emailPromises)
+      // Mailchimp Transactional sends one request per recipient; we send to all in one message
+      const response = await fetch('https://mandrillapp.com/api/1.0/messages/send.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: mailchimpApiKey,
+          message: {
+            html: emailHtml,
+            subject,
+            from_email: fromEmail,
+            from_name: fromName,
+            to: recipients.map((email) => ({ email, type: 'to' as const })),
+            attachments: mailchimpAttachments.length > 0 ? mailchimpAttachments : undefined,
+          },
+        }),
+      })
+
+      const result = await response.json()
       
-      // Check if all emails were sent successfully
-      for (const result of results) {
-        if (!result.ok) {
-          const errorData = await result.json()
-          throw new Error(`Resend API error: ${errorData.message || 'Failed to send email'}`)
+      if (!response.ok) {
+        throw new Error(`Mailchimp API error: ${response.status} ${JSON.stringify(result)}`)
+      }
+      // Mailchimp returns array of { email, status, _id, reject_reason? }
+      if (Array.isArray(result)) {
+        const rejected = result.filter((r: { status: string }) => r.status === 'rejected')
+        if (rejected.length > 0) {
+          throw new Error(`Mailchimp send failed: ${rejected.map((r: any) => r.reject_reason || r.email).join(', ')}`)
         }
+      } else if (result.status === 'error') {
+        throw new Error(`Mailchimp API error: ${result.message || result.name || 'Unknown error'}`)
       }
     } else {
-      // Fallback to SMTP (if configured)
-      const emailHost = process.env.EMAIL_SERVER_HOST
-      const emailUser = process.env.EMAIL_SERVER_USER
-      const emailPassword = process.env.EMAIL_SERVER_PASSWORD
+      // Fallback to SMTP (support both SMTP_* and EMAIL_SERVER_* variable names)
+      const emailHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
+      const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER
+      const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
+      const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
 
       if (!emailHost || !emailUser || !emailPassword) {
         console.error('Email configuration missing. Complaint data:', {
@@ -169,7 +180,7 @@ export async function POST(req: NextRequest) {
         }
         
         return NextResponse.json(
-          { error: 'Email service is not configured. Please set RESEND_API_KEY or SMTP credentials.' },
+          { error: 'Email service is not configured. Please set MAILCHIMP_TRANSACTIONAL_API_KEY or SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS).' },
           { status: 503 }
         )
       }
@@ -178,19 +189,21 @@ export async function POST(req: NextRequest) {
       const nodemailer = await import('nodemailer')
       const transporter = nodemailer.default.createTransport({
         host: emailHost,
-        port: parseInt(process.env.EMAIL_SERVER_PORT || '587'),
-        secure: process.env.EMAIL_SERVER_PORT === '465',
+        port: parseInt(emailPort),
+        secure: emailPort === '465',
         auth: {
           user: emailUser,
           pass: emailPassword,
         },
       })
 
-      const fromEmail = process.env.EMAIL_FROM || emailUser
-      
+      const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || emailUser
+      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME
+      const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
+
       const emailPromises = recipients.map((recipient) =>
         transporter.sendMail({
-          from: fromEmail,
+          from: fromAddress,
           to: recipient,
           subject: commentId 
             ? `Comment Report from Tournament: ${tournamentTitle}`
