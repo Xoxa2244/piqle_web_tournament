@@ -740,17 +740,21 @@ export default function TournamentDetailPage() {
       {/* Edit Tournament Modal */}
       {showEditTournament && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden flex flex-col max-h-[90vh]">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-3xl"></div>
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-            <div className="flex items-center mb-6 relative z-10">
+            
+            {/* Header - fixed */}
+            <div className="flex items-center p-8 pb-6 relative z-10 flex-shrink-0">
               <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
                 <Edit className="w-6 h-6 text-white" />
               </div>
               <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Edit Tournament</h2>
             </div>
             
-            <div className="space-y-5 relative z-10">
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-8 relative z-10">
+              <div className="space-y-5 pb-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Tournament Name *
@@ -912,9 +916,11 @@ export default function TournamentDetailPage() {
                   Allow sending results to DUPR
                 </label>
               </div>
+              </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8 relative z-10">
+            {/* Footer with buttons - fixed */}
+            <div className="flex justify-end space-x-3 p-8 pt-6 relative z-10 flex-shrink-0 border-t border-gray-200">
               <Button
                 variant="outline"
                 onClick={() => {
