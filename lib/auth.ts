@@ -35,14 +35,14 @@ export const authOptions: NextAuthOptions = {
     }),
     EmailProvider({
       server: {
-        host: process.env.EMAIL_SERVER_HOST,
-        port: parseInt(process.env.EMAIL_SERVER_PORT || "587"),
+        host: process.env.EMAIL_SERVER_HOST || process.env.SMTP_HOST,
+        port: parseInt(process.env.EMAIL_SERVER_PORT || process.env.SMTP_PORT || "587"),
         auth: {
-          user: process.env.EMAIL_SERVER_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD,
+          user: process.env.EMAIL_SERVER_USER || process.env.SMTP_USER,
+          pass: process.env.EMAIL_SERVER_PASSWORD || process.env.SMTP_PASS,
         },
       },
-      from: process.env.EMAIL_FROM,
+      from: process.env.EMAIL_FROM || process.env.SMTP_FROM,
     }),
     CredentialsProvider({
       id: 'email-otp',
