@@ -183,9 +183,10 @@ export const authOptions: NextAuthOptions = {
       // Default to /admin
       return `${baseUrl}/admin`
     },
-    async session({ session, user }) {
-      if (session?.user && user?.id) {
-        session.user.id = user.id
+    async session({ session, user, token }) {
+      if (session?.user) {
+        session.user.id =
+          session.user.id || user?.id || token?.sub || ''
       }
       return session
     },
