@@ -971,7 +971,8 @@ export default function TournamentDetailPage() {
       {showCropper && cropperImageSrc && (
         <AvatarCropper
           imageSrc={cropperImageSrc}
-          onCropComplete={handleCropComplete}
+          isOpen={showCropper}
+          onCrop={handleCropComplete}
           onClose={handleCropperClose}
         />
       )}
