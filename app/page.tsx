@@ -744,6 +744,21 @@ export default function HomePage() {
                           </span>
                         </div>
                         
+                        {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
+                          <div className="flex items-center text-sm text-gray-600">
+                            <ClipboardList className="h-4 w-4 mr-2" />
+                            <span>
+                              Registration: {(tournament as any).registrationStartDate
+                                ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                                : '—'}
+                              {' – '}
+                              {(tournament as any).registrationEndDate
+                                ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                                : '—'}
+                            </span>
+                          </div>
+                        )}
+                        
                         {tournament.venueName && (
                           <div className="flex items-center text-sm text-gray-600">
                             <MapPin className="h-4 w-4 mr-2" />
