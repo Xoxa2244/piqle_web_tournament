@@ -196,6 +196,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       <div className="min-h-screen bg-gray-50">
         <TournamentNavBar
           tournamentTitle={tournament?.title}
+          tournamentImage={tournament?.image || undefined}
           isAdmin={isAdmin}
           isOwner={isOwner}
           pendingRequestsCount={pendingRequestsCount}
@@ -222,6 +223,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament?.title}
+        tournamentImage={tournament?.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}

@@ -671,9 +671,26 @@ export default function HomePage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
-                  <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
+                <div className="flex items-center space-x-3">
+                  {(tournament as any).image ? (
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                      <Image
+                        src={(tournament as any).image}
+                        alt={tournament.title}
+                        width={48}
+                        height={48}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-bold text-sm">P</span>
+                    </div>
+                  )}
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
+                    <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => {
@@ -689,17 +706,6 @@ export default function HomePage() {
                 {/* Left Side - Tournament Info */}
                 <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
-                    {/* Tournament Image */}
-                    {(tournament as any).image && (
-                      <div className="w-full aspect-square relative overflow-hidden rounded-lg">
-                        <Image
-                          src={(tournament as any).image}
-                          alt={tournament.title}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    )}
                     
                     {/* Description */}
                     {tournament.description && (

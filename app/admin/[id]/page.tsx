@@ -1,12 +1,14 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import Image from 'next/image'
+import AvatarCropper from '@/components/AvatarCropper'
 import { 
   Users, 
   Calendar, 
@@ -18,9 +20,63 @@ import {
   Upload,
   Globe,
   Edit,
-  Shield
+  Shield,
+  X
 } from 'lucide-react'
 import TournamentNavBar from '@/components/TournamentNavBar'
+
+// Helper function to resize image on client side
+function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = document.createElement('img')
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        // Calculate new dimensions if image is too large
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height / width) * maxSize
+            width = maxSize
+          } else {
+            width = (width / height) * maxSize
+            height = maxSize
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob'))
+            }
+          },
+          'image/jpeg',
+          0.85 // Quality
+        )
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      if (e.target?.result) {
+        img.src = e.target.result as string
+      }
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -42,7 +98,13 @@ export default function TournamentDetailPage() {
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
+    image: '',
   })
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showCropper, setShowCropper] = useState(false)
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [divisionForm, setDivisionForm] = useState({
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
@@ -72,6 +134,8 @@ export default function TournamentDetailPage() {
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
+      setImagePreview(null)
+      setCropperImageSrc(null)
       window.location.reload()
     },
     onError: (error) => {
@@ -137,7 +201,9 @@ export default function TournamentDetailPage() {
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
+      image: tournament.image || '',
     })
+    setImagePreview(tournament.image || null)
     setShowEditTournament(true)
   }
 
@@ -157,7 +223,105 @@ export default function TournamentDetailPage() {
       entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
+      image: tournamentForm.image || null,
     })
+  }
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
+    }
+
+    // Resize image before showing cropper
+    try {
+      const resizedBlob = await resizeImage(file, 1920)
+      const resizedUrl = URL.createObjectURL(resizedBlob)
+      setCropperImageSrc(resizedUrl)
+      setShowCropper(true)
+    } catch (error) {
+      console.error('Error resizing image:', error)
+      alert('Failed to process image. Please try again.')
+    }
+  }
+
+  const handleCropComplete = async (croppedImageUrl: string) => {
+    setShowCropper(false)
+    setIsUploadingImage(true)
+
+    try {
+      // Convert blob URL to File
+      const response = await fetch(croppedImageUrl)
+      const blob = await response.blob()
+      
+      // Resize cropped image to max 1920px before upload
+      const resizedBlob = await resizeImage(
+        new File([blob], 'tournament-image.jpg', { type: 'image/jpeg' }),
+        1920
+      )
+      const file = new File([resizedBlob], 'tournament-image.jpg', { type: 'image/jpeg' })
+
+      // Upload cropped and resized file
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-tournament-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json()
+        throw new Error(error.error || 'Failed to upload image')
+      }
+
+      const data = await uploadResponse.json()
+      setImagePreview(data.url)
+      setTournamentForm(prev => ({ ...prev, image: data.url }))
+      
+      // Clean up blob URLs
+      URL.revokeObjectURL(croppedImageUrl)
+      if (cropperImageSrc) {
+        URL.revokeObjectURL(cropperImageSrc)
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      alert('Failed to upload image. Please try again.')
+      setImagePreview(null)
+    } finally {
+      setIsUploadingImage(false)
+      setCropperImageSrc(null)
+    }
+  }
+
+  const handleCropperClose = useCallback(() => {
+    setShowCropper(false)
+    if (cropperImageSrc) {
+      URL.revokeObjectURL(cropperImageSrc)
+    }
+    setCropperImageSrc(null)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [cropperImageSrc])
+
+  const handleRemoveImage = () => {
+    setImagePreview(null)
+    setTournamentForm(prev => ({ ...prev, image: '' }))
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const handleTournamentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -216,6 +380,7 @@ export default function TournamentDetailPage() {
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
+        tournamentImage={tournament.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
@@ -575,17 +740,21 @@ export default function TournamentDetailPage() {
       {/* Edit Tournament Modal */}
       {showEditTournament && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden flex flex-col max-h-[90vh]">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-3xl"></div>
             <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-            <div className="flex items-center mb-6 relative z-10">
+            
+            {/* Header - fixed */}
+            <div className="flex items-center p-8 pb-6 relative z-10 flex-shrink-0">
               <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
                 <Edit className="w-6 h-6 text-white" />
               </div>
               <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Edit Tournament</h2>
             </div>
             
-            <div className="space-y-5 relative z-10">
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-8 relative z-10">
+              <div className="space-y-5 pb-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Tournament Name *
@@ -672,6 +841,56 @@ export default function TournamentDetailPage() {
                 />
               </div>
 
+              {/* Tournament Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tournament Image
+                </label>
+                {imagePreview ? (
+                  <div className="relative inline-block">
+                    <div className="relative w-48 h-48 rounded-lg overflow-hidden border border-gray-300">
+                      <Image
+                        src={imagePreview}
+                        alt="Tournament preview"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-4">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      id="tournament-image-edit"
+                    />
+                    <label
+                      htmlFor="tournament-image-edit"
+                      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span>Upload Image</span>
+                    </label>
+                    {isUploadingImage && (
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    )}
+                  </div>
+                )}
+                <p className="mt-1 text-sm text-gray-500">
+                  Upload a square image for your tournament (max 5MB). Image will be cropped to square.
+                </p>
+              </div>
+
               <div className="flex items-center p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl border border-indigo-100">
                 <input
                   type="checkbox"
@@ -697,12 +916,28 @@ export default function TournamentDetailPage() {
                   Allow sending results to DUPR
                 </label>
               </div>
+              </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8 relative z-10">
+            {/* Footer with buttons - fixed */}
+            <div className="flex justify-end space-x-3 p-8 pt-6 relative z-10 flex-shrink-0 border-t border-gray-200">
               <Button
                 variant="outline"
-                onClick={() => setShowEditTournament(false)}
+                onClick={() => {
+                  setShowEditTournament(false)
+                  // Reset image state when canceling
+                  if (tournament) {
+                    setImagePreview(tournament.image || null)
+                    setTournamentForm(prev => ({ ...prev, image: tournament.image || '' }))
+                  } else {
+                    setImagePreview(null)
+                    setTournamentForm(prev => ({ ...prev, image: '' }))
+                  }
+                  setCropperImageSrc(null)
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = ''
+                  }
+                }}
                 disabled={updateTournament.isPending}
                 className="px-6 py-3 text-base rounded-xl border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold"
               >
@@ -718,6 +953,16 @@ export default function TournamentDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Avatar Cropper Modal */}
+      {showCropper && cropperImageSrc && (
+        <AvatarCropper
+          imageSrc={cropperImageSrc}
+          isOpen={showCropper}
+          onCrop={handleCropComplete}
+          onClose={handleCropperClose}
+        />
       )}
     </div>
   )
