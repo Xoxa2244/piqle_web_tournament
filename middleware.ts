@@ -8,6 +8,16 @@ export async function middleware(req: NextRequest) {
                 req.headers.get('host')?.includes('dev.piqle.io')
   
   if (isDev) {
+    const pathname = req.nextUrl.pathname
+    // Allow API and Next.js assets without Basic Auth to avoid double prompts/401s
+    if (
+      pathname.startsWith('/api') ||
+      pathname.startsWith('/_next') ||
+      pathname.startsWith('/favicon.ico')
+    ) {
+      return NextResponse.next()
+    }
+
     const authHeader = req.headers.get('authorization')
     
     if (!authHeader || !authHeader.startsWith('Basic ')) {
