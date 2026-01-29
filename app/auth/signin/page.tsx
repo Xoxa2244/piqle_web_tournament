@@ -66,7 +66,12 @@ export default function SignInPage() {
         callbackUrl: '/admin',
       })
 
-      if (result?.error) {
+      if (!result) {
+        setError('Sign in failed. Please try again.')
+        return
+      }
+
+      if (result.error) {
         switch (result.error) {
           case 'EMAIL_CODE_EXPIRED':
             setError('This code has expired. Please request a new one.')
@@ -85,7 +90,12 @@ export default function SignInPage() {
         return
       }
 
-      router.push(result?.url || '/admin')
+      if (!result.ok) {
+        setError('Sign in failed. Please try again.')
+        return
+      }
+
+      window.location.href = result.url || '/admin'
     } catch (err) {
       console.error(err)
       setError('Failed to verify code. Please try again.')
