@@ -374,9 +374,9 @@ export default function PublicTournamentsPage() {
                   </div>
 
                   {/* Fixed bottom section: Like/Dislike and View Results */}
-                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-6">
+                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0">
                     {/* Like/Dislike Buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-6">
                       <button
                         onClick={() => handleRatingClick(tournament.id, 'LIKE')}
                         disabled={toggleRating.isPending}
