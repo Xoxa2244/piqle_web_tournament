@@ -128,9 +128,14 @@ function DivisionDashboardContent() {
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
 
-  // Get standings for current division
+  // Get standings for current division (League Round Robin: optional matchDayId for per-day view)
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
-    { divisionId: currentDivision?.id || '' },
+    {
+      divisionId: currentDivision?.id || '',
+      ...(isLeagueRoundRobin && viewMode === 'DAY_ONLY' && selectedDayId
+        ? { matchDayId: selectedDayId }
+        : {}),
+    },
     { enabled: !!currentDivision?.id }
   )
 
@@ -159,11 +164,12 @@ function DivisionDashboardContent() {
   const isMLP = tournament?.format === 'MLP'
   const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
   const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
-  // IndyLeague queries - MUST be before conditional returns (Rules of Hooks)
+  // Indy League / League Round Robin: match days
   const { data: matchDays } = trpc.matchDay.list.useQuery(
     { tournamentId },
-    { enabled: isIndyLeague && !!tournamentId }
+    { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
   )
   
   const { data: indyStandingsData } = trpc.indyStandings.get.useQuery(
@@ -332,8 +338,8 @@ function DivisionDashboardContent() {
               {/* Status badges hidden per user request */}
             </div>
             
-            {/* Show Bracket Button - only for non-IndyLeague */}
-            {isRRComplete && currentDivision && !isIndyLeague && (
+            {/* Show Bracket Button - only for formats with bracket (not Indy League / League Round Robin) */}
+            {isRRComplete && currentDivision && !isIndyLeague && !isLeagueRoundRobin && (
               <Button
                 onClick={() => setShowBracketModal(true)}
                 variant="outline"
@@ -344,8 +350,8 @@ function DivisionDashboardContent() {
               </Button>
             )}
 
-            {/* Day Selector for IndyLeague */}
-            {isIndyLeague && tournamentId && (
+            {/* Day Selector for Indy League / League Round Robin */}
+            {(isIndyLeague || isLeagueRoundRobin) && tournamentId && (
               <div className="mr-4">
                 <DaySelector
                   tournamentId={tournamentId}
@@ -510,7 +516,14 @@ function DivisionDashboardContent() {
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle>Standings</CardTitle>
+                        <CardTitle>
+                          Standings
+                          {isLeagueRoundRobin && (
+                            <span className="text-sm font-normal text-gray-500 ml-2">
+                              {viewMode === 'DAY_ONLY' ? '(This Day Only)' : '(All Days)'}
+                            </span>
+                          )}
+                        </CardTitle>
                         <Button variant="outline" size="sm">
                           <Download className="h-4 w-4 mr-2" />
                           Export CSV
@@ -561,7 +574,7 @@ function DivisionDashboardContent() {
               </div>
 
               {/* Play-In Section - hide for Round Robin */}
-              {!isRoundRobin && hasPlayIn && (
+              {!isRoundRobin && !isLeagueRoundRobin && hasPlayIn && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -663,7 +676,7 @@ function DivisionDashboardContent() {
               )}
 
               {/* Bracket Section - hide for Round Robin */}
-              {!isRoundRobin && (
+              {!isRoundRobin && !isLeagueRoundRobin && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Playoff Bracket</CardTitle>
@@ -709,10 +722,10 @@ function DivisionDashboardContent() {
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className={`grid w-full ${isRoundRobin ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${isRoundRobin || isLeagueRoundRobin ? 'grid-cols-1' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  {!isRoundRobin && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
-                  {!isRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
+                  {!isRoundRobin && !isLeagueRoundRobin && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
+                  {!isRoundRobin && !isLeagueRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
                 </TabsList>
                 
                 <TabsContent value="rr" className="space-y-4">
@@ -733,7 +746,7 @@ function DivisionDashboardContent() {
                   </Card>
                 </TabsContent>
                 
-                {!isRoundRobin && (
+                {!isRoundRobin && !isLeagueRoundRobin && (
                   <TabsContent value="playin">
                     <Card>
                       <CardHeader>
@@ -748,7 +761,7 @@ function DivisionDashboardContent() {
                   </TabsContent>
                 )}
                 
-                {!isRoundRobin && (
+                {!isRoundRobin && !isLeagueRoundRobin && (
                   <TabsContent value="bracket">
                     <Card>
                       <CardHeader>

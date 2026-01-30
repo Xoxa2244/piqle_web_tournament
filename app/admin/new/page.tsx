@@ -79,7 +79,7 @@ export default function NewTournamentPage() {
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE',
+    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE' | 'LEAGUE_ROUND_ROBIN',
     seasonLabel: '',
     timezone: '',
     image: '',
@@ -485,6 +485,7 @@ export default function NewTournamentPage() {
               >
                 <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                 <option value="ROUND_ROBIN">Round Robin</option>
+                <option value="LEAGUE_ROUND_ROBIN">League Round Robin</option>
                 <option value="MLP">MiLP Tournament</option>
                 <option value="INDY_LEAGUE">Indy League</option>
               </select>
@@ -495,6 +496,8 @@ export default function NewTournamentPage() {
                   ? 'Indy League: Multi-day league format with match days and 12-game matchups'
                   : formData.format === 'ROUND_ROBIN'
                   ? 'Round Robin: Standard single elimination bracket with play-in matches'
+                  : formData.format === 'LEAGUE_ROUND_ROBIN'
+                  ? 'League Round Robin: Round robin with match days; stats per day and all days'
                   : 'Standard single elimination bracket with play-in matches'}
               </p>
             </div>

@@ -633,7 +633,7 @@ export default function TournamentDetailPage() {
                     </div>
                   </Link>
                   
-                  {tournament?.format === 'INDY_LEAGUE' && isAdmin && (
+                  {(tournament?.format === 'INDY_LEAGUE' || tournament?.format === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
                     <Link href={`/admin/${tournamentId}/match-days`} className="group/action">
                       <div className="relative h-24 w-full">
                         <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-blue-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
