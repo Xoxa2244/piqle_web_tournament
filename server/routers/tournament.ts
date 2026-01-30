@@ -25,7 +25,7 @@ export const tournamentRouter = createTRPCRouter({
       allowDuprSubmission: z.boolean().default(false),
       publicSlug: z.string().optional(),
       image: z.string().url().optional(),
-      format: z.enum(['SINGLE_ELIMINATION', 'ROUND_ROBIN', 'MLP', 'INDY_LEAGUE']).default('SINGLE_ELIMINATION'),
+      format: z.enum(['SINGLE_ELIMINATION', 'ROUND_ROBIN', 'MLP', 'INDY_LEAGUE', 'LEAGUE_ROUND_ROBIN']).default('SINGLE_ELIMINATION'),
       seasonLabel: z.string().optional(),
       timezone: z.string().optional(),
     }))

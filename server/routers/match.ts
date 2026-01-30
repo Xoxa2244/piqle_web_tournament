@@ -43,7 +43,10 @@ function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolI
 
 export const matchRouter = createTRPCRouter({
   generateRR: tdProcedure
-    .input(z.object({ divisionId: z.string() }))
+    .input(z.object({
+      divisionId: z.string(),
+      matchDayId: z.string().optional(), // League Round Robin: generate RR for this day only
+    }))
     .mutation(async ({ ctx, input }) => {
       // Get division with teams
       const division = await ctx.prisma.division.findUnique({
@@ -71,13 +74,22 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      // Check if RR already exists
+      const isLeagueRoundRobin = division.tournament.format === 'LEAGUE_ROUND_ROBIN'
+      if (isLeagueRoundRobin && !input.matchDayId) {
+        throw new Error('League Round Robin requires selecting a match day to generate Round Robin')
+      }
+
+      // Check if RR already exists (for this division, and for this day if League Round Robin)
       const existingMatches = await ctx.prisma.match.findMany({
-        where: { divisionId: input.divisionId },
+        where: {
+          divisionId: input.divisionId,
+          stage: 'ROUND_ROBIN',
+          ...(input.matchDayId != null ? { matchDayId: input.matchDayId } : { matchDayId: null }),
+        },
       })
 
       if (existingMatches.length > 0) {
-        throw new Error('Round Robin already generated for this division')
+        throw new Error(isLeagueRoundRobin ? 'Round Robin already generated for this day' : 'Round Robin already generated for this division')
       }
 
       // Generate Round Robin schedule - separate by pools if they exist
@@ -161,6 +173,7 @@ export const matchRouter = createTRPCRouter({
               targetPoints: 11, // Default to 11 points
               winBy: 2, // Default to win by 2
               locked: false,
+              ...(input.matchDayId != null ? { matchDayId: input.matchDayId } : {}),
             },
           })
 
@@ -197,7 +210,10 @@ export const matchRouter = createTRPCRouter({
     }),
 
   regenerateRR: tdProcedure
-    .input(z.object({ divisionId: z.string() }))
+    .input(z.object({
+      divisionId: z.string(),
+      matchDayId: z.string().optional(), // League Round Robin: regenerate RR for this day only
+    }))
     .mutation(async ({ ctx, input }) => {
       // Get division with teams and pools
       const division = await ctx.prisma.division.findUnique({
@@ -225,11 +241,17 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      // Delete all existing RR matches and their games
+      const isLeagueRoundRobin = division.tournament.format === 'LEAGUE_ROUND_ROBIN'
+      if (isLeagueRoundRobin && !input.matchDayId) {
+        throw new Error('League Round Robin requires selecting a match day to regenerate Round Robin')
+      }
+
+      // Delete existing RR matches (and their games) for this division, and for this day if League Round Robin
       const existingMatches = await ctx.prisma.match.findMany({
         where: { 
           divisionId: input.divisionId,
-          stage: 'ROUND_ROBIN'
+          stage: 'ROUND_ROBIN',
+          ...(input.matchDayId != null ? { matchDayId: input.matchDayId } : { matchDayId: null }),
         },
       })
 
@@ -243,17 +265,20 @@ export const matchRouter = createTRPCRouter({
       await ctx.prisma.match.deleteMany({
         where: { 
           divisionId: input.divisionId,
-          stage: 'ROUND_ROBIN'
+          stage: 'ROUND_ROBIN',
+          ...(input.matchDayId != null ? { matchDayId: input.matchDayId } : { matchDayId: null }),
         },
       })
 
-      // Delete all Play-In and Playoff matches when regenerating RR
-      const existingPlayoffMatches = await ctx.prisma.match.findMany({
-        where: { 
-          divisionId: input.divisionId,
-          stage: { in: ['PLAY_IN', 'ELIMINATION'] }
-        },
-      })
+      // Delete Play-In and Playoff matches only when regenerating full RR (not per-day)
+      const existingPlayoffMatches = input.matchDayId == null
+        ? await ctx.prisma.match.findMany({
+            where: { 
+              divisionId: input.divisionId,
+              stage: { in: ['PLAY_IN', 'ELIMINATION'] }
+            },
+          })
+        : []
 
       for (const match of existingPlayoffMatches) {
         await ctx.prisma.game.deleteMany({

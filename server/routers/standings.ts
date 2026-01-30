@@ -18,7 +18,10 @@ interface TeamStats {
 
 export const standingsRouter = createTRPCRouter({
   calculateStandings: tdProcedure
-    .input(z.object({ divisionId: z.string() }))
+    .input(z.object({
+      divisionId: z.string(),
+      matchDayId: z.string().optional(), // League Round Robin: standings for this day only; omit for all days
+    }))
     .query(async ({ ctx, input }) => {
       // Get division with teams and matches
       const division = await ctx.prisma.division.findUnique({
@@ -34,7 +37,12 @@ export const standingsRouter = createTRPCRouter({
             },
           },
           matches: {
-            where: { stage: 'ROUND_ROBIN' },
+            where: {
+              stage: 'ROUND_ROBIN',
+              ...(input.matchDayId !== undefined
+                ? { matchDayId: input.matchDayId }
+                : {}),
+            },
             include: {
               teamA: {
                 include: {
@@ -616,10 +624,11 @@ export const standingsRouter = createTRPCRouter({
       const matches = []
       const isMLP = division.tournament?.format === 'MLP'
       const isRoundRobin = division.tournament?.format === 'ROUND_ROBIN'
+      const isLeagueRoundRobin = division.tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
-      // Round Robin format: no play-in or play-off, winners determined by standings
-      if (isRoundRobin) {
-        throw new Error('Round Robin format does not use play-in or play-off stages. Winners are determined by Round Robin standings.')
+      // Round Robin / League Round Robin: no play-in or play-off, winners determined by standings
+      if (isRoundRobin || isLeagueRoundRobin) {
+        throw new Error('This format does not use play-in or play-off stages. Winners are determined by Round Robin standings.')
       }
 
       // MLP format: special logic for Play-Off generation
@@ -815,10 +824,11 @@ export const standingsRouter = createTRPCRouter({
 
       const isMLP = division.tournament?.format === 'MLP'
       const isRoundRobin = division.tournament?.format === 'ROUND_ROBIN'
+      const isLeagueRoundRobin = division.tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
-      // Round Robin format: no play-off rounds
-      if (isRoundRobin) {
-        throw new Error('Round Robin format does not use play-off rounds. Winners are determined by Round Robin standings.')
+      // Round Robin / League Round Robin: no play-off rounds
+      if (isRoundRobin || isLeagueRoundRobin) {
+        throw new Error('This format does not use play-off rounds. Winners are determined by Round Robin standings.')
       }
 
       // Find the current round (highest round with matches)
@@ -1091,10 +1101,11 @@ export const standingsRouter = createTRPCRouter({
       // Process Round Robin and Play-In matches
       const isMLP = division.tournament?.format === 'MLP'
       const isRoundRobin = division.tournament?.format === 'ROUND_ROBIN'
+      const isLeagueRoundRobin = division.tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
-      // Round Robin format: no play-off regeneration
-      if (isRoundRobin) {
-        throw new Error('Round Robin format does not use play-offs. Winners are determined by Round Robin standings.')
+      // Round Robin / League Round Robin: no play-off regeneration
+      if (isRoundRobin || isLeagueRoundRobin) {
+        throw new Error('This format does not use play-offs. Winners are determined by Round Robin standings.')
       }
       
       division.matches.forEach(match => {

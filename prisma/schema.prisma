@@ -360,11 +360,13 @@ model Match {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   note                  String?                @db.VarChar(255)
+  matchDayId            String?                @map("match_day_id")
   games                 Game[]
   tiebreaker            Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  matchDay     MatchDay?        @relation(fields: [matchDayId], references: [id], onDelete: SetNull)
   teamA        Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
   teamB        Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
 
@@ -526,6 +528,7 @@ model MatchDay {
   updatedAt    DateTime         @updatedAt @map("updated_at")
   tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matchups     IndyMatchup[]
+  rrMatches    Match[]          // League Round Robin: RR matches for this day
 
   @@unique([tournamentId, date])
   @@map("match_days")
@@ -712,6 +715,7 @@ enum TournamentFormat {
   ROUND_ROBIN
   MLP
   INDY_LEAGUE
+  LEAGUE_ROUND_ROBIN
 }
 
 enum GameType {

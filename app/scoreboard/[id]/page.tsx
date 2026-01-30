@@ -153,9 +153,10 @@ export default function PublicCoursePage() {
   
   const isMLP = tournament?.format === 'MLP'
   const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = !isMLP && !isRoundRobin && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && !isRoundRobin && !isLeagueRoundRobin && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
@@ -338,7 +339,7 @@ export default function PublicCoursePage() {
               </div>
 
               {/* Play-In Section - hide for Round Robin */}
-              {!isRoundRobin && hasPlayIn && !isMLP && (
+              {!isRoundRobin && !isLeagueRoundRobin && hasPlayIn && !isMLP && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -440,7 +441,7 @@ export default function PublicCoursePage() {
               )}
 
               {/* Bracket Section - hide for Round Robin */}
-              {!isRoundRobin && (
+              {!isRoundRobin && !isLeagueRoundRobin && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Playoff Bracket</CardTitle>
@@ -479,10 +480,10 @@ export default function PublicCoursePage() {
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className={`grid w-full ${isRoundRobin ? 'grid-cols-1' : isMLP ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                <TabsList className={`grid w-full ${isRoundRobin || isLeagueRoundRobin ? 'grid-cols-1' : isMLP ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  {!isRoundRobin && !isMLP && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
-                  {!isRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
+                  {!isRoundRobin && !isLeagueRoundRobin && !isMLP && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
+                  {!isRoundRobin && !isLeagueRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
                 </TabsList>
                 
                 <TabsContent value="rr" className="space-y-4">
@@ -527,7 +528,7 @@ export default function PublicCoursePage() {
                   </Card>
                 </TabsContent>
                 
-                {!isRoundRobin && (
+                {!isRoundRobin && !isLeagueRoundRobin && (
                   <TabsContent value="playin">
                   <Card>
                     <CardHeader>
@@ -637,7 +638,7 @@ export default function PublicCoursePage() {
                   </TabsContent>
                 )}
                 
-                {!isRoundRobin && (
+                {!isRoundRobin && !isLeagueRoundRobin && (
                   <TabsContent value="bracket">
                     <Card>
                       <CardHeader>

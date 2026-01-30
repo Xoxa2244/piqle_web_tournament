@@ -214,12 +214,13 @@ function DivisionStageManagementContent() {
   const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
   // Check if tournament is Round Robin
   const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
   const { data: matchDays } = trpc.matchDay.list.useQuery(
     { tournamentId },
-    { enabled: isIndyLeague && !!tournamentId }
+    { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
   )
 
   // Get matchups for selected match day and division
@@ -526,7 +527,13 @@ function DivisionStageManagementContent() {
     matchesWithNullStage: matches.filter(m => m.stage === null || m.stage === undefined).length,
   })
   
-  const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
+  const rrMatches = matches.filter((m: any) => {
+    if (m.stage !== 'ROUND_ROBIN') return false
+    if (isLeagueRoundRobin && selectedMatchDayId) {
+      return m.matchDayId === selectedMatchDayId
+    }
+    return true
+  })
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
   const hasLockedRRMatches = rrMatches.some((match: any) => match.locked)
@@ -725,9 +732,15 @@ function DivisionStageManagementContent() {
   
   // Functions for handling actions
   const handleGenerateRR = () => {
-    if (selectedDivisionId) {
-      generateRRMutation.mutate({ divisionId: selectedDivisionId })
+    if (!selectedDivisionId) return
+    if (isLeagueRoundRobin && !selectedMatchDayId) {
+      alert('Please select a match day first to generate Round Robin for that day.')
+      return
     }
+    generateRRMutation.mutate({
+      divisionId: selectedDivisionId,
+      ...(isLeagueRoundRobin && selectedMatchDayId ? { matchDayId: selectedMatchDayId } : {}),
+    })
   }
 
   const handleGeneratePlayoffAfterPlayIn = () => {
@@ -1678,6 +1691,24 @@ function DivisionStageManagementContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* League Round Robin: Match Day selector */}
+            {isLeagueRoundRobin && matchDays && matchDays.length > 0 && (
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <span className="text-sm font-medium text-gray-700">Match Day:</span>
+                <select
+                  value={selectedMatchDayId}
+                  onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">— Select day —</option>
+                  {(matchDays as any[]).map((day: any) => (
+                    <option key={day.id} value={day.id}>
+                      {new Date(day.date).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* RR Summary */}
             <div className="flex items-center justify-between">
               <div className="space-y-2">
@@ -2095,7 +2126,7 @@ function DivisionStageManagementContent() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  {isRoundRobin 
+                  {(isRoundRobin || isLeagueRoundRobin) 
                     ? 'Complete all Round Robin matches to finish the tournament. Winners will be determined by standings.'
                     : 'Complete all Round Robin matches to proceed to Play-In/Play-Off.'}
                 </AlertDescription>
@@ -2147,7 +2178,7 @@ function DivisionStageManagementContent() {
                   </h3>
                   <p className="text-sm text-gray-600">
                     Round Robin is complete. You can now split this merged division back into the original two divisions.
-                    {!isRoundRobin && ' Each division will have separate Play-In and Play-Off brackets.'}
+                    {!isRoundRobin && !isLeagueRoundRobin && ' Each division will have separate Play-In and Play-Off brackets.'}
                   </p>
                 </div>
                 <Button
@@ -2163,7 +2194,7 @@ function DivisionStageManagementContent() {
             )}
 
         {/* Play-In Block - show only if B < N < 2B and not Round Robin */}
-        {!isIndyLeague && !isRoundRobin && needsPlayIn && (
+        {!isIndyLeague && !isRoundRobin && !isLeagueRoundRobin && needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -2365,7 +2396,7 @@ function DivisionStageManagementContent() {
         )}
 
         {/* Play-Off Block - hide for Round Robin */}
-        {!isIndyLeague && !isRoundRobin && (
+        {!isIndyLeague && !isRoundRobin && !isLeagueRoundRobin && (
         <Card className={
           // Block if:
           // 1. RR is in progress AND not all matches completed (for both MLP and non-MLP)
