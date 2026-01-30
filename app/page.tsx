@@ -610,7 +610,7 @@ export default function HomePage() {
                   </div>
 
                   {/* Fixed bottom section: Like/Dislike and View Results */}
-                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
+                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-6">
                     {/* Like/Dislike/Comments Buttons */}
                     <div className="flex items-center gap-2">
                       <button
