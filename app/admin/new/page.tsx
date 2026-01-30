@@ -483,7 +483,7 @@ export default function NewTournamentPage() {
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="SINGLE_ELIMINATION">Single Elimination</option>
+                <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                 <option value="ROUND_ROBIN">Round Robin</option>
                 <option value="MLP">MiLP Tournament</option>
                 <option value="INDY_LEAGUE">Indy League</option>
