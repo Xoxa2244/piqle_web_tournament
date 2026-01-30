@@ -128,6 +128,12 @@ function DivisionDashboardContent() {
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
 
+  // Tournament format flags (needed for standings query and below)
+  const isMLP = tournament?.format === 'MLP'
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
+
   // Get standings for current division (League Round Robin: optional matchDayId for per-day view)
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
     {
@@ -159,12 +165,6 @@ function DivisionDashboardContent() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
-
-  // Calculate tournament format flags BEFORE conditional returns (Rules of Hooks)
-  const isMLP = tournament?.format === 'MLP'
-  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
-  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
-  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
 
   // Indy League / League Round Robin: match days
   const { data: matchDays } = trpc.matchDay.list.useQuery(
