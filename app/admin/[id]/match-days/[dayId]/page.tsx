@@ -212,6 +212,42 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
+  // League Round Robin: matchups are not used; manage matches in Stages
+  if (tournament?.format === 'LEAGUE_ROUND_ROBIN') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <TournamentNavBar
+          tournamentTitle={tournament?.title}
+          tournamentImage={tournament?.image || undefined}
+          isAdmin={isAdmin}
+          isOwner={isOwner}
+          pendingRequestsCount={pendingRequestsCount}
+          tournamentFormat={tournament?.format}
+        />
+        <div className="max-w-6xl mx-auto p-6">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/admin/${tournamentId}/match-days`)}
+            className="mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Match Days
+          </Button>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-gray-600 mb-4">
+                Matchups are not used for League Round Robin. Distribution is done via Round Robin in Stages.
+              </p>
+              <Button onClick={() => router.push(`/admin/${tournamentId}/stages`)}>
+                Go to Stages
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}

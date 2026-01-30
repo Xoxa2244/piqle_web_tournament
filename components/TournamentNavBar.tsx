@@ -31,7 +31,7 @@ interface TournamentNavBarProps {
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
   publicScoreboardUrl?: string
-  tournamentFormat?: 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE'
+  tournamentFormat?: 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE' | 'LEAGUE_ROUND_ROBIN'
 }
 
 function TournamentNavBarContent({
@@ -202,7 +202,7 @@ function TournamentNavBarContent({
               </Button>
             </Link>
             
-            {tournamentFormat === 'INDY_LEAGUE' && isAdmin && (
+            {(tournamentFormat === 'INDY_LEAGUE' || tournamentFormat === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
               <Link href={`/admin/${tournamentId}/match-days`}>
                 <Button 
                   variant="outline" 
@@ -215,7 +215,7 @@ function TournamentNavBarContent({
               </Link>
             )}
 
-            {tournamentFormat === 'INDY_LEAGUE' && isAdmin && (
+            {(tournamentFormat === 'INDY_LEAGUE' || tournamentFormat === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
               <Link href={`/admin/${tournamentId}/courts`}>
                 <Button
                   variant="outline"
