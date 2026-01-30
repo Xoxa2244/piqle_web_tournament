@@ -4,7 +4,7 @@
 
 ```
 clientId: 7094449209
-clientKey: test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82
+clientKey: <prod-client-key>
 clientSecret: test-cs-6b6b282898b14680ff7cad0883631fa2
 ```
 
@@ -12,8 +12,8 @@ clientSecret: test-cs-6b6b282898b14680ff7cad0883631fa2
 
 1. **Add environment variables to `.env.local`:**
    ```bash
-   NEXT_PUBLIC_DUPR_CLIENT_KEY="test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82"
-   DUPR_CLIENT_ID="7094449209"
+   NEXT_PUBLIC_DUPR_CLIENT_KEY="<prod-client-key>"
+   DUPR_CLIENT_ID="8206412294"
    DUPR_CLIENT_SECRET="test-cs-6b6b282898b14680ff7cad0883631fa2"
    ```
 
@@ -37,7 +37,7 @@ clientSecret: test-cs-6b6b282898b14680ff7cad0883631fa2
 
 The login URL should be:
 ```
-https://uat.dupr.gg/login-external-app/test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82
+https://dashboard.dupr.com/login-external-app/<base64-client-key>
 ```
 
 **Manual test:**
