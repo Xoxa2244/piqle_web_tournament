@@ -287,6 +287,8 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
     }
   }
 
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
+
   if (tournament?.format !== 'INDY_LEAGUE' && tournament?.format !== 'LEAGUE_ROUND_ROBIN') {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -322,28 +324,32 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
             </p>
           </div>
         <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-          />
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            CSV Import
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleCsvImport}
-            disabled={!csvFile || isImporting}
-          >
-            {isImporting ? 'Importing...' : 'Upload'}
-          </Button>
+          {!isLeagueRoundRobin && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+              />
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                CSV Import
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCsvImport}
+                disabled={!csvFile || isImporting}
+              >
+                {isImporting ? 'Importing...' : 'Upload'}
+              </Button>
+            </>
+          )}
           <Button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2"
@@ -424,9 +430,11 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
                         </h3>
                         {getStatusBadge(matchDay.status)}
                       </div>
-                      <p className="text-sm text-gray-500">
-                        {matchDay.matchups?.length || 0} matchup(s)
-                      </p>
+                      {!isLeagueRoundRobin && (
+                        <p className="text-sm text-gray-500">
+                          {matchDay.matchups?.length || 0} matchup(s)
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -448,10 +456,10 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => router.push(`/admin/${tournamentId}/match-days/${matchDay.id}`)}
+                      onClick={() => router.push(isLeagueRoundRobin ? `/admin/${tournamentId}/stages` : `/admin/${tournamentId}/match-days/${matchDay.id}`)}
                     >
                       <Edit className="h-4 w-4 mr-1" />
-                      Manage
+                      {isLeagueRoundRobin ? 'Stages' : 'Manage'}
                     </Button>
                     {matchDay.status !== 'FINALIZED' && (
                       <Button
