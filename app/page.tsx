@@ -694,8 +694,18 @@ export default function HomePage() {
         if (!tournament) return null
         
         return (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setSelectedTournament(null)
+              setCommentText('')
+              setDescriptionExpanded(false)
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {(tournament as any).image ? (
@@ -999,8 +1009,14 @@ export default function HomePage() {
 
       {/* Description Modal */}
       {selectedDescription && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedDescription(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">{selectedDescription.title}</h2>
               <p className="text-gray-600 mt-1">Tournament Description</p>

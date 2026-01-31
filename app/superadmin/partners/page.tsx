@@ -162,8 +162,11 @@ export default function PartnersPage() {
 
         {/* Edit Partner Modal */}
         {showEditPartner && editingPartner && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => { setShowEditPartner(false); setEditingPartner(null) }}
+          >
+            <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               <CardHeader>
                 <CardTitle>Edit Partner</CardTitle>
               </CardHeader>
@@ -317,8 +320,16 @@ export default function PartnersPage() {
 
         {/* Create Partner Modal */}
         {showCreatePartner && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => {
+              setShowCreatePartner(false)
+              setPartnerForm({ name: '', code: '', contactEmail: '', contactName: '', directorUserId: '' })
+              setSelectedDirector(null)
+              setDirectorSearchQuery('')
+            }}
+          >
+            <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               <CardHeader>
                 <CardTitle>Create Partner</CardTitle>
               </CardHeader>
@@ -450,8 +461,11 @@ export default function PartnersPage() {
 
         {/* Create App Modal */}
         {showCreateApp && selectedPartnerId && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => { setShowCreateApp(false); setSelectedPartnerId(null) }}
+          >
+            <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               <CardHeader>
                 <CardTitle>Create API Credentials</CardTitle>
               </CardHeader>
@@ -520,8 +534,11 @@ export default function PartnersPage() {
 
         {/* New Secret Display Modal */}
         {newSecret && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => setNewSecret(null)}
+          >
+            <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
               <CardHeader>
                 <CardTitle>API Secret (Save this now!)</CardTitle>
                 <p className="text-sm text-gray-600">This secret will only be shown once</p>

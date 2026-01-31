@@ -765,8 +765,11 @@ export default function BoardMode({
 
       {/* Warning Modal */}
       {showWarning.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={showWarning.onCancel}
+        >
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center space-x-3 mb-4">
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
               <h3 className="text-lg font-semibold text-gray-900">Warning</h3>
