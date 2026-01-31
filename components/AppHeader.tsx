@@ -92,7 +92,7 @@ export default function AppHeader() {
                   href="/admin"
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
-                  Tournaments
+                  My Tournaments
                 </Link>
               </nav>
             </div>

@@ -14,8 +14,9 @@ import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
+import { Checkbox } from '@/components/ui/checkbox'
 
-type FilterType = 'current' | 'past' | 'all'
+type FilterType = 'my' | 'all'
 
 // Helper component for avatar display
 function AvatarImage({ 
@@ -63,7 +64,9 @@ export default function HomePage() {
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterType>('current')
+  const [filter, setFilter] = useState<FilterType>('all')
+  const [filterUpcoming, setFilterUpcoming] = useState(false)
+  const [filterInProgress, setFilterInProgress] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
@@ -216,46 +219,74 @@ export default function HomePage() {
     return lines.slice(0, maxLines).join('\n')
   }
 
-  // Helper function to check if tournament is past
-  // Rule: Tournament is past if endDate + 12 hours < next day (00:00)
-  const isTournamentPast = (endDate: Date): boolean => {
-    const endDateTime = new Date(endDate)
-    // Add 12 hours to end date
-    endDateTime.setHours(endDateTime.getHours() + 12)
-    
-    // Get next day at 00:00 (the "next date" mentioned in the rule)
+  // Tournament status: past (ended), upcoming (not started), in_progress (ongoing)
+  const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
     const now = new Date()
+    const start = new Date(tournament.startDate)
+    const end = new Date(tournament.endDate)
+    // Add 12 hours to end date for "past" threshold (matches original isTournamentPast logic)
+    const endWithGrace = new Date(end)
+    endWithGrace.setHours(endWithGrace.getHours() + 12)
     const nextDay = new Date(now)
     nextDay.setDate(nextDay.getDate() + 1)
     nextDay.setHours(0, 0, 0, 0)
-    
-    // Tournament is past if endDate + 12 hours < next day
-    return endDateTime < nextDay
+
+    if (endWithGrace < nextDay) return 'past'
+    if (start > now) return 'upcoming'
+    return 'in_progress'
   }
 
-  // Filter tournaments based on selected filter and search query
+  const getTournamentStatusLabel = (status: 'past' | 'upcoming' | 'in_progress') => {
+    switch (status) {
+      case 'past': return 'Прошедший турнир'
+      case 'upcoming': return 'Предстоящий турнир'
+      case 'in_progress': return 'Турнир в процессе'
+    }
+  }
+
+  const getTournamentStatusBadgeClass = (status: 'past' | 'upcoming' | 'in_progress') => {
+    switch (status) {
+      case 'past': return 'bg-gray-100 text-gray-700'
+      case 'upcoming': return 'bg-blue-50 text-blue-700'
+      case 'in_progress': return 'bg-green-50 text-green-700'
+    }
+  }
+
+  // Filter tournaments based on selected filter, search query, and status checkboxes
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
     
     let filtered = tournaments
     
-    // Apply search filter
+    // Tab: My tournaments vs All tournaments
+    if (filter === 'my' && session?.user?.id) {
+      filtered = filtered.filter(tournament => 
+        (tournament as any).user?.id === session.user.id
+      )
+    }
+    
+    // Search filter
     if (searchQuery.trim()) {
       filtered = filtered.filter(tournament =>
         tournament.title.toLowerCase().includes(searchQuery.toLowerCase())
       )
     }
     
-    // Apply time filter
-    if (filter !== 'all') {
+    // Status checkboxes
+    if (filterUpcoming || filterInProgress) {
       filtered = filtered.filter(tournament => {
-        const isPast = isTournamentPast(new Date(tournament.endDate))
-        return filter === 'current' ? !isPast : isPast
+        const status = getTournamentStatus(tournament)
+        if (filterUpcoming && filterInProgress) {
+          return status === 'upcoming' || status === 'in_progress'
+        }
+        if (filterUpcoming) return status === 'upcoming'
+        if (filterInProgress) return status === 'in_progress'
+        return true
       })
     }
     
     return filtered
-  }, [tournaments, filter, searchQuery])
+  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, session?.user?.id])
   
   const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
     if (!session) {
@@ -340,38 +371,46 @@ export default function HomePage() {
               </div>
             </div>
             
-            {/* Filter Tabs */}
-            <div className="mt-4 flex gap-2 border-b border-gray-200">
-              <button
-                onClick={() => setFilter('current')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'current'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Current Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('past')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'past'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Past Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'all'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                All Tournaments
-              </button>
+            {/* Filter Tabs + Status Checkboxes */}
+            <div className="mt-4 flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilter('my')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'my'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  My tournaments
+                </button>
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'all'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All tournaments
+                </button>
+              </div>
+              <div className="flex items-center gap-4 ml-auto">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterUpcoming}
+                    onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
+                  />
+                  <span>Только предстоящие</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterInProgress}
+                    onCheckedChange={(checked) => setFilterInProgress(checked === true)}
+                  />
+                  <span>Только в процессе</span>
+                </label>
+              </div>
               </div>
             </div>
         </div>
@@ -438,6 +477,12 @@ export default function HomePage() {
                     ) : (
                       <div className="text-gray-400 text-sm italic">No description</div>
                     )}
+                  </div>
+                  {/* Tournament status badge */}
+                  <div className="mt-2">
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                      {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow flex flex-col">
