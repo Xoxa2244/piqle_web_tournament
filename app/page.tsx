@@ -757,9 +757,9 @@ export default function HomePage() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden flex">
-                {/* Left Side - Tournament Info */}
-                <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
+              <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
+                {/* Left Side - Tournament Info (on narrow screens: full width; comments go below) */}
+                <div className="w-full lg:w-1/2 border-r-0 lg:border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
                     
                     {/* Description */}
@@ -869,8 +869,8 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Right Side - Comments */}
-                <div className="w-1/2 overflow-y-auto flex flex-col">
+                {/* Right Side - Comments (on narrow screens: below tournament director) */}
+                <div className="w-full lg:w-1/2 overflow-y-auto flex flex-col border-t lg:border-t-0 border-gray-200">
                   <div className="p-6 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-900">
                       Comments ({commentCounts?.[selectedTournament] || 0})
