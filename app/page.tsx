@@ -96,12 +96,18 @@ export default function HomePage() {
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
   const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string, authorEmail: string} | null>(null)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
+
+  // Reset description expanded when opening/closing modal
+  useEffect(() => {
+    if (!selectedTournament) setDescriptionExpanded(false)
+  }, [selectedTournament])
   
   // Get ratings for all tournaments
   const tournamentIds = useMemo(() => {
@@ -693,17 +699,17 @@ export default function HomePage() {
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {(tournament as any).image ? (
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
                       <Image
                         src={(tournament as any).image}
                         alt={tournament.title}
-                        width={48}
-                        height={48}
+                        width={80}
+                        height={80}
                         className="w-full h-full object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
                       <span className="text-white font-bold text-sm">P</span>
                     </div>
                   )}
@@ -712,15 +718,25 @@ export default function HomePage() {
                     <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedTournament(null)
-                    setCommentText('')
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {(tournament as any).user?.id === session?.user?.id && (
+                    <Link href={`/admin/${tournament.id}`}>
+                      <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                        Manage
+                      </Button>
+                    </Link>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedTournament(null)
+                      setCommentText('')
+                      setDescriptionExpanded(false)
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-hidden flex">
                 {/* Left Side - Tournament Info */}
@@ -732,9 +748,19 @@ export default function HomePage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
                         <div 
-                          className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
+                          className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
                           dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                         />
+                        <button
+                          onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                          className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                        >
+                          {descriptionExpanded ? (
+                            <>Show less</>
+                          ) : (
+                            <>Show more</>
+                          )}
+                        </button>
                       </div>
                     )}
                     
