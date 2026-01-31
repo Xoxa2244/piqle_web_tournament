@@ -67,6 +67,7 @@ export default function HomePage() {
   const [filter, setFilter] = useState<FilterType>('all')
   const [filterUpcoming, setFilterUpcoming] = useState(false)
   const [filterInProgress, setFilterInProgress] = useState(false)
+  const [filterPast, setFilterPast] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
@@ -238,9 +239,9 @@ export default function HomePage() {
 
   const getTournamentStatusLabel = (status: 'past' | 'upcoming' | 'in_progress') => {
     switch (status) {
-      case 'past': return 'Прошедший турнир'
-      case 'upcoming': return 'Предстоящий турнир'
-      case 'in_progress': return 'Турнир в процессе'
+      case 'past': return 'Past'
+      case 'upcoming': return 'Upcoming'
+      case 'in_progress': return 'In progress'
     }
   }
 
@@ -273,20 +274,19 @@ export default function HomePage() {
     }
     
     // Status checkboxes
-    if (filterUpcoming || filterInProgress) {
+    if (filterUpcoming || filterInProgress || filterPast) {
       filtered = filtered.filter(tournament => {
         const status = getTournamentStatus(tournament)
-        if (filterUpcoming && filterInProgress) {
-          return status === 'upcoming' || status === 'in_progress'
-        }
-        if (filterUpcoming) return status === 'upcoming'
-        if (filterInProgress) return status === 'in_progress'
-        return true
+        const matches = []
+        if (filterUpcoming) matches.push(status === 'upcoming')
+        if (filterInProgress) matches.push(status === 'in_progress')
+        if (filterPast) matches.push(status === 'past')
+        return matches.some(Boolean)
       })
     }
     
     return filtered
-  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, session?.user?.id])
+  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, filterPast, session?.user?.id])
   
   const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
     if (!session) {
@@ -401,14 +401,21 @@ export default function HomePage() {
                     checked={filterUpcoming}
                     onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
                   />
-                  <span>Только предстоящие</span>
+                  <span>Upcoming</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                   <Checkbox
                     checked={filterInProgress}
                     onCheckedChange={(checked) => setFilterInProgress(checked === true)}
                   />
-                  <span>Только в процессе</span>
+                  <span>In progress</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterPast}
+                    onCheckedChange={(checked) => setFilterPast(checked === true)}
+                  />
+                  <span>Past</span>
                 </label>
               </div>
               </div>
