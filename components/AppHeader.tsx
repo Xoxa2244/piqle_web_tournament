@@ -66,47 +66,51 @@ export default function AppHeader() {
     <>
       <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 flex-wrap">
-            {/* Logo - clickable, same as Home. File: public/Logo.svg */}
-            <Link href="/" className="flex-shrink-0 flex items-center">
-              {!logoError ? (
-                <img
-                  src="/Logo.svg"
-                  alt="Piqle"
-                  className="h-8 w-auto object-contain"
-                  onError={() => setLogoError(true)}
-                />
-              ) : (
-                <span className="text-2xl font-bold text-lime-600">PIQLE</span>
-              )}
-            </Link>
-
-            {/* Nav Links */}
-            <nav className="flex items-center gap-6 flex-shrink-0 ml-6">
-              <Link
-                href="/"
-                className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-              >
-                Home
+          <div className="flex items-center h-16">
+            {/* Part 1 - Left: Logo + Nav links, fixed spacing */}
+            <div className="flex items-center gap-6 flex-shrink-0">
+              <Link href="/" className="flex items-center">
+                {!logoError ? (
+                  <img
+                    src="/Logo.svg"
+                    alt="Piqle"
+                    className="h-8 w-auto object-contain"
+                    onError={() => setLogoError(true)}
+                  />
+                ) : (
+                  <span className="text-2xl font-bold text-lime-600">PIQLE</span>
+                )}
               </Link>
-              <Link
-                href="/admin"
-                className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-              >
-                Tournaments
+              <nav className="flex items-center gap-6">
+                <Link
+                  href="/"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Home
+                </Link>
+                <Link
+                  href="/admin"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Tournaments
+                </Link>
+              </nav>
+            </div>
+
+            {/* Spacer - auto, takes all remaining width */}
+            <div className="flex-1 min-w-0" aria-hidden />
+
+            {/* Part 2 - Right: Create, Search, Username, Logout - fixed spacing (24px, 44px, 44px) */}
+            <div className="flex items-center flex-shrink-0">
+              <Link href={isLoggedIn ? '/admin/new' : '/auth/signin'}>
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create New Tournament
+                </Button>
               </Link>
-            </nav>
 
-            {/* Create New Tournament Button */}
-            <Link href={isLoggedIn ? '/admin/new' : '/auth/signin'} className="flex-shrink-0 ml-6">
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                <Plus className="h-4 w-4" />
-                Create New Tournament
-              </Button>
-            </Link>
-
-            {/* Search - 300px, 24px from Create button, 44px from Username */}
-            <div ref={searchRef} className="relative w-[300px] flex-shrink-0 hidden md:block ml-6 mr-[44px]">
+              {/* Search - 300px, 24px from Create, 44px from Username */}
+              <div ref={searchRef} className="relative w-[300px] hidden md:block ml-6 mr-[44px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -166,8 +170,8 @@ export default function AppHeader() {
               )}
             </div>
 
-            {/* User Profile & Logout - 44px between username and logout */}
-            <div className="flex items-center gap-[44px] flex-shrink-0">
+              {/* User Profile & Logout - 44px between username and logout */}
+              <div className="flex items-center gap-[44px]">
               {isLoggedIn ? (
                 <>
                   <Link
@@ -211,6 +215,7 @@ export default function AppHeader() {
                   <span className="text-sm font-medium">Sign In</span>
                 </Link>
               )}
+              </div>
             </div>
           </div>
         </div>
