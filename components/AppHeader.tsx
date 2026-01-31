@@ -107,8 +107,8 @@ export default function AppHeader() {
               </Button>
             </Link>
 
-            {/* Search - 300px width, 24px gap from Create button */}
-            <div ref={searchRef} className="relative w-[300px] flex-shrink-0 hidden md:block ml-6">
+            {/* Search - 300px width. 24px from Create button, 44px from Username */}
+            <div ref={searchRef} className="relative w-[300px] flex-shrink-0 hidden md:block ml-6 mr-[44px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -168,8 +168,8 @@ export default function AppHeader() {
               )}
             </div>
 
-            {/* User Profile & Logout */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            {/* User Profile & Logout - 44px between username and logout */}
+            <div className="flex items-center gap-[44px] flex-shrink-0">
               {isLoggedIn ? (
                 <>
                   <Link
