@@ -385,7 +385,7 @@ export default function HomePage() {
             </div>
             
             {/* Filter Tabs + Status Checkboxes */}
-            <div className="mt-4 flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
+            <div className="mt-4 flex flex-wrap items-center gap-4 pb-4">
               <div className="flex gap-2">
                 <button
                   onClick={() => setFilter('all')}
@@ -662,6 +662,15 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        ) : filter === 'my' && !session ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600 mb-4">Sign in to view your tournaments</p>
+            <Link href="/auth/signin">
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                Sign in
+              </Button>
+            </Link>
           </div>
         ) : (
           <div className="text-center py-12">
