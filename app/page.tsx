@@ -66,8 +66,8 @@ export default function HomePage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterType>('all')
-  const [filterUpcoming, setFilterUpcoming] = useState(false)
-  const [filterInProgress, setFilterInProgress] = useState(false)
+  const [filterUpcoming, setFilterUpcoming] = useState(true)
+  const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
   const [sortBy, setSortBy] = useState<SortType>('date-desc')
   const [searchQuery, setSearchQuery] = useState('')
@@ -261,11 +261,11 @@ export default function HomePage() {
     
     let filtered = tournaments
     
-    // Tab: My tournaments vs All tournaments
-    if (filter === 'my' && session?.user?.id) {
-      filtered = filtered.filter(tournament => 
-        (tournament as any).user?.id === session.user.id
-      )
+    // Tab: My tournaments vs All tournaments (when not logged in, My tournaments is empty)
+    if (filter === 'my') {
+      filtered = session?.user?.id
+        ? filtered.filter(tournament => (tournament as any).user?.id === session.user.id)
+        : []
     }
     
     // Search filter
@@ -388,16 +388,6 @@ export default function HomePage() {
             <div className="mt-4 flex flex-wrap items-center gap-4 border-b border-gray-200 pb-4">
               <div className="flex gap-2">
                 <button
-                  onClick={() => setFilter('my')}
-                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
-                    filter === 'my'
-                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  My tournaments
-                </button>
-                <button
                   onClick={() => setFilter('all')}
                   className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
                     filter === 'all'
@@ -406,6 +396,16 @@ export default function HomePage() {
                   }`}
                 >
                   All tournaments
+                </button>
+                <button
+                  onClick={() => setFilter('my')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'my'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  My tournaments
                 </button>
               </div>
               <div className="flex items-center gap-4 ml-auto">
