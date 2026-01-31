@@ -385,7 +385,7 @@ export default function HomePage() {
             </div>
             
             {/* Filter Tabs + Status Checkboxes */}
-            <div className="mt-4 flex flex-wrap items-center gap-4 pb-4">
+            <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
               <div className="flex gap-2">
                 <button
                   onClick={() => setFilter('all')}
