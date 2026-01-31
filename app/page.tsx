@@ -1,17 +1,16 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
@@ -61,13 +60,11 @@ function AvatarImage({
 
 export default function HomePage() {
   const { data: session } = useSession()
-  const router = useRouter()
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterType>('current')
   const [searchQuery, setSearchQuery] = useState('')
-  const [avatarError, setAvatarError] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
@@ -212,10 +209,6 @@ export default function HomePage() {
     },
   })
 
-  const handleLogout = useCallback(async () => {
-    await signOut({ callbackUrl: '/' })
-  }, [])
-
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
     const lines = text.split('\n')
@@ -322,90 +315,18 @@ export default function HomePage() {
 
   const publicTournaments = filteredTournaments
 
-  const hasValidAvatar = Boolean(session?.user?.image && 
-    session.user.image.trim() !== '' &&
-    (session.user.image.startsWith('http') || session.user.image.startsWith('data:')))
-  
-  const avatarSrc = session?.user?.image || ''
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Page Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
-            <div className="flex items-center justify-between">
             <div>
-                <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
-                <p className="text-gray-600 mt-2">Select a tournament to view results</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/admin"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Tournaments
-                </Link>
-                {session ? (
-                  <>
-                <Link
-                      href="/profile"
-                      className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      {hasValidAvatar && !avatarError && avatarSrc ? (
-                        <Image
-                          src={avatarSrc}
-                          alt={session?.user?.name || 'Profile'}
-                          width={32}
-                          height={32}
-                          className="rounded-full object-cover"
-                          onError={() => setAvatarError(true)}
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
-                          <UserIcon className="h-5 w-5 text-gray-500" />
-                        </div>
-                      )}
-                      <span className="hidden sm:inline">
-                        {session?.user?.name || 'Profile'}
-                      </span>
-                </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="text-red-600 hover:text-red-900 px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Logout
-                    </button>
-                  </>
-                ) : (
-                <Link
-                  href="/auth/signin"
-                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                >
-                    Login
-                </Link>
-                )}
-              </div>
+              <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
+              <p className="text-gray-600 mt-2">Select a tournament to view results</p>
             </div>
-            
-            {/* Create Tournament Button */}
-            <div className="mt-4">
-              <button
-                onClick={(e) => {
-                  if (!session) {
-                    e.preventDefault()
-                    router.push('/auth/signin')
-                  } else {
-                    router.push('/admin/new')
-                  }
-                }}
-                className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-              >
-                Create New Tournament
-              </button>
-            </div>
-            
-            {/* Search Input */}
+
+            {/* Search Input - filters displayed tournaments */}
             <div className="mt-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
