@@ -720,11 +720,20 @@ export default function HomePage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {(tournament as any).user?.id === session?.user?.id && (
-                    <Link href={`/admin/${tournament.id}`}>
-                      <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                        Manage
-                      </Button>
-                    </Link>
+                    <>
+                      <Link href={`/admin/${tournament.id}`}>
+                        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                          Manage
+                        </Button>
+                      </Link>
+                      {(tournament as any).publicSlug && (
+                        <Link href={`/t/${(tournament as any).publicSlug}`}>
+                          <Button className="bg-green-600 hover:bg-green-700 text-white">
+                            View Board
+                          </Button>
+                        </Link>
+                      )}
+                    </>
                   )}
                   <button
                     onClick={() => {
@@ -751,16 +760,18 @@ export default function HomePage() {
                           className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
                           dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                         />
-                        <button
-                          onClick={() => setDescriptionExpanded(!descriptionExpanded)}
-                          className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                        >
-                          {descriptionExpanded ? (
-                            <>Show less</>
-                          ) : (
-                            <>Show more</>
-                          )}
-                        </button>
+                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                          <button
+                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                          >
+                            {descriptionExpanded ? (
+                              <>Show less</>
+                            ) : (
+                              <>Show more</>
+                            )}
+                          </button>
+                        )}
                       </div>
                     )}
                     
