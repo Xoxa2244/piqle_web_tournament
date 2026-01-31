@@ -17,6 +17,7 @@ import ComplaintModal from '@/components/ComplaintModal'
 import { Checkbox } from '@/components/ui/checkbox'
 
 type FilterType = 'my' | 'all'
+type SortType = 'date-desc' | 'date-asc'
 
 // Helper component for avatar display
 function AvatarImage({ 
@@ -68,6 +69,7 @@ export default function HomePage() {
   const [filterUpcoming, setFilterUpcoming] = useState(false)
   const [filterInProgress, setFilterInProgress] = useState(false)
   const [filterPast, setFilterPast] = useState(false)
+  const [sortBy, setSortBy] = useState<SortType>('date-desc')
   const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
@@ -287,6 +289,17 @@ export default function HomePage() {
     
     return filtered
   }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, filterPast, session?.user?.id])
+
+  // Sort tournaments by date
+  const sortedTournaments = useMemo(() => {
+    const sorted = [...filteredTournaments]
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.startDate).getTime()
+      const dateB = new Date(b.startDate).getTime()
+      return sortBy === 'date-desc' ? dateB - dateA : dateA - dateB
+    })
+    return sorted
+  }, [filteredTournaments, sortBy])
   
   const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
     if (!session) {
@@ -344,7 +357,7 @@ export default function HomePage() {
     )
   }
 
-  const publicTournaments = filteredTournaments
+  const publicTournaments = sortedTournaments
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -417,6 +430,20 @@ export default function HomePage() {
                   />
                   <span>Past</span>
                 </label>
+                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
+                  <label htmlFor="sort" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                    Sort
+                  </label>
+                  <select
+                    id="sort"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortType)}
+                    className="text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="date-desc">Newest first</option>
+                    <option value="date-asc">Oldest first</option>
+                  </select>
+                </div>
               </div>
               </div>
             </div>
