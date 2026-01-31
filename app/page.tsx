@@ -19,6 +19,27 @@ import { Checkbox } from '@/components/ui/checkbox'
 type FilterType = 'my' | 'all'
 type SortType = 'date-desc' | 'date-asc'
 
+// Placeholder when tournament has no image. Add public/tournament-placeholder.png to replace.
+function TournamentImagePlaceholder() {
+  const [showFallback, setShowFallback] = useState(true)
+  return (
+    <div className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative">
+      <img
+        src="/tournament-placeholder.png"
+        alt=""
+        className="w-full h-full object-cover"
+        onLoad={() => setShowFallback(false)}
+        onError={() => setShowFallback(true)}
+      />
+      {showFallback && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <Trophy className="w-5 h-5 text-gray-400" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Helper component for avatar display
 function AvatarImage({ 
   src, 
@@ -470,9 +491,9 @@ export default function HomePage() {
                   </div>
                 )}
                 <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start gap-4">
-                    {(tournament as any).image && (
-                      <div className="w-20 h-20 flex-shrink-0 relative overflow-hidden rounded-lg">
+                  <div className="flex items-start gap-3">
+                    {(tournament as any).image ? (
+                      <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
                         <Image
                           src={(tournament as any).image}
                           alt={tournament.title}
@@ -480,34 +501,12 @@ export default function HomePage() {
                           className="object-cover"
                         />
                       </div>
+                    ) : (
+                      <TournamentImagePlaceholder />
                     )}
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
                     </div>
-                  </div>
-                  <div className="mt-2 min-h-[4.5rem]">
-                    {tournament.description ? (
-                      <>
-                        <div
-                          className="text-gray-600 text-sm break-words line-clamp-3"
-                          dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
-                        />
-                        {tournament.description && tournament.description.split('\n').length > 3 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedDescription({title: tournament.title, description: tournament.description!})
-                            }}
-                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            Show full description
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-gray-400 text-sm italic">No description</div>
-                    )}
                   </div>
                   {/* Tournament status badge */}
                   <div className="mt-2">
