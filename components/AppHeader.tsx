@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut } from 'lucide-react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
@@ -17,7 +17,9 @@ export default function AppHeader() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [burgerOpen, setBurgerOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const burgerRef = useRef<HTMLDivElement>(null)
 
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
     { query: searchQuery },
@@ -36,13 +38,17 @@ export default function AppHeader() {
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (searchRef.current && !searchRef.current.contains(target)) {
         setShowSearchDropdown(false)
+      }
+      if (burgerRef.current && burgerOpen && !burgerRef.current.contains(target)) {
+        setBurgerOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [burgerOpen])
 
   useEffect(() => {
     setShowSearchDropdown(searchQuery.length >= 2)
@@ -81,7 +87,7 @@ export default function AppHeader() {
                   <span className="text-2xl font-bold text-lime-600">PIQLE</span>
                 )}
               </Link>
-              <nav className="flex items-center gap-6">
+              <nav className="hidden lg:flex items-center gap-6">
                 <Link
                   href="/"
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
@@ -100,8 +106,8 @@ export default function AppHeader() {
             {/* Spacer - auto, takes all remaining width */}
             <div className="flex-1 min-w-0" aria-hidden />
 
-            {/* Part 2 - Right: Create, Search, Username, Logout - fixed spacing (24px, 44px, 44px) */}
-            <div className="flex items-center flex-shrink-0">
+            {/* Part 2 - Right: Create, Search, Username, Logout (desktop) / Burger (mobile) */}
+            <div className="flex items-center flex-shrink-0 gap-2 lg:gap-0">
               <Link href={isLoggedIn ? '/admin/new' : '/auth/signin'}>
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
                   <Plus className="h-4 w-4" />
@@ -109,8 +115,8 @@ export default function AppHeader() {
                 </Button>
               </Link>
 
-              {/* Search - 300px, 24px from Create, 44px from Username */}
-              <div ref={searchRef} className="relative w-[300px] hidden md:block ml-6 mr-[44px]">
+              {/* Search - desktop only */}
+              <div ref={searchRef} className="relative w-[300px] hidden lg:block ml-6 mr-[44px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -170,51 +176,179 @@ export default function AppHeader() {
               )}
             </div>
 
-              {/* User Profile & Logout - 44px between username and logout */}
-              <div className="flex items-center gap-[44px]">
-              {isLoggedIn ? (
-                <>
+              {/* User Profile & Logout - desktop only */}
+              <div className="hidden lg:flex items-center gap-[44px]">
+                {isLoggedIn ? (
+                  <>
+                    <Link
+                      href="/profile"
+                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
+                    >
+                      {hasValidAvatar && !avatarError && avatarSrc ? (
+                        <Image
+                          src={avatarSrc}
+                          alt={session?.user?.name || 'Profile'}
+                          width={32}
+                          height={32}
+                          className="rounded-full object-cover"
+                          onError={() => setAvatarError(true)}
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300">
+                          <UserIcon className="h-4 w-4 text-gray-500" />
+                        </div>
+                      )}
+                      <span className="text-sm font-medium whitespace-nowrap truncate max-w-[120px] sm:max-w-[180px]">
+                        {session?.user?.name || 'Username'}
+                      </span>
+                    </Link>
+                    <button
+                      onClick={() => setShowLogoutModal(true)}
+                      className="p-2 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                      title="Logout"
+                    >
+                      <LogOut className="h-5 w-5" />
+                    </button>
+                  </>
+                ) : (
                   <Link
-                    href="/profile"
+                    href="/auth/signin"
                     className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
                   >
-                    {hasValidAvatar && !avatarError && avatarSrc ? (
-                      <Image
-                        src={avatarSrc}
-                        alt={session?.user?.name || 'Profile'}
-                        width={32}
-                        height={32}
-                        className="rounded-full object-cover"
-                        onError={() => setAvatarError(true)}
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300">
-                        <UserIcon className="h-4 w-4 text-gray-500" />
-                      </div>
-                    )}
-                    <span className="text-sm font-medium whitespace-nowrap truncate max-w-[120px] sm:max-w-[180px]">
-                      {session?.user?.name || 'Username'}
-                    </span>
+                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300">
+                      <UserIcon className="h-4 w-4 text-gray-500" />
+                    </div>
+                    <span className="text-sm font-medium">Sign In</span>
                   </Link>
-                  <button
-                    onClick={() => setShowLogoutModal(true)}
-                    className="p-2 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-                    title="Logout"
-                  >
-                    <LogOut className="h-5 w-5" />
-                  </button>
-                </>
-              ) : (
-                <Link
-                  href="/auth/signin"
-                  className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
+                )}
+              </div>
+
+              {/* Burger button - mobile/tablet only */}
+              <div ref={burgerRef} className="relative lg:hidden ml-2">
+                <button
+                  type="button"
+                  onClick={() => setBurgerOpen((o) => !o)}
+                  className="p-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                  aria-label={burgerOpen ? 'Close menu' : 'Open menu'}
+                  aria-expanded={burgerOpen}
                 >
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center border border-gray-300">
-                    <UserIcon className="h-4 w-4 text-gray-500" />
+                  {burgerOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                </button>
+
+                {/* Burger dropdown panel */}
+                {burgerOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-[min(320px,100vw-2rem)] bg-white border border-gray-200 rounded-lg shadow-xl py-3 z-50 flex flex-col gap-1">
+                    {/* Search in burger */}
+                    <div className="px-3 pb-3 border-b border-gray-100">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Find Tournament"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onFocus={() => searchQuery.length >= 2 && setShowSearchDropdown(true)}
+                          className="pl-10 pr-4 w-full"
+                        />
+                      </div>
+                      {showSearchDropdown && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-10">
+                          {!isLoggedIn ? (
+                            <div className="p-3 text-center text-gray-500 text-sm">Sign in to search</div>
+                          ) : !searchResults ? (
+                            <div className="p-3 text-center text-gray-500 text-sm">Searching...</div>
+                          ) : searchResults.length === 0 ? (
+                            <div className="p-3 text-center text-gray-500 text-sm">No tournaments found</div>
+                          ) : (
+                            <div className="py-2">
+                              {searchResults.map((tournament: any) => (
+                                <div
+                                  key={tournament.id}
+                                  className="px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                >
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className="font-medium text-gray-900 text-sm truncate">{tournament.title}</h3>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        requestAccessMutation.mutate({ tournamentId: tournament.id })
+                                        setBurgerOpen(false)
+                                      }}
+                                      disabled={requestAccessMutation.isPending}
+                                      className="flex-shrink-0 text-xs"
+                                    >
+                                      {requestAccessMutation.isPending ? '…' : 'Request'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Link
+                      href="/"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      Home
+                    </Link>
+                    <Link
+                      href="/admin"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      My Tournaments
+                    </Link>
+                    {isLoggedIn ? (
+                      <>
+                        <Link
+                          href="/profile"
+                          className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50"
+                          onClick={() => setBurgerOpen(false)}
+                        >
+                          {hasValidAvatar && !avatarError && avatarSrc ? (
+                            <Image
+                              src={avatarSrc}
+                              alt=""
+                              width={24}
+                              height={24}
+                              className="rounded-full object-cover"
+                              onError={() => setAvatarError(true)}
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                              <UserIcon className="h-3 w-3 text-gray-500" />
+                            </div>
+                          )}
+                          <span className="text-sm font-medium truncate">{session?.user?.name || 'Username'}</span>
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setBurgerOpen(false)
+                            setShowLogoutModal(true)
+                          }}
+                          className="flex items-center gap-2 px-4 py-2.5 text-left text-gray-700 hover:bg-gray-50 w-full text-sm font-medium"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Logout
+                        </button>
+                      </>
+                    ) : (
+                      <Link
+                        href="/auth/signin"
+                        className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50"
+                        onClick={() => setBurgerOpen(false)}
+                      >
+                        <UserIcon className="h-4 w-4" />
+                        <span className="text-sm font-medium">Sign In</span>
+                      </Link>
+                    )}
                   </div>
-                  <span className="text-sm font-medium">Sign In</span>
-                </Link>
-              )}
+                )}
               </div>
             </div>
           </div>
