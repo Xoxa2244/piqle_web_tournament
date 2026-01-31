@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 export default function AppHeader() {
   const { data: session, status } = useSession()
   const [avatarError, setAvatarError] = useState(false)
+  const [logoError, setLogoError] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
@@ -65,17 +66,25 @@ export default function AppHeader() {
     <>
       <header className="sticky top-0 z-50 w-full bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4">
-            {/* Logo - clickable, same as Home */}
-            <Link
-              href="/"
-              className="flex-shrink-0 text-2xl font-bold text-lime-600 hover:text-lime-700 transition-colors"
-            >
-              PIQLE
+          <div className="flex items-center justify-between h-16 gap-4 flex-wrap">
+            {/* Logo - clickable, same as Home. Export from Figma to public/logo.svg */}
+            <Link href="/" className="flex-shrink-0 flex items-center">
+              {!logoError ? (
+                <Image
+                  src="/logo.svg"
+                  alt="Piqle"
+                  width={100}
+                  height={32}
+                  className="h-8 w-auto object-contain"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <span className="text-2xl font-bold text-lime-600">PIQLE</span>
+              )}
             </Link>
 
             {/* Nav Links */}
-            <nav className="flex items-center gap-6">
+            <nav className="flex items-center gap-6 flex-shrink-0">
               <Link
                 href="/"
                 className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
@@ -98,8 +107,8 @@ export default function AppHeader() {
               </Button>
             </Link>
 
-            {/* Search */}
-            <div ref={searchRef} className="relative flex-1 max-w-md min-w-0 hidden md:block">
+            {/* Search - 300px width, 24px gap from Create button */}
+            <div ref={searchRef} className="relative w-[300px] flex-shrink-0 hidden md:block ml-6">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -181,7 +190,7 @@ export default function AppHeader() {
                         <UserIcon className="h-4 w-4 text-gray-500" />
                       </div>
                     )}
-                    <span className="text-sm font-medium hidden sm:inline max-w-24 truncate">
+                    <span className="text-sm font-medium whitespace-nowrap truncate max-w-[120px] sm:max-w-[180px]">
                       {session?.user?.name || 'Username'}
                     </span>
                   </Link>
