@@ -127,6 +127,7 @@ model Tournament {
   TournamentAccessRequest TournamentAccessRequest[]
   matchDays               MatchDay[]
   courts                  Court[]
+  waitlistEntries         WaitlistEntry[]
 
   @@map("tournaments")
 }
@@ -181,6 +182,7 @@ model Division {
   prizes                Prize[]
   standings             Standing[]
   teams                 Team[]
+  waitlistEntries       WaitlistEntry[]
   tournamentAccesses    TournamentAccess[]
   indyMatchups          IndyMatchup[]
 
@@ -258,6 +260,7 @@ model Player {
   firstName         String       @map("firstName")
   lastName          String       @map("lastName")
   email             String?
+  userId            String?      @map("user_id")
   gender            Gender?
   birthDate         DateTime?    @map("birthDate")
   externalId        String?      @map("externalId")
@@ -268,7 +271,9 @@ model Player {
   isWaitlist        Boolean?     @default(false) @map("is_waitlist")
   dupr              String?      @db.VarChar
   tournamentId      String?      @map("tournament_id")
+  user              User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  waitlistEntries   WaitlistEntry[]
   teamPlayers       TeamPlayer[]
   dayRosters        DayRoster[]
   indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
@@ -276,6 +281,7 @@ model Player {
   indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
   indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
 
+  @@unique([userId, tournamentId])
   @@map("players")
 }
 
@@ -284,13 +290,32 @@ model TeamPlayer {
   teamId    String     @map("teamId")
   playerId  String     @map("playerId")
   role      PlayerRole @default(PLAYER)
+  slotIndex Int?       @map("slot_index")
   createdAt DateTime   @default(now()) @map("createdAt")
   updatedAt DateTime   @updatedAt @map("updatedAt")
   player    Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, playerId])
+  @@unique([teamId, slotIndex])
   @@map("team_players")
+}
+
+model WaitlistEntry {
+  id           String         @id @default(uuid())
+  tournamentId String         @map("tournament_id")
+  divisionId   String         @map("division_id")
+  playerId     String         @map("player_id")
+  status       WaitlistStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tournament   Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division     Division       @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  player       Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, tournamentId])
+  @@index([divisionId, createdAt])
+  @@map("waitlist_entries")
 }
 
 model RoundRobinGroup {
@@ -742,6 +767,10 @@ enum MatchupStatus {
   READY
   IN_PROGRESS
   COMPLETED
+}
+
+enum WaitlistStatus {
+  ACTIVE
 }
 
 enum PartnerWebhookEvent {

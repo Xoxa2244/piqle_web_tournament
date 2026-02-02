@@ -83,6 +83,11 @@ export default function HomePage() {
   const tournamentIds = useMemo(() => {
     return tournaments?.map(t => t.id) || []
   }, [tournaments])
+
+  const { data: registrationStatuses } = trpc.registration.getMyStatuses.useQuery(
+    { tournamentIds },
+    { enabled: !!session && tournamentIds.length > 0 }
+  )
   
   const utils = trpc.useUtils()
   
@@ -216,6 +221,18 @@ export default function HomePage() {
     await signOut({ callbackUrl: '/' })
   }, [])
 
+  const cancelRegistration = trpc.registration.cancelRegistration.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
+  const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
     const lines = text.split('\n')
@@ -238,6 +255,13 @@ export default function HomePage() {
     
     // Tournament is past if endDate + 12 hours < next day
     return endDateTime < nextDay
+  }
+
+  const isRegistrationOpen = (tournament: any): boolean => {
+    const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
+    const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
+    const now = new Date()
+    return now >= start && now <= end
   }
 
   // Filter tournaments based on selected filter and search query
@@ -661,6 +685,48 @@ export default function HomePage() {
                         View Results
                       </Button>
                     </Link>
+
+                    {(() => {
+                      const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                      const registrationOpen = isRegistrationOpen(tournament)
+                      const label =
+                        status === 'active'
+                          ? 'Cancel Registration'
+                          : status === 'waitlisted'
+                          ? 'Leave Waitlist'
+                          : 'Join Tournament'
+
+                      return (
+                        <Button
+                          className="w-full"
+                          variant={status === 'active' ? 'destructive' : 'default'}
+                          disabled={!registrationOpen}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!session) {
+                              router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                              return
+                            }
+                            if (status === 'active') {
+                              if (confirm('Cancel registration?')) {
+                                cancelRegistration.mutate({ tournamentId: tournament.id })
+                              }
+                              return
+                            }
+                            if (status === 'waitlisted') {
+                              const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                              if (divisionId && confirm('Leave waitlist?')) {
+                                leaveWaitlist.mutate({ divisionId })
+                              }
+                              return
+                            }
+                            router.push(`/tournaments/${tournament.id}/register`)
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      )
+                    })()}
                   </div>
                 </CardContent>
               </Card>

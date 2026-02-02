@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '@/server/trpc'
+import { getTeamSlotCount, normalizeTeamSlots } from '@/server/utils/teamSlots'
 
 export const teamPlayerRouter = createTRPCRouter({
   movePlayer: tdProcedure
@@ -84,7 +85,7 @@ export const teamPlayerRouter = createTRPCRouter({
           // Move the swap player from target team to source team
           await ctx.prisma.teamPlayer.update({
             where: { id: playerToSwap.id },
-            data: { teamId: teamPlayer.teamId },
+            data: { teamId: teamPlayer.teamId, slotIndex: null },
           })
 
           // Log the auto-move (swap)
@@ -134,7 +135,7 @@ export const teamPlayerRouter = createTRPCRouter({
       // Move the player to target team
       const updatedTeamPlayer = await ctx.prisma.teamPlayer.update({
         where: { id: input.teamPlayerId },
-        data: { teamId: input.targetTeamId },
+        data: { teamId: input.targetTeamId, slotIndex: null },
         include: { player: true },
       })
 
@@ -208,9 +209,7 @@ export const teamPlayerRouter = createTRPCRouter({
       }
 
       // Check team capacity
-      const maxPlayers = team.division.teamKind === 'SINGLES_1v1' ? 1 :
-                        team.division.teamKind === 'DOUBLES_2v2' ? 2 :
-                        team.division.teamKind === 'SQUAD_4v4' ? 4 : 2
+      const maxPlayers = getTeamSlotCount(team.division.teamKind)
 
       if (team.teamPlayers.length >= maxPlayers) {
         throw new Error(`Team is full. Maximum ${maxPlayers} players allowed.`)
@@ -357,8 +356,17 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error(`Invalid slot index. Maximum ${maxPlayers} slots allowed for ${team.division.teamKind}.`)
       }
 
+      await normalizeTeamSlots(ctx.prisma, team.id, maxPlayers)
+
       // Check if slot is already occupied
-      if (team.teamPlayers[input.slotIndex]) {
+      const slotOccupied = await ctx.prisma.teamPlayer.findFirst({
+        where: {
+          teamId: team.id,
+          slotIndex: input.slotIndex,
+        },
+      })
+
+      if (slotOccupied) {
         throw new Error(`Slot ${input.slotIndex + 1} is already occupied`)
       }
 
@@ -374,6 +382,7 @@ export const teamPlayerRouter = createTRPCRouter({
         data: {
           teamId: input.teamId,
           playerId: input.playerId,
+          slotIndex: input.slotIndex,
         },
         include: { player: true },
       })
@@ -464,9 +473,18 @@ export const teamPlayerRouter = createTRPCRouter({
       }
 
       // Verify slot index
-      const playerIndex = teamPlayer.team.teamPlayers.findIndex(tp => tp.id === input.teamPlayerId)
-      if (playerIndex !== input.slotIndex) {
-        throw new Error('Player is not in the specified slot')
+      if (teamPlayer.slotIndex !== null && teamPlayer.slotIndex !== undefined) {
+        if (teamPlayer.slotIndex !== input.slotIndex) {
+          throw new Error('Player is not in the specified slot')
+        }
+      } else {
+        const sortedTeamPlayers = [...teamPlayer.team.teamPlayers].sort((a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+        const playerIndex = sortedTeamPlayers.findIndex(tp => tp.id === input.teamPlayerId)
+        if (playerIndex !== input.slotIndex) {
+          throw new Error('Player is not in the specified slot')
+        }
       }
 
       // For MLP tournaments, check if removing this player would leave team invalid
@@ -552,9 +570,51 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('Cannot move players between different divisions')
       }
 
-      // Get players at specified slots
-      const fromTeamPlayer = fromTeam.teamPlayers[input.fromSlotIndex]
-      const toTeamPlayer = input.toSlotIndex < toTeam.teamPlayers.length ? toTeam.teamPlayers[input.toSlotIndex] : null
+      const maxSlots = getTeamSlotCount(fromTeam.division.teamKind)
+      if (input.fromSlotIndex < 0 || input.fromSlotIndex >= maxSlots) {
+        throw new Error(`Invalid source slot index: ${input.fromSlotIndex}`)
+      }
+      if (input.toSlotIndex < 0 || input.toSlotIndex >= maxSlots) {
+        throw new Error(`Invalid target slot index: ${input.toSlotIndex}`)
+      }
+
+      await normalizeTeamSlots(ctx.prisma, fromTeam.id, maxSlots)
+      await normalizeTeamSlots(ctx.prisma, toTeam.id, maxSlots)
+
+      // Reload teams after normalization for accurate slotIndex lookup
+      const [normalizedFromTeam, normalizedToTeam] = await Promise.all([
+        ctx.prisma.team.findUnique({
+          where: { id: fromTeam.id },
+          include: {
+            division: true,
+            teamPlayers: {
+              include: { player: true },
+              orderBy: { slotIndex: 'asc' },
+            },
+          },
+        }),
+        ctx.prisma.team.findUnique({
+          where: { id: toTeam.id },
+          include: {
+            division: true,
+            teamPlayers: {
+              include: { player: true },
+              orderBy: { slotIndex: 'asc' },
+            },
+          },
+        }),
+      ])
+
+      if (!normalizedFromTeam || !normalizedToTeam) {
+        throw new Error('Teams not found after normalization')
+      }
+
+      const fromTeamPlayer = normalizedFromTeam.teamPlayers.find(
+        tp => tp.slotIndex === input.fromSlotIndex
+      )
+      const toTeamPlayer = normalizedToTeam.teamPlayers.find(
+        tp => tp.slotIndex === input.toSlotIndex
+      )
 
       console.log('[movePlayerBetweenSlots] From player:', fromTeamPlayer?.player.firstName, fromTeamPlayer?.player.lastName)
       console.log('[movePlayerBetweenSlots] To player:', toTeamPlayer?.player.firstName, toTeamPlayer?.player.lastName)
@@ -563,32 +623,20 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('No player in source slot')
       }
 
-      // Validate slot indices
-      if (input.fromSlotIndex < 0 || input.fromSlotIndex >= fromTeam.teamPlayers.length) {
-        throw new Error(`Invalid source slot index: ${input.fromSlotIndex}`)
-      }
-      
-      // For target slot, allow index up to the maximum slot count (not current team size)
-      const maxSlots = 4 // Maximum slots per team
-      if (input.toSlotIndex < 0 || input.toSlotIndex >= maxSlots) {
-        throw new Error(`Invalid target slot index: ${input.toSlotIndex}`)
-      }
-
       // Same team - reorder within team
       if (input.fromTeamId === input.toTeamId) {
         if (toTeamPlayer) {
-          // Swap within same team by swapping timestamps
-          const fromCreatedAt = fromTeamPlayer.createdAt
-          const toCreatedAt = toTeamPlayer.createdAt
-          
+          // Swap within same team by swapping slot indexes
+          const fromSlotIndex = fromTeamPlayer.slotIndex
+          const toSlotIndex = toTeamPlayer.slotIndex
           await ctx.prisma.teamPlayer.update({
             where: { id: fromTeamPlayer.id },
-            data: { createdAt: toCreatedAt },
+            data: { slotIndex: toSlotIndex },
           })
 
           await ctx.prisma.teamPlayer.update({
             where: { id: toTeamPlayer.id },
-            data: { createdAt: fromCreatedAt },
+            data: { slotIndex: fromSlotIndex },
           })
 
           console.log('[movePlayerBetweenSlots] Swapped players within same team')
@@ -611,8 +659,12 @@ export const teamPlayerRouter = createTRPCRouter({
             },
           })
         } else {
-          // Move to empty slot within same team - no action needed
-          console.log('[movePlayerBetweenSlots] Move to empty slot within same team - no action needed')
+          // Move to empty slot within same team
+          await ctx.prisma.teamPlayer.update({
+            where: { id: fromTeamPlayer.id },
+            data: { slotIndex: input.toSlotIndex },
+          })
+          console.log('[movePlayerBetweenSlots] Moved player to empty slot within same team')
         }
 
         return { success: true }
@@ -623,12 +675,12 @@ export const teamPlayerRouter = createTRPCRouter({
         // Swap between different teams
         await ctx.prisma.teamPlayer.update({
           where: { id: fromTeamPlayer.id },
-          data: { teamId: toTeam.id },
+          data: { teamId: toTeam.id, slotIndex: input.toSlotIndex },
         })
 
         await ctx.prisma.teamPlayer.update({
           where: { id: toTeamPlayer.id },
-          data: { teamId: fromTeam.id },
+          data: { teamId: fromTeam.id, slotIndex: input.fromSlotIndex },
         })
 
         console.log('[movePlayerBetweenSlots] Swapped players between different teams')
@@ -656,7 +708,7 @@ export const teamPlayerRouter = createTRPCRouter({
           where: { id: fromTeamPlayer.id },
           data: { 
             teamId: toTeam.id,
-            createdAt: new Date() // Use current timestamp for simple ordering
+            slotIndex: input.toSlotIndex,
           },
         })
 
@@ -693,6 +745,11 @@ export const teamPlayerRouter = createTRPCRouter({
         where: {
           tournamentId: input.tournamentId,
           isWaitlist: false,
+          waitlistEntries: {
+            none: {
+              tournamentId: input.tournamentId,
+            },
+          },
           teamPlayers: {
             none: {} // No team assignments
           }

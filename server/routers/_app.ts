@@ -19,6 +19,8 @@ import { indyStandingsRouter } from './indyStandings'
 import { indyCourtRouter } from './indyCourt'
 import { partnerRouter } from './partner'
 import { commentRouter } from './comment'
+import { registrationRouter } from './registration'
+import { waitlistRouter } from './waitlist'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -41,6 +43,8 @@ export const appRouter = createTRPCRouter({
   indyCourt: indyCourtRouter,
   partner: partnerRouter,
   comment: commentRouter,
+  registration: registrationRouter,
+  waitlist: waitlistRouter,
 })
 
 export type AppRouter = typeof appRouter

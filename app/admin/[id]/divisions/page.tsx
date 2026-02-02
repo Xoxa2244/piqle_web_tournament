@@ -35,6 +35,7 @@ import AddPlayerModal from '@/components/AddPlayerModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
+import WaitlistAssignModal from '@/components/WaitlistAssignModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 import { 
   ChevronDown, 
@@ -73,6 +74,7 @@ interface Team {
     role: string
     createdAt: string
     updatedAt: string
+    slotIndex?: number | null
     player: {
       id: string
       email: string | null
@@ -393,7 +395,9 @@ function DivisionCard({
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
   onMovePlayerBetweenSlots,
-  tournamentFormat
+  tournamentFormat,
+  waitlistEntries,
+  onOpenAssignWaitlist
 }: {
   division: Division
   isExpanded: boolean
@@ -415,6 +419,8 @@ function DivisionCard({
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
   tournamentFormat?: string
+  waitlistEntries: any[]
+  onOpenAssignWaitlist: (entry: any, division: Division) => void
 }) {
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const activeTeams = division.teams.filter(team => team.poolId !== null)
@@ -422,6 +428,7 @@ function DivisionCard({
   const totalTeams = division.teams.length
   // For IndyLeague, show all teams (no pools/waitlist distinction)
   const allTeams = division.teams
+  const playerWaitlist = waitlistEntries.filter(entry => entry.divisionId === division.id)
 
   // Add drop zone for division
   const { setNodeRef: setDivisionNodeRef } = useDroppable({
@@ -471,42 +478,42 @@ function DivisionCard({
           
           <div className="flex items-center space-x-2">
             {!isIndyLeague && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onDistributeTeams(division.id)}
-                className="h-8 px-3"
-                title="Distribute teams by DUPR rating"
-                disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
-              >
-                <Target className="h-4 w-4 mr-1" />
-                Distribute
-              </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onDistributeTeams(division.id)}
+              className="h-8 px-3"
+              title="Distribute teams by DUPR rating"
+              disabled={(division as any).isMerged && (division.pools?.length || 0) <= 1}
+            >
+              <Target className="h-4 w-4 mr-1" />
+              Distribute
+            </Button>
             )}
             
             {!isIndyLeague && (
               (division as any).isMerged ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onUnmergeDivisions?.(division)}
-                  className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
-                  title="Unmerge division back to original divisions"
-                >
-                  <GitBranch className="h-4 w-4 mr-1" />
-                  Unmerge
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onMergeDivisions(division)}
-                  className="h-8 px-3"
-                  title="Merge with another division"
-                >
-                  <GitMerge className="h-4 w-4 mr-1" />
-                  Merge
-                </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onUnmergeDivisions?.(division)}
+                className="h-8 px-3 border-orange-300 text-orange-700 hover:bg-orange-50"
+                title="Unmerge division back to original divisions"
+              >
+                <GitBranch className="h-4 w-4 mr-1" />
+                Unmerge
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onMergeDivisions(division)}
+                className="h-8 px-3"
+                title="Merge with another division"
+              >
+                <GitMerge className="h-4 w-4 mr-1" />
+                Merge
+              </Button>
               )
             )}
             
@@ -577,72 +584,100 @@ function DivisionCard({
               </div>
             ) : (
               <>
-                {/* Pools */}
-                {division.poolCount >= 1 && division.pools.length > 0 ? (
-                  <div className="space-y-4">
-                    {division.pools.map((pool) => (
-                      <PoolCard
-                        key={pool.id}
-                        pool={pool}
-                        division={division}
-                        onTeamMove={onTeamMove}
-                        onEditTeam={onEditTeam}
-                        onDeleteTeam={onDeleteTeam}
-                        expandedTeams={expandedTeams}
-                        availablePlayers={availablePlayers}
-                        tournamentId={tournamentId}
-                        onToggleTeamExpansion={onToggleTeamExpansion}
-                        onAddPlayerToSlot={onAddPlayerToSlot}
-                        onRemovePlayerFromSlot={onRemovePlayerFromSlot}
-                        onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-sm text-green-600 flex items-center">
-                        <Trophy className="h-4 w-4 mr-1" />
-                        Active teams ({activeTeams.length})
-                      </h4>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {activeTeams.map((team) => (
-                        <TeamWithSlots
-                          key={team.id}
-                          team={team}
-                          teamKind={division.teamKind as any}
-                          isExpanded={expandedTeams.has(team.id)}
-                          availablePlayers={availablePlayers}
-                          tournamentId={tournamentId}
-                          onToggleExpansion={() => onToggleTeamExpansion(team.id)}
-                          onEdit={() => onEditTeam(team)}
-                          onDelete={() => onDeleteTeam(team)}
-                          onContextMenu={() => {}}
-                          onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
-                          onRemovePlayer={onRemovePlayerFromSlot}
-                          onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {/* Pools */}
+            {division.poolCount >= 1 && division.pools.length > 0 ? (
+              <div className="space-y-4">
+                {division.pools.map((pool) => (
+                  <PoolCard
+                    key={pool.id}
+                    pool={pool}
+                    division={division}
+                    onTeamMove={onTeamMove}
+                    onEditTeam={onEditTeam}
+                    onDeleteTeam={onDeleteTeam}
+                    expandedTeams={expandedTeams}
+                    availablePlayers={availablePlayers}
+                    tournamentId={tournamentId}
+                    onToggleTeamExpansion={onToggleTeamExpansion}
+                    onAddPlayerToSlot={onAddPlayerToSlot}
+                    onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+                    onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-sm text-green-600 flex items-center">
+                    <Trophy className="h-4 w-4 mr-1" />
+                    Active teams ({activeTeams.length})
+                  </h4>
+                </div>
                 
-                {/* WaitList */}
-                <WaitList
-                  division={division}
-                  onTeamMove={onTeamMove}
-                  onEditTeam={onEditTeam}
-                  onDeleteTeam={onDeleteTeam}
-                  expandedTeams={expandedTeams}
-                  availablePlayers={availablePlayers}
-                  tournamentId={tournamentId}
-                  onToggleTeamExpansion={onToggleTeamExpansion}
-                  onAddPlayerToSlot={onAddPlayerToSlot}
-                  onRemovePlayerFromSlot={onRemovePlayerFromSlot}
-                  onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
-                />
+                <div className="space-y-2">
+                  {activeTeams.map((team) => (
+                    <TeamWithSlots
+                      key={team.id}
+                      team={team}
+                      teamKind={division.teamKind as any}
+                      isExpanded={expandedTeams.has(team.id)}
+                      availablePlayers={availablePlayers}
+                      tournamentId={tournamentId}
+                      onToggleExpansion={() => onToggleTeamExpansion(team.id)}
+                      onEdit={() => onEditTeam(team)}
+                      onDelete={() => onDeleteTeam(team)}
+                      onContextMenu={() => {}}
+                      onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                      onRemovePlayer={onRemovePlayerFromSlot}
+                      onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* WaitList */}
+            <WaitList
+              division={division}
+              onTeamMove={onTeamMove}
+              onEditTeam={onEditTeam}
+              onDeleteTeam={onDeleteTeam}
+              expandedTeams={expandedTeams}
+              availablePlayers={availablePlayers}
+              tournamentId={tournamentId}
+              onToggleTeamExpansion={onToggleTeamExpansion}
+              onAddPlayerToSlot={onAddPlayerToSlot}
+              onRemovePlayerFromSlot={onRemovePlayerFromSlot}
+              onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+            />
+
+            <div className="mt-4 border-t pt-4">
+              <h4 className="font-medium text-sm text-gray-700 mb-2">
+                Waitlisted Players ({playerWaitlist.length})
+              </h4>
+              {playerWaitlist.length === 0 ? (
+                <div className="text-sm text-gray-400">No waitlisted players.</div>
+              ) : (
+                <div className="space-y-2">
+                  {playerWaitlist.map((entry: any) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between p-2 bg-gray-50 border rounded"
+                    >
+                      <div className="text-sm text-gray-700">
+                        {entry.player.firstName} {entry.player.lastName}
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => onOpenAssignWaitlist(entry, division)}
+                      >
+                        Assign to slot
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
               </>
             )}
           </div>
@@ -674,6 +709,9 @@ export default function DivisionsPage() {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
   const [selectedDivisionForPlayer, setSelectedDivisionForPlayer] = useState<Division | null>(null)
+  const [selectedWaitlistEntry, setSelectedWaitlistEntry] = useState<any | null>(null)
+  const [selectedWaitlistDivision, setSelectedWaitlistDivision] = useState<Division | null>(null)
+  const [showWaitlistAssignModal, setShowWaitlistAssignModal] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -687,6 +725,8 @@ export default function DivisionsPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+
+  const utils = trpc.useUtils()
   
   // Check if user has admin access (must be before conditional returns to avoid hooks violations)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
@@ -701,6 +741,11 @@ export default function DivisionsPage() {
 
   // Get available players for the tournament
   const { data: availablePlayersData = [] } = trpc.teamPlayer.getAvailablePlayers.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
+
+  const { data: waitlistEntries = [] } = trpc.waitlist.listByTournament.useQuery(
     { tournamentId },
     { enabled: !!tournamentId }
   )
@@ -867,6 +912,16 @@ export default function DivisionsPage() {
     }
   })
 
+  const moveWaitlistMutation = trpc.waitlist.moveToSlot.useMutation({
+    onSuccess: () => {
+      refetch()
+      utils.waitlist.listByTournament.invalidate({ tournamentId })
+    },
+    onError: (error) => {
+      alert(`Error assigning waitlist player: ${error.message}`)
+    },
+  })
+
   // Optimistic update functions
   const optimisticMoveTeam = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
     setLocalDivisions(prevDivisions => {
@@ -914,13 +969,23 @@ export default function DivisionsPage() {
           
           if (!fromTeam || !toTeam) return team
           
-          // Sort teamPlayers by createdAt to match server behavior
-          const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => 
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          )
-          const sortedToTeamPlayers = [...toTeam.teamPlayers].sort((a, b) => 
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          )
+          // Sort teamPlayers by slotIndex first (fallback to createdAt)
+          const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => {
+            if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+              return a.slotIndex - b.slotIndex
+            }
+            if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+            if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          })
+          const sortedToTeamPlayers = [...toTeam.teamPlayers].sort((a, b) => {
+            if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+              return a.slotIndex - b.slotIndex
+            }
+            if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+            if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          })
           
           const playerToMove = sortedFromTeamPlayers[fromSlotIndex]
           const targetPlayer = sortedToTeamPlayers[toSlotIndex]
@@ -1037,6 +1102,7 @@ export default function DivisionsPage() {
               role: 'player', // Default role
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              slotIndex,
               player: {
                 ...player,
                 teamId: teamId,
@@ -1354,7 +1420,15 @@ export default function DivisionsPage() {
       .find(t => t.id === toTeamId)
     
     if (fromTeam && toTeam) {
-      const fromTeamPlayer = fromTeam.teamPlayers[fromSlotIndex]
+      const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => {
+        if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+          return a.slotIndex - b.slotIndex
+        }
+        if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+        if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+      const fromTeamPlayer = sortedFromTeamPlayers[fromSlotIndex]
       
       if (fromTeamPlayer) {
         console.log('[handleMovePlayerBetweenSlots] Moving player:', fromTeamPlayer.player.firstName, fromTeamPlayer.player.lastName)
@@ -1372,6 +1446,24 @@ export default function DivisionsPage() {
     } else {
       console.log('[handleMovePlayerBetweenSlots] Teams not found')
     }
+  }
+
+  const handleOpenAssignWaitlist = (entry: any, division: Division) => {
+    setSelectedWaitlistEntry(entry)
+    setSelectedWaitlistDivision(division)
+    setShowWaitlistAssignModal(true)
+  }
+
+  const handleAssignWaitlist = async (teamId: string, slotIndex: number) => {
+    if (!selectedWaitlistEntry) return
+    await moveWaitlistMutation.mutateAsync({
+      waitlistEntryId: selectedWaitlistEntry.id,
+      teamId,
+      slotIndex,
+    })
+    setShowWaitlistAssignModal(false)
+    setSelectedWaitlistEntry(null)
+    setSelectedWaitlistDivision(null)
   }
 
   const handleSaveDivision = (data: {
@@ -1597,6 +1689,8 @@ export default function DivisionsPage() {
                       onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
                       onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
                       tournamentFormat={tournament?.format}
+                      waitlistEntries={waitlistEntries}
+                      onOpenAssignWaitlist={handleOpenAssignWaitlist}
                     />
                   ))}
                 </div>
@@ -1667,6 +1761,20 @@ export default function DivisionsPage() {
           onSuccess={() => {
             refetch()
           }}
+        />
+      )}
+
+      {showWaitlistAssignModal && selectedWaitlistDivision && (
+        <WaitlistAssignModal
+          isOpen={showWaitlistAssignModal}
+          onClose={() => {
+            setShowWaitlistAssignModal(false)
+            setSelectedWaitlistEntry(null)
+            setSelectedWaitlistDivision(null)
+          }}
+          onAssign={handleAssignWaitlist}
+          division={selectedWaitlistDivision}
+          waitlistEntry={selectedWaitlistEntry}
         />
       )}
 
