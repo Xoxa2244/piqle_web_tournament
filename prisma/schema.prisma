@@ -30,6 +30,7 @@ model User {
   accounts                 Account[]
   assistantAssignments     AssistantAssignment[]
   auditLogs                AuditLog[]
+  players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
   tournamentAccesses       TournamentAccess[]
