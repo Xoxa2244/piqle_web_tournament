@@ -134,7 +134,7 @@ export default function WaitlistAssignModal({
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             >
               {availableSlots.length === 0 && <option value="">No available slots</option>}
-              {availableSlots.map((slotIndex) => (
+              {availableSlots.map((slotIndex: number) => (
                 <option key={slotIndex} value={slotIndex}>
                   Slot {slotIndex + 1}
                 </option>
