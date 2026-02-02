@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/client'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -16,7 +16,7 @@ export const getTeamSlotCount = (teamKind: TeamKind) => {
 }
 
 export const normalizeTeamSlots = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   teamId: string,
   slotCount: number
 ) => {
