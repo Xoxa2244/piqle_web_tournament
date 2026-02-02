@@ -67,6 +67,7 @@ export default function TournamentRegistrationPage() {
   }, [authStatus, router, tournamentId])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
+  const divisions = (seatMap?.divisions ?? []) as any[]
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
@@ -136,7 +137,7 @@ export default function TournamentRegistrationPage() {
         </Card>
 
         <div className="space-y-6">
-          {seatMap.divisions.map((division) => (
+          {divisions.map((division) => (
             <DivisionSeatMap
               key={division.id}
               division={division}
