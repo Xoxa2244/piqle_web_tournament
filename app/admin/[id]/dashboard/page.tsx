@@ -261,10 +261,6 @@ function DivisionDashboardContent() {
   }
 
   if (tournament.divisions.length === 0) {
-    const router = useRouter()
-    useEffect(() => {
-      router.replace(`/admin/${tournamentId}/divisions`)
-    }, [router, tournamentId])
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center text-gray-500">Redirecting to divisions...</div>

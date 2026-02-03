@@ -205,11 +205,10 @@ export default function AccessManagementPage() {
     setRequestSelectedDivisionIds([])
   }
 
-  const divisions = tournament?.divisions || []
-
   // Filter out divisions that are part of a merged division
   // Only show merged divisions and standalone divisions (not those that were merged)
   const visibleDivisions = useMemo(() => {
+    const divisions = tournament?.divisions || []
     if (!divisions || divisions.length === 0) return []
     
     const divisionsArray = divisions as any[]
@@ -229,7 +228,7 @@ export default function AccessManagementPage() {
       
       return !isPartOfMerged
     })
-  }, [divisions])
+  }, [tournament?.divisions])
 
   // Group accesses by user
   type AccessItem = NonNullable<typeof accesses>[0]
