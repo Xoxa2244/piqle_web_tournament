@@ -1225,7 +1225,10 @@ function DivisionStageManagementContent() {
                 <select
                   value={selectedDivisionId}
                   onChange={(e) => setSelectedDivisionId(e.target.value)}
-                  className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem]"
+                  className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  }}
                 >
                   {visibleDivisions.map((div: any) => (
                     <option key={div.id} value={div.id}>
@@ -1268,7 +1271,10 @@ function DivisionStageManagementContent() {
                     <select
                       value={selectedMatchDayId}
                       onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                      className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem]"
+                      className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                      }}
                     >
                       {matchDaysForDivision.map((day: any) => (
                         <option key={day.id} value={day.id}>
@@ -1635,7 +1641,10 @@ function DivisionStageManagementContent() {
                                     handleTieBreakChange(matchup.id, e.target.value)
                                   }
                                 }}
-                                className="pl-3 py-2 border border-orange-300 rounded-md pr-[2.5rem]"
+                                className="pl-3 py-2 border border-orange-300 rounded-md pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                                style={{
+                                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                                }}
                               >
                                 <option value="">Select winner...</option>
                                 <option value={matchup.homeTeamId}>{matchup.homeTeam.name}</option>
@@ -1672,10 +1681,13 @@ function DivisionStageManagementContent() {
             {isLeagueRoundRobin && matchDays && matchDays.length > 0 && (
               <div className="flex items-center gap-2 pb-2 border-b">
                 <span className="text-sm font-medium text-gray-700">Match Day:</span>
-                <select
-                  value={selectedMatchDayId}
-                  onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                  className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+<select
+                value={selectedMatchDayId}
+                onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
                 >
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
