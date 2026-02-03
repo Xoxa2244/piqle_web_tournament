@@ -102,9 +102,9 @@ export default function AdminPage() {
   }
 
   return (
-    <div>
+    <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
       </div>
 
       {tournaments && tournaments.length > 0 ? (

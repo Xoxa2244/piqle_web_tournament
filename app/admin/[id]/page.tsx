@@ -382,12 +382,10 @@ export default function TournamentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.1),transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.1),transparent_50%)]"></div>
-        <div className="text-center relative z-10">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
-          <div className="text-lg font-semibold text-indigo-900 bg-white/60 backdrop-blur-sm px-6 py-3 rounded-2xl shadow-lg">Loading tournament...</div>
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-gray-600 mx-auto mb-4"></div>
+          <div className="text-lg font-semibold text-gray-800 bg-white px-6 py-3 rounded-2xl shadow-lg border border-gray-200">Loading tournament...</div>
         </div>
       </div>
     )
@@ -395,36 +393,26 @@ export default function TournamentDetailPage() {
 
   if (error || !tournament) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.1),transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.1),transparent_50%)]"></div>
-        <div className="text-center relative z-10">
-          <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md mx-4 border border-white/20">
-            <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent mb-2">Tournament not found</h1>
-            <p className="text-gray-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
-            <Link href="/admin" className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to tournaments
-            </Link>
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
+        <div className="text-center bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4 border border-gray-200">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
           </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
+          <p className="text-gray-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
+          <Link href="/admin" className="inline-flex items-center px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-semibold">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to tournaments
+          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/30 to-purple-200/30 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-pink-200/30 to-rose-200/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-200/20 to-cyan-200/20 rounded-full blur-3xl animate-pulse delay-500"></div>
-      </div>
+    <div className="min-h-screen w-full bg-gray-50">
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
@@ -439,26 +427,23 @@ export default function TournamentDetailPage() {
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
-            <Card className="h-full border-0 shadow-2xl bg-white/70 backdrop-blur-xl relative overflow-hidden group hover:shadow-3xl transition-all duration-500">
-              {/* Decorative gradient overlay */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-indigo-400/10 to-purple-400/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:scale-150 transition-transform duration-700"></div>
-              
-              <CardHeader className="pb-4 relative z-10">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center">
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg group-hover:scale-110 transition-transform duration-300">
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                     <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6 relative z-10">
+              <CardContent className="space-y-6">
                 {/* Tournament Description */}
-                <div className="bg-gradient-to-br from-indigo-50/80 via-purple-50/80 to-pink-50/80 backdrop-blur-sm rounded-2xl p-5 border border-indigo-100/50 shadow-inner relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+                <div className="bg-gray-50 rounded-2xl p-5 border border-gray-200 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gray-300"></div>
                   <div className="h-24 overflow-y-auto custom-scrollbar">
                     {tournament.description ? (
                       <div 
@@ -475,11 +460,10 @@ export default function TournamentDetailPage() {
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/10 to-teal-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-emerald-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-3 block">Start Date</label>
+                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Start Date</label>
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
+                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                           <Calendar className="w-5 h-5 text-white" />
                         </div>
                         <p className="text-base font-bold text-gray-800">
@@ -494,11 +478,10 @@ export default function TournamentDetailPage() {
                   </div>
                   
                   <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-rose-400/10 to-pink-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-rose-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-3 block">End Date</label>
+                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">End Date</label>
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
+                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                           <Calendar className="w-5 h-5 text-white" />
                         </div>
                         <p className="text-base font-bold text-gray-800">
@@ -513,11 +496,10 @@ export default function TournamentDetailPage() {
                   </div>
                   
                   <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-orange-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-amber-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 block">Venue</label>
+                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Venue</label>
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
+                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -531,11 +513,10 @@ export default function TournamentDetailPage() {
                   </div>
                   
                   <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-green-400/10 to-emerald-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-green-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-green-600 uppercase tracking-wider mb-3 block">Entry Fee</label>
+                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Entry Fee</label>
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
+                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                           </svg>
@@ -553,27 +534,23 @@ export default function TournamentDetailPage() {
 
           {/* Quick Actions - Right Column (40%) */}
           <div className="lg:col-span-1">
-            <Card className="h-full border-0 shadow-2xl bg-white/70 backdrop-blur-xl relative overflow-hidden group hover:shadow-3xl transition-all duration-500">
-              {/* Decorative gradient overlay */}
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-purple-400/10 to-pink-400/10 rounded-full blur-3xl -ml-32 -mb-32 group-hover:scale-150 transition-transform duration-700"></div>
-              
-              <CardHeader className="pb-4 relative z-10">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 bg-clip-text text-transparent flex items-center">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mr-3 shadow-lg group-hover:scale-110 transition-transform duration-300">
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                     <Settings className="w-5 h-5 text-white" />
                   </div>
                   Quick Actions
                 </CardTitle>
               </CardHeader>
-              <CardContent className="relative z-10">
+              <CardContent>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   {isAdmin && (
                     <Link href={`/admin/${tournamentId}/divisions`} className="group/action">
                       <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-blue-200/50 hover:border-blue-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                           <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                               <Settings className="h-5 w-5 text-white" />
                             </div>
                             <div className="text-center">
@@ -587,14 +564,13 @@ export default function TournamentDetailPage() {
                   
                   <Link href={`/admin/${tournamentId}/players`} className="group/action">
                     <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-emerald-200/50 hover:border-emerald-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                         <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                             <Users className="h-5 w-5 text-white" />
                           </div>
                           <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-emerald-600 transition-colors">Players</div>
+                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Players</div>
                           </div>
                         </div>
                       </Button>
@@ -603,14 +579,13 @@ export default function TournamentDetailPage() {
                   
                   <Link href={`/admin/${tournamentId}/stages`} className="group/action">
                     <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-amber-400/20 to-orange-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-amber-200/50 hover:border-amber-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                         <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                             <FileText className="h-5 w-5 text-white" />
                           </div>
                           <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-amber-600 transition-colors">Score Input</div>
+                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Score Input</div>
                           </div>
                         </div>
                       </Button>
@@ -619,14 +594,13 @@ export default function TournamentDetailPage() {
                   
                   <Link href={`/admin/${tournamentId}/dashboard`} className="group/action">
                     <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-purple-200/50 hover:border-purple-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                         <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                             <BarChart3 className="h-5 w-5 text-white" />
                           </div>
                           <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-purple-600 transition-colors">Dashboard</div>
+                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Dashboard</div>
                           </div>
                         </div>
                       </Button>
@@ -636,10 +610,9 @@ export default function TournamentDetailPage() {
                   {(tournament?.format === 'INDY_LEAGUE' || tournament?.format === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
                     <Link href={`/admin/${tournamentId}/match-days`} className="group/action">
                       <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-blue-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-indigo-200/50 hover:border-indigo-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                           <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                               <Calendar className="h-5 w-5 text-white" />
                             </div>
                             <div className="text-center">
@@ -654,10 +627,9 @@ export default function TournamentDetailPage() {
                   {isOwner && (
                     <Link href={`/admin/${tournamentId}/access`} className="relative group/action">
                       <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-400/20 to-slate-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-gray-200/50 hover:border-gray-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
+                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
                           <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-slate-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
+                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
                               <Shield className="h-5 w-5 text-white" />
                             </div>
                             <div className="text-center">
@@ -667,7 +639,7 @@ export default function TournamentDetailPage() {
                         </Button>
                       </div>
                       {pendingRequestsCount > 0 && (
-                        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-rose-600 text-xs font-bold text-white shadow-lg animate-pulse z-20 border-2 border-white">
+                        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow-lg animate-pulse z-20 border-2 border-white">
                           {pendingRequestsCount}
                         </span>
                       )}
@@ -687,19 +659,17 @@ export default function TournamentDetailPage() {
           onClick={() => setShowCreateDivision(false)}
         >
           <div
-            className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-md mx-4 border border-white/20 relative overflow-hidden"
+            className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4 border border-gray-200 relative overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
-            <div className="flex items-center mb-6 relative z-10">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+            <div className="flex items-center mb-6">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                 <Settings className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Create Division</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Create Division</h2>
             </div>
             
-            <div className="space-y-5 relative z-10">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Division Name *
@@ -782,7 +752,7 @@ export default function TournamentDetailPage() {
               <Button
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
-                className="px-6 py-3 text-base bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {createDivision.isPending ? 'Creating...' : 'Create Division'}
               </Button>
@@ -798,22 +768,19 @@ export default function TournamentDetailPage() {
           onClick={() => setShowEditTournament(false)}
         >
           <div
-            className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden flex flex-col max-h-[90vh]"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 border border-gray-200 relative overflow-hidden flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-3xl"></div>
-            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-            
             {/* Header - fixed */}
-            <div className="flex items-center p-8 pb-6 relative z-10 flex-shrink-0">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+            <div className="flex items-center p-8 pb-6 flex-shrink-0">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                 <Edit className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Edit Tournament</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Tournament</h2>
             </div>
             
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-8 relative z-10">
+            <div className="flex-1 overflow-y-auto px-8">
               <div className="space-y-5 pb-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -983,7 +950,7 @@ export default function TournamentDetailPage() {
                 </p>
               </div>
 
-              <div className="flex items-center p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl border border-indigo-100">
+              <div className="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <input
                   type="checkbox"
                   name="isPublicBoardEnabled"
@@ -1038,7 +1005,7 @@ export default function TournamentDetailPage() {
               <Button
                 onClick={handleTournamentSubmit}
                 disabled={updateTournament.isPending}
-                className="px-6 py-3 text-base bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
