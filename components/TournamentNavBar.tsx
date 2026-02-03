@@ -146,8 +146,8 @@ function TournamentNavBarContent({
         </div>
 
         {/* Bottom row: Quick Actions */}
-        <div className="border-t border-slate-200 py-2">
-          <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide">
+        <div className="border-t border-slate-200 py-2 overflow-visible">
+          <div className="flex items-center space-x-2 overflow-x-auto overflow-y-visible scrollbar-hide">
             <Link href={`/admin/${tournamentId}`}>
               <Button
                 variant="outline"
@@ -243,7 +243,7 @@ function TournamentNavBarContent({
             )}
             
             {isOwner && (
-              <Link href={`/admin/${tournamentId}/access`} className="relative">
+              <Link href={`/admin/${tournamentId}/access`} className="relative z-10 flex-shrink-0">
                 <Button 
                   variant="outline" 
                   size="sm"
@@ -253,7 +253,7 @@ function TournamentNavBarContent({
                   <span>Access Control</span>
                 </Button>
                 {pendingRequestsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                  <span className="absolute top-0.5 right-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm">
                     {pendingRequestsCount}
                   </span>
                 )}
