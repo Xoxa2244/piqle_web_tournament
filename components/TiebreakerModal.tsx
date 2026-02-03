@@ -165,7 +165,7 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamAPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamAPlayerId', e.target.value)}
-                    className="flex-1 px-2 py-1 border rounded text-sm"
+                    className="flex-1 pl-2 py-1 border rounded text-sm pr-[2.5rem]"
                   >
                     <option value="">Select {teamAName} player</option>
                     {teamAPlayers.map(player => (
@@ -178,7 +178,7 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamBPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamBPlayerId', e.target.value)}
-                    className="flex-1 px-2 py-1 border rounded text-sm"
+                    className="flex-1 pl-2 py-1 border rounded text-sm pr-[2.5rem]"
                   >
                     <option value="">Select {teamBName} player</option>
                     {teamBPlayers.map(player => (

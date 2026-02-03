@@ -434,7 +434,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
                           e.target.value as 'DRAFT' | 'IN_PROGRESS' | 'FINALIZED'
                         )
                       }
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="pl-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                       disabled={updateStatus.isPending}
                     >
                       <option value="DRAFT">Draft</option>

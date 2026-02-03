@@ -203,7 +203,7 @@ export default function PublicCoursePage() {
               <select
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
               >
                 {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
@@ -264,7 +264,7 @@ export default function PublicCoursePage() {
               <select
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center min-w-0 flex-1"
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-center min-w-0 flex-1 pr-[2.5rem]"
               >
                 {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>

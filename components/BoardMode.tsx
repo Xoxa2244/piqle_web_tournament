@@ -1178,7 +1178,7 @@ function SortableTeamCard({
                     e.target.value = ''
                   }
                 }}
-                className="w-full text-xs border rounded p-1"
+                className="w-full text-xs border rounded pl-2 py-1 pr-[2.5rem]"
                 onClick={(e) => e.stopPropagation()}
               >
                 <option value="">Add player...</option>

@@ -614,7 +614,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, teamKind: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-lg pr-[2.5rem]"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -626,7 +626,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, pairingMode: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-lg pr-[2.5rem]"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>
