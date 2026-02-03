@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,6 +52,7 @@ interface PlayoffMatch {
 
 export default function PublicCoursePage() {
   const params = useParams()
+  const router = useRouter()
   const tournamentId = params.id as string
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
@@ -171,13 +172,14 @@ export default function PublicCoursePage() {
           {/* Desktop Header */}
           <div className="hidden sm:flex items-center justify-between py-4">
             <div className="flex items-center space-x-4">
-              <Link
-                href="/scoreboard"
+              <button
+                type="button"
+                onClick={() => router.back()}
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
-                <span className="text-sm font-medium">Back to Tournaments</span>
-              </Link>
+                <span className="text-sm font-medium">Back</span>
+              </button>
               <div className="h-6 w-px bg-gray-300"></div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Tournament Results: {tournament.title}
@@ -228,13 +230,14 @@ export default function PublicCoursePage() {
           <div className="sm:hidden py-4 space-y-3">
             {/* Back Button */}
             <div>
-              <Link
-                href="/scoreboard"
+              <button
+                type="button"
+                onClick={() => router.back()}
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
-                <span className="text-sm font-medium">Back to Tournaments</span>
-              </Link>
+                <span className="text-sm font-medium">Back</span>
+              </button>
             </div>
             
             {/* Tournament Title */}
