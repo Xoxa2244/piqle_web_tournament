@@ -168,7 +168,7 @@ export default function PlayoffSwapModal({
                     <select
                       value={currentTeamAId}
                       onChange={(e) => handleTeamChange(match.id, 'A', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {teams.map((team) => (
                         <option key={team.id} value={team.id}>
@@ -185,7 +185,7 @@ export default function PlayoffSwapModal({
                     <select
                       value={currentTeamBId}
                       onChange={(e) => handleTeamChange(match.id, 'B', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {teams.map((team) => (
                         <option key={team.id} value={team.id}>

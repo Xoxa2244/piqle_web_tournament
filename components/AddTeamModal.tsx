@@ -151,7 +151,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                 value={selectedDivisionId}
                 onChange={(e) => handleDivisionChange(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Select division</option>
                 {divisions.map((division) => (
@@ -172,7 +172,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
                   value={selectedPoolId}
                   onChange={(e) => setSelectedPoolId(e.target.value)}
                   disabled={isSubmitting}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">WaitList (no pool)</option>
                   {selectedDivision.pools.map((pool) => (

@@ -476,7 +476,7 @@ export default function PartnersPage() {
                     <select
                       value={appForm.environment}
                       onChange={(e) => setAppForm({ ...appForm, environment: e.target.value as 'SANDBOX' | 'PRODUCTION' })}
-                      className="w-full px-3 py-2 border rounded-lg"
+                      className="w-full pl-3 pr-10 py-2 border rounded-lg"
                     >
                       <option value="SANDBOX">Sandbox</option>
                       <option value="PRODUCTION">Production</option>
@@ -488,7 +488,7 @@ export default function PartnersPage() {
                       value={appForm.allowedIps}
                       onChange={(e) => setAppForm({ ...appForm, allowedIps: e.target.value })}
                       placeholder="192.168.1.1&#10;10.0.0.1"
-                      className="w-full px-3 py-2 border rounded-lg"
+                      className="w-full pl-3 pr-10 py-2 border rounded-lg"
                       rows={3}
                     />
                     <p className="text-xs text-gray-500 mt-1">Leave empty for no IP restriction</p>
