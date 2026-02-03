@@ -21,7 +21,12 @@ import {
   Globe,
   Edit,
   Shield,
-  X
+  X,
+  MapPin,
+  DollarSign,
+  Layers,
+  Swords,
+  User
 } from 'lucide-react'
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -74,6 +79,34 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
     reader.onerror = () => reject(new Error('Failed to read file'))
     reader.readAsDataURL(file)
   })
+}
+
+function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'Past'
+    case 'upcoming': return 'Upcoming'
+    case 'in_progress': return 'In progress'
+  }
+}
+function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'bg-gray-100 text-gray-700'
+    case 'upcoming': return 'bg-blue-50 text-blue-700'
+    case 'in_progress': return 'bg-green-50 text-green-700'
+  }
 }
 
 export default function TournamentDetailPage() {
@@ -449,94 +482,93 @@ export default function TournamentDetailPage() {
                   Tournament Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Tournament Description */}
-                <div className="bg-gray-50 rounded-2xl p-5 border border-gray-200 relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gray-300"></div>
-                  <div className="h-24 overflow-y-auto custom-scrollbar">
+              <CardContent className="space-y-5">
+                {/* Description — как на admin, с серой иконкой */}
+                <div className="flex gap-3">
+                  <FileText className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500" />
+                  <div className="min-w-0 flex-1">
                     {tournament.description ? (
-                      <div 
-                        className="text-base font-medium text-gray-800 prose prose-sm max-w-none leading-relaxed"
+                      <div
+                        className="text-sm text-gray-600 prose prose-sm max-w-none leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                       />
                     ) : (
-                      <p className="text-base font-medium text-gray-400 italic">
-                        No description provided
-                      </p>
+                      <p className="text-sm text-gray-400 italic">No description provided</p>
                     )}
                   </div>
                 </div>
 
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="group relative">
-                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Start Date</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                          <Calendar className="w-5 h-5 text-white" />
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {new Date(tournament.startDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">End Date</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                          <Calendar className="w-5 h-5 text-white" />
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {new Date(tournament.endDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Venue</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {tournament.venueName || '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="relative bg-white rounded-2xl p-4 border border-gray-200 shadow-sm group-hover:shadow-md transition-all duration-300">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Entry Fee</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                          </svg>
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {tournament.entryFee ? `$${tournament.entryFee}` : '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                {/* Start & End date — одна строка с иконкой */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' – '}
+                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
                 </div>
+
+                {/* Venue */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <MapPin className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.venueName || '—'}</span>
+                </div>
+
+                {/* Entry fee */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <DollarSign className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.entryFee ? `$${tournament.entryFee}` : '—'}</span>
+                </div>
+
+                {/* Number of divisions */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {(tournament.divisions?.length ?? 0)} division{(tournament.divisions?.length ?? 0) !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Tournament status */}
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
+                {/* Short summary: divisions, teams, players, matches */}
+                {(() => {
+                  const divisions = (tournament.divisions ?? []) as any[]
+                  const divisionCount = divisions.length
+                  const teamCount = divisions.reduce((s, d) => s + (d.teams?.length ?? 0), 0)
+                  const playerCount = divisions.reduce((s, d) => {
+                    const teams = d.teams ?? []
+                    return s + teams.reduce((t: number, team: any) => t + (team.teamPlayers?.length ?? 0), 0)
+                  }, 0)
+                  const matchCount = divisions.reduce((s, d) => s + (d.matches?.length ?? 0), 0)
+                  return (
+                    <div className="pt-3 border-t border-gray-200 space-y-2">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Summary</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <span>{divisionCount} division{divisionCount !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <span>{teamCount} team{teamCount !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <span>{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Swords className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <span>{matchCount} match{matchCount !== 1 ? 'es' : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>
