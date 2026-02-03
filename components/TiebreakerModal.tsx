@@ -165,7 +165,7 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamAPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamAPlayerId', e.target.value)}
-                    className="flex-1 pl-2 pr-7 py-1 border rounded text-sm"
+                    className="flex-1 px-2 py-1 border rounded text-sm"
                   >
                     <option value="">Select {teamAName} player</option>
                     {teamAPlayers.map(player => (
@@ -178,7 +178,7 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamBPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamBPlayerId', e.target.value)}
-                    className="flex-1 pl-2 pr-7 py-1 border rounded text-sm"
+                    className="flex-1 px-2 py-1 border rounded text-sm"
                   >
                     <option value="">Select {teamBName} player</option>
                     {teamBPlayers.map(player => (
@@ -204,7 +204,7 @@ export default function TiebreakerModal({
                   type="number"
                   value={teamAScore}
                   onChange={(e) => setTeamAScore(e.target.value)}
-                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Score"
                   min="0"
                   required
@@ -218,7 +218,7 @@ export default function TiebreakerModal({
                   type="number"
                   value={teamBScore}
                   onChange={(e) => setTeamBScore(e.target.value)}
-                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Score"
                   min="0"
                   required

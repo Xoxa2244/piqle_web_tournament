@@ -368,7 +368,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="flex gap-2 mt-6">
@@ -434,7 +434,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
                           e.target.value as 'DRAFT' | 'IN_PROGRESS' | 'FINALIZED'
                         )
                       }
-                      className="pl-3 pr-7 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={updateStatus.isPending}
                     >
                       <option value="DRAFT">Draft</option>

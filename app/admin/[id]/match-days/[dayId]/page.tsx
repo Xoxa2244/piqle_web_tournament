@@ -267,7 +267,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
             <select
               value={matchDayId}
               onChange={(e) => handleDayChange(e.target.value)}
-              className="pl-3 pr-7 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
               {allMatchDays?.map((day) => (
                 <option key={day.id} value={day.id}>
@@ -310,7 +310,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     setSelectedHomeTeamId('')
                     setSelectedAwayTeamId('')
                   }}
-                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select division...</option>
                   {tournament?.divisions?.map((div: any) => (
@@ -330,7 +330,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     <select
                       value={selectedHomeTeamId}
                       onChange={(e) => setSelectedHomeTeamId(e.target.value)}
-                      className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select home team...</option>
                       {tournament?.divisions
@@ -350,7 +350,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     <select
                       value={selectedAwayTeamId}
                       onChange={(e) => setSelectedAwayTeamId(e.target.value)}
-                      className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select away team...</option>
                       {tournament?.divisions

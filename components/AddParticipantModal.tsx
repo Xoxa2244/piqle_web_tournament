@@ -224,7 +224,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
                 value={gender}
                 onChange={(e) => setGender(e.target.value as 'M' | 'F' | 'X' | '')}
                 disabled={isSubmitting}
-                className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required={isMLP}
               >
                 <option value="">Select gender</option>
@@ -246,7 +246,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
                 value={selectedTeamId}
                 onChange={(e) => setSelectedTeamId(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">General list</option>
                 {teams?.map((team) => (

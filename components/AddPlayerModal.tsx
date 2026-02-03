@@ -182,7 +182,7 @@ export default function AddPlayerModal({
                 value={selectedPlayerId}
                 onChange={(e) => setSelectedPlayerId(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Select player</option>
                 {availablePlayers.map((player) => (
@@ -209,7 +209,7 @@ export default function AddPlayerModal({
                   value={selectedPoolId}
                   onChange={(e) => setSelectedPoolId(e.target.value)}
                   disabled={isSubmitting}
-                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {division.pools.map((pool) => (
                     <option key={pool.id} value={pool.id}>

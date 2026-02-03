@@ -699,7 +699,7 @@ export default function TournamentDetailPage() {
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
-                  className="w-full pl-4 pr-7 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -714,7 +714,7 @@ export default function TournamentDetailPage() {
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
-                  className="w-full pl-4 pr-7 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>

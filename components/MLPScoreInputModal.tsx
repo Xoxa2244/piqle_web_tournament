@@ -296,7 +296,7 @@ export default function MLPScoreInputModal({
                       type="text"
                       value={game.scoreA}
                       onChange={(e) => handleGameChange(index, 'scoreA', e.target.value)}
-                      className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Score"
                       pattern="[0-9]*"
                     />
@@ -309,7 +309,7 @@ export default function MLPScoreInputModal({
                       type="text"
                       value={game.scoreB}
                       onChange={(e) => handleGameChange(index, 'scoreB', e.target.value)}
-                      className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Score"
                       pattern="[0-9]*"
                     />

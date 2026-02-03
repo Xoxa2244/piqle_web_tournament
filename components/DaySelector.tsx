@@ -94,7 +94,7 @@ export default function DaySelector({
           <select
             value={selectedDayId || ''}
             onChange={(e) => onDayChange(e.target.value || null)}
-            className="pl-3 pr-7 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select a day...</option>
             {matchDays.map((day) => (

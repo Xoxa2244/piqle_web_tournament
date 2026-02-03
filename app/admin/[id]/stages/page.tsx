@@ -1225,7 +1225,7 @@ function DivisionStageManagementContent() {
                 <select
                   value={selectedDivisionId}
                   onChange={(e) => setSelectedDivisionId(e.target.value)}
-                  className="pl-3 pr-7 py-1 border border-gray-300 rounded-md text-sm min-w-0"
+                  className="pl-3 pr-8 py-1 border border-gray-300 rounded-md text-sm"
                 >
                   {visibleDivisions.map((div: any) => (
                     <option key={div.id} value={div.id}>
@@ -1268,7 +1268,7 @@ function DivisionStageManagementContent() {
                     <select
                       value={selectedMatchDayId}
                       onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                      className="pl-3 pr-7 py-1 border border-gray-300 rounded-md text-sm min-w-0"
+                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
                     >
                       {matchDaysForDivision.map((day: any) => (
                         <option key={day.id} value={day.id}>
@@ -1675,7 +1675,7 @@ function DivisionStageManagementContent() {
                 <select
                   value={selectedMatchDayId}
                   onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                  className="pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
