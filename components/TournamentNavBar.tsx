@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, usePathname, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 import { 
   Settings,
@@ -47,11 +47,22 @@ function TournamentNavBarContent({
   tournamentFormat
 }: TournamentNavBarProps) {
   const params = useParams()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const divisionParam = searchParams.get('division')
   const divisionQuery = divisionParam ? `?division=${divisionParam}` : ''
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false)
+
+  const base = `/admin/${tournamentId}`
+  const isInformation = pathname === base
+  const isDivisions = pathname === `${base}/divisions`
+  const isPlayers = pathname === `${base}/players`
+  const isStages = pathname === `${base}/stages`
+  const isDashboard = pathname === `${base}/dashboard`
+  const isMatchDays = pathname.startsWith(`${base}/match-days`)
+  const isCourts = pathname.startsWith(`${base}/courts`)
+  const isAccess = pathname === `${base}/access`
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 fixed top-16 left-0 right-0 z-[60] shadow-sm">
@@ -150,7 +161,7 @@ function TournamentNavBarContent({
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center space-x-2 whitespace-nowrap hover:bg-slate-50 hover:border-slate-200 transition-all"
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isInformation ? 'bg-slate-100 border-slate-400 font-medium text-slate-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
               >
                 <Info className="w-4 h-4" />
                 <span>Information</span>
@@ -161,7 +172,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-blue-50 hover:border-blue-200 transition-all"
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDivisions ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-blue-50 hover:border-blue-200'}`}
                 >
                   <Settings className="w-4 h-4" />
                   <span>Divisions</span>
@@ -173,7 +184,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className="flex items-center space-x-2 whitespace-nowrap hover:bg-emerald-50 hover:border-emerald-200 transition-all"
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isPlayers ? 'bg-emerald-100 border-emerald-400 font-medium text-emerald-900' : 'hover:bg-emerald-50 hover:border-emerald-200'}`}
               >
                 <Users className="w-4 h-4" />
                 <span>Players</span>
@@ -196,7 +207,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className="flex items-center space-x-2 whitespace-nowrap hover:bg-orange-50 hover:border-orange-200 transition-all"
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isStages ? 'bg-orange-100 border-orange-400 font-medium text-orange-900' : 'hover:bg-orange-50 hover:border-orange-200'}`}
               >
                 <FileText className="w-4 h-4" />
                 <span>Score Input</span>
@@ -207,7 +218,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className="flex items-center space-x-2 whitespace-nowrap hover:bg-purple-50 hover:border-purple-200 transition-all"
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDashboard ? 'bg-purple-100 border-purple-400 font-medium text-purple-900' : 'hover:bg-purple-50 hover:border-purple-200'}`}
               >
                 <BarChart3 className="w-4 h-4" />
                 <span>Dashboard</span>
@@ -219,7 +230,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-indigo-50 hover:border-indigo-200 transition-all"
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isMatchDays ? 'bg-indigo-100 border-indigo-400 font-medium text-indigo-900' : 'hover:bg-indigo-50 hover:border-indigo-200'}`}
                 >
                   <Calendar className="w-4 h-4" />
                   <span>Match Days</span>
@@ -232,7 +243,7 @@ function TournamentNavBarContent({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-slate-50 hover:border-slate-200 transition-all"
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isCourts ? 'bg-slate-200 border-slate-400 font-medium text-slate-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Target className="w-4 h-4" />
                   <span>Courts</span>
@@ -245,7 +256,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className="flex items-center space-x-2 whitespace-nowrap hover:bg-gray-50 hover:border-gray-200 transition-all"
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isAccess ? 'bg-gray-200 border-gray-400 font-medium text-gray-900' : 'hover:bg-gray-50 hover:border-gray-200'}`}
                 >
                   <Shield className="w-4 h-4" />
                   <span>Access Control</span>

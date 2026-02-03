@@ -446,17 +446,17 @@ function DivisionDashboardContent() {
             {/* Desktop Layout */}
             <div className="hidden lg:block space-y-6">
               {/* Round Robin Section */}
-              <div className="grid grid-cols-12 gap-6">
+              <div className="grid grid-cols-12 gap-6 items-stretch">
                 {/* RR Summary */}
-                <div className="col-span-3">
-                  <Card>
+                <div className="col-span-3 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2">
                         <Users className="h-5 w-5" />
                         <span>Round Robin</span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 flex-1">
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <span className="text-sm font-medium">Status:</span>
@@ -484,8 +484,8 @@ function DivisionDashboardContent() {
                 </div>
 
                 {/* RR Table */}
-                <div className="col-span-9">
-                  <Card>
+                <div className="col-span-9 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>
@@ -502,8 +502,8 @@ function DivisionDashboardContent() {
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
+                    <CardContent className="flex-1 min-h-0 flex flex-col">
+                      <div className="overflow-x-auto flex-1 min-h-0">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">
