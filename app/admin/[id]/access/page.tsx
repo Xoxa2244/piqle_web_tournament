@@ -256,7 +256,7 @@ export default function AccessManagementPage() {
   // Check if user is owner - only owners can manage access
   if (!isOwner) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Link
             href={`/admin/${tournamentId}`}
@@ -290,7 +290,7 @@ export default function AccessManagementPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <Link
           href={`/admin/${tournamentId}`}
