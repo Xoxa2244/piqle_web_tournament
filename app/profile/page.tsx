@@ -3,6 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,11 +20,13 @@ export default function ProfilePage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: profile, isLoading, refetch } = trpc.user.getProfile.useQuery()
+  const { update: updateSession } = useSession()
   const updateProfile = trpc.user.updateProfile.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       refetch()
       setIsEditing(false)
       setIsUploadingAvatar(false)
+      await updateSession()
     },
   })
 
