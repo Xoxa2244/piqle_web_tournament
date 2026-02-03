@@ -72,11 +72,11 @@ export default function AddDivisionModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-slate-200 max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-auto border border-slate-200 max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center mb-6">

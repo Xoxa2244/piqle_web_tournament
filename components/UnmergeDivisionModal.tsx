@@ -44,10 +44,10 @@ export default function UnmergeDivisionModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
       onClick={handleClose}
     >
-      <Card className="w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
+      <Card className="w-full max-w-lg mx-auto max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
           <div className="flex items-center">
             <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center mr-3">

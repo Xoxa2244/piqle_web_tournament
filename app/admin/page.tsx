@@ -272,7 +272,7 @@ export default function AdminPage() {
       {/* Delete Tournament Modal */}
       {deleteModal && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
           onClick={closeDeleteModal}
         >
           <div
@@ -317,7 +317,7 @@ export default function AdminPage() {
       {/* Description Modal */}
       {selectedDescription && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
           onClick={() => setSelectedDescription(null)}
         >
           <div

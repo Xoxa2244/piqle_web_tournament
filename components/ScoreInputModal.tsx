@@ -132,10 +132,10 @@ export default function ScoreInputModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
       onClick={onClose}
     >
-      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-auto max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-4">
           Enter Score
           {poolName && (

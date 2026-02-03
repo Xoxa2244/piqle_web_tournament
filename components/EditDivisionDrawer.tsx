@@ -109,7 +109,7 @@ export default function EditDivisionDrawer({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center"
+      className="fixed inset-0 bg-black bg-opacity-50 z-[110] flex items-end justify-center"
       onClick={onClose}
     >
       <div

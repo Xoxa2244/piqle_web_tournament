@@ -664,7 +664,7 @@ export default function TournamentDetailPage() {
       {/* Create Division Modal */}
       {showCreateDivision && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
           onClick={() => setShowCreateDivision(false)}
         >
           <div
@@ -773,7 +773,7 @@ export default function TournamentDetailPage() {
       {/* Edit Tournament Modal */}
       {showEditTournament && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
           onClick={() => setShowEditTournament(false)}
         >
           <div

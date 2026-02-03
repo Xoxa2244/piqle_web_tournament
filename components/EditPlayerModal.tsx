@@ -114,10 +114,10 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
       onClick={handleClose}
     >
-      <Card className="w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <Card className="w-full max-w-md mx-auto max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
             <CardTitle className="text-lg font-semibold">Edit Player</CardTitle>

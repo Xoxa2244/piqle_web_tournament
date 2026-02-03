@@ -121,7 +121,7 @@ export default function DUPRLoginModal({
     console.error('NEXT_PUBLIC_DUPR_CLIENT_KEY is not available in browser. Make sure the project was rebuilt after adding the variable.')
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
         onClick={onClose}
       >
         <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -146,7 +146,7 @@ export default function DUPRLoginModal({
     console.error('Failed to encode clientKey to base64:', error)
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
         onClick={onClose}
       >
         <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -166,7 +166,7 @@ export default function DUPRLoginModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
       onClick={onClose}
     >
       <div
