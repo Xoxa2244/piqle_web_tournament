@@ -16,7 +16,8 @@ import {
   ArrowLeft,
   Calendar,
   Target,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -144,6 +145,16 @@ function TournamentNavBarContent({
         {/* Bottom row: Quick Actions */}
         <div className="border-t border-slate-200 py-2">
           <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide">
+            <Link href={`/admin/${tournamentId}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center space-x-2 whitespace-nowrap hover:bg-slate-50 hover:border-slate-200 transition-all"
+              >
+                <Info className="w-4 h-4" />
+                <span>Information</span>
+              </Button>
+            </Link>
             {isAdmin && (
               <Link href={`/admin/${tournamentId}/divisions`}>
                 <Button 
