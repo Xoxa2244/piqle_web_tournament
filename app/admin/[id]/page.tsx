@@ -212,25 +212,37 @@ export default function TournamentDetailPage() {
   const [newNoteText, setNewNoteText] = useState('')
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [editingNoteText, setEditingNoteText] = useState('')
-  const { data: directorNotes, refetch: refetchNotes } = trpc.tournamentNotes.list.useQuery(
+  const utils = trpc.useUtils()
+  const { data: directorNotes } = trpc.tournamentNotes.list.useQuery(
     { tournamentId },
     { enabled: !!tournamentId && !!isAdmin }
   )
   const createNoteMutation = trpc.tournamentNotes.create.useMutation({
     onSuccess: () => {
-      refetchNotes()
+      void utils.tournamentNotes.list.invalidate({ tournamentId })
       setNewNoteText('')
+    },
+    onError: (err) => {
+      alert('Failed to save note: ' + (err.message || 'Unknown error'))
     },
   })
   const updateNoteMutation = trpc.tournamentNotes.update.useMutation({
     onSuccess: () => {
-      refetchNotes()
+      void utils.tournamentNotes.list.invalidate({ tournamentId })
       setEditingNoteId(null)
       setEditingNoteText('')
     },
+    onError: (err) => {
+      alert('Failed to update note: ' + (err.message || 'Unknown error'))
+    },
   })
   const deleteNoteMutation = trpc.tournamentNotes.delete.useMutation({
-    onSuccess: () => refetchNotes(),
+    onSuccess: () => {
+      void utils.tournamentNotes.list.invalidate({ tournamentId })
+    },
+    onError: (err) => {
+      alert('Failed to delete note: ' + (err.message || 'Unknown error'))
+    },
   })
   
   const updateTournament = trpc.tournament.update.useMutation({
