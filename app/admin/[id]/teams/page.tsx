@@ -21,8 +21,6 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import AddTeamModal from '@/components/AddTeamModal'
 import EditTeamModal from '@/components/EditTeamModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 interface Player {
   id: string
   firstName: string
@@ -212,14 +210,6 @@ export default function TeamsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-      />
-      
       <div className="container mx-auto p-6">
         {/* Header */}
         <div className="mb-6">

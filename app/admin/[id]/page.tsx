@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
@@ -23,8 +23,6 @@ import {
   Shield,
   X
 } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -80,6 +78,7 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
 
 export default function TournamentDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
@@ -120,7 +119,30 @@ export default function TournamentDetailPage() {
   })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
-  
+
+  // Open edit modal when navigating with ?edit=1 (e.g. from layout navbar)
+  useEffect(() => {
+    if (!tournament || showEditTournament) return
+    if (searchParams.get('edit') === '1') {
+      setShowEditTournament(true)
+      setTournamentForm({
+        title: tournament.title,
+        description: tournament.description || '',
+        venueName: tournament.venueName || '',
+        startDate: new Date(tournament.startDate).toISOString().split('T')[0],
+        endDate: new Date(tournament.endDate).toISOString().split('T')[0],
+        registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
+        registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+        entryFee: tournament.entryFee || '',
+        isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
+        allowDuprSubmission: tournament.allowDuprSubmission ?? false,
+        image: tournament.image || '',
+      })
+      setImagePreview(tournament.image || null)
+      window.history.replaceState(null, '', `/admin/${tournamentId}`)
+    }
+  }, [tournament, searchParams, tournamentId])
+
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   // Check if user is owner (for owner-only features like CSV import and access control)
@@ -413,19 +435,6 @@ export default function TournamentDetailPage() {
 
   return (
     <div className="min-h-screen w-full bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        tournamentImage={tournament.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        onPublicScoreboardClick={handlePublicScoreboardClick}
-        onEditTournamentClick={handleEditTournamentClick}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-        tournamentFormat={tournament.format}
-      />
-
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-6 lg:grid-cols-3">

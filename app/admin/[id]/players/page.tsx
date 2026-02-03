@@ -22,7 +22,6 @@ import {
 import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
 import { formatDuprRating } from '@/lib/utils'
 
 interface Player {
@@ -190,16 +189,6 @@ export default function PlayersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
-      />
-      
       <div className="container mx-auto p-6">
         {/* Header */}
         <div className="mb-6">

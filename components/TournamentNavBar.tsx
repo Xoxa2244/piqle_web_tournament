@@ -53,7 +53,7 @@ function TournamentNavBarContent({
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false)
 
   return (
-    <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-16 z-[60] shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top row: Tournament title and main actions */}
         <div className="flex items-center justify-between py-3">
@@ -263,7 +263,7 @@ function TournamentNavBarContent({
 export default function TournamentNavBar(props: TournamentNavBarProps) {
   return (
     <Suspense fallback={
-      <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+      <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-16 z-[60] shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="animate-pulse h-10 bg-gray-200 rounded"></div>
         </div>

@@ -21,7 +21,6 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
 import DaySelector from '@/components/DaySelector'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
@@ -311,24 +310,6 @@ function DivisionDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        tournamentImage={tournament.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament.format}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-        onPublicScoreboardClick={() => {
-          if (!tournament?.isPublicBoardEnabled) {
-            alert('Public Scoreboard is not available. Please enable it in tournament settings.')
-            return
-          }
-          window.open(`/scoreboard/${tournamentId}`, '_blank')
-        }}
-      />
-      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Calendar, Trash2, Edit, Upload } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 export default function MatchDaysPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -305,16 +303,6 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
-      />
-
       <div className="max-w-6xl mx-auto p-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
