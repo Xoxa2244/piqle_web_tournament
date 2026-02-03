@@ -87,7 +87,7 @@ function TournamentNavBarContent({
             {isOwner && (
               <Link
                 href={`/admin/${tournamentId}/import`}
-                className="flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 text-sm font-medium"
+                className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
                 CSV Import
@@ -97,7 +97,7 @@ function TournamentNavBarContent({
             {onPublicScoreboardClick && (
               <button
                 onClick={onPublicScoreboardClick}
-                className="flex items-center px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all duration-200 text-sm font-medium"
+                className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
               >
                 <Globe className="w-3.5 h-3.5 mr-1.5" />
                 Public Scoreboard
@@ -107,10 +107,10 @@ function TournamentNavBarContent({
             {isAdmin && onEditTournamentClick && (
               <button
                 onClick={onEditTournamentClick}
-                className="flex items-center px-3 py-1.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 text-sm font-medium"
+                className="flex items-center justify-center w-10 h-10 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors p-2"
+                title="Edit tournament"
               >
-                <Edit className="w-3.5 h-3.5 mr-1.5" />
-                Edit
+                <Edit className="w-5 h-5" />
               </button>
             )}
             
@@ -119,17 +119,18 @@ function TournamentNavBarContent({
                 url={publicScoreboardUrl}
                 title={tournamentTitle}
                 size="sm"
-                variant="outline"
-                className="px-3 py-1.5 rounded-lg transition-all duration-200 text-sm font-medium"
+                variant="ghost"
+                iconOnly
+                className="w-10 h-10 p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               />
             )}
             
             <Link
               href="/admin"
-              className="flex items-center px-3 py-1.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all duration-200 text-sm font-medium"
+              className="flex items-center justify-center w-10 h-10 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors p-2"
+              title="Back to tournaments"
             >
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-              Back
+              <ArrowLeft className="w-5 h-5" />
             </Link>
 
             <button

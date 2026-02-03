@@ -87,6 +87,13 @@ function DivisionDashboardContent() {
     { enabled: !!tournamentId }
   )
 
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
+  useEffect(() => {
+    if (tournament && tournament.divisions.length === 0) {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }
+  }, [tournament, tournamentId, router])
+
   // Get division from URL - read it once per render
   const divisionFromUrl = searchParams.get('division')
 
@@ -254,28 +261,13 @@ function DivisionDashboardContent() {
   }
 
   if (tournament.divisions.length === 0) {
+    const router = useRouter()
+    useEffect(() => {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }, [router, tournamentId])
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
-          <p className="text-gray-600 mb-6">
-            Create a division to start adding teams, generating schedules, and entering scores.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href={`/admin/${tournamentId}/divisions`}
-              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Create division
-            </Link>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
-            >
-              Back to tournament
-            </Link>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-gray-500">Redirecting to divisions...</div>
       </div>
     )
   }
