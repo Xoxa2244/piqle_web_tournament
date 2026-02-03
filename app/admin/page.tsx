@@ -201,47 +201,43 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Footer: Tournament Director + buttons — always at bottom on one line */}
-              <div className="mt-auto pt-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center space-x-2 min-w-0">
-                  {tournament.user ? (
-                    <>
-                      <span className="text-xs text-gray-500 flex-shrink-0">TD:</span>
-                      {(tournament.user as { image?: string | null }).image ? (
-                        <Link
-                          href={`/profile/${tournament.user.id}`}
-                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group min-w-0"
-                        >
-                          <Image
-                            src={(tournament.user as { image?: string | null }).image!}
-                            alt={tournament.user.name || tournament.user.email || 'TD'}
-                            width={20}
-                            height={20}
-                            className="rounded-full object-cover flex-shrink-0"
-                          />
-                          <span className="text-xs font-medium group-hover:underline truncate">
-                            {tournament.user.name || tournament.user.email}
-                          </span>
-                        </Link>
-                      ) : (
-                        <Link
-                          href={`/profile/${tournament.user.id}`}
-                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group min-w-0"
-                        >
-                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300 flex-shrink-0">
-                            <UserIcon className="h-3 w-3 text-gray-500" />
-                          </div>
-                          <span className="text-xs font-medium group-hover:underline truncate">
-                            {tournament.user.name || tournament.user.email}
-                          </span>
-                        </Link>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-xs text-gray-400">—</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2 flex-shrink-0">
+              {/* Footer: Tournament Director and buttons — always at bottom, on separate lines */}
+              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
+                {tournament.user && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500">Tournament Director:</span>
+                    {(tournament.user as { image?: string | null }).image ? (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <Image
+                          src={(tournament.user as { image?: string | null }).image!}
+                          alt={tournament.user.name || tournament.user.email || 'TD'}
+                          width={20}
+                          height={20}
+                          className="rounded-full object-cover"
+                        />
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/profile/${tournament.user.id}`}
+                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
+                          <UserIcon className="h-3 w-3 text-gray-500" />
+                        </div>
+                        <span className="text-xs font-medium group-hover:underline">
+                          {tournament.user.name || tournament.user.email}
+                        </span>
+                      </Link>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
                   <Link
                     href={`/admin/${tournament.id}`}
                     className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
