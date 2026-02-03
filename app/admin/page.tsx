@@ -39,10 +39,23 @@ function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progres
   }
 }
 
+// Same as main page: uses tournament-placeholder.png with fallback icon
 function TournamentImagePlaceholder() {
+  const [showFallback, setShowFallback] = useState(true)
   return (
-    <div className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center">
-      <Trophy className="w-5 h-5 text-gray-400" />
+    <div className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative">
+      <img
+        src="/tournament-placeholder.png"
+        alt=""
+        className="w-full h-full object-cover"
+        onLoad={() => setShowFallback(false)}
+        onError={() => setShowFallback(true)}
+      />
+      {showFallback && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <Trophy className="w-5 h-5 text-gray-400" />
+        </div>
+      )}
     </div>
   )
 }
