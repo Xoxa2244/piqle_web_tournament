@@ -116,6 +116,7 @@ export default function TournamentDetailPage() {
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -511,15 +512,27 @@ export default function TournamentDetailPage() {
                   </span>
                 </div>
 
-                {/* Description — как на admin, с серой иконкой */}
+                {/* Description */}
                 <div className="flex gap-3">
                   <FileText className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500" />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     {tournament.description ? (
-                      <div
-                        className="text-base text-gray-700 prose prose-sm max-w-none leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                      />
+                      <div>
+                        <div
+                          className={`text-base text-gray-700 prose prose-sm max-w-none leading-relaxed whitespace-pre-wrap break-words ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        />
+                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                          <button
+                            type="button"
+                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            {descriptionExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-base text-gray-400 italic">No description provided</p>
                     )}
