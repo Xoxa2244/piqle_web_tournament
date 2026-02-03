@@ -274,6 +274,7 @@ export const tournamentRouter = createTRPCRouter({
           divisions: {
             where: divisionIds.length > 0 ? { id: { in: divisionIds } } : { id: { in: [] } },
             include: {
+              pools: { select: { id: true } },
               teams: {
                 include: {
                   teamPlayers: { include: { player: true } },
@@ -329,8 +330,14 @@ export const tournamentRouter = createTRPCRouter({
         }
 
         if (isRoundRobinFormat) {
+          const poolIds = (division.pools ?? []).map((p) => p.id)
           const standings = await ctx.prisma.standing.findMany({
-            where: { divisionId: division.id },
+            where: {
+              OR: [
+                { divisionId: division.id },
+                ...(poolIds.length > 0 ? [{ poolId: { in: poolIds } }] : []),
+              ],
+            },
             include: {
               team: {
                 include: {

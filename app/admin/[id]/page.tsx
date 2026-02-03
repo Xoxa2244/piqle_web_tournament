@@ -117,6 +117,7 @@ export default function TournamentDetailPage() {
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -206,10 +207,7 @@ export default function TournamentDetailPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
-  const hasAnyWinners = winnersByDivision?.some(
-    (d) => d.first || d.second || d.third
-  )
-  
+
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
@@ -569,50 +567,84 @@ export default function TournamentDetailPage() {
                   </span>
                 </div>
 
-                {/* Winners — top 3 per division */}
+                {/* Winners — per-division with switcher */}
                 <div className="pt-4 border-t border-gray-200">
                   <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
                     <Trophy className="h-5 w-5 text-amber-500" />
                     Winners
                   </p>
-                  {!winnersByDivision || winnersByDivision.length === 0 || !hasAnyWinners ? (
-                    <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
-                      <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                      <p className="text-base font-medium text-gray-600">No winners yet</p>
-                      <p className="text-sm text-gray-500 mt-1">Results will appear after the tournament or playoffs are complete</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {winnersByDivision.map((div) => {
-                        if (!div.first && !div.second && !div.third) return null
-                        return (
-                          <div key={div.divisionId} className="rounded-xl bg-gray-50 border border-gray-200 p-4">
-                            <p className="text-sm font-semibold text-gray-700 mb-3">{div.divisionName}</p>
+                  {(() => {
+                    const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string }>
+                    const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
+                    const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
+                    const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
+
+                    if (divisions.length === 0) {
+                      return (
+                        <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                          <p className="text-base font-medium text-gray-600">No divisions yet</p>
+                          <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {divisions.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => setSelectedWinnersDivisionId(d.id)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                effectiveDivisionId === d.id
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {d.name}
+                            </button>
+                          ))}
+                        </div>
+                        {!hasWinners ? (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                            <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-base font-medium text-gray-600">No winners yet</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {selectedDivision?.name
+                                ? `Results for ${selectedDivision.name} will appear after the tournament or playoffs are complete`
+                                : 'Results will appear after the tournament or playoffs are complete'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
+                            <p className="text-sm font-semibold text-gray-700 mb-3">{winnersForDivision?.divisionName ?? selectedDivision?.name}</p>
                             <div className="space-y-2 text-base text-gray-800">
-                              {div.first && (
+                              {winnersForDivision?.first && (
                                 <div className="flex items-center gap-2">
                                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
-                                  <span>{div.first.teamName}</span>
+                                  <span>{winnersForDivision.first.teamName}</span>
                                 </div>
                               )}
-                              {div.second && (
+                              {winnersForDivision?.second && (
                                 <div className="flex items-center gap-2">
                                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
-                                  <span>{div.second.teamName}</span>
+                                  <span>{winnersForDivision.second.teamName}</span>
                                 </div>
                               )}
-                              {div.third && (
+                              {winnersForDivision?.third && (
                                 <div className="flex items-center gap-2">
                                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
-                                  <span>{div.third.teamName}</span>
+                                  <span>{winnersForDivision.third.teamName}</span>
                                 </div>
                               )}
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               </CardContent>
             </Card>
