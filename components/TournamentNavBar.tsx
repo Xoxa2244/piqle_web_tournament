@@ -161,7 +161,7 @@ function TournamentNavBarContent({
               <Button
                 variant="outline"
                 size="sm"
-                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isInformation ? 'bg-slate-100 border-slate-400 font-medium text-slate-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isInformation ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
               >
                 <Info className="w-4 h-4" />
                 <span>Information</span>
@@ -172,7 +172,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDivisions ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-blue-50 hover:border-blue-200'}`}
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDivisions ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Settings className="w-4 h-4" />
                   <span>Divisions</span>
@@ -184,7 +184,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isPlayers ? 'bg-emerald-100 border-emerald-400 font-medium text-emerald-900' : 'hover:bg-emerald-50 hover:border-emerald-200'}`}
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isPlayers ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
               >
                 <Users className="w-4 h-4" />
                 <span>Players</span>
@@ -207,7 +207,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isStages ? 'bg-orange-100 border-orange-400 font-medium text-orange-900' : 'hover:bg-orange-50 hover:border-orange-200'}`}
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isStages ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
               >
                 <FileText className="w-4 h-4" />
                 <span>Score Input</span>
@@ -218,7 +218,7 @@ function TournamentNavBarContent({
               <Button 
                 variant="outline" 
                 size="sm"
-                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDashboard ? 'bg-purple-100 border-purple-400 font-medium text-purple-900' : 'hover:bg-purple-50 hover:border-purple-200'}`}
+                className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDashboard ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
               >
                 <BarChart3 className="w-4 h-4" />
                 <span>Dashboard</span>
@@ -230,7 +230,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isMatchDays ? 'bg-indigo-100 border-indigo-400 font-medium text-indigo-900' : 'hover:bg-indigo-50 hover:border-indigo-200'}`}
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isMatchDays ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Calendar className="w-4 h-4" />
                   <span>Match Days</span>
@@ -243,7 +243,7 @@ function TournamentNavBarContent({
                 <Button
                   variant="outline"
                   size="sm"
-                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isCourts ? 'bg-slate-200 border-slate-400 font-medium text-slate-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isCourts ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Target className="w-4 h-4" />
                   <span>Courts</span>
@@ -256,7 +256,7 @@ function TournamentNavBarContent({
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isAccess ? 'bg-gray-200 border-gray-400 font-medium text-gray-900' : 'hover:bg-gray-50 hover:border-gray-200'}`}
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isAccess ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Shield className="w-4 h-4" />
                   <span>Access Control</span>
