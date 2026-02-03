@@ -12,13 +12,10 @@ import AvatarCropper from '@/components/AvatarCropper'
 import { 
   Users, 
   Calendar, 
-  BarChart3, 
   Settings,
   FileText,
-  Target,
   ArrowLeft,
   Upload,
-  Globe,
   Edit,
   Shield,
   X,
@@ -26,7 +23,11 @@ import {
   DollarSign,
   Layers,
   Swords,
-  User
+  User,
+  UserCheck,
+  UserX,
+  Trophy,
+  Clock
 } from 'lucide-react'
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -181,12 +182,32 @@ export default function TournamentDetailPage() {
   // Check if user is owner (for owner-only features like CSV import and access control)
   const isOwner = tournament?.userAccessInfo?.isOwner
   
-  // Get pending access requests count (only for owner)
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+  // Get pending access requests (only for owner)
+  const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+
+  const approveRequestMutation = trpc.tournamentAccess.approveRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+  const rejectRequestMutation = trpc.tournamentAccess.rejectRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+
+  // Tournament winners (1st, 2nd, 3rd per division)
+  const { data: winnersByDivision } = trpc.tournament.getWinners.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
+  const hasAnyWinners = winnersByDivision?.some(
+    (d) => d.first || d.second || d.third
+  )
   
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -569,124 +590,145 @@ export default function TournamentDetailPage() {
                     </div>
                   )
                 })()}
+
+                {/* Winners — первая тройка по дивизионам */}
+                <div className="pt-4 border-t border-gray-200">
+                  <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                    <Trophy className="h-5 w-5 text-amber-500" />
+                    Победители
+                  </p>
+                  {!winnersByDivision || winnersByDivision.length === 0 || !hasAnyWinners ? (
+                    <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                      <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                      <p className="text-base font-medium text-gray-600">Победители пока не определены</p>
+                      <p className="text-sm text-gray-500 mt-1">Итоги появятся после завершения турнира или плей-офф</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {winnersByDivision.map((div) => {
+                        if (!div.first && !div.second && !div.third) return null
+                        return (
+                          <div key={div.divisionId} className="rounded-xl bg-gray-50 border border-gray-200 p-4">
+                            <p className="text-sm font-semibold text-gray-700 mb-3">{div.divisionName}</p>
+                            <div className="space-y-2 text-base text-gray-800">
+                              {div.first && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
+                                  <span>{div.first.teamName}</span>
+                                </div>
+                              )}
+                              {div.second && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
+                                  <span>{div.second.teamName}</span>
+                                </div>
+                              )}
+                              {div.third && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
+                                  <span>{div.third.teamName}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Quick Actions - Right Column (40%) */}
+          {/* Access requests - Right Column (40%) */}
           <div className="lg:col-span-1">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
-                  <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
-                    <Settings className="w-5 h-5 text-white" />
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
+                    <Clock className="w-5 h-5 text-white" />
                   </div>
-                  Quick Actions
+                  Запросы на участие
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  {isAdmin && (
-                    <Link href={`/admin/${tournamentId}/divisions`} className="group/action">
-                      <div className="relative h-24 w-full">
-                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                              <Settings className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-blue-600 transition-colors">Divisions</div>
-                            </div>
-                          </div>
-                        </Button>
-                      </div>
-                    </Link>
-                  )}
-                  
-                  <Link href={`/admin/${tournamentId}/players`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                            <Users className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Players</div>
-                          </div>
-                        </div>
-                      </Button>
+                {!isOwner ? (
+                  <p className="text-sm text-gray-500">Управление доступом доступно только владельцу турнира.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm text-gray-600">Ожидающие запросы</span>
+                      <Link
+                        href={`/admin/${tournamentId}/access`}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        Управление доступом →
+                      </Link>
                     </div>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/stages`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                            <FileText className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Score Input</div>
-                          </div>
-                        </div>
-                      </Button>
-                    </div>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/dashboard`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                            <BarChart3 className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Dashboard</div>
-                          </div>
-                        </div>
-                      </Button>
-                    </div>
-                  </Link>
-                  
-                  {(tournament?.format === 'INDY_LEAGUE' || tournament?.format === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
-                    <Link href={`/admin/${tournamentId}/match-days`} className="group/action">
-                      <div className="relative h-24 w-full">
-                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                              <Calendar className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-indigo-600 transition-colors">Match Days</div>
-                            </div>
-                          </div>
-                        </Button>
+                    {!accessRequests || accessRequests.length === 0 ? (
+                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                        <UserCheck className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-base font-medium text-gray-600">Нет ожидающих запросов</p>
+                        <p className="text-sm text-gray-500 mt-1">Запросы на доступ появятся здесь</p>
                       </div>
-                    </Link>
-                  )}
-                  
-                  {isOwner && (
-                    <Link href={`/admin/${tournamentId}/access`} className="relative group/action">
-                      <div className="relative h-24 w-full">
-                        <Button variant="outline" className="h-full w-full p-4 bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 rounded-2xl shadow-sm">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                              <Shield className="h-5 w-5 text-white" />
+                    ) : (
+                      <div className="space-y-3 max-h-[320px] overflow-y-auto">
+                        {accessRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {request.user.image && (
+                                <Image
+                                  src={request.user.image}
+                                  alt={request.user.name || ''}
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                                  unoptimized
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{request.user.name || 'Без имени'}</p>
+                                <p className="text-xs text-gray-500 truncate">{request.user.email}</p>
+                              </div>
                             </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Access</div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                disabled={approveRequestMutation.isPending}
+                                onClick={() => {
+                                  approveRequestMutation.mutate({
+                                    requestId: request.id,
+                                    accessLevel: 'SCORE_ONLY',
+                                    divisionIds: null,
+                                  })
+                                }}
+                              >
+                                <UserCheck className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 border-red-200"
+                                disabled={rejectRequestMutation.isPending}
+                                onClick={() => {
+                                  if (typeof window !== 'undefined' && window.confirm('Отклонить запрос на доступ?')) {
+                                    rejectRequestMutation.mutate({ requestId: request.id })
+                                  }
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
-                        </Button>
+                        ))}
                       </div>
-                      {pendingRequestsCount > 0 && (
-                        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow-lg animate-pulse z-20 border-2 border-white">
-                          {pendingRequestsCount}
-                        </span>
-                      )}
-                    </Link>
-                  )}
-                </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
