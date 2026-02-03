@@ -38,7 +38,7 @@ export default function TournamentLayout({
       alert('Public Scoreboard is not available. Please enable it in tournament settings.')
       return
     }
-    window.open(`/scoreboard/${tournamentId}`, '_blank')
+    router.push(`/scoreboard/${tournamentId}`)
   }
 
   const handleEditTournamentClick = () => {
