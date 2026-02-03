@@ -495,7 +495,7 @@ export default function SuperAdminTournamentPage() {
                   name="title"
                   value={tournamentForm.title}
                   onChange={handleTournamentChange}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                   required
                 />
               </div>
@@ -506,7 +506,7 @@ export default function SuperAdminTournamentPage() {
                   value={tournamentForm.description}
                   onChange={handleTournamentChange}
                   rows={4}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               <div>
@@ -516,7 +516,7 @@ export default function SuperAdminTournamentPage() {
                   name="venueName"
                   value={tournamentForm.venueName}
                   onChange={handleTournamentChange}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -527,7 +527,7 @@ export default function SuperAdminTournamentPage() {
                     name="startDate"
                     value={tournamentForm.startDate}
                     onChange={handleTournamentChange}
-                    className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                    className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                     required
                   />
                 </div>
@@ -538,7 +538,7 @@ export default function SuperAdminTournamentPage() {
                     name="endDate"
                     value={tournamentForm.endDate}
                     onChange={handleTournamentChange}
-                    className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                    className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                     required
                   />
                 </div>
@@ -551,7 +551,7 @@ export default function SuperAdminTournamentPage() {
                   value={tournamentForm.entryFee}
                   onChange={handleTournamentChange}
                   step="0.01"
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
               <div className="flex items-center">
@@ -604,7 +604,7 @@ export default function SuperAdminTournamentPage() {
                   type="text"
                   value={divisionForm.name}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                   placeholder="e.g., Men's Doubles Open"
                   required
                 />
@@ -614,7 +614,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, teamKind: e.target.value as any }))}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -626,7 +626,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, pairingMode: e.target.value as any }))}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>
@@ -639,7 +639,7 @@ export default function SuperAdminTournamentPage() {
                   min="1"
                   value={divisionForm.poolCount}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, poolCount: parseInt(e.target.value) || 1 }))}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
             </div>

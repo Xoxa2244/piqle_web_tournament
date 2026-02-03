@@ -170,7 +170,7 @@ export default function SuperAdminPage() {
                   id="user-filter"
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="flex-1 pl-3 pr-10 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 pl-3 pr-7 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">All Tournaments</option>
                   {owners?.map((owner) => (

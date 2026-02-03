@@ -154,7 +154,7 @@ export default function ScoreInputModal({
               type="number"
               value={scoreA}
                   onChange={(e) => setScoreA(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Team A score"
                   min="0"
                   required
@@ -171,7 +171,7 @@ export default function ScoreInputModal({
               type="number"
               value={scoreB}
                   onChange={(e) => setScoreB(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 pr-7 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Team B score"
                   min="0"
                   required

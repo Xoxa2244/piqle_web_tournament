@@ -263,7 +263,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                 <select
                   value={selectedCourtId}
                   onChange={(e) => setSelectedCourtId(e.target.value)}
-                  className="pl-3 pr-10 py-2 border border-gray-300 rounded-md"
+                  className="pl-3 pr-7 py-2 border border-gray-300 rounded-md"
                 >
                   <option value="">Unassigned</option>
                   {courts.map((court: any) => (
@@ -346,7 +346,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                               updated[idx].letter = e.target.value || null
                               setHomeRosters(updated)
                             }}
-                            className="pl-2 pr-10 py-1 border rounded text-sm"
+                            className="pl-2 pr-7 py-1 border rounded text-sm"
                           >
                             <option value="">Select letter...</option>
                             <option value="A">A</option>
@@ -404,7 +404,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                               updated[idx].letter = e.target.value || null
                               setAwayRosters(updated)
                             }}
-                            className="pl-2 pr-10 py-1 border rounded text-sm"
+                            className="pl-2 pr-7 py-1 border rounded text-sm"
                           >
                             <option value="">Select letter...</option>
                             <option value="A">A</option>
