@@ -372,7 +372,7 @@ export const tournamentRouter = createTRPCRouter({
           const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
           const finalRoundMatches = elimMatches
             .filter((m) => m.roundIndex === maxRound)
-            .sort((a, b) => a.positionIndex - b.positionIndex)
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
           function getMatchWinner(match: (typeof finalRoundMatches)[0]) {
             const isMLP = format === 'MLP'
