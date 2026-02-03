@@ -136,7 +136,7 @@ export default function AdminPage() {
               </div>
 
               {/* Content area — grows to fill space so footer stays at bottom */}
-              <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 flex flex-col pb-4">
                 {/* Title + image row */}
                 <div className="flex items-start gap-3 pr-16">
                   {tournament.image ? (
