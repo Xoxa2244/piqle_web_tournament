@@ -13,7 +13,6 @@ import {
   Upload,
   Globe,
   Edit,
-  ArrowLeft,
   Calendar,
   Target,
   AlertTriangle,
@@ -136,14 +135,6 @@ function TournamentNavBarContent({
               />
             )}
             
-            <Link
-              href="/admin"
-              className="flex items-center justify-center w-10 h-10 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors p-2"
-              title="Back to tournaments"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-
             <button
               onClick={() => setIsComplaintModalOpen(true)}
               className="flex items-center justify-center w-10 h-10 text-slate-600 hover:bg-slate-100 rounded-lg transition-all duration-200"
