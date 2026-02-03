@@ -19,11 +19,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 type FilterType = 'my' | 'all'
 type SortType = 'date-desc' | 'date-asc'
 
-// Placeholder when tournament has no image. Add public/tournament-placeholder.png to replace.
-function TournamentImagePlaceholder() {
+// Placeholder when tournament has no image. Uses public/tournament-placeholder.png.
+function TournamentImagePlaceholder({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const [showFallback, setShowFallback] = useState(true)
+  const sizeClass = size === 'lg' ? 'w-20 h-20' : 'w-11 h-11'
+  const iconSize = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5'
   return (
-    <div className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative">
+    <div className={`${sizeClass} flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative`}>
       <img
         src="/tournament-placeholder.png"
         alt=""
@@ -33,7 +35,7 @@ function TournamentImagePlaceholder() {
       />
       {showFallback && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-          <Trophy className="w-5 h-5 text-gray-400" />
+          <Trophy className={`${iconSize} text-gray-400`} />
         </div>
       )}
     </div>
@@ -709,7 +711,7 @@ export default function HomePage() {
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {(tournament as any).image ? (
-                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                       <Image
                         src={(tournament as any).image}
                         alt={tournament.title}
@@ -719,9 +721,7 @@ export default function HomePage() {
                       />
                     </div>
                   ) : (
-                    <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <span className="text-white font-bold text-sm">P</span>
-                    </div>
+                    <TournamentImagePlaceholder size="lg" />
                   )}
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
