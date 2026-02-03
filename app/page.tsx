@@ -732,13 +732,13 @@ export default function HomePage() {
                   {(tournament as any).user?.id === session?.user?.id && (
                     <>
                       <Link href={`/admin/${tournament.id}`}>
-                        <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                        <Button className="bg-gray-900 hover:bg-gray-800 text-white">
                           Manage
                         </Button>
                       </Link>
                       {(tournament as any).publicSlug && (
                         <Link href={`/t/${(tournament as any).publicSlug}`}>
-                          <Button className="bg-green-600 hover:bg-green-700 text-white">
+                          <Button className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300">
                             View Board
                           </Button>
                         </Link>

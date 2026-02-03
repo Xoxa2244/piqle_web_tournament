@@ -10,23 +10,24 @@ import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
 import { 
+  Users, 
   Calendar, 
   Settings,
   FileText,
   ArrowLeft,
   Upload,
   Edit,
+  Shield,
   X,
   MapPin,
   DollarSign,
   Layers,
+  Swords,
+  User,
   UserCheck,
   UserX,
   Trophy,
-  Clock,
-  StickyNote,
-  Trash2,
-  Check
+  Clock
 } from 'lucide-react'
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -207,43 +208,6 @@ export default function TournamentDetailPage() {
   const hasAnyWinners = winnersByDivision?.some(
     (d) => d.first || d.second || d.third
   )
-
-  // Director notes (only for admins)
-  const [newNoteText, setNewNoteText] = useState('')
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
-  const [editingNoteText, setEditingNoteText] = useState('')
-  const utils = trpc.useUtils()
-  const { data: directorNotes } = trpc.tournamentNotes.list.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId && !!isAdmin }
-  )
-  const createNoteMutation = trpc.tournamentNotes.create.useMutation({
-    onSuccess: () => {
-      void utils.tournamentNotes.list.invalidate({ tournamentId })
-      setNewNoteText('')
-    },
-    onError: (err) => {
-      alert('Failed to save note: ' + (err.message || 'Unknown error'))
-    },
-  })
-  const updateNoteMutation = trpc.tournamentNotes.update.useMutation({
-    onSuccess: () => {
-      void utils.tournamentNotes.list.invalidate({ tournamentId })
-      setEditingNoteId(null)
-      setEditingNoteText('')
-    },
-    onError: (err) => {
-      alert('Failed to update note: ' + (err.message || 'Unknown error'))
-    },
-  })
-  const deleteNoteMutation = trpc.tournamentNotes.delete.useMutation({
-    onSuccess: () => {
-      void utils.tournamentNotes.list.invalidate({ tournamentId })
-    },
-    onError: (err) => {
-      alert('Failed to delete note: ' + (err.message || 'Unknown error'))
-    },
-  })
   
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -528,8 +492,8 @@ export default function TournamentDetailPage() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Tournament Information - Column 1 */}
-          <div>
+          {/* Tournament Information - Left Column (60%) */}
+          <div className="lg:col-span-2">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
@@ -641,8 +605,8 @@ export default function TournamentDetailPage() {
             </Card>
           </div>
 
-          {/* Access requests - Column 2 */}
-          <div>
+          {/* Access requests - Right Column (40%) */}
+          <div className="lg:col-span-1">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
@@ -724,136 +688,6 @@ export default function TournamentDetailPage() {
                                 <UserX className="h-4 w-4" />
                               </Button>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Notes - Column 3 */}
-          <div>
-            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
-                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
-                    <StickyNote className="w-5 h-5 text-white" />
-                  </div>
-                  Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!isAdmin ? (
-                  <p className="text-sm text-gray-500">Notes are only available to tournament directors.</p>
-                ) : (
-                  <>
-                    <div className="mb-4">
-                      <textarea
-                        value={newNoteText}
-                        onChange={(e) => setNewNoteText(e.target.value)}
-                        placeholder="Add a note for yourself..."
-                        rows={2}
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                      />
-                      <Button
-                        size="sm"
-                        className="mt-2 w-full bg-gray-900 hover:bg-gray-800 text-white"
-                        disabled={!newNoteText.trim() || createNoteMutation.isPending}
-                        onClick={() => {
-                          if (newNoteText.trim()) {
-                            createNoteMutation.mutate({ tournamentId, text: newNoteText.trim() })
-                          }
-                        }}
-                      >
-                        {createNoteMutation.isPending ? 'Saving...' : 'Save note'}
-                      </Button>
-                    </div>
-                    {!directorNotes || directorNotes.length === 0 ? (
-                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
-                        <StickyNote className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm font-medium text-gray-600">No notes yet</p>
-                        <p className="text-xs text-gray-500 mt-1">Your private notes will appear here</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                        {directorNotes.map((note) => (
-                          <div
-                            key={note.id}
-                            className="rounded-xl border border-gray-200 bg-gray-50 p-3 group/note"
-                          >
-                            {editingNoteId === note.id ? (
-                              <>
-                                <textarea
-                                  value={editingNoteText}
-                                  onChange={(e) => setEditingNoteText(e.target.value)}
-                                  rows={2}
-                                  className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                  autoFocus
-                                />
-                                <div className="flex gap-1 mt-2">
-                                  <Button
-                                    size="sm"
-                                    className="bg-gray-900 hover:bg-gray-800 text-white h-7"
-                                    disabled={!editingNoteText.trim() || updateNoteMutation.isPending}
-                                    onClick={() => {
-                                      if (editingNoteText.trim()) {
-                                        updateNoteMutation.mutate({ id: note.id, text: editingNoteText.trim() })
-                                      }
-                                    }}
-                                  >
-                                    <Check className="h-3.5 w-3.5 mr-1" />
-                                    Save
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7"
-                                    onClick={() => {
-                                      setEditingNoteId(null)
-                                      setEditingNoteText('')
-                                    }}
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{note.text}</p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {new Date(note.createdAt).toLocaleDateString()}
-                                </p>
-                                <div className="flex gap-1 mt-2 opacity-0 group-hover/note:opacity-100 transition-opacity">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-gray-600"
-                                    onClick={() => {
-                                      setEditingNoteId(note.id)
-                                      setEditingNoteText(note.text)
-                                    }}
-                                  >
-                                    <Edit className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-red-600 hover:text-red-700 border-red-200"
-                                    disabled={deleteNoteMutation.isPending}
-                                    onClick={() => {
-                                      if (typeof window !== 'undefined' && window.confirm('Delete this note?')) {
-                                        deleteNoteMutation.mutate({ id: note.id })
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </>
-                            )}
                           </div>
                         ))}
                       </div>
