@@ -108,12 +108,12 @@ export default function AdminPage() {
       </div>
 
       {tournaments && tournaments.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           {(tournaments as any[]).map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
+            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
               {/* Top right: Share + Delete (icon only) */}
               <div className="absolute top-4 right-4 flex items-center gap-1">
-                {tournament.isPublicBoardEnabled && baseUrl && (
+                {baseUrl && (
                   <ShareButton
                     url={`${baseUrl}/scoreboard/${tournament.id}`}
                     title={tournament.title}
@@ -135,123 +135,128 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Title + image row */}
-              <div className="flex items-start gap-3 pr-16">
-                {tournament.image ? (
-                  <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
-                    <Image
-                      src={tournament.image}
-                      alt={tournament.title}
-                      width={44}
-                      height={44}
-                      className="object-cover w-full h-full"
-                    />
-                  </div>
-                ) : (
-                  <TournamentImagePlaceholder />
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-xl font-semibold">{tournament.title}</h3>
-                </div>
-              </div>
-
-              {/* Status badge */}
-              <div className="mt-2">
-                <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
-                  {getTournamentStatusLabel(getTournamentStatus(tournament))}
-                </span>
-              </div>
-
-              {tournament.description && (
-                <div className="mt-3 mb-2">
-                  <div
-                    className="text-gray-600 text-sm break-words line-clamp-3"
-                    dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                  />
-                  {tournament.description && tournament.description.split('\n').length > 3 && (
-                    <button
-                      onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
-                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Show full description
-                    </button>
+              {/* Content area — grows to fill space so footer stays at bottom */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                {/* Title + image row */}
+                <div className="flex items-start gap-3 pr-16">
+                  {tournament.image ? (
+                    <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
+                      <Image
+                        src={tournament.image}
+                        alt={tournament.title}
+                        width={44}
+                        height={44}
+                        className="object-cover w-full h-full"
+                      />
+                    </div>
+                  ) : (
+                    <TournamentImagePlaceholder />
                   )}
-                </div>
-              )}
-
-              {/* Start–End one line + divisions + entry fee with icons */}
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                  <span>{new Date(tournament.startDate).toLocaleDateString()} – {new Date(tournament.endDate).toLocaleDateString()}</span>
-                </div>
-                <div className="flex items-center">
-                  <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                  <span>{(tournament.divisions?.length ?? tournament._count?.divisions) || 0} division{((tournament.divisions?.length ?? tournament._count?.divisions) || 0) !== 1 ? 's' : ''}</span>
-                </div>
-                {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
-                  <div className="flex items-center">
-                    <Trophy className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                    <span>Entry Fee: ${tournament.entryFee}</span>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-semibold">{tournament.title}</h3>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Tournament Director */}
-              {tournament.user && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-500">Tournament Director:</span>
-                    {(tournament.user as { image?: string | null }).image ? (
-                      <Link
-                        href={`/profile/${tournament.user.id}`}
-                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
+                {/* Status badge */}
+                <div className="mt-2">
+                  <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
+                {tournament.description && (
+                  <div className="mt-3 mb-2">
+                    <div
+                      className="text-gray-600 text-sm break-words line-clamp-3"
+                      dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                    />
+                    {tournament.description && tournament.description.split('\n').length > 3 && (
+                      <button
+                        onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                       >
-                        <Image
-                          src={(tournament.user as { image?: string | null }).image!}
-                          alt={tournament.user.name || tournament.user.email || 'TD'}
-                          width={20}
-                          height={20}
-                          className="rounded-full object-cover"
-                        />
-                        <span className="text-xs font-medium group-hover:underline">
-                          {tournament.user.name || tournament.user.email}
-                        </span>
-                      </Link>
-                    ) : (
-                      <Link
-                        href={`/profile/${tournament.user.id}`}
-                        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors group"
-                      >
-                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
-                          <UserIcon className="h-3 w-3 text-gray-500" />
-                        </div>
-                        <span className="text-xs font-medium group-hover:underline">
-                          {tournament.user.name || tournament.user.email}
-                        </span>
-                      </Link>
+                        <Eye className="h-3 w-3 mr-1" />
+                        Show full description
+                      </button>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* Manage (black) + View Board (gray) */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  href={`/admin/${tournament.id}`}
-                  className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-                >
-                  Manage
-                </Link>
-                {tournament.isPublicBoardEnabled && (
-                  <Link
-                    href={`/t/${tournament.publicSlug}`}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
-                  >
-                    View Board
-                  </Link>
                 )}
+
+                {/* Start–End one line + divisions + entry fee with icons */}
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                    <span>{new Date(tournament.startDate).toLocaleDateString()} – {new Date(tournament.endDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                    <span>{(tournament.divisions?.length ?? tournament._count?.divisions) || 0} division{((tournament.divisions?.length ?? tournament._count?.divisions) || 0) !== 1 ? 's' : ''}</span>
+                  </div>
+                  {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                    <div className="flex items-center">
+                      <Trophy className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                      <span>Entry Fee: ${tournament.entryFee}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer: Tournament Director + buttons — always at bottom on one line */}
+              <div className="mt-auto pt-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2 min-w-0">
+                  {tournament.user ? (
+                    <>
+                      <span className="text-xs text-gray-500 flex-shrink-0">TD:</span>
+                      {(tournament.user as { image?: string | null }).image ? (
+                        <Link
+                          href={`/profile/${tournament.user.id}`}
+                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group min-w-0"
+                        >
+                          <Image
+                            src={(tournament.user as { image?: string | null }).image!}
+                            alt={tournament.user.name || tournament.user.email || 'TD'}
+                            width={20}
+                            height={20}
+                            className="rounded-full object-cover flex-shrink-0"
+                          />
+                          <span className="text-xs font-medium group-hover:underline truncate">
+                            {tournament.user.name || tournament.user.email}
+                          </span>
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/profile/${tournament.user.id}`}
+                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group min-w-0"
+                        >
+                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300 flex-shrink-0">
+                            <UserIcon className="h-3 w-3 text-gray-500" />
+                          </div>
+                          <span className="text-xs font-medium group-hover:underline truncate">
+                            {tournament.user.name || tournament.user.email}
+                          </span>
+                        </Link>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 flex-shrink-0">
+                  <Link
+                    href={`/admin/${tournament.id}`}
+                    className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                  >
+                    Manage
+                  </Link>
+                  {tournament.isPublicBoardEnabled && (
+                    <Link
+                      href={`/t/${tournament.publicSlug}`}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
+                    >
+                      View Board
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
           ))}
