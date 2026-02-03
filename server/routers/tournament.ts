@@ -374,7 +374,7 @@ export const tournamentRouter = createTRPCRouter({
             .filter((m) => m.roundIndex === maxRound)
             .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 
-          function getMatchWinner(match: (typeof finalRoundMatches)[0]) {
+          const getMatchWinner = (match: (typeof finalRoundMatches)[0]): string | null => {
             const isMLP = format === 'MLP'
             if (isMLP && match.tiebreaker?.winnerTeamId) {
               return match.tiebreaker.winnerTeamId
