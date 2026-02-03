@@ -556,52 +556,17 @@ export default function TournamentDetailPage() {
                   </span>
                 </div>
 
-                {/* Short summary: divisions, teams, players, matches */}
-                {(() => {
-                  const divisions = (tournament.divisions ?? []) as any[]
-                  const divisionCount = divisions.length
-                  const teamCount = divisions.reduce((s, d) => s + (d.teams?.length ?? 0), 0)
-                  const playerCount = divisions.reduce((s, d) => {
-                    const teams = d.teams ?? []
-                    return s + teams.reduce((t: number, team: any) => t + (team.teamPlayers?.length ?? 0), 0)
-                  }, 0)
-                  const matchCount = divisions.reduce((s, d) => s + (d.matches?.length ?? 0), 0)
-                  return (
-                    <div className="pt-4 border-t border-gray-200 space-y-3">
-                      <p className="text-lg font-semibold text-black">Summary</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-base font-medium text-gray-800">
-                        <div className="flex items-center gap-2">
-                          <Layers className="h-5 w-5 flex-shrink-0 text-gray-600" />
-                          <span>{divisionCount} division{divisionCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Users className="h-5 w-5 flex-shrink-0 text-gray-600" />
-                          <span>{teamCount} team{teamCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <User className="h-5 w-5 flex-shrink-0 text-gray-600" />
-                          <span>{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Swords className="h-5 w-5 flex-shrink-0 text-gray-600" />
-                          <span>{matchCount} match{matchCount !== 1 ? 'es' : ''}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Winners — первая тройка по дивизионам */}
+                {/* Winners — top 3 per division */}
                 <div className="pt-4 border-t border-gray-200">
                   <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
                     <Trophy className="h-5 w-5 text-amber-500" />
-                    Победители
+                    Winners
                   </p>
                   {!winnersByDivision || winnersByDivision.length === 0 || !hasAnyWinners ? (
                     <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
                       <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                      <p className="text-base font-medium text-gray-600">Победители пока не определены</p>
-                      <p className="text-sm text-gray-500 mt-1">Итоги появятся после завершения турнира или плей-офф</p>
+                      <p className="text-base font-medium text-gray-600">No winners yet</p>
+                      <p className="text-sm text-gray-500 mt-1">Results will appear after the tournament or playoffs are complete</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -648,28 +613,28 @@ export default function TournamentDetailPage() {
                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
                     <Clock className="w-5 h-5 text-white" />
                   </div>
-                  Запросы на участие
+                  Access requests
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {!isOwner ? (
-                  <p className="text-sm text-gray-500">Управление доступом доступно только владельцу турнира.</p>
+                  <p className="text-sm text-gray-500">Access management is only available to the tournament owner.</p>
                 ) : (
                   <>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-sm text-gray-600">Ожидающие запросы</span>
+                      <span className="text-sm text-gray-600">Pending requests</span>
                       <Link
                         href={`/admin/${tournamentId}/access`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
-                        Управление доступом →
+                        Access management →
                       </Link>
                     </div>
                     {!accessRequests || accessRequests.length === 0 ? (
                       <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
                         <UserCheck className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                        <p className="text-base font-medium text-gray-600">Нет ожидающих запросов</p>
-                        <p className="text-sm text-gray-500 mt-1">Запросы на доступ появятся здесь</p>
+                        <p className="text-base font-medium text-gray-600">No pending requests</p>
+                        <p className="text-sm text-gray-500 mt-1">Access requests will appear here</p>
                       </div>
                     ) : (
                       <div className="space-y-3 max-h-[320px] overflow-y-auto">
@@ -690,7 +655,7 @@ export default function TournamentDetailPage() {
                                 />
                               )}
                               <div className="min-w-0">
-                                <p className="font-medium text-gray-900 truncate">{request.user.name || 'Без имени'}</p>
+                                <p className="font-medium text-gray-900 truncate">{request.user.name || 'No name'}</p>
                                 <p className="text-xs text-gray-500 truncate">{request.user.email}</p>
                               </div>
                             </div>
@@ -715,7 +680,7 @@ export default function TournamentDetailPage() {
                                 className="text-red-600 hover:text-red-700 border-red-200"
                                 disabled={rejectRequestMutation.isPending}
                                 onClick={() => {
-                                  if (typeof window !== 'undefined' && window.confirm('Отклонить запрос на доступ?')) {
+                                  if (typeof window !== 'undefined' && window.confirm('Reject this access request?')) {
                                     rejectRequestMutation.mutate({ requestId: request.id })
                                   }
                                 }}
