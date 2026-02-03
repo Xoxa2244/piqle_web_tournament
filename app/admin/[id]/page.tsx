@@ -476,30 +476,37 @@ export default function TournamentDetailPage() {
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
-                  <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
                     <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
+                {/* Tournament status — выше описания */}
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
                 {/* Description — как на admin, с серой иконкой */}
                 <div className="flex gap-3">
                   <FileText className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500" />
                   <div className="min-w-0 flex-1">
                     {tournament.description ? (
                       <div
-                        className="text-sm text-gray-600 prose prose-sm max-w-none leading-relaxed"
+                        className="text-base text-gray-700 prose prose-sm max-w-none leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                       />
                     ) : (
-                      <p className="text-sm text-gray-400 italic">No description provided</p>
+                      <p className="text-base text-gray-400 italic">No description provided</p>
                     )}
                   </div>
                 </div>
 
                 {/* Start & End date — одна строка с иконкой */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2 text-base text-gray-700">
                   <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>
                     {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -509,29 +516,22 @@ export default function TournamentDetailPage() {
                 </div>
 
                 {/* Venue */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2 text-base text-gray-700">
                   <MapPin className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>{tournament.venueName || '—'}</span>
                 </div>
 
                 {/* Entry fee */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2 text-base text-gray-700">
                   <DollarSign className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>{tournament.entryFee ? `$${tournament.entryFee}` : '—'}</span>
                 </div>
 
                 {/* Number of divisions */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2 text-base text-gray-700">
                   <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>
                     {(tournament.divisions?.length ?? 0)} division{(tournament.divisions?.length ?? 0) !== 1 ? 's' : ''}
-                  </span>
-                </div>
-
-                {/* Tournament status */}
-                <div className="flex items-center gap-2">
-                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
-                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
                   </span>
                 </div>
 
@@ -546,23 +546,23 @@ export default function TournamentDetailPage() {
                   }, 0)
                   const matchCount = divisions.reduce((s, d) => s + (d.matches?.length ?? 0), 0)
                   return (
-                    <div className="pt-3 border-t border-gray-200 space-y-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Summary</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-gray-600">
+                    <div className="pt-4 border-t border-gray-200 space-y-3">
+                      <p className="text-lg font-semibold text-black">Summary</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-base font-medium text-gray-800">
                         <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <Layers className="h-5 w-5 flex-shrink-0 text-gray-600" />
                           <span>{divisionCount} division{divisionCount !== 1 ? 's' : ''}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <Users className="h-5 w-5 flex-shrink-0 text-gray-600" />
                           <span>{teamCount} team{teamCount !== 1 ? 's' : ''}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <User className="h-5 w-5 flex-shrink-0 text-gray-600" />
                           <span>{playerCount} player{playerCount !== 1 ? 's' : ''}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Swords className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                          <Swords className="h-5 w-5 flex-shrink-0 text-gray-600" />
                           <span>{matchCount} match{matchCount !== 1 ? 'es' : ''}</span>
                         </div>
                       </div>
