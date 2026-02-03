@@ -66,7 +66,9 @@ export default function TournamentLayout({
         publicScoreboardUrl={tournament.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         tournamentFormat={tournament.format}
       />
-      {children}
+      <div className="pt-[7.5rem]">
+        {children}
+      </div>
     </>
   )
 }

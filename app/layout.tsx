@@ -22,7 +22,9 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           <AppHeader />
-          {children}
+          <main className="pt-16 min-h-screen">
+            {children}
+          </main>
           <Toaster />
         </Providers>
       </body>
