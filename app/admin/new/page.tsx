@@ -74,7 +74,6 @@ export default function NewTournamentPage() {
     title: '',
     description: '',
     venueName: '',
-    venueAddress: '',
     startDate: '',
     endDate: '',
     registrationStartDate: '',
@@ -93,7 +92,7 @@ export default function NewTournamentPage() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
   const [addressError, setAddressError] = useState<string | null>(null)
-  const venueAddressInputRef = useRef<HTMLInputElement>(null)
+  const venueNameInputRef = useRef<HTMLInputElement>(null)
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
@@ -161,7 +160,7 @@ export default function NewTournamentPage() {
   }
 
   const setupAddressAutocomplete = useCallback(async () => {
-    if (!venueAddressInputRef.current) return
+    if (!venueNameInputRef.current) return
 
     try {
       const googleApi = await loadGoogleMaps({
@@ -174,7 +173,7 @@ export default function NewTournamentPage() {
       if (addressAutocompleteRef.current) return
 
       addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(
-        venueAddressInputRef.current,
+        venueNameInputRef.current,
         {
           fields: ['formatted_address', 'geometry', 'place_id'],
           types: ['geocode'],
@@ -192,7 +191,7 @@ export default function NewTournamentPage() {
           setAddressError(null)
           setFormData((prev) => ({
             ...prev,
-            venueAddress: place.formatted_address,
+            venueName: place.formatted_address,
           }))
         })
     } catch (error) {
@@ -210,7 +209,7 @@ export default function NewTournamentPage() {
   }, [setupAddressAutocomplete])
 
   const handleVenueAddressBlur = async () => {
-    if (!formData.venueAddress.trim()) return
+    if (!formData.venueName.trim()) return
 
     try {
       const googleApi =
@@ -223,7 +222,7 @@ export default function NewTournamentPage() {
       googleRef.current = googleApi
       const geocoder = new googleApi.maps.Geocoder()
       geocoder.geocode(
-        { address: formData.venueAddress },
+        { address: formData.venueName },
         (results: any, status: any) => {
           if (status !== 'OK' || !results?.length) {
             setAddressError('Select a valid address from the list.')
@@ -239,7 +238,7 @@ export default function NewTournamentPage() {
           setAddressError(null)
           setFormData((prev) => ({
             ...prev,
-            venueAddress: result.formatted_address,
+            venueName: result.formatted_address,
           }))
         }
       )
@@ -259,7 +258,7 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
-      venueAddress: formData.venueAddress || undefined,
+      venueAddress: formData.venueName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
@@ -281,7 +280,7 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
-      venueAddress: formData.venueAddress || undefined,
+      venueAddress: formData.venueName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
@@ -511,23 +510,8 @@ export default function NewTournamentPage() {
                 type="text"
                 id="venueName"
                 name="venueName"
+                ref={venueNameInputRef}
                 value={formData.venueName}
-                onChange={handleChange}
-                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                placeholder="Sports complex name"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="venueAddress" className="block text-sm font-medium text-gray-700 mb-2">
-                Venue Address
-              </label>
-              <input
-                type="text"
-                id="venueAddress"
-                name="venueAddress"
-                ref={venueAddressInputRef}
-                value={formData.venueAddress}
                 onChange={handleChange}
                 onBlur={handleVenueAddressBlur}
                 autoComplete="off"
