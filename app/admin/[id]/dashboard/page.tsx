@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
+import DaySelector from '@/components/DaySelector'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
 
@@ -69,6 +69,12 @@ function DivisionDashboardContent() {
     teamAName: string
     teamBName: string
   }>({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
+  
+  // IndyLeague specific state
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>('SEASON_TO_DATE')
+  const isUpdatingFromUrl = useRef(false)
+  const previousDivisionFromUrl = useRef<string | null>(null)
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -81,49 +87,67 @@ function DivisionDashboardContent() {
     { enabled: !!tournamentId }
   )
 
-  // Read division from URL params on mount and when URL changes
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
+  useEffect(() => {
+    if (tournament && tournament.divisions.length === 0) {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }
+  }, [tournament, tournamentId, router])
+
+  // Get division from URL - read it once per render
+  const divisionFromUrl = searchParams.get('division')
+
+  // Sync division between URL and state
   useEffect(() => {
     if (!tournament || (tournament.divisions as any[]).length === 0) return
     
     const divisions = tournament.divisions as any[]
-    const divisionFromUrl = searchParams.get('division')
+    const urlChanged = previousDivisionFromUrl.current !== divisionFromUrl
+    previousDivisionFromUrl.current = divisionFromUrl
+    
     if (divisionFromUrl && divisions.some((d: any) => d.id === divisionFromUrl)) {
-      // Division from URL is valid - use it
-      if (selectedDivisionId !== divisionFromUrl) {
+      // Division from URL is valid - use it (only if URL actually changed)
+      if (urlChanged && selectedDivisionId !== divisionFromUrl) {
+        isUpdatingFromUrl.current = true
         setSelectedDivisionId(divisionFromUrl)
       }
     } else if (!selectedDivisionId && divisions.length > 0) {
       // No division in URL and no selected division - set first one and update URL
       const firstDivisionId = divisions[0]?.id || ''
+      isUpdatingFromUrl.current = true
       setSelectedDivisionId(firstDivisionId)
-      if (!divisionFromUrl) {
-        router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
-      }
-    }
-  }, [searchParams, tournament])
-
-  // Update URL when division changes via selector (not from URL read)
-  useEffect(() => {
-    if (selectedDivisionId && tournament && (tournament.divisions as any[]).length > 0) {
-      const divisionFromUrl = searchParams.get('division')
-      // Only update URL if it's different and division was not just set from URL
+      router.replace(`/admin/${tournamentId}/dashboard?division=${firstDivisionId}`, { scroll: false })
+    } else if (selectedDivisionId && !isUpdatingFromUrl.current && !urlChanged) {
+      // Division changed via selector - update URL (only if URL didn't change from external source)
       if (divisionFromUrl !== selectedDivisionId) {
-        // Small delay to avoid race condition with URL reading
-        const timeoutId = setTimeout(() => {
-          router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
-        }, 0)
-        return () => clearTimeout(timeoutId)
+        router.replace(`/admin/${tournamentId}/dashboard?division=${selectedDivisionId}`, { scroll: false })
       }
     }
-  }, [selectedDivisionId, tournamentId, router])
+    
+    // Reset flag after processing
+    if (isUpdatingFromUrl.current) {
+      isUpdatingFromUrl.current = false
+    }
+  }, [divisionFromUrl, tournament, selectedDivisionId, router, tournamentId])
 
   // Set first division as default
   const currentDivision = (tournament?.divisions as any[])?.find((d: any) => d.id === selectedDivisionId) ||
                           (tournament?.divisions as any[])?.[0]
 
-  // Get standings for current division
+  // Tournament format flags (needed for standings query and below)
+  const isMLP = tournament?.format === 'MLP'
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
+
+  // Get standings for current division (League Round Robin: optional matchDayId for per-day view)
   const { data: standingsData, isLoading: standingsLoading } = trpc.standings.calculateStandings.useQuery(
-    { divisionId: currentDivision?.id || '' },
+    {
+      divisionId: currentDivision?.id || '',
+      ...(isLeagueRoundRobin && viewMode === 'DAY_ONLY' && selectedDayId
+        ? { matchDayId: selectedDayId }
+        : {}),
+    },
     { enabled: !!currentDivision?.id }
   )
 
@@ -138,6 +162,42 @@ function DivisionDashboardContent() {
     { divisionId: currentDivision?.id || '' },
     { enabled: !!currentDivision?.id }
   )
+
+  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
+  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
+  const isOwner = tournament?.userAccessInfo?.isOwner
+  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+    { tournamentId },
+    { enabled: !!isOwner && !!tournamentId }
+  )
+  const pendingRequestsCount = accessRequests?.length || 0
+
+  // Indy League / League Round Robin: match days
+  const { data: matchDays } = trpc.matchDay.list.useQuery(
+    { tournamentId },
+    { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
+  )
+  
+  const { data: indyStandingsData } = trpc.indyStandings.get.useQuery(
+    {
+      tournamentId,
+      divisionId: selectedDivisionId || undefined,
+      matchDayId: viewMode === 'DAY_ONLY' ? (selectedDayId || undefined) : undefined,
+      mode: viewMode,
+    },
+    { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
+  )
+
+  // Extract standings and debug info
+  const indyStandings = Array.isArray(indyStandingsData) 
+    ? indyStandingsData 
+    : indyStandingsData?.standings || []
+
+  // Log debug info to browser console
+  if (indyStandingsData && typeof indyStandingsData === 'object' && 'debug' in indyStandingsData) {
+    console.log('[INDY_STANDINGS DEBUG]', indyStandingsData.debug)
+    console.log('[INDY_STANDINGS RESULT]', indyStandings)
+  }
 
   // Mutations
   const updateMatchResultMutation = trpc.divisionStage.updateMatchResult.useMutation({
@@ -160,15 +220,6 @@ function DivisionDashboardContent() {
       alert(`Error: ${error.message}`)
     },
   })
-
-  // Check admin access and get pending requests BEFORE conditional returns (Rules of Hooks)
-  const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
-  const isOwner = tournament?.userAccessInfo?.isOwner
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
-    { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
-  )
-  const pendingRequestsCount = accessRequests?.length || 0
 
   const handleScoreInput = (matchId: string, teamAName: string, teamBName: string) => {
     setScoreModal({
@@ -211,27 +262,8 @@ function DivisionDashboardContent() {
 
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
-          <p className="text-gray-600 mb-6">
-            Create a division to start adding teams, generating schedules, and entering scores.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href={`/admin/${tournamentId}/divisions`}
-              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Create division
-            </Link>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
-            >
-              Back to tournament
-            </Link>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-gray-500">Redirecting to divisions...</div>
       </div>
     )
   }
@@ -243,8 +275,6 @@ function DivisionDashboardContent() {
   const rrMatches = matches.filter((m: any) => m.stage === 'ROUND_ROBIN')
   const playInMatches = matches.filter((m: any) => m.stage === 'PLAY_IN')
   const playoffMatches = matches.filter((m: any) => m.stage === 'ELIMINATION')
-
-  const isMLP = tournament?.format === 'MLP'
 
   const isRRComplete = divisionStage?.stage === 'RR_COMPLETE' || 
                       (divisionStage?.stage !== 'RR_IN_PROGRESS' && rrMatches.length > 0)
@@ -259,7 +289,7 @@ function DivisionDashboardContent() {
   }
   
   const targetBracketSize = getTargetBracketSize(teamCount)
-  const needsPlayIn = !isMLP && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
+  const needsPlayIn = !isMLP && !isIndyLeague && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize
   const autoQualifiedCount = needsPlayIn ? targetBracketSize - (teamCount - targetBracketSize) : Math.min(targetBracketSize, teamCount)
   
   const hasPlayIn = needsPlayIn
@@ -268,22 +298,6 @@ function DivisionDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-        onPublicScoreboardClick={() => {
-          if (!tournament?.isPublicBoardEnabled) {
-            alert('Public Scoreboard is not available. Please enable it in tournament settings.')
-            return
-          }
-          window.open(`/scoreboard/${tournamentId}`, '_blank')
-        }}
-      />
-      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -293,8 +307,8 @@ function DivisionDashboardContent() {
               {/* Status badges hidden per user request */}
             </div>
             
-            {/* Show Bracket Button */}
-            {isRRComplete && currentDivision && (
+            {/* Show Bracket Button - only for formats with bracket (not Indy League / League Round Robin) */}
+            {isRRComplete && currentDivision && !isIndyLeague && !isLeagueRoundRobin && (
               <Button
                 onClick={() => setShowBracketModal(true)}
                 variant="outline"
@@ -303,6 +317,19 @@ function DivisionDashboardContent() {
                 <Trophy className="h-4 w-4" />
                 <span>Show Bracket</span>
               </Button>
+            )}
+
+            {/* Day Selector for Indy League / League Round Robin */}
+            {(isIndyLeague || isLeagueRoundRobin) && tournamentId && (
+              <div className="mr-4">
+                <DaySelector
+                  tournamentId={tournamentId}
+                  selectedDayId={selectedDayId}
+                  onDayChange={setSelectedDayId}
+                  mode={viewMode}
+                  onModeChange={setViewMode}
+                />
+              </div>
             )}
 
             {/* Division Switcher */}
@@ -323,7 +350,10 @@ function DivisionDashboardContent() {
               <select
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
               >
                 {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
@@ -353,20 +383,80 @@ function DivisionDashboardContent() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {currentDivision ? (
           <>
+            {/* IndyLeague Dashboard */}
+            {isIndyLeague ? (
+              <div className="space-y-6">
+                {/* Standings Table for IndyLeague */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Standings {viewMode === 'DAY_ONLY' ? '(This Day Only)' : '(Season to Date)'}</CardTitle>
+                      <Button variant="outline" size="sm">
+                        <Download className="h-4 w-4 mr-2" />
+                        Export CSV
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2">#</th>
+                            <th className="text-left py-2">Team</th>
+                            <th className="text-center py-2">W</th>
+                            <th className="text-center py-2">L</th>
+                            <th className="text-center py-2">PF</th>
+                            <th className="text-center py-2">PA</th>
+                            <th className="text-center py-2">Diff</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {indyStandings && indyStandings.length > 0 ? (
+                            indyStandings.map((team: any, index: number) => (
+                              <tr key={team.teamId} className="border-b hover:bg-gray-50">
+                                <td className="py-2 font-medium">{index + 1}</td>
+                                <td className="py-2 font-medium">{team.teamName}</td>
+                                <td className="py-2 text-center">{team.wins}</td>
+                                <td className="py-2 text-center">{team.losses}</td>
+                                <td className="py-2 text-center">{team.pointsFor}</td>
+                                <td className="py-2 text-center">{team.pointsAgainst}</td>
+                                <td className="py-2 text-center">
+                                  <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                    {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-gray-500">
+                                No standings data available
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <>
             {/* Desktop Layout */}
             <div className="hidden lg:block space-y-6">
               {/* Round Robin Section */}
-              <div className="grid grid-cols-12 gap-6">
+              <div className="grid grid-cols-12 gap-6 items-stretch">
                 {/* RR Summary */}
-                <div className="col-span-3">
-                  <Card>
+                <div className="col-span-3 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2">
                         <Users className="h-5 w-5" />
                         <span>Round Robin</span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 flex-1">
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <span className="text-sm font-medium">Status:</span>
@@ -388,35 +478,32 @@ function DivisionDashboardContent() {
                           <p>Target bracket: {targetBracketSize}</p>
                         </div>
                         
-                        {!isRRComplete && (
-                          <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                            <div className="flex items-center space-x-1">
-                              <AlertCircle className="h-4 w-4 text-yellow-600" />
-                              <span className="text-sm text-yellow-800">
-                                Not all results entered — seeding and playoffs unavailable
-                              </span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
                 {/* RR Table */}
-                <div className="col-span-9">
-                  <Card>
+                <div className="col-span-9 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle>Standings</CardTitle>
+                        <CardTitle>
+                          Standings
+                          {isLeagueRoundRobin && (
+                            <span className="text-sm font-normal text-gray-500 ml-2">
+                              {viewMode === 'DAY_ONLY' ? '(This Day Only)' : '(All Days)'}
+                            </span>
+                          )}
+                        </CardTitle>
                         <Button variant="outline" size="sm">
                           <Download className="h-4 w-4 mr-2" />
                           Export CSV
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
+                    <CardContent className="flex-1 min-h-0 flex flex-col">
+                      <div className="overflow-x-auto flex-1 min-h-0">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">
@@ -428,7 +515,6 @@ function DivisionDashboardContent() {
                               <th className="text-center py-2">PA</th>
                               <th className="text-center py-2">Diff</th>
                               <th className="text-center py-2">H2H Diff</th>
-                              {!isMLP && <th className="text-center py-2">Status</th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -448,23 +534,6 @@ function DivisionDashboardContent() {
                                   </span>
                                 </td>
                                 <td className="py-2 text-center">—</td>
-                                {!isMLP && (
-                                  <td className="py-2 text-center">
-                                    {team.rank <= autoQualifiedCount && hasPlayIn ? (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Auto-qualified
-                                      </Badge>
-                                    ) : hasPlayIn ? (
-                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                                        Play-in
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="default" className="bg-green-100 text-green-800">
-                                        Qualified
-                                      </Badge>
-                                    )}
-                                  </td>
-                                )}
                               </tr>
                               )
                             })}
@@ -476,8 +545,8 @@ function DivisionDashboardContent() {
                 </div>
               </div>
 
-              {/* Play-In Section */}
-              {hasPlayIn && (
+              {/* Play-In Section - hide for Round Robin */}
+              {!isRoundRobin && !isLeagueRoundRobin && hasPlayIn && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Play-In</CardTitle>
@@ -578,55 +647,57 @@ function DivisionDashboardContent() {
                 </Card>
               )}
 
-              {/* Bracket Section */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Playoff Bracket</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <BracketPyramid
-                    matches={playoffMatches.map(match => ({
-                      id: match.id,
-                      teamA: match.teamA ? {
-                        id: match.teamA.id,
-                        name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
-                        seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                      } : null,
-                      teamB: match.teamB ? {
-                        id: match.teamB.id,
-                        name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
-                        seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                      } : null,
-                      games: (match.games || []).map((g: any) => ({
-                        scoreA: g.scoreA,
-                        scoreB: g.scoreB,
-                        winner: g.winner as 'A' | 'B' | null | undefined
-                      })),
-                      roundIndex: match.roundIndex,
-                      stage: match.stage,
-                      note: (match as any).note,
-                      tiebreaker: (match as any).tiebreaker,
-                      winnerTeamId: (match as any).winnerTeamId,
-                      gamesCount: (match as any).gamesCount,
-                      isMLP: tournament?.format === 'MLP'
-                    }))}
-                    showConnectingLines={showConnectingLines}
-                    onMatchClick={(matchId) => {
-                      // Handle match click - could open score input modal
-                      console.log('Match clicked:', matchId)
-                    }}
-                  />
-                </CardContent>
-              </Card>
+              {/* Bracket Section - hide for Round Robin */}
+              {!isRoundRobin && !isLeagueRoundRobin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Playoff Bracket</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <BracketPyramid
+                      matches={playoffMatches.map(match => ({
+                        id: match.id,
+                        teamA: match.teamA ? {
+                          id: match.teamA.id,
+                          name: getTeamDisplayName(match.teamA as any, currentDivision?.teamKind),
+                          seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                        } : null,
+                        teamB: match.teamB ? {
+                          id: match.teamB.id,
+                          name: getTeamDisplayName(match.teamB as any, currentDivision?.teamKind),
+                          seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                        } : null,
+                        games: (match.games || []).map((g: any) => ({
+                          scoreA: g.scoreA,
+                          scoreB: g.scoreB,
+                          winner: g.winner as 'A' | 'B' | null | undefined
+                        })),
+                        roundIndex: match.roundIndex,
+                        stage: match.stage,
+                        note: (match as any).note,
+                        tiebreaker: (match as any).tiebreaker,
+                        winnerTeamId: (match as any).winnerTeamId,
+                        gamesCount: (match as any).gamesCount,
+                        isMLP: tournament?.format === 'MLP'
+                      }))}
+                      showConnectingLines={showConnectingLines}
+                      onMatchClick={(matchId) => {
+                        // Handle match click - could open score input modal
+                        console.log('Match clicked:', matchId)
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Mobile Layout */}
             <div className="lg:hidden">
               <Tabs defaultValue="rr" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className={`grid w-full ${isRoundRobin || isLeagueRoundRobin ? 'grid-cols-1' : 'grid-cols-3'}`}>
                   <TabsTrigger value="rr">RR</TabsTrigger>
-                  <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>
-                  <TabsTrigger value="bracket">Bracket</TabsTrigger>
+                  {!isRoundRobin && !isLeagueRoundRobin && <TabsTrigger value="playin" disabled={!hasPlayIn}>Play-In</TabsTrigger>}
+                  {!isRoundRobin && !isLeagueRoundRobin && <TabsTrigger value="bracket">Bracket</TabsTrigger>}
                 </TabsList>
                 
                 <TabsContent value="rr" className="space-y-4">
@@ -647,61 +718,67 @@ function DivisionDashboardContent() {
                   </Card>
                 </TabsContent>
                 
-                <TabsContent value="playin">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Play-In</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center text-gray-500 py-8">
-                        <p>Play-In matches will be shown here</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {!isRoundRobin && !isLeagueRoundRobin && (
+                  <TabsContent value="playin">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Play-In</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-center text-gray-500 py-8">
+                          <p>Play-In matches will be shown here</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
                 
-                <TabsContent value="bracket">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Bracket</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <BracketPyramid
-                        matches={playoffMatches.map(match => ({
-                          id: match.id,
-                          teamA: match.teamA ? {
-                            id: match.teamA.id,
-                            name: match.teamA.name,
-                            seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
-                          } : null,
-                          teamB: match.teamB ? {
-                            id: match.teamB.id,
-                            name: match.teamB.name,
-                            seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
-                          } : null,
-                          games: (match.games || []).map((g: any) => ({
-                            scoreA: g.scoreA,
-                            scoreB: g.scoreB,
-                            winner: g.winner as 'A' | 'B' | null | undefined
-                          })),
-                          roundIndex: match.roundIndex,
-                          stage: match.stage,
-                          note: (match as any).note,
-                          tiebreaker: (match as any).tiebreaker,
-                          winnerTeamId: (match as any).winnerTeamId,
-                          gamesCount: (match as any).gamesCount,
-                          isMLP: tournament?.format === 'MLP'
-                        }))}
-                        showConnectingLines={showConnectingLines}
-                        onMatchClick={(matchId) => {
-                          console.log('Match clicked:', matchId)
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {!isRoundRobin && !isLeagueRoundRobin && (
+                  <TabsContent value="bracket">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Bracket</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <BracketPyramid
+                          matches={playoffMatches.map(match => ({
+                            id: match.id,
+                            teamA: match.teamA ? {
+                              id: match.teamA.id,
+                              name: match.teamA.name,
+                              seed: standings.find(s => s.teamId === match.teamA?.id)?.rank
+                            } : null,
+                            teamB: match.teamB ? {
+                              id: match.teamB.id,
+                              name: match.teamB.name,
+                              seed: standings.find(s => s.teamId === match.teamB?.id)?.rank
+                            } : null,
+                            games: (match.games || []).map((g: any) => ({
+                              scoreA: g.scoreA,
+                              scoreB: g.scoreB,
+                              winner: g.winner as 'A' | 'B' | null | undefined
+                            })),
+                            roundIndex: match.roundIndex,
+                            stage: match.stage,
+                            note: (match as any).note,
+                            tiebreaker: (match as any).tiebreaker,
+                            winnerTeamId: (match as any).winnerTeamId,
+                            gamesCount: (match as any).gamesCount,
+                            isMLP: tournament?.format === 'MLP'
+                          }))}
+                          showConnectingLines={showConnectingLines}
+                          onMatchClick={(matchId) => {
+                            console.log('Match clicked:', matchId)
+                          }}
+                        />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
+              </>
+            )}
           </>
         ) : (
           <div className="text-center py-8">

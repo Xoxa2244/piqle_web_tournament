@@ -102,15 +102,15 @@ export default function ImportPage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-lg">Loading tournament...</div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex justify-center items-center min-h-[200px]">
+        <div className="text-lg text-gray-600">Loading tournament...</div>
       </div>
     )
   }
 
   if (!tournament) {
     return (
-      <div className="text-center py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
         <Link href="/admin" className="text-blue-600 hover:text-blue-800">
           ← Back to tournaments list
@@ -122,7 +122,7 @@ export default function ImportPage() {
   // Check if user has admin access
   if (!isAdmin) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Link
             href={`/admin/${tournamentId}`}
@@ -156,7 +156,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Data Import</h1>

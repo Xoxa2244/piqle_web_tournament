@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,9 +32,11 @@ import EditTeamModal from '@/components/EditTeamModal'
 import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
 import AddPlayerModal from '@/components/AddPlayerModal'
+import AddParticipantModal from '@/components/AddParticipantModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
+import WaitlistAssignModal from '@/components/WaitlistAssignModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
 import { 
   ChevronDown, 
@@ -73,6 +75,7 @@ interface Team {
     role: string
     createdAt: string
     updatedAt: string
+    slotIndex?: number | null
     player: {
       id: string
       email: string | null
@@ -392,7 +395,10 @@ function DivisionCard({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  tournamentFormat,
+  waitlistEntries,
+  onOpenAssignWaitlist
 }: {
   division: Division
   isExpanded: boolean
@@ -413,10 +419,17 @@ function DivisionCard({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  tournamentFormat?: string
+  waitlistEntries: any[]
+  onOpenAssignWaitlist: (entry: any, division: Division) => void
 }) {
+  const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const activeTeams = division.teams.filter(team => team.poolId !== null)
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   const totalTeams = division.teams.length
+  // For IndyLeague, show all teams (no pools/waitlist distinction)
+  const allTeams = division.teams
+  const playerWaitlist = waitlistEntries.filter(entry => entry.divisionId === division.id)
 
   // Add drop zone for division
   const { setNodeRef: setDivisionNodeRef } = useDroppable({
@@ -448,7 +461,7 @@ function DivisionCard({
                 <span>{totalTeams} teams</span>
                 <span>•</span>
                 <span>{division.pairingMode}</span>
-                {division.poolCount >= 1 && (
+                {!isIndyLeague && division.poolCount >= 1 && (
                   <>
                     <span>•</span>
                     <span>{division.poolCount} pools</span>
@@ -465,6 +478,7 @@ function DivisionCard({
           </div>
           
           <div className="flex items-center space-x-2">
+            {!isIndyLeague && (
             <Button
               variant="outline"
               size="sm"
@@ -476,8 +490,10 @@ function DivisionCard({
               <Target className="h-4 w-4 mr-1" />
               Distribute
             </Button>
+            )}
             
-            {(division as any).isMerged ? (
+            {!isIndyLeague && (
+              (division as any).isMerged ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -499,6 +515,7 @@ function DivisionCard({
                 <GitMerge className="h-4 w-4 mr-1" />
                 Merge
               </Button>
+              )
             )}
             
             <div className="flex items-center space-x-1">
@@ -542,6 +559,32 @@ function DivisionCard({
       {isExpanded && (
         <CardContent>
           <div className="space-y-4">
+            {/* For IndyLeague: show all teams without pools/waitlist */}
+            {isIndyLeague ? (
+              <div className="mb-4">
+                <div className="space-y-2">
+                  {allTeams.map((team) => (
+                    <TeamWithSlots
+                      key={team.id}
+                      team={team}
+                      teamKind={division.teamKind as any}
+                      isExpanded={expandedTeams.has(team.id)}
+                      availablePlayers={availablePlayers}
+                      tournamentId={tournamentId}
+                      tournamentFormat={tournamentFormat}
+                      onToggleExpansion={() => onToggleTeamExpansion(team.id)}
+                      onEdit={() => onEditTeam(team)}
+                      onDelete={() => onDeleteTeam(team)}
+                      onContextMenu={() => {}}
+                      onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
+                      onRemovePlayer={onRemovePlayerFromSlot}
+                      onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
             {/* Pools */}
             {division.poolCount >= 1 && division.pools.length > 0 ? (
               <div className="space-y-4">
@@ -608,6 +651,36 @@ function DivisionCard({
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
               onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
             />
+
+            <div className="mt-4 border-t pt-4">
+              <h4 className="font-medium text-sm text-gray-700 mb-2">
+                Waitlisted Players ({playerWaitlist.length})
+              </h4>
+              {playerWaitlist.length === 0 ? (
+                <div className="text-sm text-gray-400">No waitlisted players.</div>
+              ) : (
+                <div className="space-y-2">
+                  {playerWaitlist.map((entry: any) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between p-2 bg-gray-50 border rounded"
+                    >
+                      <div className="text-sm text-gray-700">
+                        {entry.player.firstName} {entry.player.lastName}
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => onOpenAssignWaitlist(entry, division)}
+                      >
+                        Assign to slot
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+              </>
+            )}
           </div>
         </CardContent>
       )}
@@ -617,8 +690,14 @@ function DivisionCard({
 
 export default function DivisionsPage() {
   const params = useParams()
+  const router = useRouter()
   const tournamentId = params.id as string
-  
+  const [baseUrl, setBaseUrl] = useState('')
+
+  useEffect(() => {
+    setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')
+  }, [])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set())
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
@@ -628,6 +707,7 @@ export default function DivisionsPage() {
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
+  const [showAddParticipantModal, setShowAddParticipantModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [showAddDivisionModal, setShowAddDivisionModal] = useState(false)
   const [showMergeDivisionModal, setShowMergeDivisionModal] = useState(false)
@@ -637,6 +717,9 @@ export default function DivisionsPage() {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedDivisionForTeam, setSelectedDivisionForTeam] = useState<Division | null>(null)
   const [selectedDivisionForPlayer, setSelectedDivisionForPlayer] = useState<Division | null>(null)
+  const [selectedWaitlistEntry, setSelectedWaitlistEntry] = useState<any | null>(null)
+  const [selectedWaitlistDivision, setSelectedWaitlistDivision] = useState<Division | null>(null)
+  const [showWaitlistAssignModal, setShowWaitlistAssignModal] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -650,6 +733,24 @@ export default function DivisionsPage() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+
+  const utils = trpc.useUtils()
+
+  const handlePublicScoreboardClick = () => {
+    if (!tournament?.isPublicBoardEnabled) {
+      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      return
+    }
+    router.push(`/scoreboard/${tournamentId}`)
+  }
+
+  const handleEditTournamentClick = () => {
+    router.push(`/admin/${tournamentId}?edit=1`)
+  }
+
+  const publicScoreboardUrl = tournament?.isPublicBoardEnabled && baseUrl
+    ? `${baseUrl}/scoreboard/${tournamentId}`
+    : undefined
   
   // Check if user has admin access (must be before conditional returns to avoid hooks violations)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
@@ -667,9 +768,15 @@ export default function DivisionsPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
+
+  const { data: waitlistEntries = [] } = trpc.waitlist.listByTournament.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
   
   // Get divisions for team creation
   const divisions = tournament?.divisions || []
+  const isNoDivisionMode = tournament?.hasDivisions === false
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
@@ -678,6 +785,7 @@ export default function DivisionsPage() {
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
     if (!tournament?.divisions) return []
+    if (tournament?.hasDivisions === false) return tournament.divisions as any[]
     const divisions = tournament.divisions as any[]
     const mergedDivisions = divisions.filter((d: any) => d.isMerged && d.mergedFromDivisionIds)
     
@@ -830,6 +938,16 @@ export default function DivisionsPage() {
     }
   })
 
+  const moveWaitlistMutation = trpc.waitlist.moveToSlot.useMutation({
+    onSuccess: () => {
+      refetch()
+      utils.waitlist.listByTournament.invalidate({ tournamentId })
+    },
+    onError: (error) => {
+      alert(`Error assigning waitlist player: ${error.message}`)
+    },
+  })
+
   // Optimistic update functions
   const optimisticMoveTeam = (teamId: string, targetDivisionId: string, targetPoolId: string | null) => {
     setLocalDivisions(prevDivisions => {
@@ -877,13 +995,23 @@ export default function DivisionsPage() {
           
           if (!fromTeam || !toTeam) return team
           
-          // Sort teamPlayers by createdAt to match server behavior
-          const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => 
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          )
-          const sortedToTeamPlayers = [...toTeam.teamPlayers].sort((a, b) => 
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          )
+          // Sort teamPlayers by slotIndex first (fallback to createdAt)
+          const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => {
+            if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+              return a.slotIndex - b.slotIndex
+            }
+            if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+            if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          })
+          const sortedToTeamPlayers = [...toTeam.teamPlayers].sort((a, b) => {
+            if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+              return a.slotIndex - b.slotIndex
+            }
+            if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+            if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          })
           
           const playerToMove = sortedFromTeamPlayers[fromSlotIndex]
           const targetPlayer = sortedToTeamPlayers[toSlotIndex]
@@ -1000,6 +1128,7 @@ export default function DivisionsPage() {
               role: 'player', // Default role
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              slotIndex,
               player: {
                 ...player,
                 teamId: teamId,
@@ -1317,7 +1446,15 @@ export default function DivisionsPage() {
       .find(t => t.id === toTeamId)
     
     if (fromTeam && toTeam) {
-      const fromTeamPlayer = fromTeam.teamPlayers[fromSlotIndex]
+      const sortedFromTeamPlayers = [...fromTeam.teamPlayers].sort((a, b) => {
+        if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+          return a.slotIndex - b.slotIndex
+        }
+        if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+        if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+      const fromTeamPlayer = sortedFromTeamPlayers[fromSlotIndex]
       
       if (fromTeamPlayer) {
         console.log('[handleMovePlayerBetweenSlots] Moving player:', fromTeamPlayer.player.firstName, fromTeamPlayer.player.lastName)
@@ -1335,6 +1472,24 @@ export default function DivisionsPage() {
     } else {
       console.log('[handleMovePlayerBetweenSlots] Teams not found')
     }
+  }
+
+  const handleOpenAssignWaitlist = (entry: any, division: Division) => {
+    setSelectedWaitlistEntry(entry)
+    setSelectedWaitlistDivision(division)
+    setShowWaitlistAssignModal(true)
+  }
+
+  const handleAssignWaitlist = async (teamId: string, slotIndex: number) => {
+    if (!selectedWaitlistEntry) return
+    await moveWaitlistMutation.mutateAsync({
+      waitlistEntryId: selectedWaitlistEntry.id,
+      teamId,
+      slotIndex,
+    })
+    setShowWaitlistAssignModal(false)
+    setSelectedWaitlistEntry(null)
+    setSelectedWaitlistDivision(null)
   }
 
   const handleSaveDivision = (data: {
@@ -1375,9 +1530,14 @@ export default function DivisionsPage() {
       <div className="min-h-screen bg-gray-50">
         <TournamentNavBar
           tournamentTitle={tournament?.title}
+          tournamentImage={tournament?.image || undefined}
           isAdmin={false}
           isOwner={false}
           pendingRequestsCount={0}
+          tournamentFormat={tournament?.format}
+          onPublicScoreboardClick={handlePublicScoreboardClick}
+          onEditTournamentClick={handleEditTournamentClick}
+          publicScoreboardUrl={publicScoreboardUrl}
         />
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1403,15 +1563,20 @@ export default function DivisionsPage() {
     )
   }
 
-  if (tournament.divisions.length === 0) {
+  if (!isNoDivisionMode && tournament.divisions.length === 0) {
     return (
       <>
         <div className="min-h-screen bg-gray-50">
           <TournamentNavBar
             tournamentTitle={tournament.title}
+            tournamentImage={tournament.image || undefined}
             isAdmin={isAdmin}
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
+            tournamentFormat={tournament.format}
+            onPublicScoreboardClick={handlePublicScoreboardClick}
+            onEditTournamentClick={handleEditTournamentClick}
+            publicScoreboardUrl={publicScoreboardUrl}
           />
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
             <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1447,14 +1612,21 @@ export default function DivisionsPage() {
     )
   }
 
+  const activeDivision = isNoDivisionMode ? (localDivisions[0] || divisions[0]) : null
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
       <TournamentNavBar
         tournamentTitle={tournament.title}
+        tournamentImage={tournament.image || undefined}
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        tournamentFormat={tournament.format}
+        onPublicScoreboardClick={handlePublicScoreboardClick}
+        onEditTournamentClick={handleEditTournamentClick}
+        publicScoreboardUrl={publicScoreboardUrl}
       />
       
       {/* Header */}
@@ -1463,45 +1635,121 @@ export default function DivisionsPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Divisions</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Teams and Divisions</h1>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <Button
-                variant={viewMode === 'overview' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('overview')}
-                className="flex items-center space-x-2"
-              >
-                <List className="h-4 w-4" />
-                <span>Overview</span>
-              </Button>
-              
-              <Button
-                variant={viewMode === 'board' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewMode('board')}
-                className="flex items-center space-x-2"
-              >
-                <Grid3X3 className="h-4 w-4" />
-                <span>Board</span>
-              </Button>
-              
-              <Button 
-                className="flex items-center space-x-2"
-                onClick={() => setShowAddDivisionModal(true)}
-              >
-                <Plus className="h-4 w-4" />
-                <span>Create Division</span>
-              </Button>
+              {isNoDivisionMode ? (
+                <Button
+                  className="flex items-center space-x-2"
+                  onClick={() => {
+                    if (!activeDivision) return
+                    if (activeDivision.teamKind === 'SINGLES_1v1') {
+                      setShowAddParticipantModal(true)
+                      return
+                    }
+                    handleAddTeam(activeDivision)
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{activeDivision?.teamKind === 'SINGLES_1v1' ? 'Add Player' : 'Add Team'}</span>
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant={viewMode === 'overview' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setViewMode('overview')}
+                    className="flex items-center space-x-2"
+                  >
+                    <List className="h-4 w-4" />
+                    <span>Overview</span>
+                  </Button>
+                  
+                  <Button
+                    variant={viewMode === 'board' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setViewMode('board')}
+                    className="flex items-center space-x-2"
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                    <span>Board</span>
+                  </Button>
+                  
+                  <Button 
+                    className="flex items-center space-x-2"
+                    onClick={() => setShowAddDivisionModal(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create Division</span>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {viewMode === 'overview' ? (
+        {isNoDivisionMode ? (
+          <div className="space-y-6">
+            {!activeDivision ? (
+              <div className="bg-white rounded-lg shadow-sm p-6 text-center text-slate-600">
+                No teams or players yet.
+              </div>
+            ) : activeDivision.teamKind === 'SINGLES_1v1' ? (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">Players</h3>
+                </div>
+                {availablePlayers.length === 0 ? (
+                  <p className="text-slate-500">No players added yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {availablePlayers.map((player) => (
+                      <div key={player.id} className="flex items-center justify-between border border-slate-100 rounded-lg px-4 py-2">
+                        <div>
+                          <p className="font-medium text-slate-900">{player.firstName} {player.lastName}</p>
+                          {player.email && <p className="text-xs text-slate-500">{player.email}</p>}
+                        </div>
+                        {player.duprRating && (
+                          <span className="text-sm text-slate-500">DUPR {player.duprRating}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeDivision.teams.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-sm p-6 text-center text-slate-500">
+                    No teams created yet.
+                  </div>
+                ) : (
+                  activeDivision.teams.map((team) => (
+                    <TeamWithSlots
+                      key={team.id}
+                      team={team}
+                      teamKind={activeDivision.teamKind as any}
+                      isExpanded={expandedTeams.has(team.id)}
+                      availablePlayers={availablePlayers}
+                      tournamentId={tournamentId}
+                      onToggleExpansion={() => toggleTeamExpansion(team.id)}
+                      onEdit={() => handleEditTeam(team)}
+                      onDelete={() => handleDeleteTeam(team)}
+                      onContextMenu={() => {}}
+                      onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
+                      onRemovePlayer={handleRemovePlayerFromSlot}
+                      onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => handleMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        ) : viewMode === 'overview' ? (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Sidebar */}
             <div className="lg:col-span-1">
@@ -1553,6 +1801,9 @@ export default function DivisionsPage() {
                       onAddPlayerToSlot={handleAddPlayerToSlot}
                       onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
                       onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
+                      tournamentFormat={tournament?.format}
+                      waitlistEntries={waitlistEntries}
+                      onOpenAssignWaitlist={handleOpenAssignWaitlist}
                     />
                   ))}
                 </div>
@@ -1580,6 +1831,8 @@ export default function DivisionsPage() {
             onAddPlayerToSlot={handleAddPlayerToSlot}
             onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
             onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
+            waitlistEntries={waitlistEntries}
+            onOpenAssignWaitlist={handleOpenAssignWaitlist}
           />
         )}
       </div>
@@ -1623,6 +1876,29 @@ export default function DivisionsPage() {
           onSuccess={() => {
             refetch()
           }}
+        />
+      )}
+
+      <AddParticipantModal
+        tournamentId={tournamentId}
+        isOpen={showAddParticipantModal}
+        onClose={() => setShowAddParticipantModal(false)}
+        onSuccess={() => {
+          refetch()
+        }}
+      />
+
+      {showWaitlistAssignModal && selectedWaitlistDivision && (
+        <WaitlistAssignModal
+          isOpen={showWaitlistAssignModal}
+          onClose={() => {
+            setShowWaitlistAssignModal(false)
+            setSelectedWaitlistEntry(null)
+            setSelectedWaitlistDivision(null)
+          }}
+          onAssign={handleAssignWaitlist}
+          division={selectedWaitlistDivision}
+          waitlistEntry={selectedWaitlistEntry}
         />
       )}
 

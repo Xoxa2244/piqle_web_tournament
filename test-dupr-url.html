@@ -66,14 +66,14 @@
         <p><strong>Client ID:</strong> <code>7094449209</code></p>
         <p><strong>Expected URL:</strong></p>
         <div class="url-display">
-            https://uat.dupr.gg/login-external-app/test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82
+            https://dashboard.dupr.com/login-external-app/<base64-client-key>
         </div>
     </div>
 
     <div class="test-section">
         <h2>Test 1: Direct URL Access</h2>
         <p>Click the button below to open the DUPR login page in a new tab:</p>
-        <button onclick="window.open('https://uat.dupr.gg/login-external-app/test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82', '_blank')">
+        <button onclick="window.open('https://dashboard.dupr.com/login-external-app/<base64-client-key>', '_blank')">
             Open DUPR Login in New Tab
         </button>
         <div id="direct-test-status"></div>
@@ -84,7 +84,7 @@
         <p>This simulates how the login will appear in the modal:</p>
         <iframe 
             id="dupr-iframe"
-            src="https://uat.dupr.gg/login-external-app/test-ck-77f42fa9-c96b-45b7-ffb2-7f1d83376a82"
+            src="https://dashboard.dupr.com/login-external-app/<base64-client-key>"
             title="DUPR Login"
             allow="camera; microphone"
         ></iframe>

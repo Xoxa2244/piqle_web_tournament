@@ -1,32 +1,123 @@
 'use client'
 
-import { useParams } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import Image from 'next/image'
+import AvatarCropper from '@/components/AvatarCropper'
 import { 
   Users, 
   Calendar, 
-  BarChart3, 
   Settings,
   FileText,
-  Target,
   ArrowLeft,
   Upload,
-  Globe,
   Edit,
-  Shield
+  Shield,
+  X,
+  MapPin,
+  DollarSign,
+  Layers,
+  Swords,
+  User,
+  UserCheck,
+  UserX,
+  Trophy,
+  Clock
 } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
+// Helper function to resize image on client side
+function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = document.createElement('img')
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        // Calculate new dimensions if image is too large
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height / width) * maxSize
+            width = maxSize
+          } else {
+            width = (width / height) * maxSize
+            height = maxSize
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('Failed to create blob'))
+            }
+          },
+          'image/jpeg',
+          0.85 // Quality
+        )
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      if (e.target?.result) {
+        img.src = e.target.result as string
+      }
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'Past'
+    case 'upcoming': return 'Upcoming'
+    case 'in_progress': return 'In progress'
+  }
+}
+function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'bg-gray-100 text-gray-700'
+    case 'upcoming': return 'bg-blue-50 text-blue-700'
+    case 'in_progress': return 'bg-green-50 text-green-700'
+  }
+}
 
 export default function TournamentDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -39,10 +130,18 @@ export default function TournamentDetailPage() {
     venueName: '',
     startDate: '',
     endDate: '',
+    registrationStartDate: '',
+    registrationEndDate: '',
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
+    image: '',
   })
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showCropper, setShowCropper] = useState(false)
+  const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [divisionForm, setDivisionForm] = useState({
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
@@ -56,22 +155,64 @@ export default function TournamentDetailPage() {
   })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
-  
+
+  // Open edit modal when navigating with ?edit=1 (e.g. from layout navbar)
+  useEffect(() => {
+    if (!tournament || showEditTournament) return
+    if (searchParams.get('edit') === '1') {
+      setShowEditTournament(true)
+      setTournamentForm({
+        title: tournament.title,
+        description: tournament.description || '',
+        venueName: tournament.venueName || '',
+        startDate: new Date(tournament.startDate).toISOString().split('T')[0],
+        endDate: new Date(tournament.endDate).toISOString().split('T')[0],
+        registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
+        registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+        entryFee: tournament.entryFee || '',
+        isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
+        allowDuprSubmission: tournament.allowDuprSubmission ?? false,
+        image: tournament.image || '',
+      })
+      setImagePreview(tournament.image || null)
+      window.history.replaceState(null, '', `/admin/${tournamentId}`)
+    }
+  }, [tournament, searchParams, tournamentId])
+
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   // Check if user is owner (for owner-only features like CSV import and access control)
   const isOwner = tournament?.userAccessInfo?.isOwner
   
-  // Get pending access requests count (only for owner)
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+  // Get pending access requests (only for owner)
+  const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
-  
+
+  const approveRequestMutation = trpc.tournamentAccess.approveRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+  const rejectRequestMutation = trpc.tournamentAccess.rejectRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+
+  // Tournament winners (1st, 2nd, 3rd per division)
+  const { data: winnersByDivision } = trpc.tournament.getWinners.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
+
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
+      setImagePreview(null)
+      setCropperImageSrc(null)
       window.location.reload()
     },
     onError: (error) => {
@@ -122,7 +263,7 @@ export default function TournamentDetailPage() {
       alert('Public Scoreboard is not available. Please enable it in tournament settings.')
       return
     }
-    window.open(`/scoreboard/${tournamentId}`, '_blank')
+    window.location.href = `/scoreboard/${tournamentId}`
   }
 
   const handleEditTournamentClick = () => {
@@ -134,10 +275,14 @@ export default function TournamentDetailPage() {
       venueName: tournament.venueName || '',
       startDate: new Date(tournament.startDate).toISOString().split('T')[0],
       endDate: new Date(tournament.endDate).toISOString().split('T')[0],
+      registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
+      registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
       entryFee: tournament.entryFee?.toString() || '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
+      image: tournament.image || '',
     })
+    setImagePreview(tournament.image || null)
     setShowEditTournament(true)
   }
 
@@ -147,6 +292,48 @@ export default function TournamentDetailPage() {
       return
     }
 
+    // Validate dates
+    const startDate = new Date(tournamentForm.startDate)
+    const endDate = new Date(tournamentForm.endDate)
+    
+    // End date cannot be earlier than start date
+    if (endDate < startDate) {
+      alert('End date cannot be earlier than start date')
+      return
+    }
+
+    // Validate registration dates if provided
+    if (tournamentForm.registrationStartDate || tournamentForm.registrationEndDate) {
+      if (tournamentForm.registrationStartDate && tournamentForm.registrationEndDate) {
+        const regStartDate = new Date(tournamentForm.registrationStartDate)
+        const regEndDate = new Date(tournamentForm.registrationEndDate)
+        
+        // Registration end date cannot be earlier than registration start date
+        if (regEndDate < regStartDate) {
+          alert('Registration end date cannot be earlier than registration start date')
+          return
+        }
+      }
+      
+      if (tournamentForm.registrationStartDate) {
+        const regStartDate = new Date(tournamentForm.registrationStartDate)
+        // Registration start date cannot be later than tournament start date
+        if (regStartDate > startDate) {
+          alert('Registration start date cannot be later than tournament start date')
+          return
+        }
+      }
+      
+      if (tournamentForm.registrationEndDate) {
+        const regEndDate = new Date(tournamentForm.registrationEndDate)
+        // Registration end date cannot be later than tournament start date
+        if (regEndDate > startDate) {
+          alert('Registration end date cannot be later than tournament start date')
+          return
+        }
+      }
+    }
+
     updateTournament.mutate({
       id: tournamentId,
       title: tournamentForm.title,
@@ -154,10 +341,110 @@ export default function TournamentDetailPage() {
       venueName: tournamentForm.venueName || undefined,
       startDate: tournamentForm.startDate,
       endDate: tournamentForm.endDate,
+      registrationStartDate: tournamentForm.registrationStartDate || null,
+      registrationEndDate: tournamentForm.registrationEndDate || null,
       entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
+      image: tournamentForm.image || null,
     })
+  }
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB')
+      return
+    }
+
+    // Resize image before showing cropper
+    try {
+      const resizedBlob = await resizeImage(file, 1920)
+      const resizedUrl = URL.createObjectURL(resizedBlob)
+      setCropperImageSrc(resizedUrl)
+      setShowCropper(true)
+    } catch (error) {
+      console.error('Error resizing image:', error)
+      alert('Failed to process image. Please try again.')
+    }
+  }
+
+  const handleCropComplete = async (croppedImageUrl: string) => {
+    setShowCropper(false)
+    setIsUploadingImage(true)
+
+    try {
+      // Convert blob URL to File
+      const response = await fetch(croppedImageUrl)
+      const blob = await response.blob()
+      
+      // Resize cropped image to max 1920px before upload
+      const resizedBlob = await resizeImage(
+        new File([blob], 'tournament-image.jpg', { type: 'image/jpeg' }),
+        1920
+      )
+      const file = new File([resizedBlob], 'tournament-image.jpg', { type: 'image/jpeg' })
+
+      // Upload cropped and resized file
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-tournament-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json()
+        throw new Error(error.error || 'Failed to upload image')
+      }
+
+      const data = await uploadResponse.json()
+      setImagePreview(data.url)
+      setTournamentForm(prev => ({ ...prev, image: data.url }))
+      
+      // Clean up blob URLs
+      URL.revokeObjectURL(croppedImageUrl)
+      if (cropperImageSrc) {
+        URL.revokeObjectURL(cropperImageSrc)
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      alert('Failed to upload image. Please try again.')
+      setImagePreview(null)
+    } finally {
+      setIsUploadingImage(false)
+      setCropperImageSrc(null)
+    }
+  }
+
+  const handleCropperClose = useCallback(() => {
+    setShowCropper(false)
+    if (cropperImageSrc) {
+      URL.revokeObjectURL(cropperImageSrc)
+    }
+    setCropperImageSrc(null)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [cropperImageSrc])
+
+  const handleRemoveImage = () => {
+    setImagePreview(null)
+    setTournamentForm(prev => ({ ...prev, image: '' }))
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const handleTournamentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -170,10 +457,10 @@ export default function TournamentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <div className="text-lg text-slate-600">Loading tournament...</div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-gray-600 mx-auto mb-4"></div>
+          <div className="text-lg font-semibold text-gray-800 bg-white px-6 py-3 rounded-2xl shadow-lg border border-gray-200">Loading tournament...</div>
         </div>
       </div>
     )
@@ -181,225 +468,277 @@ export default function TournamentDetailPage() {
 
   if (error || !tournament) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Tournament not found</h1>
-            <p className="text-slate-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
-            <Link href="/admin" className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to tournaments
-            </Link>
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
+        <div className="text-center bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4 border border-gray-200">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
           </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
+          <p className="text-gray-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
+          <Link href="/admin" className="inline-flex items-center px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-semibold">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to tournaments
+          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        onPublicScoreboardClick={handlePublicScoreboardClick}
-        onEditTournamentClick={handleEditTournamentClick}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-      />
-
+    <div className="min-h-screen w-full bg-gray-50">
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid gap-8 lg:grid-cols-3">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid gap-6 lg:grid-cols-3">
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
-            <Card className="h-full border-0 shadow-xl bg-white/70 backdrop-blur-sm">
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
-                <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mr-3">
-                    <Calendar className="w-4 h-4 text-white" />
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
+                    <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Tournament Description */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
-                  <div className="h-24 overflow-y-auto">
+              <CardContent className="space-y-5">
+                {/* Tournament status — выше описания */}
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
+                {/* Description */}
+                <div className="flex gap-3">
+                  <FileText className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500" />
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     {tournament.description ? (
-                      <div 
-                        className="text-lg font-medium text-slate-900 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                      />
+                      <div>
+                        <div
+                          className={`text-base text-gray-700 prose prose-sm max-w-none leading-relaxed whitespace-pre-wrap break-words ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        />
+                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                          <button
+                            type="button"
+                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            {descriptionExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <p className="text-lg font-medium text-slate-900 text-gray-500 italic">
-                        No description provided
-                      </p>
+                      <p className="text-base text-gray-400 italic">No description provided</p>
                     )}
                   </div>
                 </div>
 
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Start Date</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                        <Calendar className="w-4 h-4 text-white" />
+                {/* Start & End date — одна строка с иконкой */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' – '}
+                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+
+                {/* Venue */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <MapPin className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.venueName || '—'}</span>
+                </div>
+
+                {/* Entry fee */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <DollarSign className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.entryFee ? `$${tournament.entryFee}` : '—'}</span>
+                </div>
+
+                {/* Number of divisions */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {(tournament.divisions?.length ?? 0)} division{(tournament.divisions?.length ?? 0) !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Winners — per-division with switcher */}
+                <div className="pt-4 border-t border-gray-200">
+                  <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                    <Trophy className="h-5 w-5 text-amber-500" />
+                    Winners
+                  </p>
+                  {(() => {
+                    const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string }>
+                    const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
+                    const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
+                    const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
+
+                    if (divisions.length === 0) {
+                      return (
+                        <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                          <p className="text-base font-medium text-gray-600">No divisions yet</p>
+                          <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {divisions.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => setSelectedWinnersDivisionId(d.id)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                effectiveDivisionId === d.id
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {d.name}
+                            </button>
+                          ))}
+                        </div>
+                        {!hasWinners ? (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                            <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-base font-medium text-gray-600">No winners yet</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {selectedDivision?.name
+                                ? `Results for ${selectedDivision.name} will appear after the tournament or playoffs are complete`
+                                : 'Results will appear after the tournament or playoffs are complete'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
+                            <p className="text-sm font-semibold text-gray-700 mb-3">{winnersForDivision?.divisionName ?? selectedDivision?.name}</p>
+                            <div className="space-y-2 text-base text-gray-800">
+                              {winnersForDivision?.first && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
+                                  <span>{winnersForDivision.first.teamName}</span>
+                                </div>
+                              )}
+                              {winnersForDivision?.second && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
+                                  <span>{winnersForDivision.second.teamName}</span>
+                                </div>
+                              )}
+                              {winnersForDivision?.third && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
+                                  <span>{winnersForDivision.third.teamName}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {new Date(tournament.startDate).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">End Date</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
-                        <Calendar className="w-4 h-4 text-white" />
-                      </div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {new Date(tournament.endDate).toLocaleDateString('en-US', { 
-                          weekday: 'long', 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Venue</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {tournament.venueName || '—'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="group">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 block">Entry Fee</label>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                        </svg>
-                      </div>
-                      <p className="text-base font-semibold text-slate-900">
-                        {tournament.entryFee ? `$${tournament.entryFee}` : '—'}
-                      </p>
-                    </div>
-                  </div>
+                    )
+                  })()}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Quick Actions - Right Column (40%) */}
+          {/* Access requests - Right Column (40%) */}
           <div className="lg:col-span-1">
-            <Card className="h-full border-0 shadow-xl bg-white/70 backdrop-blur-sm">
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
-                <CardTitle className="text-2xl font-bold text-slate-900 flex items-center">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                    <Settings className="w-4 h-4 text-white" />
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
+                    <Clock className="w-5 h-5 text-white" />
                   </div>
-                  Quick Actions
+                  Access requests
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  {isAdmin && (
-                    <Link href={`/admin/${tournamentId}/divisions`}>
-                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 hover:border-blue-200 transition-all duration-200 group">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                            <Settings className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-semibold text-base text-slate-900">Divisions</div>
-                          </div>
-                        </div>
-                      </Button>
-                    </Link>
-                  )}
-                  
-                  <Link href={`/admin/${tournamentId}/players`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-emerald-50 hover:to-green-50 hover:border-emerald-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <Users className="h-4 w-4 text-white" />
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Player Management</div>
-                        </div>
+                {!isOwner ? (
+                  <p className="text-sm text-gray-500">Access management is only available to the tournament owner.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm text-gray-600">Pending requests</span>
+                      <Link
+                        href={`/admin/${tournamentId}/access`}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        Access management →
+                      </Link>
+                    </div>
+                    {!accessRequests || accessRequests.length === 0 ? (
+                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                        <UserCheck className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-base font-medium text-gray-600">No pending requests</p>
+                        <p className="text-sm text-gray-500 mt-1">Access requests will appear here</p>
                       </div>
-                    </Button>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/stages`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-amber-50 hover:to-orange-50 hover:border-amber-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <FileText className="h-4 w-4 text-white" />
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Score Input</div>
-                        </div>
-                      </div>
-                    </Button>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/dashboard`}>
-                    <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-purple-50 hover:to-pink-50 hover:border-purple-200 transition-all duration-200 group">
-                      <div className="flex flex-col items-center space-y-2 w-full">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                          <BarChart3 className="h-4 w-4 text-white" />
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-base text-slate-900">Dashboard</div>
-                        </div>
-                      </div>
-                    </Button>
-                  </Link>
-                  
-                  {isOwner && (
-                    <Link href={`/admin/${tournamentId}/access`} className="relative">
-                      <Button variant="outline" className="h-20 w-full p-4 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 hover:border-gray-200 transition-all duration-200 group">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                            <Shield className="h-4 w-4 text-white" />
+                    ) : (
+                      <div className="space-y-3 max-h-[320px] overflow-y-auto">
+                        {accessRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {request.user.image && (
+                                <Image
+                                  src={request.user.image}
+                                  alt={request.user.name || ''}
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                                  unoptimized
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{request.user.name || 'No name'}</p>
+                                <p className="text-xs text-gray-500 truncate">{request.user.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                disabled={approveRequestMutation.isPending}
+                                onClick={() => {
+                                  approveRequestMutation.mutate({
+                                    requestId: request.id,
+                                    accessLevel: 'SCORE_ONLY',
+                                    divisionIds: null,
+                                  })
+                                }}
+                              >
+                                <UserCheck className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 border-red-200"
+                                disabled={rejectRequestMutation.isPending}
+                                onClick={() => {
+                                  if (typeof window !== 'undefined' && window.confirm('Reject this access request?')) {
+                                    rejectRequestMutation.mutate({ requestId: request.id })
+                                  }
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="text-center">
-                            <div className="font-semibold text-base text-slate-900">Access Control</div>
-                          </div>
-                        </div>
-                      </Button>
-                      {pendingRequestsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow-md">
-                          {pendingRequestsCount}
-                        </span>
-                      )}
-                    </Link>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -408,37 +747,43 @@ export default function TournamentDetailPage() {
 
       {/* Create Division Modal */}
       {showCreateDivision && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 border border-slate-200">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowCreateDivision(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4 border border-gray-200 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
-                <Settings className="w-5 h-5 text-white" />
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
+                <Settings className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Create Division</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Create Division</h2>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Division Name *
                 </label>
                 <input
                   type="text"
                   value={divisionForm.name}
                   onChange={(e) => setDivisionForm({ ...divisionForm, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="e.g., Men's 2v2"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Team Type
                 </label>
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full pl-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -447,13 +792,13 @@ export default function TournamentDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Pairing Mode
                 </label>
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full pl-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>
@@ -461,7 +806,7 @@ export default function TournamentDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Number of Pools
                 </label>
                 <input
@@ -469,12 +814,12 @@ export default function TournamentDetailPage() {
                   min="0"
                   value={divisionForm.poolCount}
                   onChange={(e) => setDivisionForm({ ...divisionForm, poolCount: parseInt(e.target.value) || 1 })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Max Teams (optional)
                 </label>
                 <input
@@ -482,25 +827,25 @@ export default function TournamentDetailPage() {
                   min="1"
                   value={divisionForm.maxTeams || ''}
                   onChange={(e) => setDivisionForm({ ...divisionForm, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="No limit"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8">
+            <div className="flex justify-end space-x-3 mt-8 relative z-10">
               <Button
                 variant="outline"
                 onClick={() => setShowCreateDivision(false)}
                 disabled={createDivision.isPending}
-                className="px-6 py-2.5 rounded-xl border-slate-300 hover:bg-slate-50 transition-all duration-200"
+                className="px-6 py-3 text-base rounded-xl border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {createDivision.isPending ? 'Creating...' : 'Create Division'}
               </Button>
@@ -511,18 +856,27 @@ export default function TournamentDetailPage() {
 
       {/* Edit Tournament Modal */}
       {showEditTournament && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl mx-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mr-3">
-                <Edit className="w-5 h-5 text-white" />
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowEditTournament(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 border border-gray-200 relative overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header - fixed */}
+            <div className="flex items-center p-8 pb-6 flex-shrink-0">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
+                <Edit className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">Edit Tournament</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Tournament</h2>
             </div>
             
-            <div className="space-y-6">
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-8">
+              <div className="space-y-5 pb-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Tournament Name *
                 </label>
                 <input
@@ -530,13 +884,13 @@ export default function TournamentDetailPage() {
                   name="title"
                   value={tournamentForm.title}
                   onChange={handleTournamentChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="e.g., Pickleball Championship 2024"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Description
                 </label>
                 <textarea
@@ -544,13 +898,13 @@ export default function TournamentDetailPage() {
                   value={tournamentForm.description}
                   onChange={handleTournamentChange}
                   rows={3}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm resize-none"
                   placeholder="Tournament description, rules, features..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Venue
                 </label>
                 <input
@@ -558,14 +912,14 @@ export default function TournamentDetailPage() {
                   name="venueName"
                   value={tournamentForm.venueName}
                   onChange={handleTournamentChange}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="Sports complex name"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
                     Start Date *
                   </label>
                   <input
@@ -573,12 +927,12 @@ export default function TournamentDetailPage() {
                     name="startDate"
                     value={tournamentForm.startDate}
                     onChange={handleTournamentChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
                     End Date *
                   </label>
                   <input
@@ -586,13 +940,45 @@ export default function TournamentDetailPage() {
                     name="endDate"
                     value={tournamentForm.endDate}
                     onChange={handleTournamentChange}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    min={tournamentForm.startDate || undefined}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Registration Start Date
+                  </label>
+                  <input
+                    type="date"
+                    name="registrationStartDate"
+                    value={tournamentForm.registrationStartDate}
+                    onChange={handleTournamentChange}
+                    max={tournamentForm.startDate || undefined}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Registration End Date
+                  </label>
+                  <input
+                    type="date"
+                    name="registrationEndDate"
+                    value={tournamentForm.registrationEndDate}
+                    onChange={handleTournamentChange}
+                    min={tournamentForm.registrationStartDate || undefined}
+                    max={tournamentForm.startDate || undefined}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
                   Entry Fee ($)
                 </label>
                 <input
@@ -602,20 +988,70 @@ export default function TournamentDetailPage() {
                   onChange={handleTournamentChange}
                   min="0"
                   step="0.01"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="0.00"
                 />
               </div>
 
-              <div className="flex items-center">
+              {/* Tournament Image */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tournament Image
+                </label>
+                {imagePreview ? (
+                  <div className="relative inline-block">
+                    <div className="relative w-48 h-48 rounded-lg overflow-hidden border border-gray-300">
+                      <Image
+                        src={imagePreview}
+                        alt="Tournament preview"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-4">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      id="tournament-image-edit"
+                    />
+                    <label
+                      htmlFor="tournament-image-edit"
+                      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors"
+                    >
+                      <Upload className="h-4 w-4" />
+                      <span>Upload Image</span>
+                    </label>
+                    {isUploadingImage && (
+                      <span className="text-sm text-gray-500">Uploading...</span>
+                    )}
+                  </div>
+                )}
+                <p className="mt-1 text-sm text-gray-500">
+                  Upload a square image for your tournament (max 5MB). Image will be cropped to square.
+                </p>
+              </div>
+
+              <div className="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <input
                   type="checkbox"
                   name="isPublicBoardEnabled"
                   checked={tournamentForm.isPublicBoardEnabled}
                   onChange={handleTournamentChange}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"
                 />
-                <label className="ml-2 block text-sm text-gray-700">
+                <label className="ml-3 block text-sm font-semibold text-gray-700 cursor-pointer">
                   Enable public results board
                 </label>
               </div>
@@ -632,27 +1068,53 @@ export default function TournamentDetailPage() {
                   Allow sending results to DUPR
                 </label>
               </div>
+              </div>
             </div>
 
-            <div className="flex justify-end space-x-3 mt-8">
+            {/* Footer with buttons - fixed */}
+            <div className="flex justify-end space-x-3 p-8 pt-6 relative z-10 flex-shrink-0 border-t border-gray-200">
               <Button
                 variant="outline"
-                onClick={() => setShowEditTournament(false)}
+                onClick={() => {
+                  setShowEditTournament(false)
+                  // Reset image state when canceling
+                  if (tournament) {
+                    setImagePreview(tournament.image || null)
+                    setTournamentForm(prev => ({ ...prev, image: tournament.image || '' }))
+                  } else {
+                    setImagePreview(null)
+                    setTournamentForm(prev => ({ ...prev, image: '' }))
+                  }
+                  setCropperImageSrc(null)
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = ''
+                  }
+                }}
                 disabled={updateTournament.isPending}
-                className="px-6 py-2.5 rounded-xl border-slate-300 hover:bg-slate-50 transition-all duration-200"
+                className="px-6 py-3 text-base rounded-xl border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleTournamentSubmit}
                 disabled={updateTournament.isPending}
-                className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Avatar Cropper Modal */}
+      {showCropper && cropperImageSrc && (
+        <AvatarCropper
+          imageSrc={cropperImageSrc}
+          isOpen={showCropper}
+          onCrop={handleCropComplete}
+          onClose={handleCropperClose}
+        />
       )}
     </div>
   )

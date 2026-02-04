@@ -205,11 +205,10 @@ export default function AccessManagementPage() {
     setRequestSelectedDivisionIds([])
   }
 
-  const divisions = tournament?.divisions || []
-
   // Filter out divisions that are part of a merged division
   // Only show merged divisions and standalone divisions (not those that were merged)
   const visibleDivisions = useMemo(() => {
+    const divisions = tournament?.divisions || []
     if (!divisions || divisions.length === 0) return []
     
     const divisionsArray = divisions as any[]
@@ -229,7 +228,7 @@ export default function AccessManagementPage() {
       
       return !isPartOfMerged
     })
-  }, [divisions])
+  }, [tournament?.divisions])
 
   // Group accesses by user
   type AccessItem = NonNullable<typeof accesses>[0]
@@ -257,7 +256,7 @@ export default function AccessManagementPage() {
   // Check if user is owner - only owners can manage access
   if (!isOwner) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Link
             href={`/admin/${tournamentId}`}
@@ -291,7 +290,7 @@ export default function AccessManagementPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <Link
           href={`/admin/${tournamentId}`}

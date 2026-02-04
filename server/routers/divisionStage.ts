@@ -134,6 +134,8 @@ export const divisionStageRouter = createTRPCRouter({
           // Check if RR is complete
           const rrMatches = division.matches.filter(m => m.stage === 'ROUND_ROBIN')
           const isMLP = division.tournament?.format === 'MLP'
+          const isRoundRobin = division.tournament?.format === 'ROUND_ROBIN'
+          const isLeagueRoundRobin = division.tournament?.format === 'LEAGUE_ROUND_ROBIN'
           
           const completedRRMatches = rrMatches.filter(m => {
             if (!m.games || m.games.length === 0) return false
@@ -222,8 +224,12 @@ export const divisionStageRouter = createTRPCRouter({
           const N = standings.length
           const B = division.maxTeams || Math.min(16, N)
 
-          // For MLP tournaments, skip Play-In and go directly to Play-Off
-          if (isMLP) {
+          // For Round Robin / League Round Robin, winners are determined by standings - no play-in or play-off
+          if (isRoundRobin || isLeagueRoundRobin) {
+            // Round Robin / League Round Robin: tournament is complete after Round Robin, winners determined by standings
+            matchesToCreate = []
+            nextStage = 'DIVISION_COMPLETE'
+          } else if (isMLP) {
             // MLP: always go directly to Play-Off (no Play-In)
             matchesToCreate = generatePlayoffMatches(standings, 0)
             nextStage = 'PO_R1_SCHEDULED'

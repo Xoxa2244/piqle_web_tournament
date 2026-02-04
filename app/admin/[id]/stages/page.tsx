@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { 
@@ -12,6 +12,7 @@ import {
   Calculator,
   AlertTriangle,
   CheckCircle,
+  XCircle,
   Clock,
   Trophy,
   Users,
@@ -33,10 +34,74 @@ import TiebreakerModal from '@/components/TiebreakerModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
-import { getTeamDisplayName } from '@/lib/utils'
+import { getTeamDisplayName, cn } from '@/lib/utils'
+
+// Helper function to check roster changes (moved outside component to avoid React hooks issues)
+const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
+  // Check if any games are missing saved players (old games before migration)
+  const gamesWithoutPlayers = games.filter((g: any) => 
+    !g.homePlayer1 || !g.homePlayer2 || !g.awayPlayer1 || !g.awayPlayer2
+  )
+  
+  // Check if roster has changed (saved players don't match current roster)
+  const rosterChanged = games.some((game: any) => {
+    if (!game.homePlayer1 || !game.homePlayer2 || !game.awayPlayer1 || !game.awayPlayer2) {
+      return false // Skip games without saved players
+    }
+    
+    // Check home team players
+    const homeLetter1 = game.homePair?.[0]
+    const homeLetter2 = game.homePair?.[1]
+    const currentHomePlayer1 = homePlayers.find((p: any) => p.letter === homeLetter1)
+    const currentHomePlayer2 = homePlayers.find((p: any) => p.letter === homeLetter2)
+    
+    // Check away team players
+    const awayLetter1 = game.awayPair?.[0]
+    const awayLetter2 = game.awayPair?.[1]
+    const currentAwayPlayer1 = awayPlayers.find((p: any) => p.letter === awayLetter1)
+    const currentAwayPlayer2 = awayPlayers.find((p: any) => p.letter === awayLetter2)
+    
+    // If any saved player doesn't match current roster player with same letter
+    return (
+      (currentHomePlayer1 && game.homePlayer1.id !== currentHomePlayer1.id) ||
+      (currentHomePlayer2 && game.homePlayer2.id !== currentHomePlayer2.id) ||
+      (currentAwayPlayer1 && game.awayPlayer1.id !== currentAwayPlayer1.id) ||
+      (currentAwayPlayer2 && game.awayPlayer2.id !== currentAwayPlayer2.id)
+    )
+  })
+  
+  if (gamesWithoutPlayers.length > 0) {
+    return (
+      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-md">
+        <div className="flex items-center gap-2 text-sm text-yellow-800">
+          <span className="font-semibold">⚠️ Warning:</span>
+          <span>
+            {gamesWithoutPlayers.length} {gamesWithoutPlayers.length === 1 ? 'game' : 'games'} {gamesWithoutPlayers.length === 1 ? 'was' : 'were'} created before player tracking was enabled. 
+            Player names may change if roster is updated. Please click &quot;Regenerate Games&quot; to lock in current roster players.
+          </span>
+        </div>
+      </div>
+    )
+  }
+  
+  if (rosterChanged) {
+    return (
+      <div className="mb-4 p-3 bg-orange-50 border border-orange-300 rounded-md">
+        <div className="flex items-center gap-2 text-sm text-orange-800">
+          <span className="font-semibold">⚠️ Roster Changed:</span>
+          <span>
+            The roster has been updated since games were generated. Games are still showing players from the old roster. 
+            Please click &quot;Regenerate Games&quot; to update games with the current roster players.
+          </span>
+        </div>
+      </div>
+    )
+  }
+  
+  return null
+}
 
 function DivisionStageManagementContent() {
   const router = useRouter()
@@ -46,6 +111,7 @@ function DivisionStageManagementContent() {
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [selectedMatch, setSelectedMatch] = useState<any>(null)
+  const [selectedIndyGame, setSelectedIndyGame] = useState<any>(null)
   const [showTiebreakerModal, setShowTiebreakerModal] = useState(false)
   const [selectedTiebreakerMatch, setSelectedTiebreakerMatch] = useState<any>(null)
   const [showRRMatches, setShowRRMatches] = useState(true)
@@ -67,6 +133,7 @@ function DivisionStageManagementContent() {
     error?: string | null
   }>>([])
   const [isUploadingToDupr, setIsUploadingToDupr] = useState(false)
+  const suppressRegenerateAlertRef = useRef(false)
 
 
   // Load tournament data
@@ -83,6 +150,13 @@ function DivisionStageManagementContent() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
+  useEffect(() => {
+    if (tournament && tournament.divisions.length === 0) {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }
+  }, [tournament, tournamentId, router])
 
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
@@ -107,10 +181,10 @@ function DivisionStageManagementContent() {
   }, [tournament?.divisions])
 
   // Read division from URL params on mount and when URL changes
+  const divisionFromUrl = searchParams.get('division')
   useEffect(() => {
     if (visibleDivisions.length === 0) return
     
-    const divisionFromUrl = searchParams.get('division')
     if (divisionFromUrl && visibleDivisions.some((d: any) => d.id === divisionFromUrl)) {
       // Division from URL is valid - use it
       if (selectedDivisionId !== divisionFromUrl) {
@@ -124,7 +198,8 @@ function DivisionStageManagementContent() {
         router.replace(`/admin/${tournamentId}/stages?division=${firstDivisionId}`, { scroll: false })
       }
     }
-  }, [searchParams, visibleDivisions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionFromUrl, visibleDivisions, router, tournamentId])
 
   // Update URL when division changes via selector (not from URL read)
   useEffect(() => {
@@ -140,6 +215,158 @@ function DivisionStageManagementContent() {
       }
     }
   }, [selectedDivisionId, tournamentId, router])
+
+  // Check if tournament is IndyLeague
+  const isIndyLeague = tournament?.format === 'INDY_LEAGUE'
+  // Check if tournament is Round Robin
+  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
+
+  // For IndyLeague, get match days and matchups
+  const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
+  const { data: matchDays } = trpc.matchDay.list.useQuery(
+    { tournamentId },
+    { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
+  )
+
+  // Get matchups for selected match day and division
+  const { data: matchups, refetch: refetchMatchups } = trpc.indyMatchup.list.useQuery(
+    { matchDayId: selectedMatchDayId },
+    { enabled: isIndyLeague && !!selectedMatchDayId }
+  )
+
+  const matchDaysForDivision = useMemo(() => {
+    if (!matchDays) return []
+    if (!selectedDivisionId) return matchDays
+    return matchDays.filter((day: any) =>
+      (day.matchups || []).some((m: any) => m.divisionId === selectedDivisionId)
+    )
+  }, [matchDays, selectedDivisionId])
+
+  const getDivisionMatchupCount = (day: any) => {
+    if (!selectedDivisionId) return day.matchups?.length || 0
+    return (day.matchups || []).filter((m: any) => m.divisionId === selectedDivisionId).length
+  }
+
+  // Filter matchups by selected division
+  const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
+
+  // Set first match day as default for selected division
+  useEffect(() => {
+    if (!isIndyLeague) return
+    if (!matchDaysForDivision || matchDaysForDivision.length === 0) {
+      if (selectedMatchDayId) {
+        setSelectedMatchDayId('')
+      }
+      return
+    }
+    const isSelectedDayValid = matchDaysForDivision.some((day: any) => day.id === selectedMatchDayId)
+    if (!selectedMatchDayId || !isSelectedDayValid) {
+      setSelectedMatchDayId(matchDaysForDivision[0].id)
+    }
+  }, [isIndyLeague, matchDaysForDivision, selectedMatchDayId])
+
+  // Local state for optimistic updates
+  const [localGameScores, setLocalGameScores] = useState<Record<string, { homeScore: number | null; awayScore: number | null }>>({})
+
+  // Update game score mutation with optimistic updates
+  const updateGameScore = trpc.indyMatchup.updateGameScore.useMutation({
+    onMutate: async (variables) => {
+      // Optimistically update local state immediately
+      setLocalGameScores((prev) => ({
+        ...prev,
+        [variables.gameId]: {
+          homeScore: variables.homeScore,
+          awayScore: variables.awayScore,
+        },
+      }))
+    },
+    onSuccess: () => {
+      // Refetch to sync with server
+      refetchMatchups()
+      // Clear local state after successful update
+      setTimeout(() => {
+        setLocalGameScores({})
+      }, 100)
+    },
+    onError: (error, variables) => {
+      // Revert optimistic update on error
+      setLocalGameScores((prev) => {
+        const newState = { ...prev }
+        delete newState[variables.gameId]
+        return newState
+      })
+      alert('Error updating score: ' + error.message)
+    },
+  })
+
+  // Update tie break mutation
+  const updateTieBreak = trpc.indyMatchup.updateTieBreak.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+    },
+    onError: (error) => {
+      alert('Error updating tie-break: ' + error.message)
+    },
+  })
+
+  // Generate games for division
+  const generateGamesForTournament = trpc.indyMatchup.generateGamesForTournament.useMutation({
+    onSuccess: (result) => {
+      refetchMatchups()
+      alert(`Games generated: ${result.generated}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`)
+    },
+    onError: (error) => {
+      alert('Error generating games: ' + error.message)
+    },
+  })
+
+  // Regenerate games for a matchup
+  const regenerateGames = trpc.indyMatchup.regenerateGames.useMutation({
+    onSuccess: () => {
+      refetchMatchups()
+      if (!suppressRegenerateAlertRef.current) {
+        alert('Games regenerated successfully. All scores for this matchup have been reset.')
+      }
+    },
+    onError: (error) => {
+      alert('Error regenerating games: ' + error.message)
+    },
+  })
+
+  // Helper to get game score (from local state if available, otherwise from game data)
+  const getGameScore = (game: any) => {
+    const localScore = localGameScores[game.id]
+    if (localScore) {
+      return localScore
+    }
+    return {
+      homeScore: game.homeScore,
+      awayScore: game.awayScore,
+    }
+  }
+
+  const handleGameScoreChange = (gameId: string, homeScore: number | null, awayScore: number | null) => {
+    // Update immediately with optimistic update
+    updateGameScore.mutate({
+      gameId,
+      homeScore,
+      awayScore,
+    })
+  }
+
+  const handleTieBreakChange = (matchupId: string, winnerTeamId: string) => {
+    updateTieBreak.mutate({
+      matchupId,
+      tieBreakWinnerTeamId: winnerTeamId,
+    })
+  }
+
+  // Format date helper
+  const formatDate = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -306,7 +533,13 @@ function DivisionStageManagementContent() {
     matchesWithNullStage: matches.filter(m => m.stage === null || m.stage === undefined).length,
   })
   
-  const rrMatches = matches.filter(m => m.stage === 'ROUND_ROBIN')
+  const rrMatches = matches.filter((m: any) => {
+    if (m.stage !== 'ROUND_ROBIN') return false
+    if (isLeagueRoundRobin && selectedMatchDayId) {
+      return m.matchDayId === selectedMatchDayId
+    }
+    return true
+  })
   const playInMatches = matches.filter(m => m.stage === 'PLAY_IN')
   const eliminationMatches = matches.filter(m => m.stage === 'ELIMINATION')
   const hasLockedRRMatches = rrMatches.some((match: any) => match.locked)
@@ -505,9 +738,15 @@ function DivisionStageManagementContent() {
   
   // Functions for handling actions
   const handleGenerateRR = () => {
-    if (selectedDivisionId) {
-      generateRRMutation.mutate({ divisionId: selectedDivisionId })
+    if (!selectedDivisionId) return
+    if (isLeagueRoundRobin && !selectedMatchDayId) {
+      alert('Please select a match day first to generate Round Robin for that day.')
+      return
     }
+    generateRRMutation.mutate({
+      divisionId: selectedDivisionId,
+      ...(isLeagueRoundRobin && selectedMatchDayId ? { matchDayId: selectedMatchDayId } : {}),
+    })
   }
 
   const handleGeneratePlayoffAfterPlayIn = () => {
@@ -897,30 +1136,11 @@ function DivisionStageManagementContent() {
     )
   }
 
-  // Check if user has access to any divisions
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
-          <p className="text-gray-600 mb-6">
-            There aren&apos;t any divisions to manage stages for. Create a division first to unlock score input and bracket tools.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href={`/admin/${tournamentId}/divisions`}
-              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Create division
-            </Link>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
-            >
-              Back to tournament
-            </Link>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-gray-500">Redirecting to divisions...</div>
       </div>
     )
   }
@@ -938,16 +1158,9 @@ function DivisionStageManagementContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-      />
-      
       {/* Top panel */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Left part - division information */}
           <div className="flex items-center space-x-4">
@@ -968,10 +1181,10 @@ function DivisionStageManagementContent() {
           </div>
 
           {/* Right part - quick actions */}
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col items-end gap-3">
             {/* DUPR Upload buttons */}
             {tournament?.allowDuprSubmission && allMatchesCompleted && (
-              <>
+              <div className="flex items-center space-x-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -991,53 +1204,473 @@ function DivisionStageManagementContent() {
                   <FileText className="h-4 w-4" />
                   <span>Show upload log</span>
                 </Button>
-              </>
+              </div>
             )}
             
-            {/* Division switcher */}
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
-                  setSelectedDivisionId(visibleDivisions[prevIndex].id)
-                }}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <select
-                value={selectedDivisionId}
-                onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                {visibleDivisions.map((div: any) => (
-                  <option key={div.id} value={div.id}>
-                    {div.name} ({div.teams?.length || 0} teams)
-                  </option>
-                ))}
-              </select>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
-                  const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
-                  setSelectedDivisionId(visibleDivisions[nextIndex].id)
-                }}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+            <div className="flex flex-col items-end gap-2">
+              {/* Division switcher */}
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-700">Division:</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                    const prevIndex = currentIndex > 0 ? currentIndex - 1 : visibleDivisions.length - 1
+                    setSelectedDivisionId(visibleDivisions[prevIndex].id)
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <select
+                  value={selectedDivisionId}
+                  onChange={(e) => setSelectedDivisionId(e.target.value)}
+                  className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  }}
+                >
+                  {visibleDivisions.map((div: any) => (
+                    <option key={div.id} value={div.id}>
+                      {div.name} ({div.teams?.length || 0} teams)
+                    </option>
+                  ))}
+                </select>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const currentIndex = visibleDivisions.findIndex((d: any) => d.id === selectedDivisionId)
+                    const nextIndex = currentIndex < visibleDivisions.length - 1 ? currentIndex + 1 : 0
+                    setSelectedDivisionId(visibleDivisions[nextIndex].id)
+                  }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Match Day switcher for IndyLeague */}
+              {isIndyLeague && (
+                matchDaysForDivision.length > 0 ? (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium text-gray-700">Match Day:</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={matchDaysForDivision.length <= 1}
+                      onClick={() => {
+                        const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : matchDaysForDivision.length - 1
+                        setSelectedMatchDayId(matchDaysForDivision[prevIndex].id)
+                      }}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    <select
+                      value={selectedMatchDayId}
+                      onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                      className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                      }}
+                    >
+                      {matchDaysForDivision.map((day: any) => (
+                        <option key={day.id} value={day.id}>
+                          {formatDate(day.date)} ({getDivisionMatchupCount(day)} matchups)
+                        </option>
+                      ))}
+                    </select>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={matchDaysForDivision.length <= 1}
+                      onClick={() => {
+                        const currentIndex = matchDaysForDivision.findIndex((d: any) => d.id === selectedMatchDayId)
+                        const nextIndex = currentIndex < matchDaysForDivision.length - 1 ? currentIndex + 1 : 0
+                        setSelectedMatchDayId(matchDaysForDivision[nextIndex].id)
+                      }}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    No match days with matchups for this division.
+                  </p>
+                )
+              )}
             </div>
           </div>
         </div>
+
+        {isIndyLeague && (
+          <div className="mt-4 flex justify-end">
+            <Button
+              onClick={() => {
+                if (confirm('Generate games for all READY matchups across all days and divisions?')) {
+                  generateGamesForTournament.mutate({ tournamentId })
+                }
+              }}
+              disabled={generateGamesForTournament.isPending}
+              className="flex items-center space-x-2"
+            >
+              <Play className="h-4 w-4" />
+              <span>Generate All Games</span>
+            </Button>
+          </div>
+        )}
+        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Round Robin Block */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* IndyLeague Score Input */}
+        {isIndyLeague ? (
+          <div className="space-y-6">
+            {divisionMatchups.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <p className="text-gray-600">No matchups found for this division and match day.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                {/* Regenerate Games button for division */}
+                {selectedDivisionId && selectedMatchDayId && (() => {
+                  // Check if any matchup has games
+                  const hasGames = divisionMatchups.some((m: any) => m.games && m.games.length > 0)
+                  const matchupsWithGames = divisionMatchups.filter((m: any) => m.games && m.games.length > 0)
+                  
+                  return (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">
+                              Regenerate games for all matchups in this division (this will delete all existing games and scores)
+                            </p>
+                          </div>
+                          <Button
+                            onClick={async () => {
+                              if (!hasGames) {
+                                alert('No games to regenerate for this division. Use "Generate All Games" above first.')
+                                return
+                              }
+                              if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
+                                try {
+                                  suppressRegenerateAlertRef.current = true
+                                  // Regenerate games for each matchup that has games
+                                  await Promise.all(
+                                    matchupsWithGames.map((matchup: any) =>
+                                      regenerateGames.mutateAsync({ matchupId: matchup.id })
+                                    )
+                                  )
+                                  refetchMatchups()
+                                  alert(`Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`)
+                                } catch (error: any) {
+                                  alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
+                                } finally {
+                                  suppressRegenerateAlertRef.current = false
+                                }
+                              }
+                            }}
+                            disabled={regenerateGames.isPending}
+                            className="flex items-center space-x-2"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            <span>Regenerate Games</span>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })()}
+                {/* Tabs for matchups */}
+                <div className="border-b border-gray-200">
+                  <nav className="-mb-px flex space-x-8 overflow-x-auto">
+                    {divisionMatchups.map((matchup: any, index: number) => (
+                      <button
+                        key={matchup.id}
+                        onClick={() => {
+                          // Scroll to matchup section
+                          const element = document.getElementById(`matchup-${matchup.id}`)
+                          element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }}
+                        className={cn(
+                          "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm",
+                          index === 0
+                            ? "border-blue-500 text-blue-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        )}
+                      >
+                        {matchup.homeTeam.name} vs {matchup.awayTeam.name}
+                        <span className="ml-2 text-xs text-gray-400">
+                          ({matchup.gamesWonHome} - {matchup.gamesWonAway})
+                        </span>
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+
+                {/* Matchups */}
+                {divisionMatchups.map((matchup: any) => {
+                  // Get rosters for this matchup
+                  const homeRosters = matchup.rosters?.filter((r: any) => r.teamId === matchup.homeTeamId) || []
+                  const awayRosters = matchup.rosters?.filter((r: any) => r.teamId === matchup.awayTeamId) || []
+                  
+                  // Get active players with letters
+                  const homeActivePlayers = homeRosters.filter((r: any) => r.isActive && r.letter).map((r: any) => ({
+                    id: r.playerId,
+                    name: r.player?.firstName + ' ' + r.player?.lastName,
+                    letter: r.letter
+                  }))
+                  const awayActivePlayers = awayRosters.filter((r: any) => r.isActive && r.letter).map((r: any) => ({
+                    id: r.playerId,
+                    name: r.player?.firstName + ' ' + r.player?.lastName,
+                    letter: r.letter
+                  }))
+
+                  // Calculate games won
+                  const gamesWonHome = matchup.gamesWonHome || 0
+                  const gamesWonAway = matchup.gamesWonAway || 0
+                  const needsTieBreak = gamesWonHome === 6 && gamesWonAway === 6
+
+                  return (
+                    <Card key={matchup.id} id={`matchup-${matchup.id}`} className="scroll-mt-8">
+                      <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                          <div>
+                            <div className="text-xl">
+                              {matchup.homeTeam.name} vs {matchup.awayTeam.name}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              <span>Score: {gamesWonHome} - {gamesWonAway}</span>
+                              <span className="mx-2">•</span>
+                              <span>Court: {matchup.court?.name || 'Unassigned'}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {matchup.status && (
+                              <Badge variant={matchup.status === 'COMPLETED' ? 'default' : 'outline'}>
+                                {matchup.status}
+                              </Badge>
+                            )}
+                            {/* Regenerate Games button - only show if games exist */}
+                            {matchup.games && matchup.games.length > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm('Regenerate games for this matchup? This will reset all scores for this matchup.')) {
+                                    regenerateGames.mutate({ matchupId: matchup.id })
+                                  }
+                                }}
+                                disabled={regenerateGames.isPending}
+                                className="flex items-center space-x-1"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                                <span>Regenerate Games</span>
+                              </Button>
+                            )}
+                          </div>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {matchup.games && matchup.games.length > 0 ? (
+                          <>
+                            {/* Check if roster has changed since games were generated */}
+                            {getRosterWarning(matchup.games, homeActivePlayers, awayActivePlayers)}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {matchup.games.map((game: any) => {
+                              // Use ONLY saved players from game (frozen at generation time)
+                              // If saved players are not available, show warning that games need to be regenerated
+                              const homePairPlayers = []
+                              const awayPairPlayers = []
+                              const hasSavedPlayers = game.homePlayer1 && game.homePlayer2 && game.awayPlayer1 && game.awayPlayer2
+                              
+                              if (hasSavedPlayers) {
+                                // Use saved players (frozen at generation time)
+                                if (game.homePlayer1) {
+                                  homePairPlayers.push({
+                                    id: game.homePlayer1.id,
+                                    name: `${game.homePlayer1.firstName || ''} ${game.homePlayer1.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.homePair?.[0] || ''
+                                  })
+                                }
+                                if (game.homePlayer2) {
+                                  homePairPlayers.push({
+                                    id: game.homePlayer2.id,
+                                    name: `${game.homePlayer2.firstName || ''} ${game.homePlayer2.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.homePair?.[1] || ''
+                                  })
+                                }
+                                
+                                if (game.awayPlayer1) {
+                                  awayPairPlayers.push({
+                                    id: game.awayPlayer1.id,
+                                    name: `${game.awayPlayer1.firstName || ''} ${game.awayPlayer1.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.awayPair?.[0] || ''
+                                  })
+                                }
+                                if (game.awayPlayer2) {
+                                  awayPairPlayers.push({
+                                    id: game.awayPlayer2.id,
+                                    name: `${game.awayPlayer2.firstName || ''} ${game.awayPlayer2.lastName || ''}`.trim() || 'Unknown',
+                                    letter: game.awayPair?.[1] || ''
+                                  })
+                                }
+                              }
+                              // If no saved players, arrays remain empty and warning will be shown in UI
+                              
+                              // Get current scores (from local state if available)
+                              const currentScores = getGameScore(game)
+                              const homeWon = currentScores.homeScore !== null && currentScores.awayScore !== null && currentScores.homeScore > currentScores.awayScore
+                              const awayWon = currentScores.homeScore !== null && currentScores.awayScore !== null && currentScores.awayScore > currentScores.homeScore
+
+                              return (
+                                <Card key={game.id} className="border-2">
+                                  <CardContent className="pt-4">
+                                    <div className="space-y-3">
+                                      {/* Warning if games don't have saved players (old games before migration) */}
+                                      {!hasSavedPlayers && (
+                                        <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                                          ⚠️ These games were created before player tracking was enabled. Please regenerate games to lock in current roster players.
+                                        </div>
+                                      )}
+                                      
+                                      {/* Teams and players - top */}
+                                      <div className="flex items-start gap-4">
+                                        {/* Home team - left */}
+                                        <div className="flex-1 space-y-1">
+                                          <div className="font-semibold text-sm">{matchup.homeTeam.name}</div>
+                                          <div className="text-xs text-gray-600 space-y-0.5">
+                                            {homePairPlayers.length > 0 ? (
+                                              homePairPlayers.map((p: any) => (
+                                                <div key={p.id}>
+                                                  {p.name} ({p.letter})
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-gray-400 italic">Players not saved - regenerate games</div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Away team - right */}
+                                        <div className="flex-1 space-y-1 text-right">
+                                          <div className="font-semibold text-sm">{matchup.awayTeam.name}</div>
+                                          <div className="text-xs text-gray-600 space-y-0.5">
+                                            {awayPairPlayers.length > 0 ? (
+                                              awayPairPlayers.map((p: any) => (
+                                                <div key={p.id}>
+                                                  {p.name} ({p.letter})
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-gray-400 italic">Players not saved - regenerate games</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Score display and button */}
+                                      <div className="pt-2 border-t">
+                                        {currentScores.homeScore !== null && currentScores.awayScore !== null ? (
+                                          <div className="space-y-2">
+                                            <div className="text-center text-sm font-medium flex items-center justify-center gap-2">
+                                              <span className={currentScores.homeScore > currentScores.awayScore ? 'text-green-600 font-bold' : currentScores.homeScore < currentScores.awayScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.homeScore}
+                                              </span>
+                                              <span className="text-gray-400">-</span>
+                                              <span className={currentScores.awayScore > currentScores.homeScore ? 'text-green-600 font-bold' : currentScores.awayScore < currentScores.homeScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.awayScore}
+                                              </span>
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => {
+                                                setSelectedIndyGame({ game, matchup })
+                                                setShowScoreModal(true)
+                                              }}
+                                              className="w-full"
+                                            >
+                                              Change Score
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          <Button
+                                            size="sm"
+                                            variant="default"
+                                            onClick={() => {
+                                              setSelectedIndyGame({ game, matchup })
+                                              setShowScoreModal(true)
+                                            }}
+                                            className="w-full"
+                                          >
+                                            Enter Score
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              )
+                            })}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center text-gray-500 py-8">
+                            No games generated yet. Generate games from the matchup detail page.
+                          </div>
+                        )}
+
+                        {/* Tie-break selector */}
+                        {needsTieBreak && (
+                          <div className="mt-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-orange-900">Tie-break required (6-6)</p>
+                                <p className="text-sm text-orange-700 mt-1">Select the winning team:</p>
+                              </div>
+                              <select
+                                value={matchup.tieBreakWinnerTeamId || ''}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleTieBreakChange(matchup.id, e.target.value)
+                                  }
+                                }}
+                                className="pl-3 py-2 border border-orange-300 rounded-md pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                                style={{
+                                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                                }}
+                              >
+                                <option value="">Select winner...</option>
+                                <option value={matchup.homeTeamId}>{matchup.homeTeam.name}</option>
+                                <option value={matchup.awayTeamId}>{matchup.awayTeam.name}</option>
+                              </select>
+                            </div>
+                            {matchup.tieBreakWinnerTeamId && (
+                              <p className="text-sm text-green-700 mt-2">
+                                Winner: {matchup.tieBreakWinnerTeamId === matchup.homeTeamId ? matchup.homeTeam.name : matchup.awayTeam.name}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Round Robin Block */}
+            {!isIndyLeague && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -1046,6 +1679,27 @@ function DivisionStageManagementContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* League Round Robin: Match Day selector */}
+            {isLeagueRoundRobin && matchDays && matchDays.length > 0 && (
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <span className="text-sm font-medium text-gray-700">Match Day:</span>
+<select
+                value={selectedMatchDayId}
+                onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
+                >
+                  <option value="">— Select day —</option>
+                  {(matchDays as any[]).map((day: any) => (
+                    <option key={day.id} value={day.id}>
+                      {new Date(day.date).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* RR Summary */}
             <div className="flex items-center justify-between">
               <div className="space-y-2">
@@ -1463,7 +2117,9 @@ function DivisionStageManagementContent() {
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  Complete all Round Robin matches to proceed to Play-In/Play-Off.
+                  {(isRoundRobin || isLeagueRoundRobin) 
+                    ? 'Complete all Round Robin matches to finish the tournament. Winners will be determined by standings.'
+                    : 'Complete all Round Robin matches to proceed to Play-In/Play-Off.'}
                 </AlertDescription>
               </Alert>
             )}
@@ -1483,6 +2139,7 @@ function DivisionStageManagementContent() {
             )}
           </CardContent>
         </Card>
+            )}
 
         {/* Information banner if not enough teams */}
         {teamCount < targetBracketSize && (
@@ -1512,7 +2169,7 @@ function DivisionStageManagementContent() {
                   </h3>
                   <p className="text-sm text-gray-600">
                     Round Robin is complete. You can now split this merged division back into the original two divisions.
-                    Each division will have separate Play-In and Play-Off brackets.
+                    {!isRoundRobin && !isLeagueRoundRobin && ' Each division will have separate Play-In and Play-Off brackets.'}
                   </p>
                 </div>
                 <Button
@@ -1525,10 +2182,10 @@ function DivisionStageManagementContent() {
               </div>
             </CardContent>
           </Card>
-        )}
+            )}
 
-        {/* Play-In Block - show only if B < N < 2B */}
-        {needsPlayIn && (
+        {/* Play-In Block - show only if B < N < 2B and not Round Robin */}
+        {!isIndyLeague && !isRoundRobin && !isLeagueRoundRobin && needsPlayIn && (
           <Card className={currentStage === 'RR_IN_PROGRESS' ? 'opacity-50 pointer-events-none' : ''}>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1729,7 +2386,8 @@ function DivisionStageManagementContent() {
           </Card>
         )}
 
-        {/* Play-Off Block */}
+        {/* Play-Off Block - hide for Round Robin */}
+        {!isIndyLeague && !isRoundRobin && !isLeagueRoundRobin && (
         <Card className={
           // Block if:
           // 1. RR is in progress AND not all matches completed (for both MLP and non-MLP)
@@ -2055,10 +2713,13 @@ function DivisionStageManagementContent() {
             )}
           </CardContent>
         </Card>
+            )}
+          </>
+        )}
       </div>
 
       {/* Score input modal */}
-      {showScoreModal && selectedMatch && (() => {
+      {!isIndyLeague && showScoreModal && selectedMatch && (() => {
         const isMLP = tournament?.format === 'MLP'
         const matchGamesCount = selectedMatch.gamesCount || (selectedMatch.games?.length || 0)
         const isMLPMatch = isMLP && matchGamesCount === 4
@@ -2108,6 +2769,11 @@ function DivisionStageManagementContent() {
           )
         }
 
+        // Don't show for Indy League if we have selectedIndyGame (use separate modal)
+        if (isIndyLeague && selectedIndyGame) {
+          return null
+        }
+
         return (
           <ScoreInputModal
             isOpen={showScoreModal}
@@ -2130,6 +2796,29 @@ function DivisionStageManagementContent() {
           />
         )
       })()}
+
+      {/* Indy League Game Score Modal */}
+      {isIndyLeague && selectedIndyGame && (
+        <ScoreInputModal
+          isOpen={showScoreModal}
+          onClose={() => {
+            setShowScoreModal(false)
+            setSelectedIndyGame(null)
+          }}
+          onSubmit={(scoreA, scoreB) => {
+            const { game } = selectedIndyGame
+            handleGameScoreChange(game.id, scoreA, scoreB)
+            setShowScoreModal(false)
+            setSelectedIndyGame(null)
+          }}
+          teamAName={selectedIndyGame.matchup.homeTeam.name}
+          teamBName={selectedIndyGame.matchup.awayTeam.name}
+          poolName={`Game ${selectedIndyGame.game.order} • Court ${selectedIndyGame.game.court}`}
+          existingScoreA={selectedIndyGame.game.homeScore ?? null}
+          existingScoreB={selectedIndyGame.game.awayScore ?? null}
+          isLoading={updateGameScore.isPending}
+        />
+      )}
 
       {/* Playoff swap modal */}
       {showPlayoffSwapModal && (() => {
@@ -2160,7 +2849,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* RR swap modal */}
-      {showEditRRPairsModal && (
+      {!isIndyLeague && showEditRRPairsModal && (
         <PlayoffSwapModal
           isOpen={showEditRRPairsModal}
           onClose={() => setShowEditRRPairsModal(false)}
@@ -2206,7 +2895,7 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* Unmerge Division Modal */}
-      {showUnmergeModal && currentDivision && (
+      {!isIndyLeague && showUnmergeModal && currentDivision && (
         <UnmergeDivisionModal
           isOpen={showUnmergeModal}
           onClose={() => setShowUnmergeModal(false)}
@@ -2220,7 +2909,7 @@ function DivisionStageManagementContent() {
       )}
 
       {/* Bracket Modal */}
-      {showBracketModal && selectedDivisionId && (
+      {!isIndyLeague && showBracketModal && selectedDivisionId && (
         <BracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -2229,7 +2918,7 @@ function DivisionStageManagementContent() {
       )}
 
       {/* Tiebreaker Modal */}
-      {showTiebreakerModal && selectedTiebreakerMatch && (() => {
+      {!isIndyLeague && showTiebreakerModal && selectedTiebreakerMatch && (() => {
         const teamAPlayers = selectedTiebreakerMatch.teamA?.teamPlayers?.map((tp: any) => ({
           id: tp.player?.id || '',
           firstName: tp.player?.firstName || '',
@@ -2268,9 +2957,12 @@ function DivisionStageManagementContent() {
       })()}
 
       {/* Regeneration confirmation modal */}
-      {showRegenerateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+      {!isIndyLeague && showRegenerateModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
+          onClick={() => setShowRegenerateModal(false)}
+        >
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-auto max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-4">
               Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
             </h3>

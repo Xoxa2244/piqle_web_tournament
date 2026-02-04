@@ -140,15 +140,22 @@ export default function SuperAdminPage() {
             <h1 className="text-3xl font-bold text-gray-900">Super Admin Panel</h1>
             <p className="text-gray-600 mt-2">Full access to all tournaments</p>
           </div>
-          <Button
-            onClick={() => {
-              setIsAuthenticated(false)
-              localStorage.removeItem(SUPERADMIN_AUTH_KEY)
-            }}
-            variant="outline"
-          >
-            Logout
-          </Button>
+          <div className="flex gap-4">
+            <Link href="/superadmin/partners">
+              <Button variant="outline">
+                Partner Integrations
+              </Button>
+            </Link>
+            <Button
+              onClick={() => {
+                setIsAuthenticated(false)
+                localStorage.removeItem(SUPERADMIN_AUTH_KEY)
+              }}
+              variant="outline"
+            >
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* User Filter */}
@@ -163,7 +170,7 @@ export default function SuperAdminPage() {
                   id="user-filter"
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 pl-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 >
                   <option value="">All Tournaments</option>
                   {owners?.map((owner) => (

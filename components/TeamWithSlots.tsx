@@ -19,6 +19,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
+import IndyLeagueTeamPlayers from './IndyLeagueTeamPlayers'
 import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
 
 interface Player {
@@ -45,6 +46,7 @@ interface Team {
     role: string
     createdAt: string
     updatedAt: string
+    slotIndex?: number | null
     player: Player
   }>
 }
@@ -55,6 +57,7 @@ interface TeamWithSlotsProps {
   isExpanded: boolean
   availablePlayers: Player[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleExpansion: () => void
   onEdit: () => void
   onDelete: () => void
@@ -71,6 +74,7 @@ export default function TeamWithSlots({
   isExpanded,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleExpansion,
   onEdit,
   onDelete,
@@ -80,6 +84,7 @@ export default function TeamWithSlots({
   onMovePlayer,
   isDragDisabled = false
 }: TeamWithSlotsProps) {
+  const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
 
@@ -112,14 +117,20 @@ export default function TeamWithSlots({
     const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
     // Sort teamPlayers by createdAt to ensure consistent ordering
-    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => 
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
+    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => {
+      if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+        return a.slotIndex - b.slotIndex
+      }
+      if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+      if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
     
     // Fill slots with existing players in sorted order
     sortedTeamPlayers.forEach((teamPlayer, index) => {
-      if (index < slotCount) {
-        slotsArray[index] = {
+      const targetIndex = teamPlayer.slotIndex ?? index
+      if (targetIndex < slotCount) {
+        slotsArray[targetIndex] = {
           ...teamPlayer.player,
           teamPlayerId: teamPlayer.id
         }
@@ -302,19 +313,32 @@ export default function TeamWithSlots({
         {/* Player Slots - only show for non-SINGLES or when expanded */}
         {teamKind !== 'SINGLES_1v1' && isExpanded && (
           <div className="p-2 space-y-2">
-            {slots.map((player, index) => (
-              <PlayerSlot
-                key={`${team.id}-slot-${index}`}
-                slotIndex={index}
-                player={player}
-                teamKind={teamKind}
+            {isIndyLeague ? (
+              // For IndyLeague: show all players (up to 8) with letter selectors
+              <IndyLeagueTeamPlayers
                 teamId={team.id}
-                onAddPlayer={handleAddPlayerClick}
-                onRemovePlayer={handleRemovePlayer}
-                onMovePlayer={onMovePlayer}
-                isDragDisabled={isDragDisabled}
+                teamPlayers={team.teamPlayers.map(tp => ({
+                  id: tp.id,
+                  player: tp.player,
+                }))}
+                tournamentId={tournamentId}
               />
-            ))}
+            ) : (
+              // For other formats: show slots
+              slots.map((player, index) => (
+                <PlayerSlot
+                  key={`${team.id}-slot-${index}`}
+                  slotIndex={index}
+                  player={player}
+                  teamKind={teamKind}
+                  teamId={team.id}
+                  onAddPlayer={handleAddPlayerClick}
+                  onRemovePlayer={handleRemovePlayer}
+                  onMovePlayer={onMovePlayer}
+                  isDragDisabled={isDragDisabled}
+                />
+              ))
+            )}
           </div>
         )}
       </div>

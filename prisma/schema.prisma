@@ -13,6 +13,7 @@ model User {
   name                     String?
   image                    String?
   emailVerified            DateTime?
+  passwordHash             String?                   @map("password_hash")
   role                     UserRole                  @default(TD)
   isActive                 Boolean                   @default(true)
   gender                   Gender?
@@ -29,11 +30,14 @@ model User {
   accounts                 Account[]
   assistantAssignments     AssistantAssignment[]
   auditLogs                AuditLog[]
+  players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
   tournamentAccesses       TournamentAccess[]
   tournamentAccessRequests TournamentAccessRequest[]
   tournamentRatings        TournamentRating[]
+  tournamentComments       TournamentComment[]
+  partnerDirectorships     Partner[] // Partners where this user is the director
 
   @@map("users")
 }
@@ -76,6 +80,19 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+model EmailOtp {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  codeHash     String
+  expiresAt    DateTime
+  attemptsLeft Int      @default(5)
+  lastSentAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("email_otps")
+}
+
 model Tournament {
   id                      String                    @id @default(uuid())
   title                   String
@@ -85,11 +102,17 @@ model Tournament {
   venueAddress            String?
   startDate               DateTime
   endDate                 DateTime
+  registrationStartDate   DateTime?                 @map("registration_start_date")
+  registrationEndDate     DateTime?                 @map("registration_end_date")
   entryFee                Decimal?                  @db.Decimal(10, 2)
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
+  image                   String?
   format                  TournamentFormat          @default(SINGLE_ELIMINATION)
   allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
+  seasonLabel             String?                   @map("season_label")
+  timezone                String?
+  hasDivisions            Boolean                   @default(true) @map("has_divisions")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -101,10 +124,26 @@ model Tournament {
   rrGroups                RoundRobinGroup[]
   tournamentAccesses      TournamentAccess[]
   tournamentRatings       TournamentRating[]
+  tournamentComments     TournamentComment[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
+  matchDays               MatchDay[]
+  courts                  Court[]
+  waitlistEntries         WaitlistEntry[]
 
   @@map("tournaments")
+}
+
+model Court {
+  id           String      @id @default(uuid())
+  tournamentId String      @map("tournament_id")
+  name         String
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchups     IndyMatchup[]
+
+  @@map("courts")
 }
 
 model Prize {
@@ -145,7 +184,9 @@ model Division {
   prizes                Prize[]
   standings             Standing[]
   teams                 Team[]
+  waitlistEntries       WaitlistEntry[]
   tournamentAccesses    TournamentAccess[]
+  indyMatchups          IndyMatchup[]
 
   @@map("divisions")
 }
@@ -155,9 +196,12 @@ model DivisionConstraints {
   divisionId String           @unique
   minDupr    Decimal?         @db.Decimal(4, 2)
   maxDupr    Decimal?         @db.Decimal(4, 2)
+  minTeamDupr Decimal?        @db.Decimal(4, 2)
+  maxTeamDupr Decimal?        @db.Decimal(4, 2)
   minAge     Int?
   maxAge     Int?
   genders    GenderConstraint @default(ANY)
+  enforcement ConstraintEnforcement @default(INFO)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
@@ -202,34 +246,47 @@ model Team {
   note        String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  matchesAsA  Match[]      @relation("TeamA")
-  matchesAsB  Match[]      @relation("TeamB")
-  standings   Standing[]
-  teamPlayers TeamPlayer[]
-  division    Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool        Pool?        @relation(fields: [poolId], references: [id])
+  matchesAsA          Match[]         @relation("TeamA")
+  matchesAsB          Match[]         @relation("TeamB")
+  homeMatchups        IndyMatchup[]   @relation("HomeTeam")
+  awayMatchups        IndyMatchup[]   @relation("AwayTeam")
+  tieBreakWinnerMatchups IndyMatchup[] @relation("TieBreakWinnerTeam")
+  standings           Standing[]
+  teamPlayers         TeamPlayer[]
+  dayRosters          DayRoster[]
+  division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool                Pool?           @relation(fields: [poolId], references: [id])
 
   @@map("teams")
 }
 
 model Player {
-  id           String       @id @default(uuid())
-  firstName    String       @map("firstName")
-  lastName     String       @map("lastName")
-  email        String?
-  gender       Gender?
-  birthDate    DateTime?    @map("birthDate")
-  externalId   String?      @map("externalId")
-  createdAt    DateTime     @default(now()) @map("createdAt")
-  updatedAt    DateTime     @updatedAt @map("updatedAt")
-  duprRating   Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
-  isPaid       Boolean?     @default(false) @map("is_paid")
-  isWaitlist   Boolean?     @default(false) @map("is_waitlist")
-  dupr         String?      @db.VarChar
-  tournamentId String?      @map("tournament_id")
-  tournament   Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  teamPlayers  TeamPlayer[]
+  id                String       @id @default(uuid())
+  firstName         String       @map("firstName")
+  lastName          String       @map("lastName")
+  email             String?
+  userId            String?      @map("user_id")
+  gender            Gender?
+  birthDate         DateTime?    @map("birthDate")
+  externalId        String?      @map("externalId")
+  createdAt         DateTime     @default(now()) @map("createdAt")
+  updatedAt         DateTime     @updatedAt @map("updatedAt")
+  duprRating        Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
+  isPaid            Boolean?     @default(false) @map("is_paid")
+  isWaitlist        Boolean?     @default(false) @map("is_waitlist")
+  dupr              String?      @db.VarChar
+  tournamentId      String?      @map("tournament_id")
+  user              User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  waitlistEntries   WaitlistEntry[]
+  teamPlayers       TeamPlayer[]
+  dayRosters        DayRoster[]
+  indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
+  indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
+  indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
+  indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
 
+  @@unique([userId, tournamentId])
   @@map("players")
 }
 
@@ -238,13 +295,32 @@ model TeamPlayer {
   teamId    String     @map("teamId")
   playerId  String     @map("playerId")
   role      PlayerRole @default(PLAYER)
+  slotIndex Int?       @map("slot_index")
   createdAt DateTime   @default(now()) @map("createdAt")
   updatedAt DateTime   @updatedAt @map("updatedAt")
   player    Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, playerId])
+  @@unique([teamId, slotIndex])
   @@map("team_players")
+}
+
+model WaitlistEntry {
+  id           String         @id @default(uuid())
+  tournamentId String         @map("tournament_id")
+  divisionId   String         @map("division_id")
+  playerId     String         @map("player_id")
+  status       WaitlistStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tournament   Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division     Division       @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  player       Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, tournamentId])
+  @@index([divisionId, createdAt])
+  @@map("waitlist_entries")
 }
 
 model RoundRobinGroup {
@@ -314,11 +390,13 @@ model Match {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   note                  String?                @db.VarChar(255)
+  matchDayId            String?                @map("match_day_id")
   games                 Game[]
   tiebreaker            Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  matchDay     MatchDay?        @relation(fields: [matchDayId], references: [id], onDelete: SetNull)
   teamA        Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
   teamB        Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
 
@@ -456,6 +534,103 @@ model TournamentRating {
   @@map("tournament_ratings")
 }
 
+model TournamentComment {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  text         String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
+  @@map("tournament_comments")
+}
+
+model MatchDay {
+  id           String          @id @default(uuid())
+  tournamentId String           @map("tournament_id")
+  date         DateTime         @db.Date
+  status       MatchDayStatus   @default(DRAFT)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchups     IndyMatchup[]
+  rrMatches    Match[]          // League Round Robin: RR matches for this day
+
+  @@unique([tournamentId, date])
+  @@map("match_days")
+}
+
+model IndyMatchup {
+  id                  String          @id @default(uuid())
+  matchDayId          String           @map("match_day_id")
+  divisionId          String           @map("division_id")
+  homeTeamId          String           @map("home_team_id")
+  awayTeamId          String           @map("away_team_id")
+  courtId             String?          @map("court_id")
+  tieBreakWinnerTeamId String?         @map("tie_break_winner_team_id")
+  gamesWonHome        Int             @default(0) @map("games_won_home")
+  gamesWonAway        Int             @default(0) @map("games_won_away")
+  status              MatchupStatus   @default(PENDING)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  matchDay            MatchDay         @relation(fields: [matchDayId], references: [id], onDelete: Cascade)
+  division            Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  homeTeam            Team             @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
+  awayTeam            Team             @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
+  court               Court?           @relation(fields: [courtId], references: [id], onDelete: SetNull)
+  tieBreakWinnerTeam  Team?            @relation("TieBreakWinnerTeam", fields: [tieBreakWinnerTeamId], references: [id], onDelete: SetNull)
+  rosters             DayRoster[]
+  games                IndyGame[]
+
+  @@map("indy_matchups")
+}
+
+model DayRoster {
+  id        String      @id @default(uuid())
+  matchupId String      @map("matchup_id")
+  teamId    String      @map("team_id")
+  playerId  String      @map("player_id")
+  isActive  Boolean     @default(false) @map("is_active")
+  letter    String?     @db.VarChar(1) // A, B, C, or D
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player    Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchupId, teamId, playerId])
+  @@map("day_rosters")
+}
+
+model IndyGame {
+  id        String      @id @default(uuid())
+  matchupId String      @map("matchup_id")
+  order     Int         // 1-12
+  court     Int         // 1 or 2
+  homePair  String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  awayPair  String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  homeScore Int?        @map("home_score")
+  awayScore Int?        @map("away_score")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  homePlayer1Id String?     @map("home_player1_id") // Player ID for first letter in homePair
+  homePlayer2Id String?     @map("home_player2_id") // Player ID for second letter in homePair
+  awayPlayer1Id String?     @map("away_player1_id") // Player ID for first letter in awayPair
+  awayPlayer2Id String?     @map("away_player2_id") // Player ID for second letter in awayPair
+  homePlayer1   Player?     @relation("IndyGameHomePlayer1", fields: [homePlayer1Id], references: [id], onDelete: SetNull)
+  homePlayer2   Player?     @relation("IndyGameHomePlayer2", fields: [homePlayer2Id], references: [id], onDelete: SetNull)
+  awayPlayer1   Player?     @relation("IndyGameAwayPlayer1", fields: [awayPlayer1Id], references: [id], onDelete: SetNull)
+  awayPlayer2   Player?     @relation("IndyGameAwayPlayer2", fields: [awayPlayer2Id], references: [id], onDelete: SetNull)
+
+  @@unique([matchupId, order])
+  @@map("indy_games")
+}
+
 enum UserRole {
   TD
   ASSISTANT
@@ -488,6 +663,11 @@ enum GenderConstraint {
   MEN
   WOMEN
   MIXED
+}
+
+enum ConstraintEnforcement {
+  INFO
+  HARD
 }
 
 enum Gender {
@@ -567,7 +747,10 @@ enum RatingType {
 
 enum TournamentFormat {
   SINGLE_ELIMINATION
+  ROUND_ROBIN
   MLP
+  INDY_LEAGUE
+  LEAGUE_ROUND_ROBIN
 }
 
 enum GameType {
@@ -581,4 +764,165 @@ enum DuprSubmissionStatus {
   PENDING
   SUCCESS
   FAILED
+}
+
+enum MatchDayStatus {
+  DRAFT
+  IN_PROGRESS
+  FINALIZED
+}
+
+enum MatchupStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum WaitlistStatus {
+  ACTIVE
+}
+
+enum PartnerWebhookEvent {
+  SCHEDULE_UPDATED
+  RESULTS_UPDATED
+}
+
+model Partner {
+  id              String       @id @default(uuid())
+  name            String
+  code            String       @unique // Short unique identifier
+  contactEmail    String?      @map("contact_email")
+  contactName     String?      @map("contact_name")
+  directorUserId  String?      @map("director_user_id") // Tournament director who manages tournaments
+  status          PartnerStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  apps            PartnerApp[]
+  externalMappings ExternalIdMapping[]
+  apiRequestLogs  ApiRequestLog[]
+  webhooks        PartnerWebhook[]
+  director        User?        @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
+
+  @@index([directorUserId])
+  @@map("partners")
+}
+
+model PartnerWebhook {
+  id        String               @id @default(uuid())
+  partnerId String               @map("partner_id")
+  eventType PartnerWebhookEvent  @map("event_type")
+  url       String
+  secret    String
+  isActive  Boolean              @default(true) @map("is_active")
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  partner   Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, eventType])
+  @@map("partner_webhooks")
+}
+
+model PartnerApp {
+  id              String       @id @default(uuid())
+  partnerId       String       @map("partner_id")
+  environment     PartnerEnvironment
+  keyId           String       @unique @map("key_id") // Public identifier
+  secretHash      String       @map("secret_hash") // Hashed secret (bcrypt)
+  lastUsedAt      DateTime?    @map("last_used_at")
+  status          PartnerAppStatus @default(ACTIVE)
+  allowedIps      String[]    @default([]) @map("allowed_ips") // IP allowlist (empty = no restriction)
+  rateLimitRpm    Int         @default(60) @map("rate_limit_rpm") // Requests per minute
+  scopes          String[]    @default([]) // e.g., ["indyleague:write", "indyleague:read"]
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  apiRequestLogs  ApiRequestLog[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("partner_apps")
+}
+
+model ExternalIdMapping {
+  id              String       @id @default(uuid())
+  partnerId       String       @map("partner_id")
+  entityType      ExternalEntityType @map("entity_type")
+  externalId      String       @map("external_id") // Partner's external ID
+  internalId      String       @map("internal_id") // Our internal ID
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, entityType, externalId])
+  @@index([partnerId, entityType, externalId])
+  @@index([entityType, internalId])
+  @@map("external_id_mappings")
+}
+
+model ApiRequestLog {
+  id              String       @id @default(uuid())
+  partnerId       String?      @map("partner_id")
+  partnerAppId    String?      @map("partner_app_id")
+  endpoint        String
+  method          String
+  statusCode      Int           @map("status_code")
+  duration        Int         // milliseconds
+  idempotencyKey  String?       @map("idempotency_key")
+  correlationId   String?       @map("correlation_id")
+  requestBody     Json?         @map("request_body")
+  responseBody    Json?         @map("response_body")
+  errorMessage    String?       @map("error_message")
+  ipAddress       String?       @map("ip_address")
+  userAgent       String?       @map("user_agent")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  partner         Partner?     @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerApp      PartnerApp?  @relation(fields: [partnerAppId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId, createdAt])
+  @@index([partnerAppId, createdAt])
+  @@index([idempotencyKey])
+  @@index([correlationId])
+  @@map("api_request_logs")
+}
+
+model IdempotencyKey {
+  id              String       @id @default(uuid())
+  partnerAppId    String       @map("partner_app_id")
+  key             String       // The idempotency key (UUID)
+  endpoint        String
+  method          String
+  requestHash     String?       @map("request_hash") // Hash of request body for validation
+  responseStatus  Int           @map("response_status")
+  responseBody    Json?         @map("response_body")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  expiresAt       DateTime     @map("expires_at") // Default 24 hours
+  partnerApp      PartnerApp   @relation(fields: [partnerAppId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerAppId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PartnerEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum PartnerAppStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ExternalEntityType {
+  TOURNAMENT
+  DIVISION
+  TEAM
+  PLAYER
+  MATCH_DAY
+  MATCHUP
 }

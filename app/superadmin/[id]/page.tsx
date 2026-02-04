@@ -476,8 +476,14 @@ export default function SuperAdminTournamentPage() {
 
       {/* Edit Tournament Modal */}
       {showEditTournament && tournament && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowEditTournament(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">Edit Tournament</h2>
             </div>
@@ -580,8 +586,14 @@ export default function SuperAdminTournamentPage() {
 
       {/* Create Division Modal */}
       {showCreateDivision && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowCreateDivision(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">Create Division</h2>
             </div>
@@ -602,7 +614,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, teamKind: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-lg pr-[2.5rem]"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -614,7 +626,7 @@ export default function SuperAdminTournamentPage() {
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm(prev => ({ ...prev, pairingMode: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-lg pr-[2.5rem]"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>

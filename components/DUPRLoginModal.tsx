@@ -120,8 +120,11 @@ export default function DUPRLoginModal({
   if (!clientKey) {
     console.error('NEXT_PUBLIC_DUPR_CLIENT_KEY is not available in browser. Make sure the project was rebuilt after adding the variable.')
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
+        onClick={onClose}
+      >
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
           <h2 className="text-xl font-semibold mb-4">DUPR Integration Error</h2>
           <p className="text-red-600 mb-4">
             DUPR client key is not configured. Please check environment variables and rebuild the project.
@@ -142,8 +145,11 @@ export default function DUPRLoginModal({
   } catch (error) {
     console.error('Failed to encode clientKey to base64:', error)
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
+        onClick={onClose}
+      >
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
           <h2 className="text-xl font-semibold mb-4">DUPR Integration Error</h2>
           <p className="text-red-600 mb-4">
             Failed to encode DUPR client key. Please check the configuration.
@@ -159,8 +165,14 @@ export default function DUPRLoginModal({
   console.log('DUPR Login URL:', duprLoginUrl.replace(base64ClientId, '***'))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-2xl h-[80vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-lg shadow-xl w-full max-w-2xl h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-xl font-semibold">Connect DUPR Account</h2>
