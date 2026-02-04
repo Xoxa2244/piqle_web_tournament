@@ -9,14 +9,39 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import { useSession, signOut } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
+import { Checkbox } from '@/components/ui/checkbox'
 
-type FilterType = 'current' | 'past' | 'all'
+type FilterType = 'my' | 'all'
+type SortType = 'date-desc' | 'date-asc'
+
+// Placeholder when tournament has no image. Uses public/tournament-placeholder.png.
+function TournamentImagePlaceholder({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
+  const [showFallback, setShowFallback] = useState(true)
+  const sizeClass = size === 'lg' ? 'w-20 h-20' : 'w-11 h-11'
+  const iconSize = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5'
+  return (
+    <div className={`${sizeClass} flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative`}>
+      <img
+        src="/tournament-placeholder.png"
+        alt=""
+        className="w-full h-full object-cover"
+        onLoad={() => setShowFallback(false)}
+        onError={() => setShowFallback(true)}
+      />
+      {showFallback && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <Trophy className={`${iconSize} text-gray-400`} />
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Helper component for avatar display
 function AvatarImage({ 
@@ -65,9 +90,14 @@ export default function HomePage() {
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterType>('current')
+  const [filter, setFilter] = useState<FilterType>('all')
+  const [filterUpcoming, setFilterUpcoming] = useState(true)
+  const [filterInProgress, setFilterInProgress] = useState(true)
+  const [filterPast, setFilterPast] = useState(false)
+  const [sortBy, setSortBy] = useState<SortType>('date-desc')
   const [searchQuery, setSearchQuery] = useState('')
   const [avatarError, setAvatarError] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
@@ -78,6 +108,11 @@ export default function HomePage() {
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
+
+  // Reset description expanded when opening/closing modal
+  useEffect(() => {
+    if (!selectedTournament) setDescriptionExpanded(false)
+  }, [selectedTournament])
   
   // Get ratings for all tournaments
   const tournamentIds = useMemo(() => {
@@ -240,21 +275,36 @@ export default function HomePage() {
     return lines.slice(0, maxLines).join('\n')
   }
 
-  // Helper function to check if tournament is past
-  // Rule: Tournament is past if endDate + 12 hours < next day (00:00)
-  const isTournamentPast = (endDate: Date): boolean => {
-    const endDateTime = new Date(endDate)
-    // Add 12 hours to end date
-    endDateTime.setHours(endDateTime.getHours() + 12)
-    
-    // Get next day at 00:00 (the "next date" mentioned in the rule)
+  // Tournament status: past (ended), upcoming (not started), in_progress (ongoing)
+  const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
     const now = new Date()
+    const start = new Date(tournament.startDate)
+    const end = new Date(tournament.endDate)
+    const endWithGrace = new Date(end)
+    endWithGrace.setHours(endWithGrace.getHours() + 12)
     const nextDay = new Date(now)
     nextDay.setDate(nextDay.getDate() + 1)
     nextDay.setHours(0, 0, 0, 0)
-    
-    // Tournament is past if endDate + 12 hours < next day
-    return endDateTime < nextDay
+
+    if (endWithGrace < nextDay) return 'past'
+    if (start > now) return 'upcoming'
+    return 'in_progress'
+  }
+
+  const getTournamentStatusLabel = (status: 'past' | 'upcoming' | 'in_progress') => {
+    switch (status) {
+      case 'past': return 'Past'
+      case 'upcoming': return 'Upcoming'
+      case 'in_progress': return 'In progress'
+    }
+  }
+
+  const getTournamentStatusBadgeClass = (status: 'past' | 'upcoming' | 'in_progress') => {
+    switch (status) {
+      case 'past': return 'bg-gray-100 text-gray-700'
+      case 'upcoming': return 'bg-blue-50 text-blue-700'
+      case 'in_progress': return 'bg-green-50 text-green-700'
+    }
   }
 
   const isRegistrationOpen = (tournament: any): boolean => {
@@ -264,29 +314,51 @@ export default function HomePage() {
     return now >= start && now <= end
   }
 
-  // Filter tournaments based on selected filter and search query
+  // Filter tournaments based on selected filter, search query, and status checkboxes
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
     
     let filtered = tournaments
     
-    // Apply search filter
+    // Tab: My tournaments vs All tournaments
+    if (filter === 'my') {
+      filtered = session?.user?.id
+        ? filtered.filter(tournament => (tournament as any).user?.id === session.user.id)
+        : []
+    }
+    
+    // Search filter
     if (searchQuery.trim()) {
       filtered = filtered.filter(tournament =>
         tournament.title.toLowerCase().includes(searchQuery.toLowerCase())
       )
     }
     
-    // Apply time filter
-    if (filter !== 'all') {
+    // Status checkboxes
+    if (filterUpcoming || filterInProgress || filterPast) {
       filtered = filtered.filter(tournament => {
-        const isPast = isTournamentPast(new Date(tournament.endDate))
-        return filter === 'current' ? !isPast : isPast
+        const status = getTournamentStatus(tournament)
+        const matches = []
+        if (filterUpcoming) matches.push(status === 'upcoming')
+        if (filterInProgress) matches.push(status === 'in_progress')
+        if (filterPast) matches.push(status === 'past')
+        return matches.some(Boolean)
       })
     }
     
     return filtered
-  }, [tournaments, filter, searchQuery])
+  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, filterPast, session?.user?.id])
+
+  // Sort tournaments by date
+  const sortedTournaments = useMemo(() => {
+    const sorted = [...filteredTournaments]
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.startDate).getTime()
+      const dateB = new Date(b.startDate).getTime()
+      return sortBy === 'date-desc' ? dateB - dateA : dateA - dateB
+    })
+    return sorted
+  }, [filteredTournaments, sortBy])
   
   const handleRatingClick = async (tournamentId: string, rating: 'LIKE' | 'DISLIKE') => {
     if (!session) {
@@ -344,7 +416,7 @@ export default function HomePage() {
     )
   }
 
-  const publicTournaments = filteredTournaments
+  const publicTournaments = sortedTournaments
 
   const hasValidAvatar = Boolean(session?.user?.image && 
     session.user.image.trim() !== '' &&
@@ -354,12 +426,12 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Page Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
             <div className="flex items-center justify-between">
-            <div>
+              <div>
                 <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
                 <p className="text-gray-600 mt-2">Select a tournament to view results</p>
               </div>
@@ -372,7 +444,7 @@ export default function HomePage() {
                 </Link>
                 {session ? (
                   <>
-                <Link
+                    <Link
                       href="/profile"
                       className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium transition-colors"
                     >
@@ -393,7 +465,7 @@ export default function HomePage() {
                       <span className="hidden sm:inline">
                         {session?.user?.name || 'Profile'}
                       </span>
-                </Link>
+                    </Link>
                     <button
                       onClick={handleLogout}
                       className="text-red-600 hover:text-red-900 px-3 py-2 rounded-md text-sm font-medium"
@@ -402,16 +474,16 @@ export default function HomePage() {
                     </button>
                   </>
                 ) : (
-                <Link
-                  href="/auth/signin"
+                  <Link
+                    href="/auth/signin"
                     className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                >
+                  >
                     Login
-                </Link>
+                  </Link>
                 )}
               </div>
             </div>
-            
+
             {/* Create Tournament Button */}
             <div className="mt-4">
               <button
@@ -428,7 +500,7 @@ export default function HomePage() {
                 Create New Tournament
               </button>
             </div>
-            
+
             {/* Search Input */}
             <div className="mt-4">
               <div className="relative">
@@ -442,41 +514,67 @@ export default function HomePage() {
                 />
               </div>
             </div>
-            
-            {/* Filter Tabs */}
-            <div className="mt-4 flex gap-2 border-b border-gray-200">
-              <button
-                onClick={() => setFilter('current')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'current'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Current Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('past')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'past'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Past Tournaments
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 font-medium text-sm transition-colors ${
-                  filter === 'all'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                All Tournaments
-              </button>
+
+            {/* Filter Tabs + Status Checkboxes + Sort */}
+            <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'all'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All tournaments
+                </button>
+                <button
+                  onClick={() => setFilter('my')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'my'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  My tournaments
+                </button>
+              </div>
+              <div className="flex items-center gap-4 ml-auto">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterUpcoming}
+                    onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
+                  />
+                  <span>Upcoming</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterInProgress}
+                    onCheckedChange={(checked) => setFilterInProgress(checked === true)}
+                  />
+                  <span>In progress</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterPast}
+                    onCheckedChange={(checked) => setFilterPast(checked === true)}
+                  />
+                  <span>Past</span>
+                </label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortType)}
+                  className="text-sm border border-gray-300 rounded-md pl-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] pr-[2.5rem]"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  }}
+                >
+                  <option value="date-desc">Newest first</option>
+                  <option value="date-asc">Oldest first</option>
+                </select>
               </div>
             </div>
+          </div>
         </div>
       </div>
 
@@ -503,9 +601,9 @@ export default function HomePage() {
                   </div>
                 )}
                 <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start gap-4">
-                    {(tournament as any).image && (
-                      <div className="w-20 h-20 flex-shrink-0 relative overflow-hidden rounded-lg">
+                  <div className="flex items-start gap-3">
+                    {(tournament as any).image ? (
+                      <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
                         <Image
                           src={(tournament as any).image}
                           alt={tournament.title}
@@ -513,34 +611,18 @@ export default function HomePage() {
                           className="object-cover"
                         />
                       </div>
+                    ) : (
+                      <TournamentImagePlaceholder />
                     )}
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
                     </div>
                   </div>
-                  <div className="mt-2 min-h-[4.5rem]">
-                    {tournament.description ? (
-                      <>
-                        <div
-                          className="text-gray-600 text-sm break-words line-clamp-3"
-                          dangerouslySetInnerHTML={{ __html: formatDescription(truncateText(tournament.description)) }}
-                        />
-                        {tournament.description && tournament.description.split('\n').length > 3 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedDescription({title: tournament.title, description: tournament.description!})
-                            }}
-                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            Show full description
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-gray-400 text-sm italic">No description</div>
-                    )}
+                  {/* Tournament status badge */}
+                  <div className="mt-2">
+                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                      {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow flex flex-col">
@@ -633,7 +715,7 @@ export default function HomePage() {
                     )}
                   </div>
 
-                  {/* Fixed bottom section: Like/Dislike and View Results */}
+                  {/* Fixed bottom section: Like/Dislike, View Results, Join Tournament */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
                     {/* Like/Dislike/Comments Buttons */}
                     <div className="flex items-center gap-2">
@@ -732,6 +814,15 @@ export default function HomePage() {
               </Card>
             ))}
           </div>
+        ) : filter === 'my' && !session ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600 mb-4">Sign in to view your tournaments</p>
+            <Link href="/auth/signin">
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                Sign in
+              </Button>
+            </Link>
+          </div>
         ) : (
           <div className="text-center py-12">
             <Trophy className="h-12 w-12 mx-auto text-gray-400 mb-4" />
@@ -749,43 +840,70 @@ export default function HomePage() {
         if (!tournament) return null
         
         return (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setSelectedTournament(null)
+              setCommentText('')
+              setDescriptionExpanded(false)
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   {(tournament as any).image ? (
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200">
+                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                       <Image
                         src={(tournament as any).image}
                         alt={tournament.title}
-                        width={48}
-                        height={48}
+                        width={80}
+                        height={80}
                         className="w-full h-full object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <span className="text-white font-bold text-sm">P</span>
-                    </div>
+                    <TournamentImagePlaceholder size="lg" />
                   )}
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
                     <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedTournament(null)
-                    setCommentText('')
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-6 w-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {(tournament as any).user?.id === session?.user?.id && (
+                    <>
+                      <Link href={`/admin/${tournament.id}`}>
+                        <Button className="bg-gray-900 hover:bg-gray-800 text-white">
+                          Manage
+                        </Button>
+                      </Link>
+                      {(tournament as any).publicSlug && (
+                        <Link href={`/t/${(tournament as any).publicSlug}`}>
+                          <Button className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300">
+                            View Board
+                          </Button>
+                        </Link>
+                      )}
+                    </>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedTournament(null)
+                      setCommentText('')
+                      setDescriptionExpanded(false)
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-hidden flex">
+              <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
                 {/* Left Side - Tournament Info */}
-                <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
+                <div className="w-full lg:w-1/2 border-r-0 lg:border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
                     
                     {/* Description */}
@@ -793,9 +911,17 @@ export default function HomePage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
                         <div 
-                          className="text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none"
+                          className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
                           dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
                         />
+                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                          <button
+                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                          >
+                            {descriptionExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
                       </div>
                     )}
                     
@@ -884,7 +1010,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Right Side - Comments */}
-                <div className="w-1/2 overflow-y-auto flex flex-col">
+                <div className="w-full lg:w-1/2 overflow-y-auto flex flex-col border-t lg:border-t-0 border-gray-200">
                   <div className="p-6 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-900">
                       Comments ({commentCounts?.[selectedTournament] || 0})
@@ -1014,17 +1140,23 @@ export default function HomePage() {
                       </Link>
                     </div>
                   )}
-          </div>
-        </div>
-      </div>
+                </div>
+              </div>
+            </div>
           </div>
         )
       })()}
 
       {/* Description Modal */}
       {selectedDescription && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedDescription(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">{selectedDescription.title}</h2>
               <p className="text-gray-600 mt-1">Tournament Description</p>
