@@ -85,6 +85,14 @@ const parseOptionalNumber = (value: string) => {
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+const getNumberOrDefault = (value: string, fallback: number) => {
+  if (!value.trim()) return fallback
+  const parsed = Number(value)
+  return Number.isNaN(parsed) ? fallback : parsed
+}
+
 const Stepper = ({
   value,
   min,
@@ -365,12 +373,9 @@ export default function StructureSetupModal({
                     </div>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700">Individual DUPR range</p>
-                        <p className="text-xs text-slate-500">Optional rating range for each player.</p>
-                      </div>
+                      <p className="text-sm font-semibold text-slate-700">Individual DUPR range</p>
                       <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
@@ -392,51 +397,100 @@ export default function StructureSetupModal({
                       </label>
                     </div>
                     {division.constraints.individualDupr.enabled && (
-                      <div className="flex gap-4">
-                        <Input
-                          type="number"
-                          placeholder="Min"
-                          value={division.constraints.individualDupr.min}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                individualDupr: {
-                                  ...current.constraints.individualDupr,
-                                  min: event.target.value,
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Min</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={8}
+                            step={0.1}
+                            value={clamp(getNumberOrDefault(division.constraints.individualDupr.min, 0), 0, 8)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  individualDupr: {
+                                    ...current.constraints.individualDupr,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Max"
-                          value={division.constraints.individualDupr.max}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                individualDupr: {
-                                  ...current.constraints.individualDupr,
-                                  max: event.target.value,
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={8}
+                            step={0.1}
+                            value={division.constraints.individualDupr.min}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  individualDupr: {
+                                    ...current.constraints.individualDupr,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Max</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={8}
+                            step={0.1}
+                            value={clamp(getNumberOrDefault(division.constraints.individualDupr.max, 8), 0, 8)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  individualDupr: {
+                                    ...current.constraints.individualDupr,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={8}
+                            step={0.1}
+                            value={division.constraints.individualDupr.max}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  individualDupr: {
+                                    ...current.constraints.individualDupr,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700">Team DUPR total</p>
-                        <p className="text-xs text-slate-500">Optional rating range for total team.</p>
-                      </div>
+                      <p className="text-sm font-semibold text-slate-700">Team DUPR total</p>
                       <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
@@ -458,51 +512,100 @@ export default function StructureSetupModal({
                       </label>
                     </div>
                     {division.constraints.teamDupr.enabled && (
-                      <div className="flex gap-4">
-                        <Input
-                          type="number"
-                          placeholder="Min"
-                          value={division.constraints.teamDupr.min}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                teamDupr: {
-                                  ...current.constraints.teamDupr,
-                                  min: event.target.value,
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Min</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={16}
+                            step={0.1}
+                            value={clamp(getNumberOrDefault(division.constraints.teamDupr.min, 0), 0, 16)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  teamDupr: {
+                                    ...current.constraints.teamDupr,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Max"
-                          value={division.constraints.teamDupr.max}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                teamDupr: {
-                                  ...current.constraints.teamDupr,
-                                  max: event.target.value,
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={16}
+                            step={0.1}
+                            value={division.constraints.teamDupr.min}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  teamDupr: {
+                                    ...current.constraints.teamDupr,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Max</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={16}
+                            step={0.1}
+                            value={clamp(getNumberOrDefault(division.constraints.teamDupr.max, 16), 0, 16)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  teamDupr: {
+                                    ...current.constraints.teamDupr,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={16}
+                            step={0.1}
+                            value={division.constraints.teamDupr.max}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  teamDupr: {
+                                    ...current.constraints.teamDupr,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700">Gender restriction</p>
-                        <p className="text-xs text-slate-500">Optional, default is Any.</p>
-                      </div>
+                      <p className="text-sm font-semibold text-slate-700">Gender restriction</p>
                       <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
@@ -548,12 +651,9 @@ export default function StructureSetupModal({
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700">Age restriction</p>
-                        <p className="text-xs text-slate-500">Optional age range.</p>
-                      </div>
+                      <p className="text-sm font-semibold text-slate-700">Age range</p>
                       <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
@@ -575,41 +675,93 @@ export default function StructureSetupModal({
                       </label>
                     </div>
                     {division.constraints.age.enabled && (
-                      <div className="flex gap-4">
-                        <Input
-                          type="number"
-                          placeholder="Min age"
-                          value={division.constraints.age.min}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                age: {
-                                  ...current.constraints.age,
-                                  min: event.target.value,
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Min</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={clamp(getNumberOrDefault(division.constraints.age.min, 0), 0, 100)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  age: {
+                                    ...current.constraints.age,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Max age"
-                          value={division.constraints.age.max}
-                          onChange={(event) =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                age: {
-                                  ...current.constraints.age,
-                                  max: event.target.value,
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={division.constraints.age.min}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  age: {
+                                    ...current.constraints.age,
+                                    min: event.target.value,
+                                  },
                                 },
-                              },
-                            }))
-                          }
-                        />
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-500 w-10">Max</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={clamp(getNumberOrDefault(division.constraints.age.max, 100), 0, 100)}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  age: {
+                                    ...current.constraints.age,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={division.constraints.age.max}
+                            onChange={(event) =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  age: {
+                                    ...current.constraints.age,
+                                    max: event.target.value,
+                                  },
+                                },
+                              }))
+                            }
+                            className="w-20"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
