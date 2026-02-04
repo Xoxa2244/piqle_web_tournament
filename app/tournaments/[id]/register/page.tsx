@@ -45,7 +45,7 @@ export default function TournamentRegistrationPage() {
   const tournamentId = params.id as string
   const { data: session, status: authStatus } = useSession()
 
-  const { data: seatMap, isLoading } = trpc.registration.getSeatMap.useQuery(
+  const { data: seatMap, isLoading, error } = trpc.registration.getSeatMap.useQuery(
     { tournamentId },
     { enabled: !!tournamentId }
   )
@@ -118,10 +118,20 @@ export default function TournamentRegistrationPage() {
     }
   }
 
-  if (isLoading || !seatMap) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-gray-600">Loading registration...</div>
+      </div>
+    )
+  }
+
+  if (error || !seatMap) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">
+          {error?.message || 'Registration data is unavailable. Please try again later.'}
+        </div>
       </div>
     )
   }
