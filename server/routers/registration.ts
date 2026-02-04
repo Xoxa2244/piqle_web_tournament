@@ -37,6 +37,12 @@ export const registrationRouter = createTRPCRouter({
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.tournamentId },
         include: {
+          user: {
+            select: {
+              organizerStripeAccountId: true,
+              stripeOnboardingComplete: true,
+            },
+          },
           divisions: {
             include: {
               pools: true,
@@ -64,6 +70,11 @@ export const registrationRouter = createTRPCRouter({
         startDate: tournament.startDate,
         registrationStartDate: tournament.registrationStartDate,
         registrationEndDate: tournament.registrationEndDate,
+        entryFeeCents: tournament.entryFeeCents ?? 0,
+        currency: tournament.currency ?? 'usd',
+        payoutsActive:
+          Boolean(tournament.user?.organizerStripeAccountId) &&
+          Boolean(tournament.user?.stripeOnboardingComplete),
         divisions: tournament.divisions,
       }
     }),
@@ -219,6 +230,13 @@ export const registrationRouter = createTRPCRouter({
 
         if (!isRegistrationOpen(team.division.tournament)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration closed' })
+        }
+
+        if ((team.division.tournament.entryFeeCents ?? 0) > 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Payment required to join this tournament',
+          })
         }
 
         const slotCount = getTeamSlotCount(team.division.teamKind)

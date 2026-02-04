@@ -10,6 +10,7 @@ import StructureSetupModal, { TournamentStructureInput } from '@/components/Stru
 import Image from 'next/image'
 import { Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
+import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -96,6 +97,11 @@ export default function NewTournamentPage() {
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
+  const [payoutStatus, setPayoutStatus] = useState<{
+    hasAccount: boolean
+    payoutsActive: boolean
+    isLoading: boolean
+  }>({ hasAccount: false, payoutsActive: false, isLoading: true })
 
   const createTournament = trpc.tournament.create.useMutation({
     onSuccess: (tournament) => {
@@ -208,6 +214,48 @@ export default function NewTournamentPage() {
     }
   }, [setupAddressAutocomplete])
 
+  useEffect(() => {
+    let isMounted = true
+    const loadStatus = async () => {
+      try {
+        const response = await fetch('/api/stripe/connect-status')
+        const payload = await response.json()
+        if (!isMounted) return
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load payout status')
+        }
+        setPayoutStatus({
+          hasAccount: payload.hasAccount,
+          payoutsActive: payload.payoutsActive,
+          isLoading: false,
+        })
+      } catch {
+        if (isMounted) {
+          setPayoutStatus((prev) => ({ ...prev, isLoading: false }))
+        }
+      }
+    }
+    loadStatus()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleConnectStripe = async () => {
+    try {
+      const response = await fetch('/api/stripe/create-account-link', {
+        method: 'POST',
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Failed to start Stripe onboarding')
+      }
+      window.location.href = payload.url
+    } catch (error: any) {
+      alert(error.message || 'Failed to start Stripe onboarding')
+    }
+  }
+
   const handleVenueAddressBlur = async () => {
     if (!formData.venueName.trim()) return
 
@@ -249,6 +297,13 @@ export default function NewTournamentPage() {
     }
   }
 
+  const parsedEntryFee = Number(formData.entryFee)
+  const entryFeeCents =
+    Number.isFinite(parsedEntryFee) && parsedEntryFee > 0
+      ? toCents(parsedEntryFee)
+      : 0
+  const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -263,7 +318,8 @@ export default function NewTournamentPage() {
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
       registrationEndDate: formData.registrationEndDate || undefined,
-      entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
+      entryFeeCents: entryFeeCents || 0,
+      currency: 'usd',
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
@@ -285,7 +341,8 @@ export default function NewTournamentPage() {
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
       registrationEndDate: formData.registrationEndDate || undefined,
-      entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
+      entryFeeCents: entryFeeCents || 0,
+      currency: 'usd',
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
@@ -594,6 +651,22 @@ export default function NewTournamentPage() {
               <label htmlFor="entryFee" className="block text-sm font-medium text-gray-700 mb-2">
                 Entry Fee ($)
               </label>
+              <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                {payoutStatus.isLoading ? (
+                  <div>Checking payout status…</div>
+                ) : payoutStatus.payoutsActive ? (
+                  <div>Payouts: Active via Stripe</div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      To receive payouts for paid tournaments, please connect your bank details via Stripe.
+                    </div>
+                    <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                      Connect payouts with Stripe
+                    </Button>
+                  </div>
+                )}
+              </div>
               <input
                 type="number"
                 id="entryFee"
@@ -605,6 +678,23 @@ export default function NewTournamentPage() {
                 className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 placeholder="0.00"
               />
+              {entryFeeCents > 0 && (
+                <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                  <div>Entry fee per player: ${fromCents(entryFeeCents).toFixed(2)}</div>
+                  <div>
+                    Piqle fee (10%, max $5): $
+                    {fromCents(organizerBreakdown.platformFeeCents).toFixed(2)}
+                  </div>
+                  <div>
+                    Estimated Stripe fee: $
+                    {fromCents(organizerBreakdown.stripeFeeCents).toFixed(2)}
+                  </div>
+                  <div className="font-medium">
+                    Organizer receives: $
+                    {fromCents(organizerBreakdown.organizerAmountCents).toFixed(2)}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

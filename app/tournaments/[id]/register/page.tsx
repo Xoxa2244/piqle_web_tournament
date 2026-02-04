@@ -7,6 +7,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { fromCents } from '@/lib/payment'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -68,6 +69,9 @@ export default function TournamentRegistrationPage() {
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
+  const entryFeeCents = seatMap?.entryFeeCents ?? 0
+  const isPaidTournament = entryFeeCents > 0
+  const payoutsActive = Boolean(seatMap?.payoutsActive)
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
@@ -79,6 +83,25 @@ export default function TournamentRegistrationPage() {
       alert('You are registered!')
     } catch (error: any) {
       alert(error.message || 'Failed to claim slot')
+    }
+  }
+
+  const handlePayJoin = async (teamId: string, slotIndex: number) => {
+    try {
+      const spotId = `${teamId}:${slotIndex}`
+      const response = await fetch(
+        `/api/tournaments/${tournamentId}/spots/${spotId}/create-checkout-session`,
+        { method: 'POST' }
+      )
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to start payment')
+      }
+      if (payload?.url) {
+        window.location.href = payload.url
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to start payment')
     }
   }
 
@@ -112,6 +135,18 @@ export default function TournamentRegistrationPage() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-600">
             <div>
+              {isPaidTournament ? (
+                <span>
+                  Entry fee:{' '}
+                  <span className="font-medium text-gray-900">
+                    ${fromCents(entryFeeCents).toFixed(2)}
+                  </span>
+                </span>
+              ) : (
+                <span className="font-medium text-gray-900">Free tournament</span>
+              )}
+            </div>
+            <div>
               Registration window:{' '}
               <span className="font-medium text-gray-900">
                 {seatMap.registrationStartDate
@@ -126,6 +161,11 @@ export default function TournamentRegistrationPage() {
             <Badge variant={registrationOpen ? 'default' : 'secondary'}>
               {registrationOpen ? 'Registration Open' : 'Registration Closed'}
             </Badge>
+            {isPaidTournament && !payoutsActive && (
+              <div className="rounded-md border border-yellow-200 bg-yellow-50 p-2 text-yellow-800">
+                Payments are not enabled yet; please check back later.
+              </div>
+            )}
             {myStatus?.status === 'active' && (
               <div className="pt-2">
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
@@ -144,6 +184,10 @@ export default function TournamentRegistrationPage() {
               isRegistrationOpen={registrationOpen}
               myStatus={myStatus}
               onClaimSlot={handleClaimSlot}
+              onPayJoin={handlePayJoin}
+              entryFeeCents={entryFeeCents}
+              isPaidTournament={isPaidTournament}
+              payoutsActive={payoutsActive}
               onJoinWaitlist={async () => {
                 try {
                   await joinWaitlistMutation.mutateAsync({ divisionId: division.id })
@@ -181,6 +225,10 @@ function DivisionSeatMap({
   isRegistrationOpen,
   myStatus,
   onClaimSlot,
+  onPayJoin,
+  entryFeeCents,
+  isPaidTournament,
+  payoutsActive,
   onJoinWaitlist,
   onLeaveWaitlist,
   currentUserId,
@@ -189,6 +237,10 @@ function DivisionSeatMap({
   isRegistrationOpen: boolean
   myStatus: any
   onClaimSlot: (teamId: string, slotIndex: number) => void
+  onPayJoin: (teamId: string, slotIndex: number) => void
+  entryFeeCents: number
+  isPaidTournament: boolean
+  payoutsActive: boolean
   onJoinWaitlist: () => void
   onLeaveWaitlist: () => void
   currentUserId?: string
@@ -251,6 +303,10 @@ function DivisionSeatMap({
                     slots={slotsByTeam[team.id]}
                     isRegistrationOpen={isRegistrationOpen}
                     onClaimSlot={onClaimSlot}
+                    onPayJoin={onPayJoin}
+                    entryFeeCents={entryFeeCents}
+                    isPaidTournament={isPaidTournament}
+                    payoutsActive={payoutsActive}
                     currentUserId={currentUserId}
                   />
                 ))}
@@ -266,6 +322,10 @@ function DivisionSeatMap({
                 slots={slotsByTeam[team.id]}
                 isRegistrationOpen={isRegistrationOpen}
                 onClaimSlot={onClaimSlot}
+                onPayJoin={onPayJoin}
+                entryFeeCents={entryFeeCents}
+                isPaidTournament={isPaidTournament}
+                payoutsActive={payoutsActive}
                 currentUserId={currentUserId}
               />
             ))}
@@ -283,6 +343,10 @@ function DivisionSeatMap({
                   slots={slotsByTeam[team.id]}
                   isRegistrationOpen={isRegistrationOpen}
                   onClaimSlot={onClaimSlot}
+                  onPayJoin={onPayJoin}
+                  entryFeeCents={entryFeeCents}
+                  isPaidTournament={isPaidTournament}
+                  payoutsActive={payoutsActive}
                   currentUserId={currentUserId}
                 />
               ))}
@@ -323,7 +387,7 @@ function DivisionSeatMap({
 
         {hasAvailableSlots && !isActiveInDivision && (
           <div className="text-sm text-gray-500">
-            Select a slot to join this division.
+            {isPaidTournament ? 'Select a slot to pay and join this division.' : 'Select a slot to join this division.'}
           </div>
         )}
       </CardContent>
@@ -336,12 +400,20 @@ function TeamCard({
   slots,
   isRegistrationOpen,
   onClaimSlot,
+  onPayJoin,
+  entryFeeCents,
+  isPaidTournament,
+  payoutsActive,
   currentUserId,
 }: {
   team: any
   slots: any[]
   isRegistrationOpen: boolean
   onClaimSlot: (teamId: string, slotIndex: number) => void
+  onPayJoin: (teamId: string, slotIndex: number) => void
+  entryFeeCents: number
+  isPaidTournament: boolean
+  payoutsActive: boolean
   currentUserId?: string
 }) {
   return (
@@ -365,10 +437,16 @@ function TeamCard({
             <button
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
-              disabled={!isRegistrationOpen}
-              onClick={() => onClaimSlot(team.id, index)}
+              disabled={!isRegistrationOpen || (isPaidTournament && !payoutsActive)}
+              onClick={() =>
+                isPaidTournament
+                  ? onPayJoin(team.id, index)
+                  : onClaimSlot(team.id, index)
+              }
             >
-              Empty slot #{index + 1}
+              {isPaidTournament
+                ? `Pay & Join — $${fromCents(entryFeeCents).toFixed(2)}`
+                : `Join — slot #${index + 1}`}
             </button>
           )
         })}
