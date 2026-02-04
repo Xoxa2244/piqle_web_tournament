@@ -164,7 +164,9 @@ export const CreateTournamentForm = ({ onCreate }: CreateTournamentFormProps) =>
 
       googleRef.current = googleApi
       const geocoder = new googleApi.maps.Geocoder()
-      geocoder.geocode({ address: formState.address }, (results, status) => {
+      geocoder.geocode(
+        { address: formState.address },
+        (results: any, status: any) => {
         if (status !== "OK" || !results?.length) {
           setAddressError("Select a valid address from the list.")
           return
@@ -187,7 +189,8 @@ export const CreateTournamentForm = ({ onCreate }: CreateTournamentFormProps) =>
           state: details.state ?? "",
           country: details.country ?? "",
         }))
-      })
+        }
+      )
     } catch (error) {
       setAddressError(
         error instanceof Error ? error.message : "Failed to load Google Places."
