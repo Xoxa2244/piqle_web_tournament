@@ -7,8 +7,58 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
-import { Eye, Search, X, User as UserIcon } from 'lucide-react'
+import { Eye, User as UserIcon, Calendar, Users, Trophy, Trash2 } from 'lucide-react'
 import ShareButton from '@/components/ShareButton'
+
+// Status helpers (same logic as main page)
+function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'Past'
+    case 'upcoming': return 'Upcoming'
+    case 'in_progress': return 'In progress'
+  }
+}
+function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'bg-gray-100 text-gray-700'
+    case 'upcoming': return 'bg-blue-50 text-blue-700'
+    case 'in_progress': return 'bg-green-50 text-green-700'
+  }
+}
+
+// Same as main page: uses tournament-placeholder.png with fallback icon
+function TournamentImagePlaceholder() {
+  const [showFallback, setShowFallback] = useState(true)
+  return (
+    <div className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative">
+      <img
+        src="/tournament-placeholder.png"
+        alt=""
+        className="w-full h-full object-cover"
+        onLoad={() => setShowFallback(false)}
+        onError={() => setShowFallback(true)}
+      />
+      {showFallback && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <Trophy className="w-5 h-5 text-gray-400" />
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AdminPage() {
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
@@ -18,51 +68,41 @@ export default function AdminPage() {
     }
   })
   
+  const [deleteModal, setDeleteModal] = useState<{ id: string; title: string } | null>(null)
+  const [deleteTypeConfirm, setDeleteTypeConfirm] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
-  const [showSearch, setShowSearch] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
-  
-  // Search tournaments
-  const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
-    { query: searchQuery },
-    { enabled: showSearch && searchQuery.length >= 2 }
-  )
-  
-  // Request access mutation
-  const requestAccessMutation = trpc.tournamentAccess.requestAccess.useMutation({
-    onSuccess: () => {
-      alert('Access request sent successfully!')
-      setSearchQuery('')
-    },
-    onError: (error) => {
-      alert(`Error: ${error.message}`)
-    },
-  })
 
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete the tournament "${tournamentTitle}"?\n\n` +
-      `This action cannot be undone and will permanently remove:\n` +
-      `• All tournament data\n` +
-      `• All divisions and teams\n` +
-      `• All matches and results\n` +
-      `• All player information\n\n` +
-      `Type "DELETE" to confirm:`
-    )
-    
-    if (confirmed) {
-      const userInput = window.prompt('Type "DELETE" to confirm:')
-      if (userInput === 'DELETE') {
-        setDeleteConfirmId(tournamentId)
-        deleteTournament.mutate({ id: tournamentId })
+    setDeleteModal({ id: tournamentId, title: tournamentTitle })
+    setDeleteTypeConfirm('')
+  }
+
+  const handleDeleteConfirm = () => {
+    if (!deleteModal || deleteTypeConfirm !== 'DELETE') return
+    setDeleteConfirmId(deleteModal.id)
+    deleteTournament.mutate(
+      { id: deleteModal.id },
+      {
+        onSettled: () => {
+          setDeleteConfirmId(null)
+          setDeleteModal(null)
+          setDeleteTypeConfirm('')
+        },
       }
+    )
+  }
+
+  const closeDeleteModal = () => {
+    if (!deleteTournament.isPending) {
+      setDeleteModal(null)
+      setDeleteTypeConfirm('')
     }
   }
 
@@ -75,131 +115,18 @@ export default function AdminPage() {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Tournaments</h1>
-        <div className="flex gap-3">
-          <Button
-            onClick={() => {
-              setShowSearch(!showSearch)
-              setSearchQuery('')
-            }}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Search className="h-4 w-4" />
-            Find Tournament
-          </Button>
-          <Link
-            href="/admin/new"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-          >
-            Create Tournament
-          </Link>
-        </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
       </div>
 
-      {/* Search Section */}
-      {showSearch && (
-        <div className="mb-8 p-6 bg-white rounded-lg shadow-md">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Find Tournament</h2>
-            <Button
-              onClick={() => {
-                setShowSearch(false)
-                setSearchQuery('')
-              }}
-              variant="ghost"
-              size="sm"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <Input
-            placeholder="Search tournaments by name or description..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="mb-4"
-          />
-          {searchQuery.length >= 2 && searchResults && (
-            <div className="space-y-3">
-              {searchResults.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No tournaments found</div>
-              ) : (
-                searchResults.map((tournament) => (
-                  <div key={tournament.id} className="border rounded-lg p-4 flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-2">{tournament.title}</h3>
-                      {tournament.description && (
-                        <div
-                          className="text-sm text-gray-600 mb-2 line-clamp-2 break-words"
-                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                        />
-                      )}
-                      <div className="space-y-1 text-sm text-gray-500">
-                        <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
-                        <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
-                        {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
-                        {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
-                        {tournament.user && (
-                          <div className="flex items-center space-x-2">
-                            <span>Tournament Director:</span>
-                            {(tournament.user as { image?: string | null }).image ? (
-                              <Link
-                                href={`/profile/${tournament.user.id}`}
-                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
-                              >
-                                <Image
-                                  src={(tournament.user as { image?: string | null }).image!}
-                                  alt={tournament.user.name || tournament.user.email || 'TD'}
-                                  width={18}
-                                  height={18}
-                                  className="rounded-full object-cover"
-                                />
-                                <span className="font-medium group-hover:underline">
-                                  {tournament.user.name || tournament.user.email}
-                                </span>
-                              </Link>
-                            ) : (
-                              <Link
-                                href={`/profile/${tournament.user.id}`}
-                                className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
-                              >
-                                <div className="w-4.5 h-4.5 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center border border-gray-300">
-                                  <UserIcon className="h-3 w-3 text-gray-500" />
-                                </div>
-                                <span className="font-medium group-hover:underline">
-                                  {tournament.user.name || tournament.user.email}
-                                </span>
-                              </Link>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      onClick={() => {
-                        requestAccessMutation.mutate({ tournamentId: tournament.id })
-                      }}
-                      disabled={requestAccessMutation.isLoading}
-                      className="ml-4"
-                    >
-                      {requestAccessMutation.isLoading ? 'Requesting...' : 'Request Access'}
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {tournaments && tournaments.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           {(tournaments as any[]).map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative">
-              {tournament.isPublicBoardEnabled && baseUrl && (
-                <div className="absolute top-4 right-4">
+            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
+              {/* Top right: Share + Delete (icon only) */}
+              <div className="absolute top-4 right-4 flex items-center gap-1">
+                {baseUrl && (
                   <ShareButton
                     url={`${baseUrl}/scoreboard/${tournament.id}`}
                     title={tournament.title}
@@ -208,39 +135,88 @@ export default function AdminPage() {
                     variant="ghost"
                     className="text-gray-500 hover:text-gray-700"
                   />
-                </div>
-              )}
-              <h3 className="text-xl font-semibold mb-2 pr-10">{tournament.title}</h3>
-              {tournament.description && (
-                <div className="mb-4">
-                  <div
-                    className="text-gray-600 text-sm break-words line-clamp-3"
-                    dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                  />
-                  {tournament.description && tournament.description.split('\n').length > 3 && (
-                    <button
-                      onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
-                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Show full description
-                    </button>
-                  )}
-                </div>
-              )}
-              
-              <div className="space-y-2 text-sm text-gray-500">
-                <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
-                <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
-                <div>Divisions: {tournament._count.divisions}</div>
-                {tournament.entryFee && (
-                  <div>Entry Fee: ${tournament.entryFee}</div>
+                )}
+                {tournament.isOwner && (
+                  <button
+                    onClick={() => handleDeleteClick(tournament.id, tournament.title)}
+                    disabled={deleteConfirmId === tournament.id}
+                    className="p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                    title="Delete tournament"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 )}
               </div>
 
-              {/* Tournament Director */}
-              {tournament.user && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
+              {/* Content area — grows to fill space so footer stays at bottom */}
+              <div className="flex-1 min-h-0 flex flex-col pb-4">
+                {/* Title + image row */}
+                <div className="flex items-start gap-3 pr-16">
+                  {tournament.image ? (
+                    <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
+                      <Image
+                        src={tournament.image}
+                        alt={tournament.title}
+                        width={44}
+                        height={44}
+                        className="object-cover w-full h-full"
+                      />
+                    </div>
+                  ) : (
+                    <TournamentImagePlaceholder />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-semibold">{tournament.title}</h3>
+                  </div>
+                </div>
+
+                {/* Status badge */}
+                <div className="mt-2">
+                  <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
+                {tournament.description && (
+                  <div className="mt-3 mb-2">
+                    <div
+                      className="text-gray-600 text-sm break-words line-clamp-3"
+                      dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                    />
+                    {tournament.description && tournament.description.split('\n').length > 3 && (
+                      <button
+                        onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Show full description
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Start–End one line + divisions + entry fee with icons */}
+                <div className="space-y-2 text-sm text-gray-600">
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                    <span>{new Date(tournament.startDate).toLocaleDateString()} – {new Date(tournament.endDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                    <span>{(tournament.divisions?.length ?? tournament._count?.divisions) || 0} division{((tournament.divisions?.length ?? tournament._count?.divisions) || 0) !== 1 ? 's' : ''}</span>
+                  </div>
+                  {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                    <div className="flex items-center">
+                      <Trophy className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
+                      <span>Entry Fee: ${tournament.entryFee}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer: Tournament Director and buttons — always at bottom, on separate lines */}
+              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
+                {tournament.user && (
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-gray-500">Tournament Director:</span>
                     {(tournament.user as { image?: string | null }).image ? (
@@ -273,33 +249,23 @@ export default function AdminPage() {
                       </Link>
                     )}
                   </div>
-                </div>
-              )}
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  href={`/admin/${tournament.id}`}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-                >
-                  Manage
-                </Link>
-                {tournament.isPublicBoardEnabled && (
+                )}
+                <div className="flex flex-wrap gap-2">
                   <Link
-                    href={`/t/${tournament.publicSlug}`}
-                    className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                    href={`/admin/${tournament.id}`}
+                    className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                   >
-                    View Board
+                    Manage
                   </Link>
-                )}
-                {tournament.isOwner && (
-                  <button
-                    onClick={() => handleDeleteClick(tournament.id, tournament.title)}
-                    disabled={deleteConfirmId === tournament.id}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-                  >
-                    {deleteConfirmId === tournament.id ? 'Deleting...' : 'Delete'}
-                  </button>
-                )}
+                  {tournament.isPublicBoardEnabled && (
+                    <Link
+                      href={`/t/${tournament.publicSlug}`}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
+                    >
+                      View Board
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -317,10 +283,61 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Delete Tournament Modal */}
+      {deleteModal && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
+          onClick={closeDeleteModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Delete tournament</h2>
+            <p className="text-gray-600 text-sm mb-4">
+              Are you sure you want to delete &quot;{deleteModal.title}&quot;? This action cannot be undone and will permanently remove:
+            </p>
+            <ul className="text-sm text-gray-600 list-disc list-inside mb-4 space-y-1">
+              <li>All tournament data</li>
+              <li>All divisions and teams</li>
+              <li>All matches and results</li>
+              <li>All player information</li>
+            </ul>
+            <p className="text-sm text-gray-600 mb-2">Type <strong>DELETE</strong> to confirm:</p>
+            <Input
+              type="text"
+              value={deleteTypeConfirm}
+              onChange={(e) => setDeleteTypeConfirm(e.target.value)}
+              placeholder="DELETE"
+              className="mb-6 font-mono"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={closeDeleteModal} disabled={deleteTournament.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteConfirm}
+                disabled={deleteTypeConfirm !== 'DELETE' || deleteTournament.isPending}
+              >
+                {deleteTournament.isPending ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Description Modal */}
       {selectedDescription && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
+          onClick={() => setSelectedDescription(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">{selectedDescription.title}</h2>
               <p className="text-gray-600 mt-1">Tournament Description</p>

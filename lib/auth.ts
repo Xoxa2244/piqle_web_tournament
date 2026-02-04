@@ -190,9 +190,19 @@ export const authOptions: NextAuthOptions = {
       return `${baseUrl}/admin`
     },
     async session({ session, user, token }) {
-      if (session?.user) {
-        session.user.id =
-          session.user.id || user?.id || token?.sub || ''
+      const userId = session?.user?.id || user?.id || token?.sub
+      if (session?.user && userId) {
+        session.user.id = String(userId)
+        // Always load name/image/email from DB so profile updates show in header
+        const dbUser = await prisma.user.findUnique({
+          where: { id: String(userId) },
+          select: { name: true, image: true, email: true },
+        })
+        if (dbUser) {
+          session.user.name = dbUser.name ?? session.user.name ?? null
+          session.user.image = dbUser.image ?? session.user.image ?? null
+          session.user.email = dbUser.email ?? session.user.email ?? null
+        }
       }
       return session
     },

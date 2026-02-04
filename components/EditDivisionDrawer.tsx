@@ -108,8 +108,14 @@ export default function EditDivisionDrawer({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-lg">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 z-[110] flex items-end justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-t-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Edit Division</h2>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -152,7 +158,7 @@ export default function EditDivisionDrawer({
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   placeholder="Enter division name"
                 />
               </div>
@@ -165,7 +171,8 @@ export default function EditDivisionDrawer({
                   <select
                     value={formData.teamKind}
                     onChange={(e) => setFormData({ ...formData, teamKind: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                   >
                     <option value="SINGLES_1v1">1v1 (Singles)</option>
                     <option value="DOUBLES_2v2">2v2 (Doubles)</option>
@@ -180,7 +187,8 @@ export default function EditDivisionDrawer({
                   <select
                     value={formData.pairingMode}
                     onChange={(e) => setFormData({ ...formData, pairingMode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                   >
                     <option value="FIXED">Fixed</option>
                     <option value="MIX_AND_MATCH">Mix and Match</option>
@@ -198,7 +206,7 @@ export default function EditDivisionDrawer({
                     min="1"
                     value={formData.poolCount}
                     onChange={(e) => handlePoolCountChange(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="1"
                   />
                   <p className="text-xs text-gray-500 mt-1">
@@ -215,7 +223,7 @@ export default function EditDivisionDrawer({
                     min="1"
                     value={formData.maxTeams || ''}
                     onChange={(e) => setFormData({ ...formData, maxTeams: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="No limit"
                   />
                 </div>
@@ -244,7 +252,7 @@ export default function EditDivisionDrawer({
                     max="6"
                     value={formData.minDupr || ''}
                     onChange={(e) => setFormData({ ...formData, minDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="No restrictions"
                   />
                 </div>
@@ -260,7 +268,7 @@ export default function EditDivisionDrawer({
                     max="6"
                     value={formData.maxDupr || ''}
                     onChange={(e) => setFormData({ ...formData, maxDupr: e.target.value ? parseFloat(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="No restrictions"
                   />
                 </div>
@@ -277,7 +285,7 @@ export default function EditDivisionDrawer({
                     max="100"
                     value={formData.minAge || ''}
                     onChange={(e) => setFormData({ ...formData, minAge: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="No restrictions"
                   />
                 </div>
@@ -292,7 +300,7 @@ export default function EditDivisionDrawer({
                     max="100"
                     value={formData.maxAge || ''}
                     onChange={(e) => setFormData({ ...formData, maxAge: e.target.value ? parseInt(e.target.value) : undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="No restrictions"
                   />
                 </div>

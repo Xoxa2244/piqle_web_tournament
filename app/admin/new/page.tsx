@@ -303,7 +303,7 @@ export default function NewTournamentPage() {
                 value={formData.title}
                 onChange={handleChange}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 placeholder="e.g., Pickleball Championship 2024"
               />
             </div>
@@ -318,7 +318,7 @@ export default function NewTournamentPage() {
                 value={formData.description}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 placeholder="Tournament description, rules, features..."
               />
             </div>
@@ -383,7 +383,7 @@ export default function NewTournamentPage() {
                 name="venueName"
                 value={formData.venueName}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 placeholder="Sports complex name"
               />
             </div>
@@ -400,7 +400,7 @@ export default function NewTournamentPage() {
                   value={formData.startDate}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 />
               </div>
 
@@ -416,7 +416,7 @@ export default function NewTournamentPage() {
                   onChange={handleChange}
                   required
                   min={formData.startDate || undefined}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 />
               </div>
             </div>
@@ -433,7 +433,7 @@ export default function NewTournamentPage() {
                   value={formData.registrationStartDate}
                   onChange={handleChange}
                   max={formData.startDate || undefined}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 />
               </div>
 
@@ -449,7 +449,7 @@ export default function NewTournamentPage() {
                   onChange={handleChange}
                   min={formData.registrationStartDate || undefined}
                   max={formData.startDate || undefined}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 />
               </div>
             </div>
@@ -466,7 +466,7 @@ export default function NewTournamentPage() {
                 onChange={handleChange}
                 min="0"
                 step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 placeholder="0.00"
               />
             </div>
@@ -481,7 +481,7 @@ export default function NewTournamentPage() {
                 value={formData.format}
                 onChange={handleChange}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
               >
                 <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                 <option value="ROUND_ROBIN">Round Robin</option>
@@ -514,7 +514,7 @@ export default function NewTournamentPage() {
                     name="seasonLabel"
                     value={formData.seasonLabel}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="e.g., Spring 2024"
                   />
                 </div>
@@ -529,7 +529,7 @@ export default function NewTournamentPage() {
                     name="timezone"
                     value={formData.timezone}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     placeholder="e.g., America/New_York"
                   />
                   <p className="mt-1 text-sm text-gray-500">

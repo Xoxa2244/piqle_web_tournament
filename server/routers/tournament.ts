@@ -7,6 +7,7 @@ import {
   checkTournamentAccess,
   getUserDivisionIds,
 } from '../utils/access'
+import { getTeamDisplayName } from '../utils/teamDisplay'
 
 export const tournamentRouter = createTRPCRouter({
   create: tdProcedure
@@ -252,6 +253,176 @@ export const tournamentRouter = createTRPCRouter({
           cause: error,
         })
       }
+    }),
+
+  /** Returns per-division winners (1st, 2nd, 3rd) for display on tournament info. */
+  getWinners: protectedProcedure
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      if (!access) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this tournament',
+        })
+      }
+      const divisionIds = await getUserDivisionIds(ctx.prisma, ctx.session.user.id, input.tournamentId)
+
+      const tournament = await ctx.prisma.tournament.findFirst({
+        where: { id: input.tournamentId },
+        include: {
+          divisions: {
+            where: divisionIds.length > 0 ? { id: { in: divisionIds } } : { id: { in: [] } },
+            include: {
+              pools: { select: { id: true } },
+              teams: {
+                include: {
+                  teamPlayers: { include: { player: true } },
+                },
+              },
+              matches: {
+                where: { stage: 'ELIMINATION' },
+                include: {
+                  teamA: {
+                    include: {
+                      teamPlayers: { include: { player: true } },
+                    },
+                  },
+                  teamB: {
+                    include: {
+                      teamPlayers: { include: { player: true } },
+                    },
+                  },
+                  games: { orderBy: { index: 'asc' } },
+                  tiebreaker: true,
+                },
+              },
+            },
+          },
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Tournament not found',
+        })
+      }
+
+      const format = tournament.format
+      const isRoundRobinFormat = format === 'ROUND_ROBIN' || format === 'LEAGUE_ROUND_ROBIN' || format === 'INDY_LEAGUE'
+      const result: Array<{
+        divisionId: string
+        divisionName: string
+        first: { teamId: string; teamName: string } | null
+        second: { teamId: string; teamName: string } | null
+        third: { teamId: string; teamName: string } | null
+      }> = []
+
+      for (const division of tournament.divisions) {
+        const teamKind = division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null
+        const entry: (typeof result)[0] = {
+          divisionId: division.id,
+          divisionName: division.name,
+          first: null,
+          second: null,
+          third: null,
+        }
+
+        if (isRoundRobinFormat) {
+          const poolIds = (division.pools ?? []).map((p) => p.id)
+          const standings = await ctx.prisma.standing.findMany({
+            where: {
+              OR: [
+                { divisionId: division.id },
+                ...(poolIds.length > 0 ? [{ poolId: { in: poolIds } }] : []),
+              ],
+            },
+            include: {
+              team: {
+                include: {
+                  teamPlayers: { include: { player: true } },
+                },
+              },
+            },
+          })
+          const sorted = standings.sort((a, b) => {
+            if (a.wins !== b.wins) return b.wins - a.wins
+            if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff
+            return b.pointsFor - a.pointsFor
+          })
+          const top3 = sorted.slice(0, 3)
+          if (top3[0]) {
+            entry.first = {
+              teamId: top3[0].teamId,
+              teamName: getTeamDisplayName(top3[0].team, teamKind),
+            }
+          }
+          if (top3[1]) {
+            entry.second = {
+              teamId: top3[1].teamId,
+              teamName: getTeamDisplayName(top3[1].team, teamKind),
+            }
+          }
+          if (top3[2]) {
+            entry.third = {
+              teamId: top3[2].teamId,
+              teamName: getTeamDisplayName(top3[2].team, teamKind),
+            }
+          }
+        } else {
+          const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
+          if (elimMatches.length === 0) {
+            result.push(entry)
+            continue
+          }
+          const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
+          const finalRoundMatches = elimMatches
+            .filter((m) => m.roundIndex === maxRound)
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+
+          const getMatchWinner = (match: (typeof finalRoundMatches)[0]): string | null => {
+            const isMLP = format === 'MLP'
+            if (isMLP && match.tiebreaker?.winnerTeamId) {
+              return match.tiebreaker.winnerTeamId
+            }
+            if (match.winnerTeamId) return match.winnerTeamId
+            const games = match.games ?? []
+            let scoreA = 0
+            let scoreB = 0
+            for (const g of games) {
+              scoreA += g.scoreA ?? 0
+              scoreB += g.scoreB ?? 0
+            }
+            if (scoreA > scoreB) return match.teamAId
+            if (scoreB > scoreA) return match.teamBId
+            return null
+          }
+
+          const teams = division.teams
+          const getTeamName = (teamId: string) => {
+            const t = teams.find((x) => x.id === teamId)
+            return t ? getTeamDisplayName(t, teamKind) : '—'
+          }
+
+          if (finalRoundMatches.length >= 1) {
+            const finalMatch = finalRoundMatches[0]
+            const winnerId = getMatchWinner(finalMatch)
+            const loserId =
+              winnerId === finalMatch.teamAId ? finalMatch.teamBId : winnerId === finalMatch.teamBId ? finalMatch.teamAId : null
+            if (winnerId) entry.first = { teamId: winnerId, teamName: getTeamName(winnerId) }
+            if (loserId) entry.second = { teamId: loserId, teamName: getTeamName(loserId) }
+          }
+          if (finalRoundMatches.length >= 2) {
+            const thirdPlaceMatch = finalRoundMatches[1]
+            const thirdId = getMatchWinner(thirdPlaceMatch)
+            if (thirdId) entry.third = { teamId: thirdId, teamName: getTeamName(thirdId) }
+          }
+        }
+        result.push(entry)
+      }
+
+      return result
     }),
 
   update: tdProcedure

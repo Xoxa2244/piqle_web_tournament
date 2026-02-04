@@ -765,8 +765,11 @@ export default function BoardMode({
 
       {/* Warning Modal */}
       {showWarning.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
+          onClick={showWarning.onCancel}
+        >
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center space-x-3 mb-4">
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
               <h3 className="text-lg font-semibold text-gray-900">Warning</h3>
@@ -1175,7 +1178,8 @@ function SortableTeamCard({
                     e.target.value = ''
                   }
                 }}
-                className="w-full text-xs border rounded p-1"
+                className="w-full text-xs border rounded pl-2 py-1 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:0.875rem] bg-[position:right_0.5rem_center]"
+                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <option value="">Add player...</option>

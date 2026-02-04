@@ -34,7 +34,6 @@ import TiebreakerModal from '@/components/TiebreakerModal'
 import PlayoffSwapModal from '@/components/PlayoffSwapModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import BracketModal from '@/components/BracketModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
@@ -151,6 +150,13 @@ function DivisionStageManagementContent() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
+  useEffect(() => {
+    if (tournament && tournament.divisions.length === 0) {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }
+  }, [tournament, tournamentId, router])
 
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
   const visibleDivisions = useMemo(() => {
@@ -1130,30 +1136,11 @@ function DivisionStageManagementContent() {
     )
   }
 
-  // Check if user has access to any divisions
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
-          <p className="text-gray-600 mb-6">
-            There aren&apos;t any divisions to manage stages for. Create a division first to unlock score input and bracket tools.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href={`/admin/${tournamentId}/divisions`}
-              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Create division
-            </Link>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
-            >
-              Back to tournament
-            </Link>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-gray-500">Redirecting to divisions...</div>
       </div>
     )
   }
@@ -1171,18 +1158,9 @@ function DivisionStageManagementContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
-      />
-      
       {/* Top panel */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Left part - division information */}
           <div className="flex items-center space-x-4">
@@ -1248,7 +1226,10 @@ function DivisionStageManagementContent() {
                 <select
                   value={selectedDivisionId}
                   onChange={(e) => setSelectedDivisionId(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                  className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  }}
                 >
                   {visibleDivisions.map((div: any) => (
                     <option key={div.id} value={div.id}>
@@ -1291,7 +1272,10 @@ function DivisionStageManagementContent() {
                     <select
                       value={selectedMatchDayId}
                       onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                      className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                      className="pl-3 py-1 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                      }}
                     >
                       {matchDaysForDivision.map((day: any) => (
                         <option key={day.id} value={day.id}>
@@ -1339,9 +1323,10 @@ function DivisionStageManagementContent() {
             </Button>
           </div>
         )}
+        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* IndyLeague Score Input */}
         {isIndyLeague ? (
           <div className="space-y-6">
@@ -1658,7 +1643,10 @@ function DivisionStageManagementContent() {
                                     handleTieBreakChange(matchup.id, e.target.value)
                                   }
                                 }}
-                                className="px-3 py-2 border border-orange-300 rounded-md"
+                                className="pl-3 py-2 border border-orange-300 rounded-md pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                                style={{
+                                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                                }}
                               >
                                 <option value="">Select winner...</option>
                                 <option value={matchup.homeTeamId}>{matchup.homeTeam.name}</option>
@@ -1695,10 +1683,13 @@ function DivisionStageManagementContent() {
             {isLeagueRoundRobin && matchDays && matchDays.length > 0 && (
               <div className="flex items-center gap-2 pb-2 border-b">
                 <span className="text-sm font-medium text-gray-700">Match Day:</span>
-                <select
-                  value={selectedMatchDayId}
-                  onChange={(e) => setSelectedMatchDayId(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+<select
+                value={selectedMatchDayId}
+                onChange={(e) => setSelectedMatchDayId(e.target.value)}
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
                 >
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
@@ -2967,8 +2958,11 @@ function DivisionStageManagementContent() {
 
       {/* Regeneration confirmation modal */}
       {!isIndyLeague && showRegenerateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
+          onClick={() => setShowRegenerateModal(false)}
+        >
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-auto max-h-[min(90vh,calc(100vh-8rem))] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-4">
               Regenerate {regenerateType === 'rr' ? 'Round Robin' : regenerateType === 'playin' ? 'Play-In' : 'Play-Off'}
             </h3>

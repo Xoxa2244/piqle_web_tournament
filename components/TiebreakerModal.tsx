@@ -132,8 +132,14 @@ export default function TiebreakerModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-xl font-bold mb-4">Tiebreaker</h2>
         <p className="text-sm text-gray-600 mb-4">
           Match ended 2:2. Enter tiebreaker result.
@@ -159,7 +165,8 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamAPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamAPlayerId', e.target.value)}
-                    className="flex-1 px-2 py-1 border rounded text-sm"
+                    className="flex-1 pl-2 py-1 border rounded text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                   >
                     <option value="">Select {teamAName} player</option>
                     {teamAPlayers.map(player => (
@@ -172,7 +179,8 @@ export default function TiebreakerModal({
                   <select
                     value={sequence[index]?.teamBPlayerId || ''}
                     onChange={(e) => updateSequenceSlot(index, 'teamBPlayerId', e.target.value)}
-                    className="flex-1 px-2 py-1 border rounded text-sm"
+                    className="flex-1 pl-2 py-1 border rounded text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                   >
                     <option value="">Select {teamBName} player</option>
                     {teamBPlayers.map(player => (

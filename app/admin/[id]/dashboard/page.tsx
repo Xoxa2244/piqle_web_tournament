@@ -21,7 +21,6 @@ import {
 } from 'lucide-react'
 import BracketPyramid from '@/components/BracketPyramid'
 import BracketModal from '@/components/BracketModal'
-import TournamentNavBar from '@/components/TournamentNavBar'
 import DaySelector from '@/components/DaySelector'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
@@ -87,6 +86,13 @@ function DivisionDashboardContent() {
     { id: tournamentId },
     { enabled: !!tournamentId }
   )
+
+  // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
+  useEffect(() => {
+    if (tournament && tournament.divisions.length === 0) {
+      router.replace(`/admin/${tournamentId}/divisions`)
+    }
+  }, [tournament, tournamentId, router])
 
   // Get division from URL - read it once per render
   const divisionFromUrl = searchParams.get('division')
@@ -256,27 +262,8 @@ function DivisionDashboardContent() {
 
   if (tournament.divisions.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">No divisions yet</h2>
-          <p className="text-gray-600 mb-6">
-            Create a division to start adding teams, generating schedules, and entering scores.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href={`/admin/${tournamentId}/divisions`}
-              className="flex-1 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Create division
-            </Link>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="flex-1 inline-flex items-center justify-center border border-gray-300 text-gray-700 rounded-lg px-4 py-2 hover:bg-gray-50"
-            >
-              Back to tournament
-            </Link>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-gray-500">Redirecting to divisions...</div>
       </div>
     )
   }
@@ -311,24 +298,6 @@ function DivisionDashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        tournamentImage={tournament.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament.format}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-        onPublicScoreboardClick={() => {
-          if (!tournament?.isPublicBoardEnabled) {
-            alert('Public Scoreboard is not available. Please enable it in tournament settings.')
-            return
-          }
-          window.open(`/scoreboard/${tournamentId}`, '_blank')
-        }}
-      />
-      
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -381,7 +350,10 @@ function DivisionDashboardContent() {
               <select
                 value={selectedDivisionId}
                 onChange={(e) => setSelectedDivisionId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
               >
                 {(tournament.divisions as any[]).map((division: any) => (
                   <option key={division.id} value={division.id}>
@@ -474,17 +446,17 @@ function DivisionDashboardContent() {
             {/* Desktop Layout */}
             <div className="hidden lg:block space-y-6">
               {/* Round Robin Section */}
-              <div className="grid grid-cols-12 gap-6">
+              <div className="grid grid-cols-12 gap-6 items-stretch">
                 {/* RR Summary */}
-                <div className="col-span-3">
-                  <Card>
+                <div className="col-span-3 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2">
                         <Users className="h-5 w-5" />
                         <span>Round Robin</span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 flex-1">
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <span className="text-sm font-medium">Status:</span>
@@ -512,8 +484,8 @@ function DivisionDashboardContent() {
                 </div>
 
                 {/* RR Table */}
-                <div className="col-span-9">
-                  <Card>
+                <div className="col-span-9 min-h-0 flex">
+                  <Card className="flex flex-col w-full">
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle>
@@ -530,8 +502,8 @@ function DivisionDashboardContent() {
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
+                    <CardContent className="flex-1 min-h-0 flex flex-col">
+                      <div className="overflow-x-auto flex-1 min-h-0">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">

@@ -3,6 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,11 +20,13 @@ export default function ProfilePage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: profile, isLoading, refetch } = trpc.user.getProfile.useQuery()
+  const { update: updateSession } = useSession()
   const updateProfile = trpc.user.updateProfile.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       refetch()
       setIsEditing(false)
       setIsUploadingAvatar(false)
+      await updateSession()
     },
   })
 
@@ -398,7 +401,7 @@ export default function ProfilePage() {
                   id="gender"
                   value={formData.gender}
                   onChange={(e) => setFormData({ ...formData, gender: e.target.value as 'M' | 'F' | 'X' | '' })}
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background pl-3 py-2 text-sm pr-[2.5rem]"
                 >
                   <option value="">Not specified</option>
                   <option value="M">Male</option>

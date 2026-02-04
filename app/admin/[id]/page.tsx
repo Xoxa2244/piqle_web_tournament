@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
@@ -12,19 +12,23 @@ import AvatarCropper from '@/components/AvatarCropper'
 import { 
   Users, 
   Calendar, 
-  BarChart3, 
   Settings,
   FileText,
-  Target,
   ArrowLeft,
   Upload,
-  Globe,
   Edit,
   Shield,
-  X
+  X,
+  MapPin,
+  DollarSign,
+  Layers,
+  Swords,
+  User,
+  UserCheck,
+  UserX,
+  Trophy,
+  Clock
 } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -78,11 +82,42 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
   })
 }
 
+function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'Past'
+    case 'upcoming': return 'Upcoming'
+    case 'in_progress': return 'In progress'
+  }
+}
+function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'bg-gray-100 text-gray-700'
+    case 'upcoming': return 'bg-blue-50 text-blue-700'
+    case 'in_progress': return 'bg-green-50 text-green-700'
+  }
+}
+
 export default function TournamentDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const [showCreateDivision, setShowCreateDivision] = useState(false)
   const [showEditTournament, setShowEditTournament] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -120,19 +155,59 @@ export default function TournamentDetailPage() {
   })
 
   const { data: tournament, isLoading, error } = trpc.tournament.get.useQuery({ id: tournamentId })
-  
+
+  // Open edit modal when navigating with ?edit=1 (e.g. from layout navbar)
+  useEffect(() => {
+    if (!tournament || showEditTournament) return
+    if (searchParams.get('edit') === '1') {
+      setShowEditTournament(true)
+      setTournamentForm({
+        title: tournament.title,
+        description: tournament.description || '',
+        venueName: tournament.venueName || '',
+        startDate: new Date(tournament.startDate).toISOString().split('T')[0],
+        endDate: new Date(tournament.endDate).toISOString().split('T')[0],
+        registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
+        registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+        entryFee: tournament.entryFee || '',
+        isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
+        allowDuprSubmission: tournament.allowDuprSubmission ?? false,
+        image: tournament.image || '',
+      })
+      setImagePreview(tournament.image || null)
+      window.history.replaceState(null, '', `/admin/${tournamentId}`)
+    }
+  }, [tournament, searchParams, tournamentId])
+
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   // Check if user is owner (for owner-only features like CSV import and access control)
   const isOwner = tournament?.userAccessInfo?.isOwner
   
-  // Get pending access requests count (only for owner)
-  const { data: accessRequests } = trpc.tournamentAccess.listRequests.useQuery(
+  // Get pending access requests (only for owner)
+  const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
-  
+
+  const approveRequestMutation = trpc.tournamentAccess.approveRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+  const rejectRequestMutation = trpc.tournamentAccess.rejectRequest.useMutation({
+    onSuccess: () => {
+      refetchAccessRequests()
+    },
+  })
+
+  // Tournament winners (1st, 2nd, 3rd per division)
+  const { data: winnersByDivision } = trpc.tournament.getWinners.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId }
+  )
+
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
       setShowEditTournament(false)
@@ -188,7 +263,7 @@ export default function TournamentDetailPage() {
       alert('Public Scoreboard is not available. Please enable it in tournament settings.')
       return
     }
-    window.open(`/scoreboard/${tournamentId}`, '_blank')
+    window.location.href = `/scoreboard/${tournamentId}`
   }
 
   const handleEditTournamentClick = () => {
@@ -382,12 +457,10 @@ export default function TournamentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.1),transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.1),transparent_50%)]"></div>
-        <div className="text-center relative z-10">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
-          <div className="text-lg font-semibold text-indigo-900 bg-white/60 backdrop-blur-sm px-6 py-3 rounded-2xl shadow-lg">Loading tournament...</div>
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-gray-600 mx-auto mb-4"></div>
+          <div className="text-lg font-semibold text-gray-800 bg-white px-6 py-3 rounded-2xl shadow-lg border border-gray-200">Loading tournament...</div>
         </div>
       </div>
     )
@@ -395,285 +468,277 @@ export default function TournamentDetailPage() {
 
   if (error || !tournament) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,119,198,0.1),transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(219,39,119,0.1),transparent_50%)]"></div>
-        <div className="text-center relative z-10">
-          <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md mx-4 border border-white/20">
-            <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent mb-2">Tournament not found</h1>
-            <p className="text-gray-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
-            <Link href="/admin" className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to tournaments
-            </Link>
+      <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center">
+        <div className="text-center bg-white rounded-2xl shadow-xl p-8 max-w-md mx-4 border border-gray-200">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
           </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Tournament not found</h1>
+          <p className="text-gray-600 mb-6">The tournament may have been deleted or you don&apos;t have access</p>
+          <Link href="/admin" className="inline-flex items-center px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-semibold">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to tournaments
+          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/30 to-purple-200/30 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-pink-200/30 to-rose-200/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-200/20 to-cyan-200/20 rounded-full blur-3xl animate-pulse delay-500"></div>
-      </div>
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament.title}
-        tournamentImage={tournament.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        onPublicScoreboardClick={handlePublicScoreboardClick}
-        onEditTournamentClick={handleEditTournamentClick}
-        publicScoreboardUrl={tournament?.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
-        tournamentFormat={tournament.format}
-      />
-
+    <div className="min-h-screen w-full bg-gray-50">
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
-            <Card className="h-full border-0 shadow-2xl bg-white/70 backdrop-blur-xl relative overflow-hidden group hover:shadow-3xl transition-all duration-500">
-              {/* Decorative gradient overlay */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-indigo-400/10 to-purple-400/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:scale-150 transition-transform duration-700"></div>
-              
-              <CardHeader className="pb-4 relative z-10">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center">
-                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg group-hover:scale-110 transition-transform duration-300">
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
                     <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6 relative z-10">
-                {/* Tournament Description */}
-                <div className="bg-gradient-to-br from-indigo-50/80 via-purple-50/80 to-pink-50/80 backdrop-blur-sm rounded-2xl p-5 border border-indigo-100/50 shadow-inner relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-                  <div className="h-24 overflow-y-auto custom-scrollbar">
+              <CardContent className="space-y-5">
+                {/* Tournament status — выше описания */}
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
+                    {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                </div>
+
+                {/* Description */}
+                <div className="flex gap-3">
+                  <FileText className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500" />
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     {tournament.description ? (
-                      <div 
-                        className="text-base font-medium text-gray-800 prose prose-sm max-w-none leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                      />
+                      <div>
+                        <div
+                          className={`text-base text-gray-700 prose prose-sm max-w-none leading-relaxed whitespace-pre-wrap break-words ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        />
+                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                          <button
+                            type="button"
+                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            {descriptionExpanded ? 'Show less' : 'Show more'}
+                          </button>
+                        )}
+                      </div>
                     ) : (
-                      <p className="text-base font-medium text-gray-400 italic">
-                        No description provided
-                      </p>
+                      <p className="text-base text-gray-400 italic">No description provided</p>
                     )}
                   </div>
                 </div>
 
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/10 to-teal-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-emerald-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-3 block">Start Date</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
-                          <Calendar className="w-5 h-5 text-white" />
+                {/* Start & End date — одна строка с иконкой */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {' – '}
+                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+
+                {/* Venue */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <MapPin className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.venueName || '—'}</span>
+                </div>
+
+                {/* Entry fee */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <DollarSign className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>{tournament.entryFee ? `$${tournament.entryFee}` : '—'}</span>
+                </div>
+
+                {/* Number of divisions */}
+                <div className="flex items-center gap-2 text-base text-gray-700">
+                  <Layers className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                  <span>
+                    {(tournament.divisions?.length ?? 0)} division{(tournament.divisions?.length ?? 0) !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Winners — per-division with switcher */}
+                <div className="pt-4 border-t border-gray-200">
+                  <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                    <Trophy className="h-5 w-5 text-amber-500" />
+                    Winners
+                  </p>
+                  {(() => {
+                    const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string }>
+                    const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
+                    const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
+                    const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
+
+                    if (divisions.length === 0) {
+                      return (
+                        <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                          <p className="text-base font-medium text-gray-600">No divisions yet</p>
+                          <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
                         </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {new Date(tournament.startDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-rose-400/10 to-pink-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-rose-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-3 block">End Date</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
-                          <Calendar className="w-5 h-5 text-white" />
+                      )
+                    }
+
+                    return (
+                      <div>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {divisions.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => setSelectedWinnersDivisionId(d.id)}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                effectiveDivisionId === d.id
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                              }`}
+                            >
+                              {d.name}
+                            </button>
+                          ))}
                         </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {new Date(tournament.endDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
+                        {!hasWinners ? (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                            <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-base font-medium text-gray-600">No winners yet</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {selectedDivision?.name
+                                ? `Results for ${selectedDivision.name} will appear after the tournament or playoffs are complete`
+                                : 'Results will appear after the tournament or playoffs are complete'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
+                            <p className="text-sm font-semibold text-gray-700 mb-3">{winnersForDivision?.divisionName ?? selectedDivision?.name}</p>
+                            <div className="space-y-2 text-base text-gray-800">
+                              {winnersForDivision?.first && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
+                                  <span>{winnersForDivision.first.teamName}</span>
+                                </div>
+                              )}
+                              {winnersForDivision?.second && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
+                                  <span>{winnersForDivision.second.teamName}</span>
+                                </div>
+                              )}
+                              {winnersForDivision?.third && (
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
+                                  <span>{winnersForDivision.third.teamName}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-orange-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-amber-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-3 block">Venue</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {tournament.venueName || '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="group relative">
-                    <div className="absolute inset-0 bg-gradient-to-br from-green-400/10 to-emerald-400/10 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300"></div>
-                    <div className="relative bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-green-200/50 shadow-lg group-hover:shadow-xl group-hover:scale-[1.02] transition-all duration-300">
-                      <label className="text-xs font-bold text-green-600 uppercase tracking-wider mb-3 block">Entry Fee</label>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md group-hover:rotate-12 transition-transform duration-300">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                          </svg>
-                        </div>
-                        <p className="text-base font-bold text-gray-800">
-                          {tournament.entryFee ? `$${tournament.entryFee}` : '—'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                    )
+                  })()}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Quick Actions - Right Column (40%) */}
+          {/* Access requests - Right Column (40%) */}
           <div className="lg:col-span-1">
-            <Card className="h-full border-0 shadow-2xl bg-white/70 backdrop-blur-xl relative overflow-hidden group hover:shadow-3xl transition-all duration-500">
-              {/* Decorative gradient overlay */}
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-purple-400/10 to-pink-400/10 rounded-full blur-3xl -ml-32 -mb-32 group-hover:scale-150 transition-transform duration-700"></div>
-              
-              <CardHeader className="pb-4 relative z-10">
-                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 bg-clip-text text-transparent flex items-center">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mr-3 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                    <Settings className="w-5 h-5 text-white" />
+            <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
+                    <Clock className="w-5 h-5 text-white" />
                   </div>
-                  Quick Actions
+                  Access requests
                 </CardTitle>
               </CardHeader>
-              <CardContent className="relative z-10">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  {isAdmin && (
-                    <Link href={`/admin/${tournamentId}/divisions`} className="group/action">
-                      <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-blue-200/50 hover:border-blue-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                              <Settings className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-blue-600 transition-colors">Divisions</div>
-                            </div>
-                          </div>
-                        </Button>
-                      </div>
-                    </Link>
-                  )}
-                  
-                  <Link href={`/admin/${tournamentId}/players`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-emerald-200/50 hover:border-emerald-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                            <Users className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-emerald-600 transition-colors">Players</div>
-                          </div>
-                        </div>
-                      </Button>
+              <CardContent>
+                {!isOwner ? (
+                  <p className="text-sm text-gray-500">Access management is only available to the tournament owner.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm text-gray-600">Pending requests</span>
+                      <Link
+                        href={`/admin/${tournamentId}/access`}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        Access management →
+                      </Link>
                     </div>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/stages`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-amber-400/20 to-orange-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-amber-200/50 hover:border-amber-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                            <FileText className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-amber-600 transition-colors">Score Input</div>
-                          </div>
-                        </div>
-                      </Button>
-                    </div>
-                  </Link>
-                  
-                  <Link href={`/admin/${tournamentId}/dashboard`} className="group/action">
-                    <div className="relative h-24 w-full">
-                      <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                      <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-purple-200/50 hover:border-purple-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                        <div className="flex flex-col items-center space-y-2 w-full">
-                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                            <BarChart3 className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-sm text-gray-800 group-hover/action:text-purple-600 transition-colors">Dashboard</div>
-                          </div>
-                        </div>
-                      </Button>
-                    </div>
-                  </Link>
-                  
-                  {(tournament?.format === 'INDY_LEAGUE' || tournament?.format === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
-                    <Link href={`/admin/${tournamentId}/match-days`} className="group/action">
-                      <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-blue-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-indigo-200/50 hover:border-indigo-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                              <Calendar className="h-5 w-5 text-white" />
-                            </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-indigo-600 transition-colors">Match Days</div>
-                            </div>
-                          </div>
-                        </Button>
+                    {!accessRequests || accessRequests.length === 0 ? (
+                      <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                        <UserCheck className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                        <p className="text-base font-medium text-gray-600">No pending requests</p>
+                        <p className="text-sm text-gray-500 mt-1">Access requests will appear here</p>
                       </div>
-                    </Link>
-                  )}
-                  
-                  {isOwner && (
-                    <Link href={`/admin/${tournamentId}/access`} className="relative group/action">
-                      <div className="relative h-24 w-full">
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-400/20 to-slate-400/20 rounded-2xl blur-xl group-hover/action:blur-2xl transition-all duration-300"></div>
-                        <Button variant="outline" className="relative h-full w-full p-4 bg-white/60 backdrop-blur-sm border-gray-200/50 hover:border-gray-300 hover:bg-white/80 transition-all duration-300 rounded-2xl shadow-lg group-hover/action:shadow-xl group-hover/action:scale-[1.02] border-2">
-                          <div className="flex flex-col items-center space-y-2 w-full">
-                            <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-slate-600 rounded-xl flex items-center justify-center shadow-md group-hover/action:rotate-12 group-hover/action:scale-110 transition-all duration-300">
-                              <Shield className="h-5 w-5 text-white" />
+                    ) : (
+                      <div className="space-y-3 max-h-[320px] overflow-y-auto">
+                        {accessRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {request.user.image && (
+                                <Image
+                                  src={request.user.image}
+                                  alt={request.user.name || ''}
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                                  unoptimized
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 truncate">{request.user.name || 'No name'}</p>
+                                <p className="text-xs text-gray-500 truncate">{request.user.email}</p>
+                              </div>
                             </div>
-                            <div className="text-center">
-                              <div className="font-bold text-sm text-gray-800 group-hover/action:text-gray-600 transition-colors">Access</div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                disabled={approveRequestMutation.isPending}
+                                onClick={() => {
+                                  approveRequestMutation.mutate({
+                                    requestId: request.id,
+                                    accessLevel: 'SCORE_ONLY',
+                                    divisionIds: null,
+                                  })
+                                }}
+                              >
+                                <UserCheck className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:text-red-700 border-red-200"
+                                disabled={rejectRequestMutation.isPending}
+                                onClick={() => {
+                                  if (typeof window !== 'undefined' && window.confirm('Reject this access request?')) {
+                                    rejectRequestMutation.mutate({ requestId: request.id })
+                                  }
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
-                        </Button>
+                        ))}
                       </div>
-                      {pendingRequestsCount > 0 && (
-                        <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-rose-600 text-xs font-bold text-white shadow-lg animate-pulse z-20 border-2 border-white">
-                          {pendingRequestsCount}
-                        </span>
-                      )}
-                    </Link>
-                  )}
-                </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -682,18 +747,22 @@ export default function TournamentDetailPage() {
 
       {/* Create Division Modal */}
       {showCreateDivision && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 w-full max-w-md mx-4 border border-white/20 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
-            <div className="flex items-center mb-6 relative z-10">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowCreateDivision(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4 border border-gray-200 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center mb-6">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                 <Settings className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Create Division</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Create Division</h2>
             </div>
             
-            <div className="space-y-5 relative z-10">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Division Name *
@@ -714,7 +783,7 @@ export default function TournamentDetailPage() {
                 <select
                   value={divisionForm.teamKind}
                   onChange={(e) => setDivisionForm({ ...divisionForm, teamKind: e.target.value as any })}
-                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  className="w-full pl-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
                 >
                   <option value="SINGLES_1v1">Singles (1v1)</option>
                   <option value="DOUBLES_2v2">Doubles (2v2)</option>
@@ -729,7 +798,7 @@ export default function TournamentDetailPage() {
                 <select
                   value={divisionForm.pairingMode}
                   onChange={(e) => setDivisionForm({ ...divisionForm, pairingMode: e.target.value as any })}
-                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  className="w-full pl-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
                 >
                   <option value="FIXED">Fixed Teams</option>
                   <option value="MIX_AND_MATCH">Mix and Match</option>
@@ -776,7 +845,7 @@ export default function TournamentDetailPage() {
               <Button
                 onClick={handleCreateDivision}
                 disabled={createDivision.isPending}
-                className="px-6 py-3 text-base bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {createDivision.isPending ? 'Creating...' : 'Create Division'}
               </Button>
@@ -787,21 +856,24 @@ export default function TournamentDetailPage() {
 
       {/* Edit Tournament Modal */}
       {showEditTournament && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl mx-4 border border-white/20 relative overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-3xl"></div>
-            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-indigo-200/20 to-purple-200/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
-            
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowEditTournament(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 border border-gray-200 relative overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header - fixed */}
-            <div className="flex items-center p-8 pb-6 relative z-10 flex-shrink-0">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+            <div className="flex items-center p-8 pb-6 flex-shrink-0">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
                 <Edit className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Edit Tournament</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Tournament</h2>
             </div>
             
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto px-8 relative z-10">
+            <div className="flex-1 overflow-y-auto px-8">
               <div className="space-y-5 pb-4">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -971,7 +1043,7 @@ export default function TournamentDetailPage() {
                 </p>
               </div>
 
-              <div className="flex items-center p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl border border-indigo-100">
+              <div className="flex items-center p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <input
                   type="checkbox"
                   name="isPublicBoardEnabled"
@@ -1026,7 +1098,7 @@ export default function TournamentDetailPage() {
               <Button
                 onClick={handleTournamentSubmit}
                 disabled={updateTournament.isPending}
-                className="px-6 py-3 text-base bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>

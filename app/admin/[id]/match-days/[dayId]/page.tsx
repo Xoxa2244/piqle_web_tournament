@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -193,14 +191,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   if (!matchDay) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TournamentNavBar
-          tournamentTitle={tournament?.title}
-          tournamentImage={tournament?.image || undefined}
-          isAdmin={isAdmin}
-          isOwner={isOwner}
-          pendingRequestsCount={pendingRequestsCount}
-          tournamentFormat={tournament?.format}
-        />
         <div className="max-w-6xl mx-auto p-6">
           <Card>
             <CardContent className="pt-6">
@@ -216,14 +206,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   if (tournament?.format === 'LEAGUE_ROUND_ROBIN') {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TournamentNavBar
-          tournamentTitle={tournament?.title}
-          tournamentImage={tournament?.image || undefined}
-          isAdmin={isAdmin}
-          isOwner={isOwner}
-          pendingRequestsCount={pendingRequestsCount}
-          tournamentFormat={tournament?.format}
-        />
         <div className="max-w-6xl mx-auto p-6">
           <Button
             variant="outline"
@@ -250,16 +232,6 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
-      />
-
       <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
         <Button
@@ -295,7 +267,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
             <select
               value={matchDayId}
               onChange={(e) => handleDayChange(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="pl-3 py-2 border border-gray-300 rounded-md bg-white text-sm font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 pr-[2.5rem]"
             >
               {allMatchDays?.map((day) => (
                 <option key={day.id} value={day.id}>
@@ -338,7 +310,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     setSelectedHomeTeamId('')
                     setSelectedAwayTeamId('')
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                 >
                   <option value="">Select division...</option>
                   {tournament?.divisions?.map((div: any) => (
@@ -358,7 +330,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     <select
                       value={selectedHomeTeamId}
                       onChange={(e) => setSelectedHomeTeamId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     >
                       <option value="">Select home team...</option>
                       {tournament?.divisions
@@ -378,7 +350,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
                     <select
                       value={selectedAwayTeamId}
                       onChange={(e) => setSelectedAwayTeamId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     >
                       <option value="">Select away team...</option>
                       {tournament?.divisions

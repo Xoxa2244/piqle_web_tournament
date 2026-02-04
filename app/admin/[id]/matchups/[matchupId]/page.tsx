@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Save } from 'lucide-react'
-import TournamentNavBar from '@/components/TournamentNavBar'
-
 export default function MatchupDetailPage({ params }: { params: Promise<{ id: string; matchupId: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -194,14 +192,6 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
   if (!currentMatchup) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TournamentNavBar
-          tournamentTitle={tournament?.title}
-          tournamentImage={tournament?.image || undefined}
-          isAdmin={isAdmin}
-          isOwner={isOwner}
-          pendingRequestsCount={pendingRequestsCount}
-          tournamentFormat={tournament?.format}
-        />
         <div className="max-w-6xl mx-auto p-6">
           <Card>
             <CardContent className="pt-6">
@@ -220,16 +210,6 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Bar */}
-      <TournamentNavBar
-        tournamentTitle={tournament?.title}
-        tournamentImage={tournament?.image || undefined}
-        isAdmin={isAdmin}
-        isOwner={isOwner}
-        pendingRequestsCount={pendingRequestsCount}
-        tournamentFormat={tournament?.format}
-      />
-
       <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
         <Button
@@ -283,7 +263,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                 <select
                   value={selectedCourtId}
                   onChange={(e) => setSelectedCourtId(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md"
+                  className="pl-3 py-2 border border-gray-300 rounded-md pr-[2.5rem]"
                 >
                   <option value="">Unassigned</option>
                   {courts.map((court: any) => (
@@ -366,7 +346,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                               updated[idx].letter = e.target.value || null
                               setHomeRosters(updated)
                             }}
-                            className="px-2 py-1 border rounded text-sm"
+                            className="pl-2 py-1 border rounded text-sm pr-[2.5rem]"
                           >
                             <option value="">Select letter...</option>
                             <option value="A">A</option>
@@ -424,7 +404,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
                               updated[idx].letter = e.target.value || null
                               setAwayRosters(updated)
                             }}
-                            className="px-2 py-1 border rounded text-sm"
+                            className="pl-2 py-1 border rounded text-sm pr-[2.5rem]"
                           >
                             <option value="">Select letter...</option>
                             <option value="A">A</option>
