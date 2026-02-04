@@ -40,7 +40,6 @@ model User {
   partnerDirectorships     Partner[] // Partners where this user is the director
   organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
   stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
-  payments                 Payment[]
 
   @@map("users")
 }
@@ -260,6 +259,7 @@ model Team {
   standings           Standing[]
   teamPlayers         TeamPlayer[]
   dayRosters          DayRoster[]
+  payments            Payment[]
   division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool                Pool?           @relation(fields: [poolId], references: [id])
 
