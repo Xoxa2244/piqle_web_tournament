@@ -38,6 +38,7 @@ export async function GET() {
       startDate: true,
       venueName: true,
       venueAddress: true,
+      publicSlug: true,
     },
     orderBy: { startDate: 'asc' },
   })
@@ -50,6 +51,7 @@ export async function GET() {
       startDate: tournament.startDate.toISOString(),
       clubName: tournament.venueName ?? 'Tournament Club',
       address: tournament.venueAddress as string,
+      publicSlug: tournament.publicSlug ?? undefined,
     }))
 
   if (!normalized.length) {

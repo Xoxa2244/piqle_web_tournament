@@ -11,6 +11,7 @@ export type Tournament = {
   address: string
   lat: number
   lng: number
+  publicSlug?: string
   placeId?: string
   city?: string
   state?: string

@@ -15,6 +15,9 @@ const DEFAULT_ZOOM = 4
 const FOCUS_ZOOM = 12
 
 const buildInfoWindowContent = (tournament: Tournament) => {
+  const href = tournament.publicSlug
+    ? `/t/${tournament.publicSlug}`
+    : `/admin/${tournament.id}`
   return `
     <div style="min-width: 220px">
       <div style="font-weight: 600; margin-bottom: 4px;">${tournament.name}</div>
@@ -23,7 +26,7 @@ const buildInfoWindowContent = (tournament: Tournament) => {
       ).toLocaleString()}</div>
       <div style="margin-bottom: 4px;">${tournament.clubName}</div>
       <div style="margin-bottom: 8px;">${tournament.address}</div>
-      <a href="/tournaments/${tournament.id}" style="color: #2563eb; text-decoration: underline;">
+      <a href="${href}" style="color: #2563eb; text-decoration: underline;">
         Open tournament page
       </a>
     </div>

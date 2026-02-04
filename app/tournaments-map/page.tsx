@@ -11,6 +11,7 @@ type ApiTournament = {
   startDate: string
   clubName: string
   address: string
+  publicSlug?: string
 }
 
 type ApiResponse = {
