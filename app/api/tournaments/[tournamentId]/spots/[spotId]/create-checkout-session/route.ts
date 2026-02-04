@@ -74,6 +74,14 @@ export async function POST(
     )
   }
 
+  const destinationAccountId = tournament.user?.organizerStripeAccountId
+  if (!destinationAccountId) {
+    return NextResponse.json(
+      { error: 'Organizer payouts are not configured' },
+      { status: 400 }
+    )
+  }
+
   const team = tournament.divisions
     .flatMap((division) => division.teams)
     .find((item) => item.id === spot.teamId)
@@ -147,7 +155,7 @@ export async function POST(
     payment_intent_data: {
       application_fee_amount: platformFeeCents,
       transfer_data: {
-        destination: tournament.user?.organizerStripeAccountId ?? undefined,
+        destination: destinationAccountId,
         amount: organizerAmountCents,
       },
       metadata: {
