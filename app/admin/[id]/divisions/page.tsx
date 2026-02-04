@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -690,8 +690,14 @@ function DivisionCard({
 
 export default function DivisionsPage() {
   const params = useParams()
+  const router = useRouter()
   const tournamentId = params.id as string
-  
+  const [baseUrl, setBaseUrl] = useState('')
+
+  useEffect(() => {
+    setBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')
+  }, [])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set())
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
@@ -729,6 +735,22 @@ export default function DivisionsPage() {
   )
 
   const utils = trpc.useUtils()
+
+  const handlePublicScoreboardClick = () => {
+    if (!tournament?.isPublicBoardEnabled) {
+      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      return
+    }
+    router.push(`/scoreboard/${tournamentId}`)
+  }
+
+  const handleEditTournamentClick = () => {
+    router.push(`/admin/${tournamentId}?edit=1`)
+  }
+
+  const publicScoreboardUrl = tournament?.isPublicBoardEnabled && baseUrl
+    ? `${baseUrl}/scoreboard/${tournamentId}`
+    : undefined
   
   // Check if user has admin access (must be before conditional returns to avoid hooks violations)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
@@ -1513,6 +1535,9 @@ export default function DivisionsPage() {
           isOwner={false}
           pendingRequestsCount={0}
           tournamentFormat={tournament?.format}
+          onPublicScoreboardClick={handlePublicScoreboardClick}
+          onEditTournamentClick={handleEditTournamentClick}
+          publicScoreboardUrl={publicScoreboardUrl}
         />
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1549,6 +1574,9 @@ export default function DivisionsPage() {
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
             tournamentFormat={tournament.format}
+            onPublicScoreboardClick={handlePublicScoreboardClick}
+            onEditTournamentClick={handleEditTournamentClick}
+            publicScoreboardUrl={publicScoreboardUrl}
           />
           <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
             <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
@@ -1596,6 +1624,9 @@ export default function DivisionsPage() {
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
         tournamentFormat={tournament.format}
+        onPublicScoreboardClick={handlePublicScoreboardClick}
+        onEditTournamentClick={handleEditTournamentClick}
+        publicScoreboardUrl={publicScoreboardUrl}
       />
       
       {/* Header */}

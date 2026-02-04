@@ -78,7 +78,7 @@ export default function NewTournamentPage() {
     registrationStartDate: '',
     registrationEndDate: '',
     entryFee: '',
-    isPublicBoardEnabled: false,
+    isPublicBoardEnabled: true,
     allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE' | 'LEAGUE_ROUND_ROBIN',
     seasonLabel: '',
@@ -580,7 +580,10 @@ export default function NewTournamentPage() {
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
-                Enable public results board
+                Enable public results board{' '}
+                <span className="text-gray-500 font-normal">
+                  (uncheck to hide this tournament from the public listing)
+                </span>
               </label>
             </div>
 
