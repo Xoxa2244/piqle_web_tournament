@@ -2,70 +2,152 @@
 
 import { useEffect, useState } from "react"
 import { MapWithTournaments } from "@/components/MapWithTournaments"
-import { CreateTournamentForm } from "@/components/CreateTournamentForm"
+import { loadGoogleMaps } from "@/lib/googleMapsLoader"
 import type { LatLng, Tournament } from "@/types/tournament"
 
-const MOCK_TOURNAMENTS: Tournament[] = [
-  {
-    id: "t-1001",
-    name: "West Coast Pickleball Open",
-    startDate: "2026-05-12T16:00:00.000Z",
-    clubName: "Bay Piqle Club",
-    address: "701 Mission St, San Francisco, CA 94103, USA",
-    lat: 37.786996,
-    lng: -122.401395,
-  },
-  {
-    id: "t-1002",
-    name: "Midwest Spring Invitational",
-    startDate: "2026-04-22T14:30:00.000Z",
-    clubName: "Chicago Pickleball Center",
-    address: "300 N State St, Chicago, IL 60654, USA",
-    lat: 41.888141,
-    lng: -87.628636,
-  },
-  {
-    id: "t-1003",
-    name: "East Coast Classic",
-    startDate: "2026-06-03T13:00:00.000Z",
-    clubName: "Brooklyn Piqle Hub",
-    address: "30 Rockefeller Plaza, New York, NY 10112, USA",
-    lat: 40.75874,
-    lng: -73.978674,
-  },
-]
+type ApiTournament = {
+  id: string
+  name: string
+  startDate: string
+  clubName: string
+  address: string
+}
+
+type ApiResponse = {
+  tournaments: ApiTournament[]
+  isSample: boolean
+}
 
 export default function TournamentsMapPage() {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [focusLocation, setFocusLocation] = useState<LatLng | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    // TODO: Replace with a real API call to load tournaments from your backend.
-    setTournaments(MOCK_TOURNAMENTS)
-  }, [])
+    let isCancelled = false
 
-  const handleCreateTournament = (tournament: Tournament) => {
-    setTournaments((prev) => [tournament, ...prev])
-    setFocusLocation({ lat: tournament.lat, lng: tournament.lng })
-  }
+    const loadTournaments = async () => {
+      setIsLoading(true)
+      setLoadError(null)
+      setStatusMessage(null)
+
+      try {
+        const response = await fetch("/api/tournaments-map")
+        if (!response.ok) {
+          throw new Error("Failed to load tournaments.")
+        }
+
+        const data = (await response.json()) as ApiResponse
+        if (isCancelled) return
+
+        if (data.isSample) {
+          setStatusMessage(
+            "No tournaments with saved addresses yet. Showing sample events."
+          )
+        }
+
+        if (!data.tournaments.length) {
+          setTournaments([])
+          setIsLoading(false)
+          setStatusMessage("No tournaments with addresses found.")
+          return
+        }
+
+        const googleApi = await loadGoogleMaps({
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "",
+          libraries: ["places"],
+        })
+
+        const geocoder = new googleApi.maps.Geocoder()
+        const geocodeAddress = (address: string) =>
+          new Promise<LatLng | null>((resolve) => {
+            geocoder.geocode(
+              { address },
+              (results: any, status: any) => {
+                if (status !== "OK" || !results?.length) {
+                  resolve(null)
+                  return
+                }
+
+                const location = results[0]?.geometry?.location
+                if (!location) {
+                  resolve(null)
+                  return
+                }
+
+                resolve({ lat: location.lat(), lng: location.lng() })
+              }
+            )
+          })
+
+        const mapped = await Promise.all(
+          data.tournaments.map(async (tournament) => {
+            const coords = await geocodeAddress(tournament.address)
+            if (!coords) return null
+            return {
+              ...tournament,
+              lat: coords.lat,
+              lng: coords.lng,
+            } as Tournament
+          })
+        )
+
+        if (isCancelled) return
+
+        const withCoords = mapped.filter(Boolean) as Tournament[]
+        setTournaments(withCoords)
+        setFocusLocation(withCoords[0] ? { lat: withCoords[0].lat, lng: withCoords[0].lng } : null)
+
+        if (!withCoords.length) {
+          setStatusMessage("No tournaments could be geocoded from addresses.")
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setLoadError(
+            error instanceof Error ? error.message : "Failed to load tournaments."
+          )
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadTournaments()
+    return () => {
+      isCancelled = true
+    }
+  }, [])
 
   return (
     <div className="space-y-6 px-6 py-8">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Tournaments Map</h1>
         <p className="text-sm text-muted-foreground">
-          Discover upcoming tournaments and add new events with clean address
-          data.
+          Discover upcoming tournaments with saved addresses.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-        <CreateTournamentForm onCreate={handleCreateTournament} />
-        <MapWithTournaments
-          tournaments={tournaments}
-          focusLocation={focusLocation}
-        />
-      </div>
+      {statusMessage ? (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+          {statusMessage}
+        </div>
+      ) : null}
+      {loadError ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {loadError}
+        </div>
+      ) : null}
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground">Loading tournaments…</div>
+      ) : null}
+      <MapWithTournaments
+        tournaments={tournaments}
+        focusLocation={focusLocation}
+      />
     </div>
   )
 }

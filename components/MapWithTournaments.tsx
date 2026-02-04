@@ -131,6 +131,8 @@ export const MapWithTournaments = ({
     tournamentMarkersRef.current.forEach((marker) => marker.setMap(null))
     tournamentMarkersRef.current.clear()
 
+    const bounds = new googleRef.current.maps.LatLngBounds()
+
     tournaments.forEach((tournament) => {
       const marker = new googleRef.current!.maps.Marker({
         map: mapInstanceRef.current!,
@@ -151,8 +153,13 @@ export const MapWithTournaments = ({
       })
 
       tournamentMarkersRef.current.set(tournament.id, marker)
+      bounds.extend(marker.getPosition()!)
     })
-  }, [tournaments])
+
+    if (!userLocation && tournaments.length > 0) {
+      mapInstanceRef.current.fitBounds(bounds)
+    }
+  }, [tournaments, userLocation])
 
   useEffect(() => {
     if (!mapInstanceRef.current || !googleRef.current) {
