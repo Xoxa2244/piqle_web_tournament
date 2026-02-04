@@ -67,20 +67,7 @@ export async function POST(
     Boolean(tournament.user?.organizerStripeAccountId) &&
     Boolean(tournament.user?.stripeOnboardingComplete)
 
-  if (!payoutsActive) {
-    return NextResponse.json(
-      { error: 'Payments are not enabled yet for this tournament' },
-      { status: 400 }
-    )
-  }
-
   const destinationAccountId = tournament.user?.organizerStripeAccountId
-  if (!destinationAccountId) {
-    return NextResponse.json(
-      { error: 'Organizer payouts are not configured' },
-      { status: 400 }
-    )
-  }
 
   const team = tournament.divisions
     .flatMap((division) => division.teams)
@@ -154,10 +141,14 @@ export async function POST(
     },
     payment_intent_data: {
       application_fee_amount: platformFeeCents,
-      transfer_data: {
-        destination: destinationAccountId,
-        amount: organizerAmountCents,
-      },
+      ...(destinationAccountId
+        ? {
+            transfer_data: {
+              destination: destinationAccountId,
+              amount: organizerAmountCents,
+            },
+          }
+        : {}),
       metadata: {
         paymentId: payment.id,
         tournamentId: tournament.id,

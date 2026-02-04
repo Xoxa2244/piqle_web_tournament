@@ -174,7 +174,7 @@ export default function TournamentRegistrationPage() {
             </Badge>
             {isPaidTournament && !payoutsActive && (
               <div className="rounded-md border border-yellow-200 bg-yellow-50 p-2 text-yellow-800">
-                Payments are not enabled yet; please check back later.
+                Payments are not enabled yet; contact the organizer if checkout fails.
               </div>
             )}
             {myStatus?.status === 'active' && (
@@ -448,7 +448,7 @@ function TeamCard({
             <button
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
-              disabled={!isRegistrationOpen || (isPaidTournament && !payoutsActive)}
+              disabled={!isRegistrationOpen}
               onClick={() =>
                 isPaidTournament
                   ? onPayJoin(team.id, index)
