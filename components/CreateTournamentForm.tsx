@@ -52,9 +52,9 @@ const extractAddressDetails = (place: any): AddressDetails | null => {
 export const CreateTournamentForm = ({ onCreate }: CreateTournamentFormProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""
   const addressInputRef = useRef<HTMLInputElement | null>(null)
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
-  const listenerRef = useRef<google.maps.MapsEventListener | null>(null)
-  const googleRef = useRef<typeof google | null>(null)
+  const autocompleteRef = useRef<any>(null)
+  const listenerRef = useRef<any>(null)
+  const googleRef = useRef<any>(null)
   const [formState, setFormState] = useState({
     name: "",
     startDate: "",

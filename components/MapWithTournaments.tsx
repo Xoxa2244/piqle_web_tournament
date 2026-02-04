@@ -36,13 +36,11 @@ export const MapWithTournaments = ({
 }: MapWithTournamentsProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
-  const mapInstanceRef = useRef<google.maps.Map | null>(null)
-  const googleRef = useRef<typeof google | null>(null)
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null)
-  const tournamentMarkersRef = useRef<Map<string, google.maps.Marker>>(
-    new Map()
-  )
-  const userMarkerRef = useRef<google.maps.Marker | null>(null)
+  const mapInstanceRef = useRef<any>(null)
+  const googleRef = useRef<any>(null)
+  const infoWindowRef = useRef<any>(null)
+  const tournamentMarkersRef = useRef<Map<string, any>>(new Map())
+  const userMarkerRef = useRef<any>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(false)
