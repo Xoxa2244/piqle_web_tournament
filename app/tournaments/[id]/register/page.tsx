@@ -94,13 +94,16 @@ export default function TournamentRegistrationPage() {
         `/api/tournaments/${tournamentId}/spots/${spotId}/create-checkout-session`,
         { method: 'POST' }
       )
-      const payload = await response.json()
+      const raw = await response.text()
+      const payload = raw ? JSON.parse(raw) : null
       if (!response.ok) {
         throw new Error(payload?.error || 'Failed to start payment')
       }
       if (payload?.url) {
         window.location.href = payload.url
+        return
       }
+      throw new Error('Checkout session URL missing')
     } catch (error: any) {
       alert(error.message || 'Failed to start payment')
     }

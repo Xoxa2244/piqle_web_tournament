@@ -26,6 +26,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ tournamentId: string; spotId: string }> }
 ) {
+  try {
   const resolvedParams = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
@@ -183,4 +184,11 @@ export async function POST(
   }
 
   return NextResponse.json({ url: sessionParams.url })
+  } catch (error: any) {
+    console.error('Create checkout session error:', error)
+    return NextResponse.json(
+      { error: error?.message || 'Failed to create checkout session' },
+      { status: 500 }
+    )
+  }
 }
