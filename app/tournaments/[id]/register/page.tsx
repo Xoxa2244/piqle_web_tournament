@@ -25,10 +25,11 @@ const getSlotCount = (teamKind: TeamKind) => {
 }
 
 const isRegistrationOpen = (tournament: {
-  registrationStartDate: Date | string | null
-  registrationEndDate: Date | string | null
-  startDate: Date | string
+  registrationStartDate?: Date | string | null
+  registrationEndDate?: Date | string | null
+  startDate?: Date | string
 }) => {
+  if (!tournament.startDate) return false
   const start = tournament.registrationStartDate
     ? new Date(tournament.registrationStartDate)
     : new Date(tournament.startDate)
