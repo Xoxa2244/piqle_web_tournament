@@ -24,24 +24,21 @@ const parseName = (name?: string | null) => {
 
 export async function POST(
   request: Request,
-  {
-    params,
-  }: {
-    params: { tournamentId: string; spotId: string }
-  }
+  { params }: { params: Promise<{ tournamentId: string; spotId: string }> }
 ) {
+  const resolvedParams = await params
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const spot = parseSpotId(params.spotId)
+  const spot = parseSpotId(resolvedParams.spotId)
   if (!spot) {
     return NextResponse.json({ error: 'Invalid spot id' }, { status: 400 })
   }
 
   const tournament = await prisma.tournament.findUnique({
-    where: { id: params.tournamentId },
+    where: { id: resolvedParams.tournamentId },
     include: {
       user: {
         select: {
