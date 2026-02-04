@@ -112,6 +112,7 @@ model Tournament {
   allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
   seasonLabel             String?                   @map("season_label")
   timezone                String?
+  hasDivisions            Boolean                   @default(true) @map("has_divisions")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -195,9 +196,12 @@ model DivisionConstraints {
   divisionId String           @unique
   minDupr    Decimal?         @db.Decimal(4, 2)
   maxDupr    Decimal?         @db.Decimal(4, 2)
+  minTeamDupr Decimal?        @db.Decimal(4, 2)
+  maxTeamDupr Decimal?        @db.Decimal(4, 2)
   minAge     Int?
   maxAge     Int?
   genders    GenderConstraint @default(ANY)
+  enforcement ConstraintEnforcement @default(INFO)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
@@ -659,6 +663,11 @@ enum GenderConstraint {
   MEN
   WOMEN
   MIXED
+}
+
+enum ConstraintEnforcement {
+  INFO
+  HARD
 }
 
 enum Gender {

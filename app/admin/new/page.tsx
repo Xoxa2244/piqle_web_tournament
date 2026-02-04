@@ -6,6 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import AvatarCropper from '@/components/AvatarCropper'
+import StructureSetupModal, { TournamentStructureInput } from '@/components/StructureSetupModal'
 import Image from 'next/image'
 import { Upload, X } from 'lucide-react'
 
@@ -88,6 +89,7 @@ export default function NewTournamentPage() {
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [showStructureModal, setShowStructureModal] = useState(false)
 
   const createTournament = trpc.tournament.create.useMutation({
     onSuccess: (tournament) => {
@@ -98,56 +100,63 @@ export default function NewTournamentPage() {
       alert('Error creating tournament: ' + error.message)
     },
   })
+  const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
+    onSuccess: (tournament) => {
+      router.push(`/admin/${tournament.id}`)
+    },
+    onError: (error) => {
+      console.error('Error creating tournament structure:', error)
+      alert('Error creating tournament structure: ' + error.message)
+    },
+  })
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
+  const validateBaseForm = () => {
     if (!formData.title || !formData.startDate || !formData.endDate) {
       alert('Please fill in required fields')
-      return
+      return false
     }
 
-    // Validate dates
     const startDate = new Date(formData.startDate)
     const endDate = new Date(formData.endDate)
-    
-    // End date cannot be earlier than start date
     if (endDate < startDate) {
       alert('End date cannot be earlier than start date')
-      return
+      return false
     }
 
-    // Validate registration dates if provided
     if (formData.registrationStartDate || formData.registrationEndDate) {
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = new Date(formData.registrationStartDate)
         const regEndDate = new Date(formData.registrationEndDate)
-        
-        // Registration end date cannot be earlier than registration start date
         if (regEndDate < regStartDate) {
           alert('Registration end date cannot be earlier than registration start date')
-          return
+          return false
         }
       }
-      
+
       if (formData.registrationStartDate) {
         const regStartDate = new Date(formData.registrationStartDate)
-        // Registration start date cannot be later than tournament start date
         if (regStartDate > startDate) {
           alert('Registration start date cannot be later than tournament start date')
-          return
+          return false
         }
       }
-      
+
       if (formData.registrationEndDate) {
         const regEndDate = new Date(formData.registrationEndDate)
-        // Registration end date cannot be later than tournament start date
         if (regEndDate > startDate) {
           alert('Registration end date cannot be later than tournament start date')
-          return
+          return false
         }
       }
     }
+
+    return true
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!validateBaseForm()) return
 
     createTournament.mutate({
       title: formData.title,
@@ -164,6 +173,28 @@ export default function NewTournamentPage() {
       format: formData.format,
       seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
       timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
+    })
+  }
+
+  const handleStructureSave = (structure: TournamentStructureInput) => {
+    if (!validateBaseForm()) return
+
+    createTournamentWithStructure.mutate({
+      title: formData.title,
+      description: formData.description || undefined,
+      venueName: formData.venueName || undefined,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      registrationStartDate: formData.registrationStartDate || undefined,
+      registrationEndDate: formData.registrationEndDate || undefined,
+      entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
+      isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      allowDuprSubmission: formData.allowDuprSubmission,
+      image: formData.image || undefined,
+      format: formData.format,
+      seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
+      timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
+      structure,
     })
   }
 
@@ -571,13 +602,20 @@ export default function NewTournamentPage() {
               <Button
                 type="button"
                 variant="outline"
+                onClick={() => setShowStructureModal(true)}
+              >
+                Set up structure
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
                 onClick={handleCancel}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={createTournament.isPending}
+                disabled={createTournament.isPending || createTournamentWithStructure.isPending}
               >
                 {createTournament.isPending ? 'Creating...' : 'Create Tournament'}
               </Button>
@@ -597,6 +635,13 @@ export default function NewTournamentPage() {
           title="Crop Tournament Image"
         />
       )}
+
+      <StructureSetupModal
+        isOpen={showStructureModal}
+        isSaving={createTournamentWithStructure.isPending}
+        onClose={() => setShowStructureModal(false)}
+        onSave={handleStructureSave}
+      />
     </div>
   )
 }

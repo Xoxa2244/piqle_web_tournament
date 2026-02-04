@@ -166,7 +166,7 @@ function TournamentNavBarContent({
                   className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDivisions ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Settings className="w-4 h-4" />
-                  <span>Divisions</span>
+                  <span>Teams and Divisions</span>
                 </Button>
               </Link>
             )}
