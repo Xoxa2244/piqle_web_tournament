@@ -520,7 +520,7 @@ export default function NewTournamentPage() {
 
             <div>
               <label htmlFor="venueAddress" className="block text-sm font-medium text-gray-700 mb-2">
-                Venue Address (Google autocomplete)
+                Venue Address
               </label>
               <input
                 type="text"
