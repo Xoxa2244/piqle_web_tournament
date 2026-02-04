@@ -620,7 +620,7 @@ export default function HomePage() {
                         <div className="flex items-center space-x-2">
                           <span className="text-xs text-gray-500">Tournament Director:</span>
                           <Link
-                            href={`/profile/${tournament.user.id}`}
+                            href={tournament.user.id === session?.user?.id ? '/profile' : `/profile/${tournament.user.id}`}
                             className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                           >
                             <AvatarImage
@@ -914,7 +914,7 @@ export default function HomePage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
                         <Link
-                          href={`/profile/${tournament.user.id}`}
+                          href={tournament.user.id === session?.user?.id ? '/profile' : `/profile/${tournament.user.id}`}
                           className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
                         >
                           <AvatarImage
