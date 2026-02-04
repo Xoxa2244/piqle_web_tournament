@@ -141,9 +141,9 @@ export async function POST(
       slotIndex: String(spot.slotIndex),
     },
     payment_intent_data: {
-      application_fee_amount: platformFeeCents,
       ...(destinationAccountId
         ? {
+            application_fee_amount: platformFeeCents,
             transfer_data: {
               destination: destinationAccountId,
               amount: organizerAmountCents,
