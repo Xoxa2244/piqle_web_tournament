@@ -317,11 +317,17 @@ export default function NewTournamentPage() {
       ? toCents(parsedEntryFee)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
+  const requiresPayoutsSetup =
+    entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateBaseForm()) return
+    if (requiresPayoutsSetup) {
+      alert('Connect payouts with Stripe before creating a paid tournament.')
+      return
+    }
 
     const payload = {
       title: formData.title,
@@ -850,11 +856,25 @@ export default function NewTournamentPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={createTournament.isPending || createTournamentWithStructure.isPending}
+                disabled={
+                  createTournament.isPending ||
+                  createTournamentWithStructure.isPending ||
+                  requiresPayoutsSetup
+                }
               >
                 {createTournament.isPending ? 'Creating...' : 'Create Tournament'}
               </Button>
             </div>
+            {requiresPayoutsSetup && (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div className="mb-2">
+                  Paid tournaments require payouts to be connected via Stripe.
+                </div>
+                <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                  Connect payouts with Stripe
+                </Button>
+              </div>
+            )}
           </form>
         </CardContent>
       </Card>

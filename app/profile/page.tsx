@@ -40,6 +40,11 @@ export default function ProfilePage() {
   const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
   const [isRefreshingRatings, setIsRefreshingRatings] = useState(false)
   const [isUnlinkingDUPR, setIsUnlinkingDUPR] = useState(false)
+  const [payoutStatus, setPayoutStatus] = useState<{
+    hasAccount: boolean
+    payoutsActive: boolean
+    isLoading: boolean
+  }>({ hasAccount: false, payoutsActive: false, isLoading: true })
   const [formData, setFormData] = useState({
     name: '',
     gender: '' as 'M' | 'F' | 'X' | '',
@@ -60,6 +65,48 @@ export default function ProfilePage() {
       setAvatarError(false)
     }
   }, [profile, isEditing])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadStatus = async () => {
+      try {
+        const response = await fetch('/api/stripe/connect-status')
+        const payload = await response.json()
+        if (!isMounted) return
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load payout status')
+        }
+        setPayoutStatus({
+          hasAccount: payload.hasAccount,
+          payoutsActive: payload.payoutsActive,
+          isLoading: false,
+        })
+      } catch {
+        if (isMounted) {
+          setPayoutStatus((prev) => ({ ...prev, isLoading: false }))
+        }
+      }
+    }
+    loadStatus()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleConnectStripe = async () => {
+    try {
+      const response = await fetch('/api/stripe/create-account-link', {
+        method: 'POST',
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Failed to start Stripe onboarding')
+      }
+      window.location.href = payload.url
+    } catch (error: any) {
+      alert(error.message || 'Failed to start Stripe onboarding')
+    }
+  }
 
   const handleDUPRSuccess = async (data: {
     duprId: string
@@ -523,6 +570,33 @@ export default function ProfilePage() {
                 </div>
               </div>
             )}
+
+            {/* Stripe Payouts Section */}
+            <div className="space-y-2">
+              <Label>Payouts with Stripe</Label>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                {payoutStatus.isLoading ? (
+                  <div>Checking payout status…</div>
+                ) : payoutStatus.payoutsActive ? (
+                  <div>Payouts: Active</div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      To accept paid registrations, connect your bank details via Stripe.
+                    </div>
+                    <Button
+                      onClick={handleConnectStripe}
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center space-x-2"
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                      <span>Connect Stripe</span>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Action Buttons */}
             {isEditing && (

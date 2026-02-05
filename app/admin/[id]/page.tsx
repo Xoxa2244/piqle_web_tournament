@@ -243,6 +243,8 @@ export default function TournamentDetailPage() {
       ? toCents(parsedEntryFeeForForm)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCentsForForm)
+  const requiresPayoutsSetup =
+    entryFeeCentsForForm > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
   
   // Get pending access requests (only for owner)
   const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
@@ -348,6 +350,10 @@ export default function TournamentDetailPage() {
   const handleTournamentSubmit = () => {
     if (!tournamentForm.title || !tournamentForm.startDate || !tournamentForm.endDate) {
       alert('Please fill in required fields')
+      return
+    }
+    if (requiresPayoutsSetup) {
+      alert('Connect payouts with Stripe before setting a paid entry fee.')
       return
     }
 
@@ -1225,12 +1231,24 @@ export default function TournamentDetailPage() {
               </Button>
               <Button
                 onClick={handleTournamentSubmit}
-                disabled={updateTournament.isPending}
+                disabled={updateTournament.isPending || requiresPayoutsSetup}
                 className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
             </div>
+            {requiresPayoutsSetup && (
+              <div className="px-8 pb-8">
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div className="mb-2">
+                    Paid entry fees require payouts to be connected via Stripe.
+                  </div>
+                  <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                    Connect payouts with Stripe
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
