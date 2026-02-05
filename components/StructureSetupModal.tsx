@@ -435,10 +435,11 @@ export default function StructureSetupModal({
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-700">Individual DUPR range</p>
-                      <label className="flex items-center gap-2 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-700">Individual DUPR range</p>
+                        <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={division.constraints.individualDupr.enabled}
@@ -458,44 +459,46 @@ export default function StructureSetupModal({
                         Enable
                       </label>
                     </div>
-                    <RangeField
-                      enabled={division.constraints.individualDupr.enabled}
-                      minValue={getNumberOrDefault(division.constraints.individualDupr.min, 0)}
-                      maxValue={getNumberOrDefault(division.constraints.individualDupr.max, 8)}
-                      min={0}
-                      max={8}
-                      step={0.1}
-                      onChangeMin={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            individualDupr: {
-                              ...current.constraints.individualDupr,
-                              min: String(value),
-                            },
-                          },
-                        }))
-                      }
-                      onChangeMax={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            individualDupr: {
-                              ...current.constraints.individualDupr,
-                              max: String(value),
-                            },
-                          },
-                        }))
-                      }
-                    />
-                  </div>
+                      <div className="mt-3">
+                        <RangeField
+                          enabled={division.constraints.individualDupr.enabled}
+                          minValue={getNumberOrDefault(division.constraints.individualDupr.min, 0)}
+                          maxValue={getNumberOrDefault(division.constraints.individualDupr.max, 8)}
+                          min={0}
+                          max={8}
+                          step={0.1}
+                          onChangeMin={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                individualDupr: {
+                                  ...current.constraints.individualDupr,
+                                  min: String(value),
+                                },
+                              },
+                            }))
+                          }
+                          onChangeMax={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                individualDupr: {
+                                  ...current.constraints.individualDupr,
+                                  max: String(value),
+                                },
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-700">Team DUPR total</p>
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-700">Team DUPR total</p>
+                        <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={division.constraints.teamDupr.enabled}
@@ -515,44 +518,46 @@ export default function StructureSetupModal({
                         Enable
                       </label>
                     </div>
-                    <RangeField
-                      enabled={division.constraints.teamDupr.enabled}
-                      minValue={getNumberOrDefault(division.constraints.teamDupr.min, 0)}
-                      maxValue={getNumberOrDefault(division.constraints.teamDupr.max, 16)}
-                      min={0}
-                      max={16}
-                      step={0.1}
-                      onChangeMin={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            teamDupr: {
-                              ...current.constraints.teamDupr,
-                              min: String(value),
-                            },
-                          },
-                        }))
-                      }
-                      onChangeMax={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            teamDupr: {
-                              ...current.constraints.teamDupr,
-                              max: String(value),
-                            },
-                          },
-                        }))
-                      }
-                    />
-                  </div>
+                      <div className="mt-3">
+                        <RangeField
+                          enabled={division.constraints.teamDupr.enabled}
+                          minValue={getNumberOrDefault(division.constraints.teamDupr.min, 0)}
+                          maxValue={getNumberOrDefault(division.constraints.teamDupr.max, 16)}
+                          min={0}
+                          max={16}
+                          step={0.1}
+                          onChangeMin={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                teamDupr: {
+                                  ...current.constraints.teamDupr,
+                                  min: String(value),
+                                },
+                              },
+                            }))
+                          }
+                          onChangeMax={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                teamDupr: {
+                                  ...current.constraints.teamDupr,
+                                  max: String(value),
+                                },
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-700">Gender restriction</p>
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-700">Gender restriction</p>
+                        <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={division.constraints.gender.enabled}
@@ -572,34 +577,36 @@ export default function StructureSetupModal({
                         Enable
                       </label>
                     </div>
-                    <select
-                      value={division.constraints.gender.value}
-                      onChange={(event) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            gender: {
-                              ...current.constraints.gender,
-                              value: event.target.value as GenderConstraintValue,
-                            },
-                          },
-                        }))
-                      }
-                      disabled={!division.constraints.gender.enabled}
-                      className={`w-full border border-slate-200 rounded-lg px-3 py-2 ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
-                    >
-                      <option value="ANY">Any</option>
-                      <option value="MEN">Men</option>
-                      <option value="WOMEN">Women</option>
-                      <option value="MIXED">Mixed</option>
-                    </select>
-                  </div>
+                      <div className="mt-3">
+                        <select
+                          value={division.constraints.gender.value}
+                          onChange={(event) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                gender: {
+                                  ...current.constraints.gender,
+                                  value: event.target.value as GenderConstraintValue,
+                                },
+                              },
+                            }))
+                          }
+                          disabled={!division.constraints.gender.enabled}
+                          className={`w-full border border-slate-200 rounded-lg px-3 py-2 ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
+                        >
+                          <option value="ANY">Any</option>
+                          <option value="MEN">Men</option>
+                          <option value="WOMEN">Women</option>
+                          <option value="MIXED">Mixed</option>
+                        </select>
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-700">Age range</p>
-                      <label className="flex items-center gap-2 text-sm">
+                    <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-700">Age range</p>
+                        <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={division.constraints.age.enabled}
@@ -619,38 +626,41 @@ export default function StructureSetupModal({
                         Enable
                       </label>
                     </div>
-                    <RangeField
-                      enabled={division.constraints.age.enabled}
-                      minValue={getNumberOrDefault(division.constraints.age.min, 0)}
-                      maxValue={getNumberOrDefault(division.constraints.age.max, 100)}
-                      min={0}
-                      max={100}
-                      step={1}
-                      onChangeMin={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            age: {
-                              ...current.constraints.age,
-                              min: String(value),
-                            },
-                          },
-                        }))
-                      }
-                      onChangeMax={(value) =>
-                        handleDivisionChange(index, (current) => ({
-                          ...current,
-                          constraints: {
-                            ...current.constraints,
-                            age: {
-                              ...current.constraints.age,
-                              max: String(value),
-                            },
-                          },
-                        }))
-                      }
-                    />
+                      <div className="mt-3">
+                        <RangeField
+                          enabled={division.constraints.age.enabled}
+                          minValue={getNumberOrDefault(division.constraints.age.min, 0)}
+                          maxValue={getNumberOrDefault(division.constraints.age.max, 100)}
+                          min={0}
+                          max={100}
+                          step={1}
+                          onChangeMin={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                age: {
+                                  ...current.constraints.age,
+                                  min: String(value),
+                                },
+                              },
+                            }))
+                          }
+                          onChangeMax={(value) =>
+                            handleDivisionChange(index, (current) => ({
+                              ...current,
+                              constraints: {
+                                ...current.constraints,
+                                age: {
+                                  ...current.constraints.age,
+                                  max: String(value),
+                                },
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between border-t border-slate-100 pt-4">
