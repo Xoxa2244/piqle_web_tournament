@@ -260,11 +260,7 @@ export default function TournamentDetailPage() {
     },
   })
 
-  // Tournament winners (1st, 2nd, 3rd per division)
-  const { data: winnersByDivision } = trpc.tournament.getWinners.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId }
-  )
+  // Winners come from tournament.get (winnersByDivision) — no separate getWinners query
 
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -649,6 +645,7 @@ export default function TournamentDetailPage() {
                     const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string }>
                     const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
                     const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const winnersByDivision = (tournament as { winnersByDivision?: Array<{ divisionId: string; divisionName: string; first: { teamId: string; teamName: string } | null; second: { teamId: string; teamName: string } | null; third: { teamId: string; teamName: string } | null }> })?.winnersByDivision
                     const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
                     const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
 
