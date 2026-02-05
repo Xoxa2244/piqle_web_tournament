@@ -138,7 +138,9 @@ export default function BoardMode({
   availablePlayers = [],
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  waitlistEntries,
+  onOpenAssignWaitlist
 }: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)

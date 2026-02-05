@@ -100,6 +100,12 @@ export default function AppHeader() {
                 >
                   Tournament Management
                 </Link>
+                <Link
+                  href="/tournaments-map"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Tournaments Map
+                </Link>
               </nav>
             </div>
 
@@ -302,6 +308,13 @@ export default function AppHeader() {
                       onClick={() => setBurgerOpen(false)}
                     >
                       Tournament Management
+                    </Link>
+                    <Link
+                      href="/tournaments-map"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      Tournaments Map
                     </Link>
                     {isLoggedIn ? (
                       <>

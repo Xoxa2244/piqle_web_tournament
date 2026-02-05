@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import AvatarCropper from '@/components/AvatarCropper'
 import StructureSetupModal, { TournamentStructureInput } from '@/components/StructureSetupModal'
 import Image from 'next/image'
 import { Upload, X } from 'lucide-react'
+import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -90,6 +91,11 @@ export default function NewTournamentPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [addressError, setAddressError] = useState<string | null>(null)
+  const venueNameInputRef = useRef<HTMLInputElement>(null)
+  const addressAutocompleteRef = useRef<any>(null)
+  const addressListenerRef = useRef<any>(null)
+  const googleRef = useRef<any>(null)
 
   const createTournament = trpc.tournament.create.useMutation({
     onSuccess: (tournament) => {
@@ -153,6 +159,96 @@ export default function NewTournamentPage() {
     return true
   }
 
+  const setupAddressAutocomplete = useCallback(async () => {
+    if (!venueNameInputRef.current) return
+
+    try {
+      const googleApi = await loadGoogleMaps({
+        apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+        libraries: ['places'],
+      })
+
+      googleRef.current = googleApi
+
+      if (addressAutocompleteRef.current) return
+
+      addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(
+        venueNameInputRef.current,
+        {
+          fields: ['formatted_address', 'geometry', 'place_id'],
+          types: ['geocode'],
+        }
+      )
+
+      addressListenerRef.current =
+        addressAutocompleteRef.current.addListener('place_changed', () => {
+          const place = addressAutocompleteRef.current?.getPlace()
+          if (!place?.formatted_address) {
+            setAddressError('Select a valid address from the list.')
+            return
+          }
+
+          setAddressError(null)
+          setFormData((prev) => ({
+            ...prev,
+            venueName: place.formatted_address,
+          }))
+        })
+    } catch (error) {
+      setAddressError(
+        error instanceof Error ? error.message : 'Failed to load Google Places.'
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    setupAddressAutocomplete()
+    return () => {
+      addressListenerRef.current?.remove?.()
+    }
+  }, [setupAddressAutocomplete])
+
+  const handleVenueAddressBlur = async () => {
+    if (!formData.venueName.trim()) return
+
+    try {
+      const googleApi =
+        googleRef.current ??
+        (await loadGoogleMaps({
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+          libraries: ['places'],
+        }))
+
+      googleRef.current = googleApi
+      const geocoder = new googleApi.maps.Geocoder()
+      geocoder.geocode(
+        { address: formData.venueName },
+        (results: any, status: any) => {
+          if (status !== 'OK' || !results?.length) {
+            setAddressError('Select a valid address from the list.')
+            return
+          }
+
+          const result = results[0]
+          if (!result?.formatted_address) {
+            setAddressError('Select a valid address from the list.')
+            return
+          }
+
+          setAddressError(null)
+          setFormData((prev) => ({
+            ...prev,
+            venueName: result.formatted_address,
+          }))
+        }
+      )
+    } catch (error) {
+      setAddressError(
+        error instanceof Error ? error.message : 'Failed to load Google Places.'
+      )
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -162,6 +258,7 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
+      venueAddress: formData.venueName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
@@ -183,6 +280,7 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
+      venueAddress: formData.venueName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
@@ -412,11 +510,18 @@ export default function NewTournamentPage() {
                 type="text"
                 id="venueName"
                 name="venueName"
+                ref={venueNameInputRef}
                 value={formData.venueName}
                 onChange={handleChange}
+                onBlur={handleVenueAddressBlur}
+                autoComplete="off"
+                spellCheck={false}
                 className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                placeholder="Sports complex name"
+                placeholder="Start typing the address..."
               />
+              {addressError ? (
+                <p className="mt-1 text-sm text-red-600">{addressError}</p>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
