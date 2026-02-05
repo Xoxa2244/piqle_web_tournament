@@ -55,6 +55,8 @@ export default function PlayersPage() {
   
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
+  const [showInvitePlayerModal, setShowInvitePlayerModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [showOnlyWaitlist, setShowOnlyWaitlist] = useState(false)
@@ -91,6 +93,20 @@ export default function PlayersPage() {
       console.error('Failed to delete player:', error)
       alert('Error deleting player')
     }
+  })
+
+  // Invitations (for Invite Player modal)
+  const { data: invitations, refetch: refetchInvitations } = trpc.tournamentInvitation.list.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId && showInvitePlayerModal }
+  )
+  const invitePlayerMutation = trpc.tournamentInvitation.create.useMutation({
+    onSuccess: () => {
+      refetchInvitations()
+    },
+    onError: (e) => {
+      alert(e.message)
+    },
   })
 
   // Get divisions and teams from tournament
@@ -274,10 +290,16 @@ export default function PlayersPage() {
             </div>
 
             {isAdmin && (
-              <Button onClick={handleAddPlayer} size="sm">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Player
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button onClick={handleAddPlayer} size="sm">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create Player
+                </Button>
+                <Button onClick={() => setShowInvitePlayerModal(true)} variant="outline" size="sm">
+                  <Users className="h-4 w-4 mr-2" />
+                  Invite Player
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>
@@ -397,6 +419,68 @@ export default function PlayersPage() {
           refetchPlayers()
         }}
       />
+
+      {/* Invite Player Modal */}
+      {showInvitePlayerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowInvitePlayerModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold">Invite Player</h2>
+              <p className="text-sm text-gray-500 mt-1">Invite a registered platform user by email. They will receive an email to accept or decline.</p>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <Input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <Button
+                className="w-full"
+                disabled={!inviteEmail.trim() || invitePlayerMutation.isPending}
+                onClick={() => {
+                  const email = inviteEmail.trim()
+                  if (!email) return
+                  invitePlayerMutation.mutate(
+                    { tournamentId, email, baseUrl: typeof window !== 'undefined' ? window.location.origin : null },
+                    {
+                      onSuccess: () => {
+                        setInviteEmail('')
+                      },
+                    }
+                  )
+                }}
+              >
+                {invitePlayerMutation.isPending ? 'Sending...' : 'Send invitation'}
+              </Button>
+              {invitations && invitations.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Invitations</h3>
+                  <ul className="space-y-1 text-sm">
+                    {invitations.map((inv) => (
+                      <li key={inv.id} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
+                        <span className="text-gray-800">{inv.email}</span>
+                        <Badge variant={inv.status === 'PENDING' ? 'secondary' : inv.status === 'ACCEPTED' ? 'default' : 'outline'}>
+                          {inv.status === 'PENDING' ? 'Pending' : inv.status === 'ACCEPTED' ? 'Accepted' : 'Declined'}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t flex-shrink-0">
+              <Button variant="outline" className="w-full" onClick={() => setShowInvitePlayerModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedPlayer && (
         <EditPlayerModal

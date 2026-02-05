@@ -40,6 +40,7 @@ model User {
   partnerDirectorships     Partner[] // Partners where this user is the director
   organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
   stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
+  tournamentInvitationsReceived TournamentInvitation[] @relation("InvitedUser")
 
   @@map("users")
 }
@@ -135,8 +136,24 @@ model Tournament {
   courts                  Court[]
   waitlistEntries         WaitlistEntry[]
   payments                Payment[]
+  tournamentInvitations   TournamentInvitation[]
 
   @@map("tournaments")
+}
+
+model TournamentInvitation {
+  id             String                 @id @default(uuid())
+  tournamentId   String                 @map("tournament_id")
+  invitedUserId  String                 @map("invited_user_id")
+  email          String                 // Denormalized for the email we sent
+  status         TournamentInvitationStatus @default(PENDING)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  tournament     Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  invitedUser    User                   @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, invitedUserId])
+  @@map("tournament_invitations")
 }
 
 model Court {
@@ -813,6 +830,12 @@ enum MatchupStatus {
 
 enum WaitlistStatus {
   ACTIVE
+}
+
+enum TournamentInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
 }
 
 enum PaymentStatus {
