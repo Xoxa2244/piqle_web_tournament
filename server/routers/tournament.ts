@@ -43,6 +43,7 @@ async function computeWinnersForTournament(
     const entry = { divisionId: division.id, divisionName: division.name, first: null as { teamId: string; teamName: string } | null, second: null as { teamId: string; teamName: string } | null, third: null as { teamId: string; teamName: string } | null }
 
     if (isRoundRobinFormat) {
+      // RR-only formats: show winners only when ALL RR matches in the division have score entered and a winner
       const divisionWithRR = await prisma.division.findUnique({
         where: { id: division.id },
         include: {
@@ -51,14 +52,26 @@ async function computeWinnersForTournament(
         },
       })
       if (divisionWithRR && divisionWithRR.teams.length >= 2) {
-        const computed = computeStandingsFromDivisionMatches(
-          { teams: divisionWithRR.teams, teamKind: divisionWithRR.teamKind, matches: divisionWithRR.matches },
-          { isMLP: false }
-        )
-        const top3 = computed.slice(0, 3)
-        if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
-        if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
-        if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
+        const rrMatches = divisionWithRR.matches
+        const completedCount = rrMatches.filter((m) => {
+          const teamAPoints = m.games.reduce((s, g) => s + (g.scoreA ?? 0), 0)
+          const teamBPoints = m.games.reduce((s, g) => s + (g.scoreB ?? 0), 0)
+          const hasScores = m.games.length > 0
+          const hasWinner = !!m.winnerTeamId || teamAPoints !== teamBPoints
+          return hasScores && hasWinner
+        }).length
+        const allRRComplete = rrMatches.length > 0 && completedCount >= rrMatches.length
+
+        if (allRRComplete) {
+          const computed = computeStandingsFromDivisionMatches(
+            { teams: divisionWithRR.teams, teamKind: divisionWithRR.teamKind, matches: divisionWithRR.matches },
+            { isMLP: false }
+          )
+          const top3 = computed.slice(0, 3)
+          if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
+          if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
+          if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
+        }
       }
     } else {
       const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
