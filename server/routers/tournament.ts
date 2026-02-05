@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { Prisma } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import {
   assertTournamentAdmin,
@@ -9,6 +9,134 @@ import {
   getUserDivisionIds,
 } from '../utils/access'
 import { getTeamDisplayName } from '../utils/teamDisplay'
+import { computeStandingsFromDivisionMatches } from './standings'
+
+type DivisionForWinners = {
+  id: string
+  name: string
+  teamKind: string | null
+  teams: Array<{ id: string; teamPlayers?: Array<{ player: unknown }>; [k: string]: unknown }>
+  pools: Array<{ id: string }>
+  matches: Array<{
+    stage: string
+    roundIndex: number
+    teamAId: string
+    teamBId: string
+    winnerTeamId: string | null
+    createdAt: Date
+    tiebreaker?: { winnerTeamId: string | null } | null
+    games?: Array<{ scoreA: number | null; scoreB: number | null }>
+  }>
+}
+
+/** Shared logic: compute per-division winners (1st, 2nd, 3rd) for display. Used by tournament.get and getWinners. */
+async function computeWinnersForTournament(
+  prisma: PrismaClient,
+  tournament: { format: string; divisions: DivisionForWinners[] }
+): Promise<Array<{ divisionId: string; divisionName: string; first: { teamId: string; teamName: string } | null; second: { teamId: string; teamName: string } | null; third: { teamId: string; teamName: string } | null }>> {
+  const format = tournament.format
+  const isRoundRobinFormat = format === 'ROUND_ROBIN' || format === 'LEAGUE_ROUND_ROBIN' || format === 'INDY_LEAGUE'
+  const result: Array<{ divisionId: string; divisionName: string; first: { teamId: string; teamName: string } | null; second: { teamId: string; teamName: string } | null; third: { teamId: string; teamName: string } | null }> = []
+
+  for (const division of tournament.divisions) {
+    const teamKind = division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null
+    const entry = { divisionId: division.id, divisionName: division.name, first: null as { teamId: string; teamName: string } | null, second: null as { teamId: string; teamName: string } | null, third: null as { teamId: string; teamName: string } | null }
+
+    if (isRoundRobinFormat) {
+      // RR-only formats: show winners only when ALL RR matches in the division have score entered and a winner
+      const divisionWithRR = await prisma.division.findUnique({
+        where: { id: division.id },
+        include: {
+          teams: { include: { teamPlayers: { include: { player: true } } } },
+          matches: { where: { stage: 'ROUND_ROBIN' }, include: { games: true, tiebreaker: true } },
+        },
+      })
+      if (divisionWithRR && divisionWithRR.teams.length >= 2) {
+        const rrMatches = divisionWithRR.matches
+        const completedCount = rrMatches.filter((m) => {
+          const teamAPoints = m.games.reduce((s, g) => s + (g.scoreA ?? 0), 0)
+          const teamBPoints = m.games.reduce((s, g) => s + (g.scoreB ?? 0), 0)
+          const hasScores = m.games.length > 0
+          const hasWinner = !!m.winnerTeamId || teamAPoints !== teamBPoints
+          return hasScores && hasWinner
+        }).length
+        const allRRComplete = rrMatches.length > 0 && completedCount >= rrMatches.length
+
+        if (allRRComplete) {
+          const computed = computeStandingsFromDivisionMatches(
+            { teams: divisionWithRR.teams, teamKind: divisionWithRR.teamKind, matches: divisionWithRR.matches },
+            { isMLP: false }
+          )
+          const top3 = computed.slice(0, 3)
+          if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
+          if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
+          if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
+        }
+      }
+    } else {
+      const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
+      const getMatchWinner = (match: DivisionForWinners['matches'][0]): string | null => {
+        if (format === 'MLP' && match.tiebreaker?.winnerTeamId) return match.tiebreaker!.winnerTeamId
+        if (match.winnerTeamId) return match.winnerTeamId
+        const games = match.games ?? []
+        let scoreA = 0, scoreB = 0
+        for (const g of games) {
+          scoreA += g.scoreA ?? 0
+          scoreB += g.scoreB ?? 0
+        }
+        if (scoreA > scoreB) return match.teamAId
+        if (scoreB > scoreA) return match.teamBId
+        return null
+      }
+      let playoffHasWinner = false
+      if (elimMatches.length > 0) {
+        const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
+        const finalRoundMatches = elimMatches
+          .filter((m) => m.roundIndex === maxRound)
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        const getTeamName = (teamId: string) => {
+          const t = division.teams.find((x: { id: string }) => x.id === teamId)
+          return t ? getTeamDisplayName(t as Parameters<typeof getTeamDisplayName>[0], teamKind) : '—'
+        }
+        if (finalRoundMatches.length >= 1) {
+          const finalMatch = finalRoundMatches[0]
+          const winnerId = getMatchWinner(finalMatch)
+          const loserId = winnerId === finalMatch.teamAId ? finalMatch.teamBId : winnerId === finalMatch.teamBId ? finalMatch.teamAId : null
+          if (winnerId) {
+            entry.first = { teamId: winnerId, teamName: getTeamName(winnerId) }
+            playoffHasWinner = true
+          }
+          if (loserId) entry.second = { teamId: loserId, teamName: getTeamName(loserId) }
+        }
+        if (finalRoundMatches.length >= 2) {
+          const thirdId = getMatchWinner(finalRoundMatches[1])
+          if (thirdId) entry.third = { teamId: thirdId, teamName: getTeamName(thirdId) }
+        }
+      }
+      if (!playoffHasWinner) {
+        const divisionWithRR = await prisma.division.findUnique({
+          where: { id: division.id },
+          include: {
+            teams: { include: { teamPlayers: { include: { player: true } } } },
+            matches: { where: { stage: 'ROUND_ROBIN' }, include: { games: true, tiebreaker: true } },
+          },
+        })
+        if (divisionWithRR && divisionWithRR.teams.length >= 2 && divisionWithRR.matches.length > 0) {
+          const computed = computeStandingsFromDivisionMatches(
+            { teams: divisionWithRR.teams, teamKind: divisionWithRR.teamKind, matches: divisionWithRR.matches },
+            { isMLP: format === 'MLP' }
+          )
+          const top3 = computed.slice(0, 3)
+          if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
+          if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
+          if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
+        }
+      }
+    }
+    result.push(entry)
+  }
+  return result
+}
 
 const tournamentCreateInput = z.object({
   title: z.string().min(1),
@@ -461,13 +589,22 @@ export const tournamentRouter = createTRPCRouter({
           })
         }
 
-        // Add access information to the response
+        // Compute winners for the Winners block on /admin/[id] (same data as getWinners)
+        const winnersByDivision = tournament.divisions.length > 0
+          ? await computeWinnersForTournament(ctx.prisma, {
+              format: tournament.format,
+              divisions: tournament.divisions as DivisionForWinners[],
+            })
+          : []
+
+        // Add access information and winners to the response
         return {
           ...tournament,
           userAccessInfo: {
             isOwner,
             accessLevel: isOwner ? 'ADMIN' : (access?.accessLevel || null),
           },
+          winnersByDivision,
         }
       } catch (error: any) {
         console.error('Error in tournament.get:', error)
@@ -538,120 +675,10 @@ export const tournamentRouter = createTRPCRouter({
         })
       }
 
-      const format = tournament.format
-      const isRoundRobinFormat = format === 'ROUND_ROBIN' || format === 'LEAGUE_ROUND_ROBIN' || format === 'INDY_LEAGUE'
-      const result: Array<{
-        divisionId: string
-        divisionName: string
-        first: { teamId: string; teamName: string } | null
-        second: { teamId: string; teamName: string } | null
-        third: { teamId: string; teamName: string } | null
-      }> = []
-
-      for (const division of tournament.divisions) {
-        const teamKind = division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4' | null
-        const entry: (typeof result)[0] = {
-          divisionId: division.id,
-          divisionName: division.name,
-          first: null,
-          second: null,
-          third: null,
-        }
-
-        if (isRoundRobinFormat) {
-          const poolIds = (division.pools ?? []).map((p) => p.id)
-          const standings = await ctx.prisma.standing.findMany({
-            where: {
-              OR: [
-                { divisionId: division.id },
-                ...(poolIds.length > 0 ? [{ poolId: { in: poolIds } }] : []),
-              ],
-            },
-            include: {
-              team: {
-                include: {
-                  teamPlayers: { include: { player: true } },
-                },
-              },
-            },
-          })
-          const sorted = standings.sort((a, b) => {
-            if (a.wins !== b.wins) return b.wins - a.wins
-            if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff
-            return b.pointsFor - a.pointsFor
-          })
-          const top3 = sorted.slice(0, 3)
-          if (top3[0]) {
-            entry.first = {
-              teamId: top3[0].teamId,
-              teamName: getTeamDisplayName(top3[0].team, teamKind),
-            }
-          }
-          if (top3[1]) {
-            entry.second = {
-              teamId: top3[1].teamId,
-              teamName: getTeamDisplayName(top3[1].team, teamKind),
-            }
-          }
-          if (top3[2]) {
-            entry.third = {
-              teamId: top3[2].teamId,
-              teamName: getTeamDisplayName(top3[2].team, teamKind),
-            }
-          }
-        } else {
-          const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
-          if (elimMatches.length === 0) {
-            result.push(entry)
-            continue
-          }
-          const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
-          const finalRoundMatches = elimMatches
-            .filter((m) => m.roundIndex === maxRound)
-            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-
-          const getMatchWinner = (match: (typeof finalRoundMatches)[0]): string | null => {
-            const isMLP = format === 'MLP'
-            if (isMLP && match.tiebreaker?.winnerTeamId) {
-              return match.tiebreaker.winnerTeamId
-            }
-            if (match.winnerTeamId) return match.winnerTeamId
-            const games = match.games ?? []
-            let scoreA = 0
-            let scoreB = 0
-            for (const g of games) {
-              scoreA += g.scoreA ?? 0
-              scoreB += g.scoreB ?? 0
-            }
-            if (scoreA > scoreB) return match.teamAId
-            if (scoreB > scoreA) return match.teamBId
-            return null
-          }
-
-          const teams = division.teams
-          const getTeamName = (teamId: string) => {
-            const t = teams.find((x) => x.id === teamId)
-            return t ? getTeamDisplayName(t, teamKind) : '—'
-          }
-
-          if (finalRoundMatches.length >= 1) {
-            const finalMatch = finalRoundMatches[0]
-            const winnerId = getMatchWinner(finalMatch)
-            const loserId =
-              winnerId === finalMatch.teamAId ? finalMatch.teamBId : winnerId === finalMatch.teamBId ? finalMatch.teamAId : null
-            if (winnerId) entry.first = { teamId: winnerId, teamName: getTeamName(winnerId) }
-            if (loserId) entry.second = { teamId: loserId, teamName: getTeamName(loserId) }
-          }
-          if (finalRoundMatches.length >= 2) {
-            const thirdPlaceMatch = finalRoundMatches[1]
-            const thirdId = getMatchWinner(thirdPlaceMatch)
-            if (thirdId) entry.third = { teamId: thirdId, teamName: getTeamName(thirdId) }
-          }
-        }
-        result.push(entry)
-      }
-
-      return result
+      return computeWinnersForTournament(ctx.prisma, {
+        format: tournament.format,
+        divisions: tournament.divisions as DivisionForWinners[],
+      })
     }),
 
   update: tdProcedure
