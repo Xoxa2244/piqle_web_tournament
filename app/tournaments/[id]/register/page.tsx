@@ -458,7 +458,7 @@ function TeamCard({
             return (
               <div
                 key={index}
-                className="w-full border border-dashed rounded px-2 py-1 text-sm text-gray-400 opacity-50"
+                className="w-full min-h-[32px] border border-dashed rounded px-2 py-1 text-sm text-gray-400 opacity-50"
               />
             )
           }
