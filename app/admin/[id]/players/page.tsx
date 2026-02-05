@@ -426,10 +426,10 @@ export default function PlayersPage() {
         }}
       />
 
-      {/* Invite Player Modal: list of platform users, search by name, invite button by status */}
+      {/* Invite Player Modal: fixed size, on top, darkened backdrop */}
       {showInvitePlayerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowInvitePlayerModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowInvitePlayerModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[28rem] h-[32rem] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex-shrink-0">
               <h2 className="text-lg font-semibold">Invite Player</h2>
               <p className="text-sm text-gray-500 mt-1">Choose a registered user to invite. They will receive an email to accept or decline.</p>
