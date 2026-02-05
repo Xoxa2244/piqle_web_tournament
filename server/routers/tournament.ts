@@ -588,25 +588,13 @@ export const tournamentRouter = createTRPCRouter({
             if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
           }
         } else {
+          // Playoff formats: use elimination results; if no playoff or not complete, fall back to RR standings (e.g. Round Robin + Single elim before playoff)
           const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
-          if (elimMatches.length === 0) {
-            result.push(entry)
-            continue
-          }
-          const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
-          const finalRoundMatches = elimMatches
-            .filter((m) => m.roundIndex === maxRound)
-            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-
-          const getMatchWinner = (match: (typeof finalRoundMatches)[0]): string | null => {
-            const isMLP = format === 'MLP'
-            if (isMLP && match.tiebreaker?.winnerTeamId) {
-              return match.tiebreaker.winnerTeamId
-            }
+          const getMatchWinner = (match: { teamAId: string; teamBId: string; winnerTeamId: string | null; tiebreaker?: { winnerTeamId: string | null } | null; games?: Array<{ scoreA: number | null; scoreB: number | null }> }): string | null => {
+            if (format === 'MLP' && match.tiebreaker?.winnerTeamId) return match.tiebreaker.winnerTeamId
             if (match.winnerTeamId) return match.winnerTeamId
             const games = match.games ?? []
-            let scoreA = 0
-            let scoreB = 0
+            let scoreA = 0, scoreB = 0
             for (const g of games) {
               scoreA += g.scoreA ?? 0
               scoreB += g.scoreB ?? 0
@@ -616,24 +604,52 @@ export const tournamentRouter = createTRPCRouter({
             return null
           }
 
-          const teams = division.teams
-          const getTeamName = (teamId: string) => {
-            const t = teams.find((x) => x.id === teamId)
-            return t ? getTeamDisplayName(t, teamKind) : '—'
+          let playoffHasWinner = false
+          if (elimMatches.length > 0) {
+            const maxRound = Math.max(...elimMatches.map((m) => m.roundIndex))
+            const finalRoundMatches = elimMatches
+              .filter((m) => m.roundIndex === maxRound)
+              .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            const teams = division.teams
+            const getTeamName = (teamId: string) => {
+              const t = teams.find((x) => x.id === teamId)
+              return t ? getTeamDisplayName(t, teamKind) : '—'
+            }
+            if (finalRoundMatches.length >= 1) {
+              const finalMatch = finalRoundMatches[0]
+              const winnerId = getMatchWinner(finalMatch)
+              const loserId = winnerId === finalMatch.teamAId ? finalMatch.teamBId : winnerId === finalMatch.teamBId ? finalMatch.teamAId : null
+              if (winnerId) {
+                entry.first = { teamId: winnerId, teamName: getTeamName(winnerId) }
+                playoffHasWinner = true
+              }
+              if (loserId) entry.second = { teamId: loserId, teamName: getTeamName(loserId) }
+            }
+            if (finalRoundMatches.length >= 2) {
+              const thirdId = getMatchWinner(finalRoundMatches[1])
+              if (thirdId) entry.third = { teamId: thirdId, teamName: getTeamName(thirdId) }
+            }
           }
 
-          if (finalRoundMatches.length >= 1) {
-            const finalMatch = finalRoundMatches[0]
-            const winnerId = getMatchWinner(finalMatch)
-            const loserId =
-              winnerId === finalMatch.teamAId ? finalMatch.teamBId : winnerId === finalMatch.teamBId ? finalMatch.teamAId : null
-            if (winnerId) entry.first = { teamId: winnerId, teamName: getTeamName(winnerId) }
-            if (loserId) entry.second = { teamId: loserId, teamName: getTeamName(loserId) }
-          }
-          if (finalRoundMatches.length >= 2) {
-            const thirdPlaceMatch = finalRoundMatches[1]
-            const thirdId = getMatchWinner(thirdPlaceMatch)
-            if (thirdId) entry.third = { teamId: thirdId, teamName: getTeamName(thirdId) }
+          // No playoff or playoff not finished: show top 3 from RR standings (e.g. Round Robin + Single elim before playoff)
+          if (!playoffHasWinner) {
+            const divisionWithRR = await ctx.prisma.division.findUnique({
+              where: { id: division.id },
+              include: {
+                teams: { include: { teamPlayers: { include: { player: true } } } },
+                matches: { where: { stage: 'ROUND_ROBIN' }, include: { games: true, tiebreaker: true } },
+              },
+            })
+            if (divisionWithRR && divisionWithRR.teams.length >= 2 && divisionWithRR.matches.length > 0) {
+              const computed = computeStandingsFromDivisionMatches(
+                { teams: divisionWithRR.teams, teamKind: divisionWithRR.teamKind, matches: divisionWithRR.matches },
+                { isMLP: format === 'MLP' }
+              )
+              const top3 = computed.slice(0, 3)
+              if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
+              if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
+              if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
+            }
           }
         }
         result.push(entry)
