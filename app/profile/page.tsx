@@ -358,6 +358,23 @@ export default function ProfilePage() {
           <span>Back</span>
         </Link>
 
+        <div className="mb-4 flex items-center gap-2">
+          <Link
+            href="/profile"
+            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm"
+          >
+            Profile
+          </Link>
+          {payoutStatus.payoutsActive && (
+            <Link
+              href="/profile/organizer"
+              className="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Financial dashboard
+            </Link>
+          )}
+        </div>
+
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
@@ -595,19 +612,6 @@ export default function ProfilePage() {
                     </Button>
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Organizer Dashboard Section */}
-            <div className="space-y-2">
-              <Label>Organizer Dashboard</Label>
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                <div className="mb-2">
-                  Track revenue, fees, payouts, and tournament fill rates.
-                </div>
-                <Button asChild variant="outline" size="sm">
-                  <Link href="/profile/organizer">Open dashboard</Link>
-                </Button>
               </div>
             </div>
 

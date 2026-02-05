@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import Link from 'next/link'
 
 const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
@@ -36,6 +37,49 @@ export default function OrganizerDashboardPage() {
   const tournaments = tournamentsQuery.data?.tournaments ?? []
   const transactions = transactionsQuery.data?.items ?? []
 
+  if (summaryQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-4 py-8">
+        <div className="max-w-6xl mx-auto text-sm text-gray-500">Loading dashboard…</div>
+      </div>
+    )
+  }
+
+  if (summary && !summary.payoutsActive) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-4 py-8">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/profile"
+              className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm"
+            >
+              Profile
+            </Link>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Financial dashboard</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-gray-600">
+                Connect payouts with Stripe to unlock the organizer dashboard.
+              </div>
+              <div className="mt-3">
+                <Link
+                  href="/profile"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                >
+                  Go to profile →
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -44,6 +88,18 @@ export default function OrganizerDashboardPage() {
           <p className="text-sm text-gray-600">
             Financial performance and registration health across your tournaments.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link
+            href="/profile"
+            className="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100"
+          >
+            Profile
+          </Link>
+          <span className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm">
+            Financial dashboard
+          </span>
         </div>
 
         <Card>
