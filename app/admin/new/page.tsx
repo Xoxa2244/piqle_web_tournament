@@ -91,6 +91,7 @@ export default function NewTournamentPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(null)
   const [requiredErrors, setRequiredErrors] = useState({
     title: false,
     startDate: false,
@@ -267,7 +268,7 @@ export default function NewTournamentPage() {
 
     if (!validateBaseForm()) return
 
-    createTournament.mutate({
+    const payload = {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
@@ -283,30 +284,22 @@ export default function NewTournamentPage() {
       format: formData.format,
       seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
       timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
-    })
+    }
+
+    if (structureDraft) {
+      createTournamentWithStructure.mutate({
+        ...payload,
+        structure: structureDraft,
+      })
+      return
+    }
+
+    createTournament.mutate(payload)
   }
 
   const handleStructureSave = (structure: TournamentStructureInput) => {
-    if (!validateBaseForm()) return
-
-    createTournamentWithStructure.mutate({
-      title: formData.title,
-      description: formData.description || undefined,
-      venueName: formData.venueName || undefined,
-      venueAddress: formData.venueName || undefined,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      registrationStartDate: formData.registrationStartDate || undefined,
-      registrationEndDate: formData.registrationEndDate || undefined,
-      entryFee: formData.entryFee ? parseFloat(formData.entryFee) : undefined,
-      isPublicBoardEnabled: formData.isPublicBoardEnabled,
-      allowDuprSubmission: formData.allowDuprSubmission,
-      image: formData.image || undefined,
-      format: formData.format,
-      seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
-      timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
-      structure,
-    })
+    setStructureDraft(structure)
+    setShowStructureModal(false)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -747,13 +740,18 @@ export default function NewTournamentPage() {
             </div>
 
             <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowStructureModal(true)}
-              >
-                Set up structure
-              </Button>
+              <div className="flex items-center space-x-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowStructureModal(true)}
+                >
+                  {structureDraft ? 'Edit structure' : 'Set up structure'}
+                </Button>
+                {structureDraft && (
+                  <span className="text-sm text-green-600">Structure saved</span>
+                )}
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -789,6 +787,7 @@ export default function NewTournamentPage() {
         isSaving={createTournamentWithStructure.isPending}
         onClose={() => setShowStructureModal(false)}
         onSave={handleStructureSave}
+        initialStructure={structureDraft}
       />
     </div>
   )

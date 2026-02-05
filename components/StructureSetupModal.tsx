@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Minus, Layers } from 'lucide-react'
@@ -60,6 +60,7 @@ export type TournamentStructureInput =
 interface StructureSetupModalProps {
   isOpen: boolean
   isSaving?: boolean
+  initialStructure?: TournamentStructureInput | null
   onClose: () => void
   onSave: (structure: TournamentStructureInput) => void
 }
@@ -199,6 +200,7 @@ const Stepper = ({
 export default function StructureSetupModal({
   isOpen,
   isSaving = false,
+  initialStructure,
   onClose,
   onSave,
 }: StructureSetupModalProps) {
@@ -207,6 +209,52 @@ export default function StructureSetupModal({
   const [playersPerTeam, setPlayersPerTeam] = useState<1 | 2 | 4>(2)
   const [teamCount, setTeamCount] = useState(4)
   const [playerCount, setPlayerCount] = useState(8)
+
+  useEffect(() => {
+    if (!isOpen) return
+    if (!initialStructure) return
+
+    if (initialStructure.mode === 'WITH_DIVISIONS') {
+      setMode('WITH_DIVISIONS')
+      setDivisions(
+        initialStructure.divisions.map((division, index) => ({
+          id: `division-${Date.now()}-${index}`,
+          name: division.name || `Division ${index + 1}`,
+          poolCount: division.poolCount,
+          teamCount: division.teamCount,
+          playersPerTeam: division.playersPerTeam,
+          constraints: {
+            individualDupr: {
+              enabled: division.constraints.individualDupr.enabled,
+              min: division.constraints.individualDupr.min?.toString() ?? '',
+              max: division.constraints.individualDupr.max?.toString() ?? '',
+            },
+            teamDupr: {
+              enabled: division.constraints.teamDupr.enabled,
+              min: division.constraints.teamDupr.min?.toString() ?? '',
+              max: division.constraints.teamDupr.max?.toString() ?? '',
+            },
+            age: {
+              enabled: division.constraints.age.enabled,
+              min: division.constraints.age.min?.toString() ?? '',
+              max: division.constraints.age.max?.toString() ?? '',
+            },
+            gender: {
+              enabled: division.constraints.gender.enabled,
+              value: division.constraints.gender.value || 'ANY',
+            },
+            enforcement: division.constraints.enforcement,
+          },
+        }))
+      )
+      return
+    }
+
+    setMode('NO_DIVISIONS')
+    setPlayersPerTeam(initialStructure.playersPerTeam)
+    setTeamCount(initialStructure.teamCount ?? 4)
+    setPlayerCount(initialStructure.playerCount ?? 8)
+  }, [initialStructure, isOpen])
 
   const summary = useMemo(() => {
     if (mode === 'WITH_DIVISIONS') {
