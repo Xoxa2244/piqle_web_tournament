@@ -34,29 +34,68 @@ export const registrationRouter = createTRPCRouter({
   getSeatMap: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const tournament = await ctx.prisma.tournament.findUnique({
-        where: { id: input.tournamentId },
-        include: {
-          divisions: {
-            include: {
-              pools: true,
-              teams: {
-                include: {
-                  teamPlayers: {
-                    include: {
-                      player: true,
+      let tournament: any
+      try {
+        tournament = await ctx.prisma.tournament.findUnique({
+          where: { id: input.tournamentId },
+          include: {
+            user: {
+              select: {
+                organizerStripeAccountId: true,
+                stripeOnboardingComplete: true,
+              },
+            },
+            divisions: {
+              include: {
+                pools: true,
+                teams: {
+                  include: {
+                    teamPlayers: {
+                      include: {
+                        player: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      })
+        })
+      } catch (error: any) {
+        const message = String(error?.message ?? '')
+        if (
+          message.includes('organizer_stripe_account_id') ||
+          message.includes('stripe_onboarding_complete')
+        ) {
+          tournament = await ctx.prisma.tournament.findUnique({
+            where: { id: input.tournamentId },
+            include: {
+              divisions: {
+                include: {
+                  pools: true,
+                  teams: {
+                    include: {
+                      teamPlayers: {
+                        include: {
+                          player: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        } else {
+          throw error
+        }
+      }
 
       if (!tournament) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
       }
+
+      const user = tournament.user ?? null
 
       return {
         id: tournament.id,
@@ -64,6 +103,11 @@ export const registrationRouter = createTRPCRouter({
         startDate: tournament.startDate,
         registrationStartDate: tournament.registrationStartDate,
         registrationEndDate: tournament.registrationEndDate,
+        entryFeeCents: tournament.entryFeeCents ?? 0,
+        currency: tournament.currency ?? 'usd',
+        payoutsActive:
+          Boolean(user?.organizerStripeAccountId) &&
+          Boolean(user?.stripeOnboardingComplete),
         divisions: tournament.divisions,
       }
     }),
@@ -219,6 +263,13 @@ export const registrationRouter = createTRPCRouter({
 
         if (!isRegistrationOpen(team.division.tournament)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration closed' })
+        }
+
+        if ((team.division.tournament.entryFeeCents ?? 0) > 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Payment required to join this tournament',
+          })
         }
 
         const slotCount = getTeamSlotCount(team.division.teamKind)

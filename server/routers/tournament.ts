@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import {
   assertTournamentAdmin,
@@ -19,7 +20,8 @@ const tournamentCreateInput = z.object({
   endDate: z.string().transform((str) => new Date(str)),
   registrationStartDate: z.string().transform((str) => new Date(str)).optional(),
   registrationEndDate: z.string().transform((str) => new Date(str)).optional(),
-  entryFee: z.number().optional(),
+  entryFeeCents: z.number().int().min(0).optional(),
+  currency: z.literal('usd').default('usd'),
   isPublicBoardEnabled: z.boolean().default(false),
   allowDuprSubmission: z.boolean().default(false),
   publicSlug: z.string().optional(),
@@ -155,6 +157,11 @@ export const tournamentRouter = createTRPCRouter({
       validateTournamentDates(input)
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
+      const entryFeeCents = input.entryFeeCents ?? 0
+      const entryFeeDecimal =
+        entryFeeCents > 0
+          ? new Prisma.Decimal(entryFeeCents / 100)
+          : null
 
       const tournament = await ctx.prisma.tournament.create({
         data: {
@@ -167,7 +174,9 @@ export const tournamentRouter = createTRPCRouter({
           endDate: input.endDate,
           registrationStartDate: input.registrationStartDate,
           registrationEndDate: input.registrationEndDate,
-          entryFee: input.entryFee,
+          entryFee: entryFeeDecimal,
+          entryFeeCents,
+          currency: input.currency,
           isPublicBoardEnabled: input.isPublicBoardEnabled,
           allowDuprSubmission: input.allowDuprSubmission,
           image: input.image,
@@ -201,6 +210,11 @@ export const tournamentRouter = createTRPCRouter({
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
+      const entryFeeCents = input.entryFeeCents ?? 0
+      const entryFeeDecimal =
+        entryFeeCents > 0
+          ? new Prisma.Decimal(entryFeeCents / 100)
+          : null
 
       const tournament = await ctx.prisma.$transaction(async (tx) => {
         const createdTournament = await tx.tournament.create({
@@ -214,7 +228,9 @@ export const tournamentRouter = createTRPCRouter({
             endDate: input.endDate,
             registrationStartDate: input.registrationStartDate,
             registrationEndDate: input.registrationEndDate,
-            entryFee: input.entryFee,
+            entryFee: entryFeeDecimal,
+            entryFeeCents,
+            currency: input.currency,
             isPublicBoardEnabled: input.isPublicBoardEnabled,
             allowDuprSubmission: input.allowDuprSubmission,
             image: input.image,
@@ -650,7 +666,8 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)).optional(),
       registrationStartDate: z.string().transform((str) => new Date(str)).optional().nullable(),
       registrationEndDate: z.string().transform((str) => new Date(str)).optional().nullable(),
-      entryFee: z.number().optional(),
+      entryFeeCents: z.number().int().min(0).optional(),
+      currency: z.literal('usd').optional(),
       isPublicBoardEnabled: z.boolean().optional(),
       allowDuprSubmission: z.boolean().optional(),
       publicSlug: z.string().optional(),
@@ -730,7 +747,20 @@ export const tournamentRouter = createTRPCRouter({
         }
       }
 
-      const { id, ...data } = input
+      const { id, entryFeeCents, ...rest } = input
+      const entryFeeDecimal =
+        typeof entryFeeCents === 'number'
+          ? entryFeeCents > 0
+            ? new Prisma.Decimal(entryFeeCents / 100)
+            : null
+          : undefined
+
+      const data = {
+        ...rest,
+        entryFee: entryFeeDecimal,
+        entryFeeCents,
+      }
+
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
         data,

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, publicProcedure } from '../trpc'
 
 // Super admin credentials
@@ -163,12 +164,24 @@ export const superadminRouter = createTRPCRouter({
       venueAddress: z.string().optional(),
       startDate: z.string().transform((str) => new Date(str)).optional(),
       endDate: z.string().transform((str) => new Date(str)).optional(),
-      entryFee: z.number().optional(),
+      entryFeeCents: z.number().int().min(0).optional(),
+      currency: z.literal('usd').optional(),
       isPublicBoardEnabled: z.boolean().optional(),
       publicSlug: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input
+      const { id, entryFeeCents, ...rest } = input
+      const entryFeeDecimal =
+        typeof entryFeeCents === 'number'
+          ? entryFeeCents > 0
+            ? new Prisma.Decimal(entryFeeCents / 100)
+            : null
+          : undefined
+      const data = {
+        ...rest,
+        entryFee: entryFeeDecimal,
+        entryFeeCents,
+      }
       const tournament = await ctx.prisma.tournament.update({
         where: { id },
         data,
