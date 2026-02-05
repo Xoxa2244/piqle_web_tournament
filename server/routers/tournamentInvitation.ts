@@ -25,10 +25,12 @@ export const tournamentInvitationRouter = createTRPCRouter({
         select: { userId: true },
       }).then((rows) => rows.map((r) => r.userId).filter((id): id is string => id != null))
 
+      const excludeIds = [...playerUserIds, ctx.session.user.id]
+
       const users = await ctx.prisma.user.findMany({
         where: {
           isActive: true,
-          id: { notIn: playerUserIds },
+          id: { notIn: excludeIds },
           ...(input.search?.trim()
             ? { name: { contains: input.search.trim(), mode: 'insensitive' as const } }
             : {}),
