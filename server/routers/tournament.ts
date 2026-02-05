@@ -9,6 +9,7 @@ import {
   getUserDivisionIds,
 } from '../utils/access'
 import { getTeamDisplayName } from '../utils/teamDisplay'
+import { computeStandingsFromDivisionMatches } from './standings'
 
 const tournamentCreateInput = z.object({
   title: z.string().min(1),
@@ -559,45 +560,32 @@ export const tournamentRouter = createTRPCRouter({
         }
 
         if (isRoundRobinFormat) {
-          const poolIds = (division.pools ?? []).map((p) => p.id)
-          const standings = await ctx.prisma.standing.findMany({
-            where: {
-              OR: [
-                { divisionId: division.id },
-                ...(poolIds.length > 0 ? [{ poolId: { in: poolIds } }] : []),
-              ],
-            },
+          // RR-only formats: top 3 from dashboard (standings computed from RR matches)
+          const divisionWithRR = await ctx.prisma.division.findUnique({
+            where: { id: division.id },
             include: {
-              team: {
-                include: {
-                  teamPlayers: { include: { player: true } },
-                },
+              teams: {
+                include: { teamPlayers: { include: { player: true } } },
+              },
+              matches: {
+                where: { stage: 'ROUND_ROBIN' },
+                include: { games: true, tiebreaker: true },
               },
             },
           })
-          const sorted = standings.sort((a, b) => {
-            if (a.wins !== b.wins) return b.wins - a.wins
-            if (a.pointDiff !== b.pointDiff) return b.pointDiff - a.pointDiff
-            return b.pointsFor - a.pointsFor
-          })
-          const top3 = sorted.slice(0, 3)
-          if (top3[0]) {
-            entry.first = {
-              teamId: top3[0].teamId,
-              teamName: getTeamDisplayName(top3[0].team, teamKind),
-            }
-          }
-          if (top3[1]) {
-            entry.second = {
-              teamId: top3[1].teamId,
-              teamName: getTeamDisplayName(top3[1].team, teamKind),
-            }
-          }
-          if (top3[2]) {
-            entry.third = {
-              teamId: top3[2].teamId,
-              teamName: getTeamDisplayName(top3[2].team, teamKind),
-            }
+          if (divisionWithRR && divisionWithRR.teams.length >= 2) {
+            const computed = computeStandingsFromDivisionMatches(
+              {
+                teams: divisionWithRR.teams,
+                teamKind: divisionWithRR.teamKind,
+                matches: divisionWithRR.matches,
+              },
+              { isMLP: false }
+            )
+            const top3 = computed.slice(0, 3)
+            if (top3[0]) entry.first = { teamId: top3[0].teamId, teamName: top3[0].teamName }
+            if (top3[1]) entry.second = { teamId: top3[1].teamId, teamName: top3[1].teamName }
+            if (top3[2]) entry.third = { teamId: top3[2].teamId, teamName: top3[2].teamName }
           }
         } else {
           const elimMatches = division.matches.filter((m) => m.stage === 'ELIMINATION')
