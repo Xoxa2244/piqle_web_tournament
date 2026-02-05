@@ -6,6 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { fromCents, toCents } from '@/lib/payment'
 import Link from 'next/link'
 import { 
   Users, 
@@ -145,7 +146,10 @@ export default function SuperAdminTournamentPage() {
       venueName: tournamentForm.venueName || undefined,
       startDate: tournamentForm.startDate || undefined,
       endDate: tournamentForm.endDate || undefined,
-      entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
+      entryFeeCents: tournamentForm.entryFee
+        ? toCents(Number(tournamentForm.entryFee))
+        : 0,
+      currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
     })
   }
@@ -167,7 +171,10 @@ export default function SuperAdminTournamentPage() {
         venueName: tournament.venueName || '',
         startDate: tournament.startDate ? new Date(tournament.startDate).toISOString().split('T')[0] : '',
         endDate: tournament.endDate ? new Date(tournament.endDate).toISOString().split('T')[0] : '',
-        entryFee: tournament.entryFee?.toString() || '',
+        entryFee:
+          typeof tournament.entryFeeCents === 'number'
+            ? fromCents(tournament.entryFeeCents).toFixed(2)
+            : '',
         isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       })
     }

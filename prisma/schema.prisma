@@ -38,6 +38,8 @@ model User {
   tournamentRatings        TournamentRating[]
   tournamentComments       TournamentComment[]
   partnerDirectorships     Partner[] // Partners where this user is the director
+  organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
+  stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
 
   @@map("users")
 }
@@ -105,6 +107,8 @@ model Tournament {
   registrationStartDate   DateTime?                 @map("registration_start_date")
   registrationEndDate     DateTime?                 @map("registration_end_date")
   entryFee                Decimal?                  @db.Decimal(10, 2)
+  entryFeeCents           Int?                      @map("entry_fee_cents")
+  currency                String                    @default("usd")
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
   image                   String?
@@ -130,6 +134,7 @@ model Tournament {
   matchDays               MatchDay[]
   courts                  Court[]
   waitlistEntries         WaitlistEntry[]
+  payments                Payment[]
 
   @@map("tournaments")
 }
@@ -254,6 +259,7 @@ model Team {
   standings           Standing[]
   teamPlayers         TeamPlayer[]
   dayRosters          DayRoster[]
+  payments            Payment[]
   division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool                Pool?           @relation(fields: [poolId], references: [id])
 
@@ -285,6 +291,7 @@ model Player {
   indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
   indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
   indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
+  payments          Payment[]
 
   @@unique([userId, tournamentId])
   @@map("players")
@@ -304,6 +311,31 @@ model TeamPlayer {
   @@unique([teamId, playerId])
   @@unique([teamId, slotIndex])
   @@map("team_players")
+}
+
+model Payment {
+  id                      String        @id @default(uuid())
+  tournamentId            String        @map("tournament_id")
+  playerId                String        @map("player_id")
+  teamId                  String?       @map("team_id")
+  slotIndex               Int?          @map("slot_index")
+  entryFeeAmount          Decimal       @db.Decimal(10, 2) @map("entry_fee_amount")
+  platformFeeAmount       Decimal       @db.Decimal(10, 2) @map("platform_fee_amount")
+  stripeFeeAmount         Decimal       @db.Decimal(10, 2) @map("stripe_fee_amount")
+  totalAmount             Decimal       @db.Decimal(10, 2) @map("total_amount")
+  currency                String        @default("usd")
+  status                  PaymentStatus @default(PENDING)
+  stripeCheckoutSessionId String?       @map("stripe_checkout_session_id")
+  stripePaymentIntentId   String?       @map("stripe_payment_intent_id")
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
+  tournament              Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player                  Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team                    Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId, playerId])
+  @@index([status])
+  @@map("payments")
 }
 
 model WaitlistEntry {
@@ -781,6 +813,13 @@ enum MatchupStatus {
 
 enum WaitlistStatus {
   ACTIVE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELED
+  FAILED
 }
 
 enum PartnerWebhookEvent {
