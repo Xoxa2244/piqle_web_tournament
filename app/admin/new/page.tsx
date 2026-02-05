@@ -92,6 +92,11 @@ export default function NewTournamentPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [requiredErrors, setRequiredErrors] = useState({
+    title: false,
+    startDate: false,
+    endDate: false,
+  })
   const [addressError, setAddressError] = useState<string | null>(null)
   const venueNameInputRef = useRef<HTMLInputElement>(null)
   const addressAutocompleteRef = useRef<any>(null)
@@ -123,7 +128,15 @@ export default function NewTournamentPage() {
   })
 
   const validateBaseForm = () => {
-    if (!formData.title || !formData.startDate || !formData.endDate) {
+    const nextErrors = {
+      title: !formData.title,
+      startDate: !formData.startDate,
+      endDate: !formData.endDate,
+    }
+
+    setRequiredErrors(nextErrors)
+
+    if (nextErrors.title || nextErrors.startDate || nextErrors.endDate) {
       alert('Please fill in required fields')
       return false
     }
@@ -359,6 +372,12 @@ export default function NewTournamentPage() {
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
+    if (name === 'title' || name === 'startDate' || name === 'endDate') {
+      setRequiredErrors(prev => ({
+        ...prev,
+        [name]: !value,
+      }))
+    }
   }
 
   const handleCancel = useCallback(() => {
@@ -489,9 +508,16 @@ export default function NewTournamentPage() {
                 value={formData.title}
                 onChange={handleChange}
                 required
-                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                  requiredErrors.title
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
                 placeholder="e.g., Pickleball Championship 2024"
               />
+              {requiredErrors.title && (
+                <p className="mt-1 text-sm text-red-600">Tournament name is required.</p>
+              )}
             </div>
 
             <div>
@@ -593,8 +619,15 @@ export default function NewTournamentPage() {
                   value={formData.startDate}
                   onChange={handleChange}
                   required
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                  className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                    requiredErrors.startDate
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 />
+                {requiredErrors.startDate && (
+                  <p className="mt-1 text-sm text-red-600">Start date is required.</p>
+                )}
               </div>
 
               <div>
@@ -609,8 +642,15 @@ export default function NewTournamentPage() {
                   onChange={handleChange}
                   required
                   min={formData.startDate || undefined}
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                  className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                    requiredErrors.endDate
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 />
+                {requiredErrors.endDate && (
+                  <p className="mt-1 text-sm text-red-600">End date is required.</p>
+                )}
               </div>
             </div>
 
