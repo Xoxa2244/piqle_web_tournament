@@ -454,6 +454,15 @@ function TeamCard({
           }
 
           const disableJoin = !isRegistrationOpen || isAlreadyActive
+          if (isAlreadyActive) {
+            return (
+              <div
+                key={index}
+                className="w-full border border-dashed rounded px-2 py-1 text-sm text-gray-400 opacity-50"
+              />
+            )
+          }
+
           return (
             <button
               key={index}
