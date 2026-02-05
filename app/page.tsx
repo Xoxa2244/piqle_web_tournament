@@ -375,7 +375,7 @@ export default function HomePage() {
   }
 
   const handleCardClick = (tournamentId: string, e: React.MouseEvent) => {
-    // Don't open modal if clicking on View Results button or its parent Link
+    // Don't open modal if clicking on Tournament Info button or its parent Link
     const target = e.target as HTMLElement
     if (target.closest('a[href*="/scoreboard/"]') || target.closest('button')) {
       return
@@ -684,10 +684,10 @@ export default function HomePage() {
                       </button>
                     </div>
 
-                    {/* View Results Button */}
+                    {/* Tournament Info Button */}
                     <Link href={`/scoreboard/${tournament.id}`}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        View Results
+                        Tournament Info
                       </Button>
                     </Link>
 

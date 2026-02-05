@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -57,6 +57,7 @@ export default function PublicCoursePage() {
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
 
   // Get tournament data (using public endpoint)
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getTournamentById.useQuery(
@@ -72,6 +73,11 @@ export default function PublicCoursePage() {
   if (currentDivision && !selectedDivisionId) {
     setSelectedDivisionId(currentDivision.id)
   }
+
+  // Reset expanded team when switching division
+  useEffect(() => {
+    setExpandedTeamId(null)
+  }, [currentDivision?.id])
 
   // Get standings for current division (using public endpoint)
   const { data: standingsData, isLoading: standingsLoading } = trpc.public.getPublicStandings.useQuery(
@@ -111,6 +117,22 @@ export default function PublicCoursePage() {
 
   const standings = standingsData?.standings || []
   const rrMatches = divisionStage?.matches?.filter(m => m.stage === 'ROUND_ROBIN') || []
+
+  const is1v1 = currentDivision?.teamKind === 'SINGLES_1v1'
+  const maxSlots = currentDivision?.teamKind === 'DOUBLES_2v2' ? 2 : currentDivision?.teamKind === 'SQUAD_4v4' ? 4 : 1
+  const divisionTeams = (currentDivision?.teams ?? []) as Array<{ id: string; teamPlayers?: Array<{ slotIndex?: number | null; player: { firstName: string; lastName: string } }> }>
+
+  const getTeamRoster = (teamId: string) => {
+    const team = divisionTeams.find((t: any) => t.id === teamId)
+    if (!team || !team.teamPlayers) return Array(maxSlots).fill(null)
+    const sorted = [...team.teamPlayers].sort((a, b) => (a.slotIndex ?? 999) - (b.slotIndex ?? 999))
+    const names: (string | null)[] = []
+    for (let i = 0; i < maxSlots; i++) {
+      const tp = sorted[i]
+      names.push(tp?.player ? `${tp.player.firstName} ${tp.player.lastName}`.trim() || null : null)
+    }
+    return names
+  }
   const playInMatches = divisionStage?.matches?.filter(m => m.stage === 'PLAY_IN') || []
   const playoffMatches = divisionStage?.matches?.filter(m => m.stage === 'ELIMINATION') || []
 
@@ -325,19 +347,49 @@ export default function PublicCoursePage() {
                           </thead>
                           <tbody>
                             {standings.map((team: TeamStanding) => (
-                              <tr key={team.teamId} className="border-b hover:bg-gray-50">
-                                <td className="py-2 font-medium">{team.rank}</td>
-                                <td className="py-2 font-medium">{team.teamName}</td>
-                                <td className="py-2 text-center">{team.wins}</td>
-                                <td className="py-2 text-center">{team.losses}</td>
-                                <td className="py-2 text-center">{team.pointsFor}</td>
-                                <td className="py-2 text-center">{team.pointsAgainst}</td>
-                                <td className="py-2 text-center">
-                                  <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                    {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
-                                  </span>
-                                </td>
-                              </tr>
+                              <React.Fragment key={team.teamId}>
+                                <tr className="border-b hover:bg-gray-50">
+                                  <td className="py-2 font-medium">{team.rank}</td>
+                                  <td className="py-2 font-medium">
+                                    {is1v1 ? (
+                                      team.teamName
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedTeamId(expandedTeamId === team.teamId ? null : team.teamId)}
+                                        className="text-left w-full flex items-center gap-1 hover:underline cursor-pointer"
+                                      >
+                                        {team.teamName}
+                                        <span className="text-gray-400 text-xs">
+                                          {expandedTeamId === team.teamId ? '▼' : '▶'}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="py-2 text-center">{team.wins}</td>
+                                  <td className="py-2 text-center">{team.losses}</td>
+                                  <td className="py-2 text-center">{team.pointsFor}</td>
+                                  <td className="py-2 text-center">{team.pointsAgainst}</td>
+                                  <td className="py-2 text-center">
+                                    <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                      {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
+                                    </span>
+                                  </td>
+                                </tr>
+                                {!is1v1 && expandedTeamId === team.teamId && (
+                                  <tr key={`${team.teamId}-roster`} className="border-b bg-gray-50/70">
+                                    <td colSpan={7} className="py-2 px-4">
+                                      <div className="text-sm text-gray-600 pl-6 space-y-0.5">
+                                        {getTeamRoster(team.teamId).map((name, idx) => (
+                                          <div key={idx}>
+                                            {name ? name : <span className="text-gray-400 italic">Empty slot</span>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
@@ -516,19 +568,49 @@ export default function PublicCoursePage() {
                           </thead>
                           <tbody>
                             {standings.map((team: TeamStanding) => (
-                              <tr key={team.teamId} className="border-b hover:bg-gray-50">
-                                <td className="py-2 font-medium">{team.rank}</td>
-                                <td className="py-2 font-medium">{team.teamName}</td>
-                                <td className="py-2 text-center">{team.wins}</td>
-                                <td className="py-2 text-center">{team.losses}</td>
-                                <td className="py-2 text-center">{team.pointsFor}</td>
-                                <td className="py-2 text-center">{team.pointsAgainst}</td>
-                                <td className="py-2 text-center">
-                                  <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                    {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
-                                  </span>
-                                </td>
-                              </tr>
+                              <React.Fragment key={team.teamId}>
+                                <tr className="border-b hover:bg-gray-50">
+                                  <td className="py-2 font-medium">{team.rank}</td>
+                                  <td className="py-2 font-medium">
+                                    {is1v1 ? (
+                                      team.teamName
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedTeamId(expandedTeamId === team.teamId ? null : team.teamId)}
+                                        className="text-left w-full flex items-center gap-1 hover:underline cursor-pointer"
+                                      >
+                                        {team.teamName}
+                                        <span className="text-gray-400 text-xs">
+                                          {expandedTeamId === team.teamId ? '▼' : '▶'}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="py-2 text-center">{team.wins}</td>
+                                  <td className="py-2 text-center">{team.losses}</td>
+                                  <td className="py-2 text-center">{team.pointsFor}</td>
+                                  <td className="py-2 text-center">{team.pointsAgainst}</td>
+                                  <td className="py-2 text-center">
+                                    <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                      {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
+                                    </span>
+                                  </td>
+                                </tr>
+                                {!is1v1 && expandedTeamId === team.teamId && (
+                                  <tr className="border-b bg-gray-50/70">
+                                    <td colSpan={7} className="py-2 px-4">
+                                      <div className="text-sm text-gray-600 pl-6 space-y-0.5">
+                                        {getTeamRoster(team.teamId).map((name, idx) => (
+                                          <div key={idx}>
+                                            {name ? name : <span className="text-gray-400 italic">Empty slot</span>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
