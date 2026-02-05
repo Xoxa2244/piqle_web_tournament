@@ -333,7 +333,7 @@ export default function NewTournamentPage() {
       registrationStartDate: formData.registrationStartDate || undefined,
       registrationEndDate: formData.registrationEndDate || undefined,
       entryFeeCents: entryFeeCents || 0,
-      currency: 'usd',
+      currency: 'usd' as const,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
