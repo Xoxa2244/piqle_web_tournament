@@ -598,6 +598,19 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            {/* Organizer Dashboard Section */}
+            <div className="space-y-2">
+              <Label>Organizer Dashboard</Label>
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                <div className="mb-2">
+                  Track revenue, fees, payouts, and tournament fill rates.
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/profile/organizer">Open dashboard</Link>
+                </Button>
+              </div>
+            </div>
+
             {/* Action Buttons */}
             {isEditing && (
               <div className="flex space-x-3 pt-4">
