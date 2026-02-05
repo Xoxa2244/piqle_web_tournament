@@ -12,23 +12,78 @@ function getAppBaseUrl(baseUrlFromClient?: string | null): string {
 }
 
 export const tournamentInvitationRouter = createTRPCRouter({
+  listEligibleUsers: tdProcedure
+    .input(z.object({
+      tournamentId: z.string(),
+      search: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+
+      const playerUserIds = await ctx.prisma.player.findMany({
+        where: { tournamentId: input.tournamentId },
+        select: { userId: true },
+      }).then((rows) => rows.map((r) => r.userId))
+
+      const users = await ctx.prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { notIn: playerUserIds },
+          ...(input.search?.trim()
+            ? { name: { contains: input.search.trim(), mode: 'insensitive' as const } }
+            : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          city: true,
+          gender: true,
+          duprRatingSingles: true,
+          duprRatingDoubles: true,
+        },
+        take: 200,
+        orderBy: { name: 'asc' },
+      })
+
+      const invitations = await ctx.prisma.tournamentInvitation.findMany({
+        where: {
+          tournamentId: input.tournamentId,
+          invitedUserId: { in: users.map((u) => u.id) },
+        },
+        select: { invitedUserId: true, status: true },
+      })
+      const statusByUserId = new Map(invitations.map((i) => [i.invitedUserId, i.status]))
+
+      return users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        image: u.image,
+        city: u.city,
+        gender: u.gender,
+        duprRatingSingles: u.duprRatingSingles,
+        duprRatingDoubles: u.duprRatingDoubles,
+        invitationStatus: statusByUserId.get(u.id) ?? null,
+      }))
+    }),
+
   create: tdProcedure
     .input(z.object({
       tournamentId: z.string(),
-      email: z.string().email(),
+      invitedUserId: z.string(),
       baseUrl: z.string().url().optional().nullable(),
     }))
     .mutation(async ({ ctx, input }) => {
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
 
       const user = await ctx.prisma.user.findUnique({
-        where: { email: input.email.toLowerCase() },
+        where: { id: input.invitedUserId },
         select: { id: true, email: true, name: true },
       })
       if (!user) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'No registered user with this email on the platform.',
+          message: 'User not found.',
         })
       }
 
