@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -101,12 +101,21 @@ export default function HomePage() {
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
   const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string, authorEmail: string} | null>(null)
+  const searchParams = useSearchParams()
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
+
+  // Open tournament card from URL ?open=TOURNAMENT_ID (e.g. from invitation email)
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId || !tournaments?.length) return
+    const exists = tournaments.some((t) => t.id === openId)
+    if (exists) setSelectedTournament(openId)
+  }, [searchParams, tournaments])
 
   // Reset description expanded when opening/closing modal
   useEffect(() => {
