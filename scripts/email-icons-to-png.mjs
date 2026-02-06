@@ -28,4 +28,20 @@ for (const name of svgFiles) {
   console.log('Created', base + '.png')
 }
 
+// Logo.svg -> Logo.png (for email; aspect ~100:44)
+const publicDir = join(__dirname, '..', 'public')
+const logoPath = join(publicDir, 'Logo.svg')
+const logoOutPath = join(publicDir, 'Logo.png')
+try {
+  const logoSvg = await readFile(logoPath, 'utf-8')
+  await sharp(Buffer.from(logoSvg))
+    .resize(240)
+    .png()
+    .toFile(logoOutPath)
+  console.log('Created Logo.png')
+} catch (e) {
+  if (e.code === 'ENOENT') console.log('Logo.svg not found, skip.')
+  else throw e
+}
+
 console.log('Done.')
