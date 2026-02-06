@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Suspense } from 'react'
 
 type FilterType = 'my' | 'all'
 type SortType = 'date-desc' | 'date-asc'
@@ -84,7 +85,7 @@ function AvatarImage({
   )
 }
 
-export default function HomePage() {
+function HomePageContent() {
   const { data: session } = useSession()
   const router = useRouter()
   const { toast } = useToast()
@@ -1129,5 +1130,22 @@ export default function HomePage() {
         )
       })()}
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Loading tournaments...</p>
+          </div>
+        </div>
+      }
+    >
+      <HomePageContent />
+    </Suspense>
   )
 }
