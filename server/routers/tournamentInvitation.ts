@@ -265,8 +265,8 @@ async function fetchTournamentForEmail(prisma: PrismaClient, tournamentId: strin
   return t
 }
 
-function formatEmailDate(d: Date | null): string {
-  if (!d) return '—'
+function formatEmailDate(d: Date | null | undefined): string {
+  if (d == null) return '—'
   const x = new Date(d)
   return x.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
 }
