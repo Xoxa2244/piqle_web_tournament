@@ -114,8 +114,8 @@ export const tournamentInvitationRouter = createTRPCRouter({
             message: 'This user already has a pending invitation. They must respond before you can invite again.',
           })
         }
-        // DECLINED or ACCEPTED: we allow creating a new invitation (will replace or create new row - actually unique is tournamentId + invitedUserId so we need to delete the old one or update. For "invite again after decline" we can update status to PENDING and resend. So: if DECLINED, update to PENDING and resend. If ACCEPTED, they're already a player so we already threw above. So only DECLINED can be "re-invited". So delete the declined row and create a new one, or just update status to PENDING and set updatedAt. I'll update status to PENDING and resend email.
-        if (existingInvitation.status === 'DECLINED') {
+        // DECLINED or ACCEPTED (e.g. accepted then left tournament): reuse same row, set to PENDING and resend email
+        if (existingInvitation.status === 'DECLINED' || existingInvitation.status === 'ACCEPTED') {
           await ctx.prisma.tournamentInvitation.update({
             where: { id: existingInvitation.id },
             data: { status: 'PENDING', updatedAt: new Date() },
