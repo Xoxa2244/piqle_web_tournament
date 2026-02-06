@@ -298,6 +298,7 @@ function DivisionSeatMap({
 
   const isActiveInDivision = myStatus?.status === 'active' && myStatus?.divisionId === division.id
   const isWaitlistedInDivision = myStatus?.status === 'waitlisted' && myStatus?.divisionId === division.id
+  const isAlreadyActive = myStatus?.status === 'active'
 
   return (
     <Card>
@@ -322,6 +323,7 @@ function DivisionSeatMap({
                     isPaidTournament={isPaidTournament}
                     payoutsActive={payoutsActive}
                     currentUserId={currentUserId}
+                    isAlreadyActive={isAlreadyActive}
                   />
                 ))}
               </div>
@@ -341,6 +343,7 @@ function DivisionSeatMap({
                 isPaidTournament={isPaidTournament}
                 payoutsActive={payoutsActive}
                 currentUserId={currentUserId}
+                isAlreadyActive={isAlreadyActive}
               />
             ))}
           </div>
@@ -362,6 +365,7 @@ function DivisionSeatMap({
                   isPaidTournament={isPaidTournament}
                   payoutsActive={payoutsActive}
                   currentUserId={currentUserId}
+                  isAlreadyActive={isAlreadyActive}
                 />
               ))}
             </div>
@@ -419,6 +423,7 @@ function TeamCard({
   isPaidTournament,
   payoutsActive,
   currentUserId,
+  isAlreadyActive,
 }: {
   team: any
   slots: any[]
@@ -429,6 +434,7 @@ function TeamCard({
   isPaidTournament: boolean
   payoutsActive: boolean
   currentUserId?: string
+  isAlreadyActive: boolean
 }) {
   return (
     <div className="border rounded-lg p-3 bg-white">
@@ -447,11 +453,21 @@ function TeamCard({
             )
           }
 
+          const disableJoin = !isRegistrationOpen || isAlreadyActive
+          if (isAlreadyActive) {
+            return (
+              <div
+                key={index}
+                className="w-full min-h-[32px] border border-dashed rounded px-2 py-1 text-sm text-gray-400 opacity-50"
+              />
+            )
+          }
+
           return (
             <button
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
-              disabled={!isRegistrationOpen}
+              disabled={disableJoin}
               onClick={() =>
                 isPaidTournament
                   ? onPayJoin(team.id, index)

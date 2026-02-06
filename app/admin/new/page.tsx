@@ -92,6 +92,12 @@ export default function NewTournamentPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
+  const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(null)
+  const [requiredErrors, setRequiredErrors] = useState({
+    title: false,
+    startDate: false,
+    endDate: false,
+  })
   const [addressError, setAddressError] = useState<string | null>(null)
   const venueNameInputRef = useRef<HTMLInputElement>(null)
   const addressAutocompleteRef = useRef<any>(null)
@@ -123,7 +129,15 @@ export default function NewTournamentPage() {
   })
 
   const validateBaseForm = () => {
-    if (!formData.title || !formData.startDate || !formData.endDate) {
+    const nextErrors = {
+      title: !formData.title,
+      startDate: !formData.startDate,
+      endDate: !formData.endDate,
+    }
+
+    setRequiredErrors(nextErrors)
+
+    if (nextErrors.title || nextErrors.startDate || nextErrors.endDate) {
       alert('Please fill in required fields')
       return false
     }
@@ -303,13 +317,19 @@ export default function NewTournamentPage() {
       ? toCents(parsedEntryFee)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
+  const requiresPayoutsSetup =
+    entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateBaseForm()) return
+    if (requiresPayoutsSetup) {
+      alert('Connect payouts with Stripe before creating a paid tournament.')
+      return
+    }
 
-    createTournament.mutate({
+    const payload = {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
@@ -319,38 +339,29 @@ export default function NewTournamentPage() {
       registrationStartDate: formData.registrationStartDate || undefined,
       registrationEndDate: formData.registrationEndDate || undefined,
       entryFeeCents: entryFeeCents || 0,
-      currency: 'usd',
+      currency: 'usd' as const,
       isPublicBoardEnabled: formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
       format: formData.format,
       seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
       timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
-    })
+    }
+
+    if (structureDraft) {
+      createTournamentWithStructure.mutate({
+        ...payload,
+        structure: structureDraft,
+      })
+      return
+    }
+
+    createTournament.mutate(payload)
   }
 
   const handleStructureSave = (structure: TournamentStructureInput) => {
-    if (!validateBaseForm()) return
-
-    createTournamentWithStructure.mutate({
-      title: formData.title,
-      description: formData.description || undefined,
-      venueName: formData.venueName || undefined,
-      venueAddress: formData.venueName || undefined,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      registrationStartDate: formData.registrationStartDate || undefined,
-      registrationEndDate: formData.registrationEndDate || undefined,
-      entryFeeCents: entryFeeCents || 0,
-      currency: 'usd',
-      isPublicBoardEnabled: formData.isPublicBoardEnabled,
-      allowDuprSubmission: formData.allowDuprSubmission,
-      image: formData.image || undefined,
-      format: formData.format,
-      seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
-      timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
-      structure,
-    })
+    setStructureDraft(structure)
+    setShowStructureModal(false)
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -359,6 +370,12 @@ export default function NewTournamentPage() {
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
+    if (name === 'title' || name === 'startDate' || name === 'endDate') {
+      setRequiredErrors(prev => ({
+        ...prev,
+        [name]: !value,
+      }))
+    }
   }
 
   const handleCancel = useCallback(() => {
@@ -489,9 +506,16 @@ export default function NewTournamentPage() {
                 value={formData.title}
                 onChange={handleChange}
                 required
-                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                  requiredErrors.title
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
                 placeholder="e.g., Pickleball Championship 2024"
               />
+              {requiredErrors.title && (
+                <p className="mt-1 text-sm text-red-600">Tournament name is required.</p>
+              )}
             </div>
 
             <div>
@@ -593,8 +617,15 @@ export default function NewTournamentPage() {
                   value={formData.startDate}
                   onChange={handleChange}
                   required
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                  className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                    requiredErrors.startDate
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 />
+                {requiredErrors.startDate && (
+                  <p className="mt-1 text-sm text-red-600">Start date is required.</p>
+                )}
               </div>
 
               <div>
@@ -609,8 +640,15 @@ export default function NewTournamentPage() {
                   onChange={handleChange}
                   required
                   min={formData.startDate || undefined}
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                  className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
+                    requiredErrors.endDate
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 />
+                {requiredErrors.endDate && (
+                  <p className="mt-1 text-sm text-red-600">End date is required.</p>
+                )}
               </div>
             </div>
 
@@ -797,13 +835,18 @@ export default function NewTournamentPage() {
             </div>
 
             <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowStructureModal(true)}
-              >
-                Set up structure
-              </Button>
+              <div className="flex items-center space-x-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowStructureModal(true)}
+                >
+                  {structureDraft ? 'Edit structure' : 'Set up structure'}
+                </Button>
+                {structureDraft && (
+                  <span className="text-sm text-green-600">Structure saved</span>
+                )}
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -813,11 +856,25 @@ export default function NewTournamentPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={createTournament.isPending || createTournamentWithStructure.isPending}
+                disabled={
+                  createTournament.isPending ||
+                  createTournamentWithStructure.isPending ||
+                  requiresPayoutsSetup
+                }
               >
                 {createTournament.isPending ? 'Creating...' : 'Create Tournament'}
               </Button>
             </div>
+            {requiresPayoutsSetup && (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div className="mb-2">
+                  Paid tournaments require payouts to be connected via Stripe.
+                </div>
+                <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                  Connect payouts with Stripe
+                </Button>
+              </div>
+            )}
           </form>
         </CardContent>
       </Card>
@@ -839,6 +896,7 @@ export default function NewTournamentPage() {
         isSaving={createTournamentWithStructure.isPending}
         onClose={() => setShowStructureModal(false)}
         onSave={handleStructureSave}
+        initialStructure={structureDraft}
       />
     </div>
   )

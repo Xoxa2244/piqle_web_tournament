@@ -22,6 +22,7 @@ import { commentRouter } from './comment'
 import { registrationRouter } from './registration'
 import { waitlistRouter } from './waitlist'
 import { tournamentInvitationRouter } from './tournamentInvitation'
+import { paymentRouter } from './payment'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -47,6 +48,7 @@ export const appRouter = createTRPCRouter({
   registration: registrationRouter,
   waitlist: waitlistRouter,
   tournamentInvitation: tournamentInvitationRouter,
+  payment: paymentRouter,
 })
 
 export type AppRouter = typeof appRouter

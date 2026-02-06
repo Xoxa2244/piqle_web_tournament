@@ -109,7 +109,7 @@ export async function POST(
       },
     }))
 
-  const { platformFeeCents, stripeFeeCents, organizerAmountCents } =
+  const { platformFeeCents, stripeFeeCents } =
     calculateOrganizerNetCents(entryFeeCents)
 
   const payment = await prisma.payment.create({
@@ -146,7 +146,6 @@ export async function POST(
             application_fee_amount: platformFeeCents,
             transfer_data: {
               destination: destinationAccountId,
-              amount: organizerAmountCents,
             },
           }
         : {}),
