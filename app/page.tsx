@@ -319,6 +319,16 @@ function HomePageContent() {
     return now >= start && now <= end
   }
 
+  const getRegistrationDisabledReason = (tournament: any): string | null => {
+    if (isRegistrationOpen(tournament)) return null
+    const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
+    const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
+    const now = new Date()
+    const format = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    if (now < start) return `Registration opens on ${format(start)}`
+    return `Registration closed on ${format(end)}`
+  }
+
   // Filter tournaments based on selected filter, search query, and status checkboxes
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
@@ -710,8 +720,13 @@ function HomePageContent() {
                           : status === 'waitlisted'
                           ? 'Leave Waitlist'
                           : 'Join Tournament'
+                      const disabledReason = !registrationOpen && label === 'Join Tournament' ? getRegistrationDisabledReason(tournament) : null
 
                       return (
+                        <span
+                          className="block w-full"
+                          title={disabledReason ?? undefined}
+                        >
                         <Button
                           className="w-full"
                           variant={status === 'active' ? 'destructive' : 'default'}
@@ -740,6 +755,7 @@ function HomePageContent() {
                         >
                           {label}
                         </Button>
+                        </span>
                       )
                     })()}
                   </div>
