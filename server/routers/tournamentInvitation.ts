@@ -271,6 +271,7 @@ function formatEmailDate(d: Date | null | undefined): string {
   return x.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
 }
 
+// PNG icons from public/email-icons/ (same as tournament card)
 type TournamentForEmail = Awaited<ReturnType<typeof fetchTournamentForEmail>>
 
 function buildInvitationEmailHtml(
@@ -281,7 +282,7 @@ function buildInvitationEmailHtml(
 ): string {
   const title = tournament?.title ?? 'Tournament'
   const tournamentLink = tournament?.id ? `${baseUrl}/?open=${tournament.id}` : baseUrl
-  const logoUrl = `${baseUrl}/Logo.svg`
+  const logoUrl = `${baseUrl}/Logo.png`
   const imageUrl = tournament?.image ?? `${baseUrl}/tournament-placeholder.png`
   const entryFee =
     tournament?.entryFee != null && parseFloat(String(tournament.entryFee)) > 0
@@ -323,22 +324,20 @@ function buildInvitationEmailHtml(
                 <tr>
                   <td style="padding: 28px 24px 20px; text-align: center;">
                     <p style="margin: 0 0 20px; font-size: 15px; color: #6b7280;">You're invited to participate in this tournament</p>
-                    <a href="${tournamentLink}" style="text-decoration: none; color: inherit; display: inline-block;">
-                      <img src="${imageUrl}" alt="" width="80" height="80" style="display: block; width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 0 auto 12px;" />
-                      <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">${escapeHtml(title)}</h1>
-                    </a>
-                    <p style="margin: 8px 0 0; font-size: 13px; color: #22c55e;">View tournament details →</p>
+                    <img src="${imageUrl}" alt="" width="80" height="80" style="display: block; width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 0 auto 12px;" />
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">${escapeHtml(title)}</h1>
+                    <p style="margin: 8px 0 0;"><a href="${tournamentLink}" style="font-size: 13px; color: #22c55e; text-decoration: none;">View tournament details →</a></p>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 0 24px 24px;">
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size: 14px; color: #4b5563;">
-                      <tr><td style="padding: 4px 0;"><span style="color: #9ca3af;">📅</span> ${formatEmailDate(tournament?.startDate)} – ${formatEmailDate(tournament?.endDate)}</td></tr>
-                      ${(tournament?.registrationStartDate || tournament?.registrationEndDate) ? `<tr><td style="padding: 4px 0;"><span style="color: #9ca3af;">📋</span> Registration: ${formatEmailDate(tournament?.registrationStartDate)} – ${formatEmailDate(tournament?.registrationEndDate)}</td></tr>` : ''}
-                      ${tournament?.venueName ? `<tr><td style="padding: 4px 0;"><span style="color: #9ca3af;">📍</span> ${escapeHtml(tournament.venueName)}</td></tr>` : ''}
-                      <tr><td style="padding: 4px 0;"><span style="color: #9ca3af;">👥</span> ${divisions.length} division${divisions.length !== 1 ? 's' : ''}</td></tr>
+                      <tr><td style="padding: 4px 0;"><img src="${baseUrl}/email-icons/calendar.png" width="16" height="16" alt="" style="vertical-align: middle; margin-right: 8px;" />${formatEmailDate(tournament?.startDate)} – ${formatEmailDate(tournament?.endDate)}</td></tr>
+                      ${(tournament?.registrationStartDate || tournament?.registrationEndDate) ? `<tr><td style="padding: 4px 0;"><img src="${baseUrl}/email-icons/clipboard-list.png" width="16" height="16" alt="" style="vertical-align: middle; margin-right: 8px;" />Registration: ${formatEmailDate(tournament?.registrationStartDate)} – ${formatEmailDate(tournament?.registrationEndDate)}</td></tr>` : ''}
+                      ${tournament?.venueName ? `<tr><td style="padding: 4px 0;"><img src="${baseUrl}/email-icons/mappin.png" width="16" height="16" alt="" style="vertical-align: middle; margin-right: 8px;" />${escapeHtml(tournament.venueName)}</td></tr>` : ''}
+                      <tr><td style="padding: 4px 0;"><img src="${baseUrl}/email-icons/users.png" width="16" height="16" alt="" style="vertical-align: middle; margin-right: 8px;" />${divisions.length} division${divisions.length !== 1 ? 's' : ''}</td></tr>
                       ${divisions.length > 0 ? `<tr><td style="padding: 8px 0 4px;">Divisions:</td></tr><tr><td style="padding: 0 0 8px;">${divisionPills}</td></tr>` : ''}
-                      ${entryFee ? `<tr><td style="padding: 4px 0;"><span style="color: #9ca3af;">🏆</span> Entry Fee: ${entryFee}</td></tr>` : ''}
+                      ${entryFee ? `<tr><td style="padding: 4px 0;"><img src="${baseUrl}/email-icons/trophy.png" width="16" height="16" alt="" style="vertical-align: middle; margin-right: 8px;" />Entry Fee: ${entryFee}</td></tr>` : ''}
                       ${td ? `<tr><td style="padding: 12px 0 0; border-top: 1px solid #e5e7eb;"><span style="font-size: 12px; color: #6b7280;">Tournament Director:</span><br/><table role="presentation" cellspacing="0" cellpadding="0" style="margin-top: 6px;"><tr><td style="vertical-align: middle; padding-right: 8px;">${tdImage ? `<img src="${tdImage}" alt="" width="24" height="24" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;" />` : '<span style="display: inline-block; width: 24px; height: 24px; border-radius: 50%; background: #e5e7eb;"></span>'}</td><td style="vertical-align: middle; font-size: 13px; font-weight: 500;">${escapeHtml(tdName)}</td></tr></table></td></tr>` : ''}
                     </table>
                   </td>
