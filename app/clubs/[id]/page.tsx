@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -88,6 +88,7 @@ export default function ClubDetailPage() {
   const utils = trpc.useUtils()
 
   const toggleFollow = trpc.club.toggleFollow.useMutation()
+  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
   const createBookingRequest = trpc.club.createBookingRequest.useMutation()
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
 
@@ -108,6 +109,7 @@ export default function ClubDetailPage() {
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
+  const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
 
   const canBook = Boolean(club?.courtReserveUrl)
 
@@ -185,6 +187,31 @@ export default function ClubDetailPage() {
     } catch (err: any) {
       toast({
         title: 'Failed to leave',
+        description: err?.message || 'Try again',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleConfirmCancelJoin = async () => {
+    if (!isLoggedIn) {
+      setCancelJoinOpen(false)
+      router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)
+      return
+    }
+
+    try {
+      await cancelJoinRequest.mutateAsync({ clubId })
+      await Promise.all([
+        utils.club.get.invalidate({ id: clubId }),
+        utils.club.list.invalidate(),
+        utils.club.listMembers.invalidate({ clubId }),
+      ])
+      setCancelJoinOpen(false)
+      toast({ title: 'Request canceled', description: 'Your join request was canceled.' })
+    } catch (err: any) {
+      toast({
+        title: 'Failed',
         description: err?.message || 'Try again',
         variant: 'destructive',
       })
@@ -320,10 +347,21 @@ export default function ClubDetailPage() {
                 </Button>
               ) : (club as any).joinPolicy === 'APPROVAL' ? (
                 (club as any).isJoinPending ? (
-                  <Button variant="secondary" className="gap-2" disabled title="Pending admin approval">
-                    <Users className="h-4 w-4" />
-                    Pending
-                  </Button>
+                  <>
+                    <Button variant="secondary" className="gap-2" disabled title="Pending admin approval">
+                      <Users className="h-4 w-4" />
+                      Pending
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
+                      onClick={() => setCancelJoinOpen(true)}
+                      disabled={cancelJoinRequest.isPending}
+                    >
+                      <X className="h-4 w-4" />
+                      Cancel request
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     variant="default"
@@ -669,6 +707,32 @@ export default function ClubDetailPage() {
               </Button>
               <Button variant="destructive" onClick={handleConfirmLeave} disabled={toggleFollow.isPending}>
                 Leave
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Join Request Modal */}
+      {cancelJoinOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setCancelJoinOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel join request?</h3>
+            <p className="text-gray-600 text-sm mb-6">
+              You will remove your pending request to join <span className="font-medium">{club.name}</span>.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setCancelJoinOpen(false)} disabled={cancelJoinRequest.isPending}>
+                No
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmCancelJoin} disabled={cancelJoinRequest.isPending}>
+                Yes, cancel
               </Button>
             </div>
           </div>

@@ -45,6 +45,7 @@ export default function ClubsPage() {
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
 
   const toggleFollow = trpc.club.toggleFollow.useMutation()
+  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
   const utils = trpc.useUtils()
 
   const onToggleFollow = async (clubId: string) => {
@@ -57,6 +58,16 @@ export default function ClubsPage() {
       utils.club.list.invalidate(),
       utils.club.get.invalidate({ id: clubId }),
     ])
+  }
+
+  const onCancelJoin = async (clubId: string) => {
+    if (!isLoggedIn) {
+      router.push(`/auth/signin?callbackUrl=${encodeURIComponent('/clubs')}`)
+      return
+    }
+    if (!confirm('Cancel your join request?')) return
+    await cancelJoinRequest.mutateAsync({ clubId })
+    await Promise.all([utils.club.list.invalidate(), utils.club.get.invalidate({ id: clubId })])
   }
 
   const followingClubs = useMemo(() => {
@@ -166,13 +177,19 @@ export default function ClubsPage() {
             </Button>
           </Link>
           <Button
-            variant={club.isFollowing || club.isJoinPending ? 'secondary' : 'default'}
+            variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
             className="flex-1"
-            onClick={() => onToggleFollow(club.id)}
-            disabled={toggleFollow.isPending || Boolean(club.isJoinPending)}
+            onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
+            disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
             title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
           >
-            {club.isFollowing ? 'Joined' : club.isJoinPending ? 'Pending' : club.joinPolicy === 'APPROVAL' ? 'Request' : 'Join'}
+            {club.isFollowing
+              ? 'Joined'
+              : club.isJoinPending
+                ? 'Cancel'
+                : club.joinPolicy === 'APPROVAL'
+                  ? 'Request'
+                  : 'Join'}
           </Button>
         </div>
       </CardContent>

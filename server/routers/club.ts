@@ -535,6 +535,36 @@ export const clubRouter = createTRPCRouter({
       return { isFollowing: true, isJoinPending: false, status: 'joined' as const }
     }),
 
+  cancelJoinRequest: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true },
+      })
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      try {
+        await ctx.prisma.clubJoinRequest.deleteMany({
+          where: { clubId: input.clubId, userId },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_join_requests')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_join_requests table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
+    }),
+
   create: protectedProcedure.input(clubCreateInput).mutation(async ({ ctx, input }) => {
     try {
       const club = await ctx.prisma.club.create({
