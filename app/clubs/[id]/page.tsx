@@ -1286,6 +1286,7 @@ function ClubChatCard({
   onJoinToggle: () => void
 }) {
   const utils = trpc.useUtils()
+  const { toast } = useToast()
   const messageLimit = 100
 
   const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery(
@@ -1326,14 +1327,17 @@ function ClubChatCard({
     if (!canPost || sendMessage.isPending) return
 
     try {
-      await sendMessage.mutateAsync({ clubId, text })
+      const res: any = await sendMessage.mutateAsync({ clubId, text })
       setDraft('')
+      if (res?.wasFiltered) {
+        toast({ title: 'Filtered', description: 'Some words were filtered.' })
+      }
       // Scroll after the list refetch lands.
       setTimeout(scrollToBottom, 50)
-    } catch {
-      // toast is handled by global tRPC error or UI; keep MVP simple.
+    } catch (err: any) {
+      toast({ title: 'Failed to send', description: err?.message || 'Try again', variant: 'destructive' })
     }
-  }, [draft, canPost, sendMessage, clubId, scrollToBottom])
+  }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
     <Card>
@@ -1370,7 +1374,7 @@ function ClubChatCard({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <div className="text-sm font-medium text-gray-900 truncate">
-                          {m.user?.name || m.user?.email || 'User'}
+                          {m.user?.name || 'User'}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}

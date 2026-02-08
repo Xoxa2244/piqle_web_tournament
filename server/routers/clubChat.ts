@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
+import profanity from 'leo-profanity'
+
+// Load dictionaries once at module init.
+profanity.loadDictionary('en')
+profanity.add(profanity.getDictionary('ru'))
+
+const extraBlocked = (process.env.CHAT_BLOCKED_WORDS || '')
+  .split(',')
+  .map((w) => w.trim())
+  .filter(Boolean)
+if (extraBlocked.length) {
+  profanity.add(extraBlocked)
+}
+
+const normalizeText = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ')
 
 export const clubChatRouter = createTRPCRouter({
   list: publicProcedure
@@ -22,7 +37,6 @@ export const clubChatRouter = createTRPCRouter({
             select: {
               id: true,
               name: true,
-              email: true,
               image: true,
             },
           },
@@ -59,41 +73,84 @@ export const clubChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Message cannot be empty' })
       }
 
-      const club = await ctx.prisma.club.findUnique({
-        where: { id: input.clubId },
-        select: { id: true },
-      })
+      const clubId = input.clubId
+      const now = new Date()
+      const minuteAgo = new Date(now.getTime() - 60 * 1000)
+
+      const [club, follower, admin, lastMessage, messagesLastMinute] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubChatMessage.findFirst({
+          where: { clubId, userId },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true, text: true },
+        }),
+        ctx.prisma.clubChatMessage.count({
+          where: { clubId, userId, createdAt: { gte: minuteAgo } },
+        }),
+      ])
+
       if (!club) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
-      const [follower, admin] = await Promise.all([
-        ctx.prisma.clubFollower.findUnique({
-          where: { clubId_userId: { clubId: input.clubId, userId } },
-          select: { id: true },
-        }),
-        ctx.prisma.clubAdmin.findUnique({
-          where: { clubId_userId: { clubId: input.clubId, userId } },
-          select: { id: true },
-        }),
-      ])
-
       if (!follower && !admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to post messages' })
+      }
+
+      const isAdmin = Boolean(admin)
+      const cooldownMs = isAdmin ? 1000 : 2500
+      const maxPerMinute = isAdmin ? 30 : 10
+
+      if (lastMessage) {
+        const delta = now.getTime() - new Date(lastMessage.createdAt).getTime()
+        if (delta < cooldownMs) {
+          throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
+        }
+
+        if (normalizeText(lastMessage.text) === normalizeText(trimmed)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'Duplicate message.' })
+        }
+      }
+
+      if (messagesLastMinute >= maxPerMinute) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Too many messages. Please wait.' })
+      }
+
+      const links = trimmed.match(/https?:\/\/\S+|www\.\S+/gi) ?? []
+      const maxLinksPerMessage = isAdmin ? 5 : 1
+      if (links.length > maxLinksPerMessage) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `Too many links (max ${maxLinksPerMessage}).` })
+      }
+
+      let sanitized = trimmed
+      let wasFiltered = false
+      if (profanity.check(sanitized)) {
+        sanitized = profanity.clean(sanitized)
+        wasFiltered = sanitized !== trimmed
       }
 
       const message = await ctx.prisma.clubChatMessage.create({
         data: {
           clubId: input.clubId,
           userId,
-          text: trimmed,
+          text: sanitized,
         },
         include: {
           user: {
             select: {
               id: true,
               name: true,
-              email: true,
               image: true,
             },
           },
@@ -105,6 +162,7 @@ export const clubChatRouter = createTRPCRouter({
         clubId: message.clubId,
         userId: message.userId,
         text: message.text,
+        wasFiltered,
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
@@ -162,4 +220,3 @@ export const clubChatRouter = createTRPCRouter({
       return { success: true }
     }),
 })
-

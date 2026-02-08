@@ -184,6 +184,10 @@ CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_created_at_idx"
 CREATE INDEX IF NOT EXISTS "club_chat_messages_user_id_idx"
   ON "club_chat_messages" ("user_id");
 
+-- Helps per-user rate limiting queries (clubId + userId + recent created_at)
+CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_user_id_created_at_idx"
+  ON "club_chat_messages" ("club_id", "user_id", "created_at");
+
 -- Club invites (anti-spam tracking)
 -- Notes:
 -- - Email delivery is handled by the app (SMTP).
