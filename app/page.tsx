@@ -1151,7 +1151,7 @@ export default function HomePage() {
                   {modalTab === 'view-results' && (
                     <div className="flex-1 min-h-0 flex flex-col">
                       <iframe
-                        src={`/scoreboard/${tournament.id}`}
+                        src={`/scoreboard/${tournament.id}/embed`}
                         title="View Results"
                         className="w-full flex-1 min-h-[60vh] border-0"
                       />
