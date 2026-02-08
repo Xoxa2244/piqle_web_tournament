@@ -1,18 +1,28 @@
 'use client'
 
 import { trpc } from '@/lib/trpc'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
 import { User as UserIcon, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function UserProfilePage() {
   const params = useParams()
+  const router = useRouter()
+  const { data: session } = useSession()
   const userId = params?.id as string
   const { data: profile, isLoading } = trpc.user.getProfileById.useQuery({ id: userId })
   const [avatarError, setAvatarError] = useState(false)
+
+  // Свой профиль всегда открывать по /profile
+  useEffect(() => {
+    if (session?.user?.id && userId && String(session.user.id) === String(userId)) {
+      router.replace('/profile')
+    }
+  }, [session?.user?.id, userId, router])
 
   if (isLoading) {
     return (

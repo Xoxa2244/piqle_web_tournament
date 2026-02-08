@@ -4,11 +4,12 @@ import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, Eye, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
+import { Calendar, MapPin, Users, Trophy, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
@@ -85,6 +86,7 @@ function AvatarImage({
 
 export default function HomePage() {
   const { data: session } = useSession()
+  const router = useRouter()
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
@@ -94,11 +96,11 @@ export default function HomePage() {
   const [filterPast, setFilterPast] = useState(false)
   const [sortBy, setSortBy] = useState<SortType>('date-desc')
   const [searchQuery, setSearchQuery] = useState('')
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
   const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string, authorEmail: string} | null>(null)
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -115,6 +117,11 @@ export default function HomePage() {
   const tournamentIds = useMemo(() => {
     return tournaments?.map(t => t.id) || []
   }, [tournaments])
+
+  const { data: registrationStatuses } = trpc.registration.getMyStatuses.useQuery(
+    { tournamentIds },
+    { enabled: !!session && tournamentIds.length > 0 }
+  )
   
   const utils = trpc.useUtils()
   
@@ -244,6 +251,18 @@ export default function HomePage() {
     },
   })
 
+  const cancelRegistration = trpc.registration.cancelRegistration.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
+  const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
     const lines = text.split('\n')
@@ -256,7 +275,6 @@ export default function HomePage() {
     const now = new Date()
     const start = new Date(tournament.startDate)
     const end = new Date(tournament.endDate)
-    // Add 12 hours to end date for "past" threshold (matches original isTournamentPast logic)
     const endWithGrace = new Date(end)
     endWithGrace.setHours(endWithGrace.getHours() + 12)
     const nextDay = new Date(now)
@@ -284,13 +302,20 @@ export default function HomePage() {
     }
   }
 
+  const isRegistrationOpen = (tournament: any): boolean => {
+    const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
+    const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
+    const now = new Date()
+    return now >= start && now <= end
+  }
+
   // Filter tournaments based on selected filter, search query, and status checkboxes
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
     
     let filtered = tournaments
     
-    // Tab: My tournaments vs All tournaments (when not logged in, My tournaments is empty)
+    // Tab: My tournaments vs All tournaments
     if (filter === 'my') {
       filtered = session?.user?.id
         ? filtered.filter(tournament => (tournament as any).user?.id === session.user.id)
@@ -390,7 +415,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Page Header */}
+      {/* Page Header: title, subtitle, search, filters */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
@@ -399,7 +424,7 @@ export default function HomePage() {
               <p className="text-gray-600 mt-2">Select a tournament to view results</p>
             </div>
 
-            {/* Search Input - filters displayed tournaments */}
+            {/* Search Input */}
             <div className="mt-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -412,8 +437,8 @@ export default function HomePage() {
                 />
               </div>
             </div>
-            
-            {/* Filter Tabs + Status Checkboxes */}
+
+            {/* Filter Tabs + Status Checkboxes + Sort */}
             <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
               <div className="flex gap-2">
                 <button
@@ -471,8 +496,8 @@ export default function HomePage() {
                   <option value="date-asc">Oldest first</option>
                 </select>
               </div>
-              </div>
             </div>
+          </div>
         </div>
       </div>
 
@@ -595,7 +620,7 @@ export default function HomePage() {
                         <div className="flex items-center space-x-2">
                           <span className="text-xs text-gray-500">Tournament Director:</span>
                           <Link
-                            href={`/profile/${tournament.user.id}`}
+                            href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
                             className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
                           >
                             <AvatarImage
@@ -613,10 +638,10 @@ export default function HomePage() {
                     )}
                   </div>
 
-                  {/* Fixed bottom section: Like/Dislike and View Results */}
-                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0">
+                  {/* Fixed bottom section: Like/Dislike, View Results, Join Tournament */}
+                  <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
                     {/* Like/Dislike/Comments Buttons */}
-                    <div className="flex items-center gap-2 mb-6">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -665,6 +690,48 @@ export default function HomePage() {
                         View Results
                       </Button>
                     </Link>
+
+                    {(() => {
+                      const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                      const registrationOpen = isRegistrationOpen(tournament)
+                      const label =
+                        status === 'active'
+                          ? 'Cancel Registration'
+                          : status === 'waitlisted'
+                          ? 'Leave Waitlist'
+                          : 'Join Tournament'
+
+                      return (
+                        <Button
+                          className="w-full"
+                          variant={status === 'active' ? 'destructive' : 'default'}
+                          disabled={!registrationOpen}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!session) {
+                              router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                              return
+                            }
+                            if (status === 'active') {
+                              if (confirm('Cancel registration?')) {
+                                cancelRegistration.mutate({ tournamentId: tournament.id })
+                              }
+                              return
+                            }
+                            if (status === 'waitlisted') {
+                              const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                              if (divisionId && confirm('Leave waitlist?')) {
+                                leaveWaitlist.mutate({ divisionId })
+                              }
+                              return
+                            }
+                            router.push(`/tournaments/${tournament.id}/register`)
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      )
+                    })()}
                   </div>
                 </CardContent>
               </Card>
@@ -758,7 +825,7 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                {/* Left Side - Tournament Info (on narrow screens: full width; comments go below) */}
+                {/* Left Side - Tournament Info */}
                 <div className="w-full lg:w-1/2 border-r-0 lg:border-r border-gray-200 overflow-y-auto p-6">
                   <div className="space-y-4">
                     
@@ -775,11 +842,7 @@ export default function HomePage() {
                             onClick={() => setDescriptionExpanded(!descriptionExpanded)}
                             className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                           >
-                            {descriptionExpanded ? (
-                              <>Show less</>
-                            ) : (
-                              <>Show more</>
-                            )}
+                            {descriptionExpanded ? 'Show less' : 'Show more'}
                           </button>
                         )}
                       </div>
@@ -851,7 +914,7 @@ export default function HomePage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
                         <Link
-                          href={`/profile/${tournament.user.id}`}
+                          href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
                           className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
                         >
                           <AvatarImage
@@ -869,7 +932,7 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Right Side - Comments (on narrow screens: below tournament director) */}
+                {/* Right Side - Comments */}
                 <div className="w-full lg:w-1/2 overflow-y-auto flex flex-col border-t lg:border-t-0 border-gray-200">
                   <div className="p-6 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-900">
@@ -1000,9 +1063,9 @@ export default function HomePage() {
                       </Link>
                     </div>
                   )}
-          </div>
-        </div>
-      </div>
+                </div>
+              </div>
+            </div>
           </div>
         )
       })()}

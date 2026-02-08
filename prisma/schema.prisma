@@ -30,6 +30,7 @@ model User {
   accounts                 Account[]
   assistantAssignments     AssistantAssignment[]
   auditLogs                AuditLog[]
+  players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
   tournamentAccesses       TournamentAccess[]
@@ -37,6 +38,8 @@ model User {
   tournamentRatings        TournamentRating[]
   tournamentComments       TournamentComment[]
   partnerDirectorships     Partner[] // Partners where this user is the director
+  organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
+  stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
 
   @@map("users")
 }
@@ -104,6 +107,8 @@ model Tournament {
   registrationStartDate   DateTime?                 @map("registration_start_date")
   registrationEndDate     DateTime?                 @map("registration_end_date")
   entryFee                Decimal?                  @db.Decimal(10, 2)
+  entryFeeCents           Int?                      @map("entry_fee_cents")
+  currency                String                    @default("usd")
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
   image                   String?
@@ -111,6 +116,7 @@ model Tournament {
   allowDuprSubmission     Boolean                   @default(false) @map("allow_dupr_submission")
   seasonLabel             String?                   @map("season_label")
   timezone                String?
+  hasDivisions            Boolean                   @default(true) @map("has_divisions")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -127,6 +133,8 @@ model Tournament {
   TournamentAccessRequest TournamentAccessRequest[]
   matchDays               MatchDay[]
   courts                  Court[]
+  waitlistEntries         WaitlistEntry[]
+  payments                Payment[]
 
   @@map("tournaments")
 }
@@ -181,6 +189,7 @@ model Division {
   prizes                Prize[]
   standings             Standing[]
   teams                 Team[]
+  waitlistEntries       WaitlistEntry[]
   tournamentAccesses    TournamentAccess[]
   indyMatchups          IndyMatchup[]
 
@@ -192,9 +201,12 @@ model DivisionConstraints {
   divisionId String           @unique
   minDupr    Decimal?         @db.Decimal(4, 2)
   maxDupr    Decimal?         @db.Decimal(4, 2)
+  minTeamDupr Decimal?        @db.Decimal(4, 2)
+  maxTeamDupr Decimal?        @db.Decimal(4, 2)
   minAge     Int?
   maxAge     Int?
   genders    GenderConstraint @default(ANY)
+  enforcement ConstraintEnforcement @default(INFO)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
@@ -247,6 +259,7 @@ model Team {
   standings           Standing[]
   teamPlayers         TeamPlayer[]
   dayRosters          DayRoster[]
+  payments            Payment[]
   division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool                Pool?           @relation(fields: [poolId], references: [id])
 
@@ -258,6 +271,7 @@ model Player {
   firstName         String       @map("firstName")
   lastName          String       @map("lastName")
   email             String?
+  userId            String?      @map("user_id")
   gender            Gender?
   birthDate         DateTime?    @map("birthDate")
   externalId        String?      @map("externalId")
@@ -268,14 +282,18 @@ model Player {
   isWaitlist        Boolean?     @default(false) @map("is_waitlist")
   dupr              String?      @db.VarChar
   tournamentId      String?      @map("tournament_id")
+  user              User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  waitlistEntries   WaitlistEntry[]
   teamPlayers       TeamPlayer[]
   dayRosters        DayRoster[]
   indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
   indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
   indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
   indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
+  payments          Payment[]
 
+  @@unique([userId, tournamentId])
   @@map("players")
 }
 
@@ -284,13 +302,57 @@ model TeamPlayer {
   teamId    String     @map("teamId")
   playerId  String     @map("playerId")
   role      PlayerRole @default(PLAYER)
+  slotIndex Int?       @map("slot_index")
   createdAt DateTime   @default(now()) @map("createdAt")
   updatedAt DateTime   @updatedAt @map("updatedAt")
   player    Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
   team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, playerId])
+  @@unique([teamId, slotIndex])
   @@map("team_players")
+}
+
+model Payment {
+  id                      String        @id @default(uuid())
+  tournamentId            String        @map("tournament_id")
+  playerId                String        @map("player_id")
+  teamId                  String?       @map("team_id")
+  slotIndex               Int?          @map("slot_index")
+  entryFeeAmount          Decimal       @db.Decimal(10, 2) @map("entry_fee_amount")
+  platformFeeAmount       Decimal       @db.Decimal(10, 2) @map("platform_fee_amount")
+  stripeFeeAmount         Decimal       @db.Decimal(10, 2) @map("stripe_fee_amount")
+  totalAmount             Decimal       @db.Decimal(10, 2) @map("total_amount")
+  currency                String        @default("usd")
+  status                  PaymentStatus @default(PENDING)
+  stripeCheckoutSessionId String?       @map("stripe_checkout_session_id")
+  stripePaymentIntentId   String?       @map("stripe_payment_intent_id")
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
+  tournament              Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player                  Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team                    Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId, playerId])
+  @@index([status])
+  @@map("payments")
+}
+
+model WaitlistEntry {
+  id           String         @id @default(uuid())
+  tournamentId String         @map("tournament_id")
+  divisionId   String         @map("division_id")
+  playerId     String         @map("player_id")
+  status       WaitlistStatus @default(ACTIVE)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tournament   Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  division     Division       @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  player       Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, tournamentId])
+  @@index([divisionId, createdAt])
+  @@map("waitlist_entries")
 }
 
 model RoundRobinGroup {
@@ -635,6 +697,11 @@ enum GenderConstraint {
   MIXED
 }
 
+enum ConstraintEnforcement {
+  INFO
+  HARD
+}
+
 enum Gender {
   M
   F
@@ -742,6 +809,17 @@ enum MatchupStatus {
   READY
   IN_PROGRESS
   COMPLETED
+}
+
+enum WaitlistStatus {
+  ACTIVE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELED
+  FAILED
 }
 
 enum PartnerWebhookEvent {

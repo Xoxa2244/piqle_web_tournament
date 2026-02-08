@@ -110,6 +110,8 @@ interface BoardModeProps {
   onAddPlayerToSlot?: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  waitlistEntries?: any[]
+  onOpenAssignWaitlist?: (entry: any, division: Division) => void
 }
 
 interface ActionHistory {
@@ -136,7 +138,9 @@ export default function BoardMode({
   availablePlayers = [],
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  waitlistEntries,
+  onOpenAssignWaitlist
 }: BoardModeProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTeam, setActiveTeam] = useState<string | null>(null)

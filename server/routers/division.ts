@@ -14,11 +14,15 @@ export const divisionRouter = createTRPCRouter({
       // Constraints
       minDupr: z.number().optional(),
       maxDupr: z.number().optional(),
+      minTeamDupr: z.number().optional(),
+      maxTeamDupr: z.number().optional(),
       minAge: z.number().optional(),
       maxAge: z.number().optional(),
+      genders: z.enum(['ANY', 'MEN', 'WOMEN', 'MIXED']).optional(),
+      enforcement: z.enum(['INFO', 'HARD']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { minDupr, maxDupr, minAge, maxAge, poolCount, ...divisionData } = input
+      const { minDupr, maxDupr, minTeamDupr, maxTeamDupr, minAge, maxAge, poolCount, genders, enforcement, ...divisionData } = input
       
       const division = await ctx.prisma.division.create({
         data: {
@@ -28,8 +32,12 @@ export const divisionRouter = createTRPCRouter({
             create: {
               minDupr: minDupr ? minDupr : null,
               maxDupr: maxDupr ? maxDupr : null,
+              minTeamDupr: minTeamDupr ? minTeamDupr : null,
+              maxTeamDupr: maxTeamDupr ? maxTeamDupr : null,
               minAge: minAge ? minAge : null,
               maxAge: maxAge ? maxAge : null,
+              genders: genders || 'ANY',
+              enforcement: enforcement || 'INFO',
             }
           },
           // Create pools if poolCount >= 1

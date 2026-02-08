@@ -46,6 +46,7 @@ interface Team {
     role: string
     createdAt: string
     updatedAt: string
+    slotIndex?: number | null
     player: Player
   }>
 }
@@ -116,14 +117,20 @@ export default function TeamWithSlots({
     const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
     // Sort teamPlayers by createdAt to ensure consistent ordering
-    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => 
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
+    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => {
+      if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
+        return a.slotIndex - b.slotIndex
+      }
+      if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
+      if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
     
     // Fill slots with existing players in sorted order
     sortedTeamPlayers.forEach((teamPlayer, index) => {
-      if (index < slotCount) {
-        slotsArray[index] = {
+      const targetIndex = teamPlayer.slotIndex ?? index
+      if (targetIndex < slotCount) {
+        slotsArray[targetIndex] = {
           ...teamPlayer.player,
           teamPlayerId: teamPlayer.id
         }

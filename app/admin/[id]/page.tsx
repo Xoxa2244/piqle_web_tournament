@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
+import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { 
   Users, 
   Calendar, 
@@ -142,6 +143,11 @@ export default function TournamentDetailPage() {
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const [payoutStatus, setPayoutStatus] = useState<{
+    hasAccount: boolean
+    payoutsActive: boolean
+    isLoading: boolean
+  }>({ hasAccount: false, payoutsActive: false, isLoading: true })
   const [divisionForm, setDivisionForm] = useState({
     name: '',
     teamKind: 'DOUBLES_2v2' as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
@@ -169,7 +175,10 @@ export default function TournamentDetailPage() {
         endDate: new Date(tournament.endDate).toISOString().split('T')[0],
         registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
         registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
-        entryFee: tournament.entryFee || '',
+        entryFee:
+          typeof tournament.entryFeeCents === 'number'
+            ? fromCents(tournament.entryFeeCents).toFixed(2)
+            : '',
         isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
         allowDuprSubmission: tournament.allowDuprSubmission ?? false,
         image: tournament.image || '',
@@ -179,10 +188,59 @@ export default function TournamentDetailPage() {
     }
   }, [tournament, searchParams, tournamentId])
 
+  useEffect(() => {
+    let isMounted = true
+    const loadStatus = async () => {
+      try {
+        const response = await fetch('/api/stripe/connect-status')
+        const payload = await response.json()
+        if (!isMounted) return
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load payout status')
+        }
+        setPayoutStatus({
+          hasAccount: payload.hasAccount,
+          payoutsActive: payload.payoutsActive,
+          isLoading: false,
+        })
+      } catch {
+        if (isMounted) {
+          setPayoutStatus((prev) => ({ ...prev, isLoading: false }))
+        }
+      }
+    }
+    loadStatus()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleConnectStripe = async () => {
+    try {
+      const response = await fetch('/api/stripe/create-account-link', {
+        method: 'POST',
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Failed to start Stripe onboarding')
+      }
+      window.location.href = payload.url
+    } catch (error: any) {
+      alert(error.message || 'Failed to start Stripe onboarding')
+    }
+  }
+
   // Check if user has admin access (owner or ADMIN access level)
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   // Check if user is owner (for owner-only features like CSV import and access control)
   const isOwner = tournament?.userAccessInfo?.isOwner
+
+  const parsedEntryFeeForForm = Number(tournamentForm.entryFee)
+  const entryFeeCentsForForm =
+    Number.isFinite(parsedEntryFeeForForm) && parsedEntryFeeForForm > 0
+      ? toCents(parsedEntryFeeForForm)
+      : 0
+  const organizerBreakdown = calculateOrganizerNetCents(entryFeeCentsForForm)
   
   // Get pending access requests (only for owner)
   const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
@@ -277,7 +335,10 @@ export default function TournamentDetailPage() {
       endDate: new Date(tournament.endDate).toISOString().split('T')[0],
       registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
       registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
-      entryFee: tournament.entryFee?.toString() || '',
+      entryFee:
+        typeof tournament.entryFeeCents === 'number'
+          ? fromCents(tournament.entryFeeCents).toFixed(2)
+          : '',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
       image: tournament.image || '',
@@ -334,6 +395,12 @@ export default function TournamentDetailPage() {
       }
     }
 
+    const parsedEntryFee = Number(tournamentForm.entryFee)
+    const entryFeeCents =
+      Number.isFinite(parsedEntryFee) && parsedEntryFee > 0
+        ? toCents(parsedEntryFee)
+        : 0
+
     updateTournament.mutate({
       id: tournamentId,
       title: tournamentForm.title,
@@ -343,7 +410,8 @@ export default function TournamentDetailPage() {
       endDate: tournamentForm.endDate,
       registrationStartDate: tournamentForm.registrationStartDate || null,
       registrationEndDate: tournamentForm.registrationEndDate || null,
-      entryFee: tournamentForm.entryFee ? parseFloat(tournamentForm.entryFee) : undefined,
+      entryFeeCents,
+      currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
       image: tournamentForm.image || null,
@@ -556,7 +624,11 @@ export default function TournamentDetailPage() {
                 {/* Entry fee */}
                 <div className="flex items-center gap-2 text-base text-gray-700">
                   <DollarSign className="h-4 w-4 flex-shrink-0 text-gray-500" />
-                  <span>{tournament.entryFee ? `$${tournament.entryFee}` : '—'}</span>
+                  <span>
+                    {typeof tournament.entryFeeCents === 'number'
+                      ? `$${fromCents(tournament.entryFeeCents).toFixed(2)}`
+                      : '—'}
+                  </span>
                 </div>
 
                 {/* Number of divisions */}
@@ -981,6 +1053,22 @@ export default function TournamentDetailPage() {
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Entry Fee ($)
                 </label>
+                <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                  {payoutStatus.isLoading ? (
+                    <div>Checking payout status…</div>
+                  ) : payoutStatus.payoutsActive ? (
+                    <div>Payouts: Active via Stripe</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div>
+                        To receive payouts for paid tournaments, please connect your bank details via Stripe.
+                      </div>
+                      <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                        Connect payouts with Stripe
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 <input
                   type="number"
                   name="entryFee"
@@ -991,6 +1079,23 @@ export default function TournamentDetailPage() {
                   className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   placeholder="0.00"
                 />
+                {entryFeeCentsForForm > 0 && (
+                  <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                    <div>Entry fee per player: ${fromCents(entryFeeCentsForForm).toFixed(2)}</div>
+                    <div>
+                      Piqle fee (10%, max $5): $
+                      {fromCents(organizerBreakdown.platformFeeCents).toFixed(2)}
+                    </div>
+                    <div>
+                      Estimated Stripe fee: $
+                      {fromCents(organizerBreakdown.stripeFeeCents).toFixed(2)}
+                    </div>
+                    <div className="font-medium">
+                      Organizer receives: $
+                      {fromCents(organizerBreakdown.organizerAmountCents).toFixed(2)}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Tournament Image */}
