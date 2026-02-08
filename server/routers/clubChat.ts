@@ -6,6 +6,7 @@ import profanity from 'leo-profanity'
 // Load dictionaries once at module init.
 profanity.loadDictionary('en')
 profanity.add(profanity.getDictionary('ru'))
+profanity.add(profanity.getDictionary('es'))
 
 const extraBlocked = (process.env.CHAT_BLOCKED_WORDS || '')
   .split(',')
