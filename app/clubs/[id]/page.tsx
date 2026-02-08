@@ -616,10 +616,17 @@ function ClubEventsCalendar({
           const eventCount = events.length
 
           return (
-            <button
+            <div
               key={key}
-              type="button"
               onClick={() => setSelectedKey(key)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setSelectedKey(key)
+                }
+              }}
+              role="button"
+              tabIndex={0}
               className={cn(
                 'h-12 sm:h-14 rounded-md border px-2 py-1 text-left transition-colors',
                 inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
@@ -641,12 +648,23 @@ function ClubEventsCalendar({
               {eventCount > 0 ? (
                 <div className="mt-1 flex items-center gap-1">
                   <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                  <div className="text-[10px] text-blue-700 truncate">
-                    {events[0]?.title ?? 'Event'}
-                  </div>
+                  {events[0]?.id ? (
+                    <Link
+                      href={`/tournaments/${events[0].id}/register`}
+                      className="text-[10px] text-blue-700 truncate hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Open registration"
+                    >
+                      {events[0]?.title ?? 'Event'}
+                    </Link>
+                  ) : (
+                    <div className="text-[10px] text-blue-700 truncate">
+                      {events[0]?.title ?? 'Event'}
+                    </div>
+                  )}
                 </div>
               ) : null}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -669,7 +687,13 @@ function ClubEventsCalendar({
               return (
                 <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">{tournament.title}</div>
+                    <Link
+                      href={`/tournaments/${tournament.id}/register`}
+                      className="text-sm font-medium text-gray-900 truncate hover:underline block"
+                      title="Open registration"
+                    >
+                      {tournament.title}
+                    </Link>
                     <div className="text-xs text-muted-foreground">
                       {new Date(tournament.startDate).toLocaleString()}
                     </div>
