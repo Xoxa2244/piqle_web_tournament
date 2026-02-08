@@ -94,18 +94,6 @@ export default function AppHeader() {
               </Link>
               <nav className="hidden lg:flex items-center gap-6">
                 <Link
-                  href="/"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Home
-                </Link>
-                <Link
-                  href="/admin"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Tournament Management
-                </Link>
-                <Link
                   href="/tournaments-map"
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
