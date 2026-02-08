@@ -22,17 +22,25 @@ export default function ClubsPage() {
   const isLoggedIn = status === 'authenticated'
 
   const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<'' | 'VENUE' | 'COMMUNITY'>('')
+  const [city, setCity] = useState('')
+  const [stateCode, setStateCode] = useState('')
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [hasBooking, setHasBooking] = useState(false)
+  const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
 
   const listInput = useMemo(() => {
     const trimmed = query.trim()
     return {
       ...(trimmed ? { query: trimmed } : {}),
+      ...(kind ? { kind } : {}),
+      ...(city.trim() ? { city: city.trim() } : {}),
+      ...(stateCode.trim() ? { state: stateCode.trim() } : {}),
       ...(verifiedOnly ? { verifiedOnly: true } : {}),
       ...(hasBooking ? { hasBooking: true } : {}),
+      ...(hasUpcomingEvents ? { hasUpcomingEvents: true } : {}),
     }
-  }, [query, verifiedOnly, hasBooking])
+  }, [query, kind, city, stateCode, verifiedOnly, hasBooking, hasUpcomingEvents])
 
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
 
@@ -204,6 +212,38 @@ export default function ClubsPage() {
               className="pl-10"
             />
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Type</label>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as any)}
+                className="w-full h-10 px-3 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All</option>
+                <option value="VENUE">Venue club</option>
+                <option value="COMMUNITY">Community/coach</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">City</label>
+              <Input
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="e.g., Carmel"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">State</label>
+              <Input
+                value={stateCode}
+                onChange={(e) => setStateCode(e.target.value)}
+                onBlur={() => setStateCode((v) => v.trim().toUpperCase())}
+                placeholder="e.g., IN"
+              />
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <Checkbox checked={verifiedOnly} onCheckedChange={(v) => setVerifiedOnly(Boolean(v))} />
@@ -213,6 +253,30 @@ export default function ClubsPage() {
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
             </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <Checkbox checked={hasUpcomingEvents} onCheckedChange={(v) => setHasUpcomingEvents(Boolean(v))} />
+              Has upcoming events
+            </label>
+
+            {query.trim() || kind || city.trim() || stateCode.trim() || verifiedOnly || hasBooking || hasUpcomingEvents ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => {
+                  setQuery('')
+                  setKind('')
+                  setCity('')
+                  setStateCode('')
+                  setVerifiedOnly(false)
+                  setHasBooking(false)
+                  setHasUpcomingEvents(false)
+                }}
+              >
+                Clear
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>

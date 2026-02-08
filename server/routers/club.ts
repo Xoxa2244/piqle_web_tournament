@@ -43,8 +43,11 @@ export const clubRouter = createTRPCRouter({
         .object({
           query: z.string().max(120).optional(),
           kind: z.enum(['VENUE', 'COMMUNITY']).optional(),
+          city: z.string().max(120).optional(),
+          state: z.string().max(120).optional(),
           verifiedOnly: z.boolean().optional(),
           hasBooking: z.boolean().optional(),
+          hasUpcomingEvents: z.boolean().optional(),
         })
         .optional()
     )
@@ -59,11 +62,20 @@ export const clubRouter = createTRPCRouter({
       if (input?.kind) {
         where.kind = input.kind
       }
+      if (input?.city?.trim()) {
+        where.city = { contains: input.city.trim(), mode: 'insensitive' as const }
+      }
+      if (input?.state?.trim()) {
+        where.state = { equals: input.state.trim().toUpperCase(), mode: 'insensitive' as const }
+      }
       if (input?.verifiedOnly) {
         where.isVerified = true
       }
       if (input?.hasBooking) {
         where.courtReserveUrl = { not: null }
+      }
+      if (input?.hasUpcomingEvents) {
+        where.tournaments = { some: { endDate: { gte: now } } }
       }
 
       const clubs = await ctx.prisma.club.findMany({
