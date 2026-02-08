@@ -415,6 +415,14 @@ export default function NewClubPage() {
                 id="courtReserveUrl"
                 value={form.courtReserveUrl}
                 onChange={(e) => setForm((p) => ({ ...p, courtReserveUrl: e.target.value }))}
+                onBlur={() => {
+                  setForm((p) => {
+                    const raw = (p.courtReserveUrl ?? '').trim()
+                    if (!raw) return { ...p, courtReserveUrl: '' }
+                    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw)
+                    return { ...p, courtReserveUrl: hasScheme ? raw : `https://${raw}` }
+                  })
+                }}
                 placeholder="https://app.courtreserve.com/..."
               />
             </div>

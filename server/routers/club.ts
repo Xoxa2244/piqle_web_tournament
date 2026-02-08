@@ -4,6 +4,25 @@ import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
 
+const optionalHttpUrl = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val
+    const trimmed = val.trim()
+    if (!trimmed) return undefined
+
+    // Allow users to paste "example.com" without scheme; normalize to https.
+    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
+    return hasScheme ? trimmed : `https://${trimmed}`
+  },
+  z
+    .string()
+    .url()
+    .optional()
+    .refine((url) => !url || url.startsWith('http://') || url.startsWith('https://'), {
+      message: 'Invalid url',
+    })
+)
+
 const clubCreateInput = z.object({
   name: z.string().min(2).max(120),
   kind: z.enum(['VENUE', 'COMMUNITY']).default('VENUE'),
@@ -13,7 +32,7 @@ const clubCreateInput = z.object({
   city: z.string().max(120).optional(),
   state: z.string().max(120).optional(),
   country: z.string().max(120).optional(),
-  courtReserveUrl: z.string().url().optional(),
+  courtReserveUrl: optionalHttpUrl,
   bookingRequestEmail: z.string().email().optional(),
 })
 
