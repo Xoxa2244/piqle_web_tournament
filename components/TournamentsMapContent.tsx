@@ -154,9 +154,12 @@ export function TournamentsMapContent({
 
   const filteredTournaments = useMemo(() => {
     let result = tournaments
-    if (searchQuery.trim()) {
+    const hasSearch = searchQuery.trim().length > 0
+    if (hasSearch) {
       const q = searchQuery.toLowerCase().trim()
       result = result.filter((t) => t.name.toLowerCase().includes(q))
+      // При активном поиске не фильтруем по чекбоксам — показываем все совпадения по названию
+      return result
     }
     if (!(filterUpcoming || filterInProgress || filterPast)) return result
     return result.filter((t) => {
