@@ -1123,24 +1123,33 @@ export default function TournamentDetailPage() {
                   </div>
                 ) : (
                   <div className="flex items-center space-x-4">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="tournament-image-edit"
-                    />
-                    <label
-                      htmlFor="tournament-image-edit"
-                      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors"
-                    >
-                      <Upload className="h-4 w-4" />
-                      <span>Upload Image</span>
-                    </label>
-                    {isUploadingImage && (
-                      <span className="text-sm text-gray-500">Uploading...</span>
-                    )}
+                    <div className="w-48 h-48 rounded-lg overflow-hidden border border-gray-300 flex-shrink-0 bg-gray-100">
+                      <img
+                        src="/tournament-placeholder.png"
+                        alt="No tournament image"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                        id="tournament-image-edit"
+                      />
+                      <label
+                        htmlFor="tournament-image-edit"
+                        className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors w-fit"
+                      >
+                        <Upload className="h-4 w-4" />
+                        <span>Upload Image</span>
+                      </label>
+                      {isUploadingImage && (
+                        <span className="text-sm text-gray-500">Uploading...</span>
+                      )}
+                    </div>
                   </div>
                 )}
                 <p className="mt-1 text-sm text-gray-500">
