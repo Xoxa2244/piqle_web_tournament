@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
+import { Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
 
 export default function AccessManagementPage() {
   const params = useParams()
@@ -257,15 +257,6 @@ export default function AccessManagementPage() {
   if (!isOwner) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <Link
-            href={`/admin/${tournamentId}`}
-            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Tournament
-          </Link>
-        </div>
         <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
           <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-md">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -277,12 +268,6 @@ export default function AccessManagementPage() {
             <p className="text-gray-600 mb-6">
               Access management is only available to the tournament owner.
             </p>
-            <Link
-              href={`/admin/${tournamentId}`}
-              className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-            >
-              Back to Tournament
-            </Link>
           </div>
         </div>
       </div>
@@ -292,13 +277,6 @@ export default function AccessManagementPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <Link
-          href={`/admin/${tournamentId}`}
-          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Tournament
-        </Link>
         <h1 className="text-3xl font-bold">Access Management</h1>
         <p className="text-gray-600 mt-2">Manage who can access this tournament and their permissions</p>
       </div>
