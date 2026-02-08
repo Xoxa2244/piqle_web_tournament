@@ -1,7 +1,62 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
+const maskEmail = (email: string) => {
+  try {
+    const [localRaw, domainRaw] = email.split('@')
+    const local = (localRaw ?? '').trim()
+    const domain = (domainRaw ?? '').trim()
+    if (!local || !domain) return '***'
+
+    const localMasked = local.length <= 1 ? '*' : `${local[0]}***`
+    const domainParts = domain.split('.').filter(Boolean)
+    const tld = domainParts.length ? domainParts[domainParts.length - 1] : '***'
+    const domainMain = domainParts.length > 1 ? domainParts.slice(0, -1).join('.') : domainParts[0] ?? ''
+    const domainMasked = domainMain ? `${domainMain[0]}***` : '***'
+    return `${localMasked}@${domainMasked}.${tld}`
+  } catch {
+    return '***'
+  }
+}
+
 export const userRouter = createTRPCRouter({
+  search: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(2).max(120),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const q = input.query.trim()
+      if (!q) return []
+
+      const users = await ctx.prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { not: ctx.session.user.id },
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        take: 8,
+        orderBy: [{ name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          email: true, // Used to compute masked value; never return raw email.
+        },
+      })
+
+      return users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        image: u.image,
+        emailMasked: u.email ? maskEmail(u.email) : null,
+      }))
+    }),
+
   getProfile: protectedProcedure
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({
@@ -96,4 +151,3 @@ export const userRouter = createTRPCRouter({
       return updatedUser
     }),
 })
-

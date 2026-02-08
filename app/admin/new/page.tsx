@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState, useCallback, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -69,12 +69,25 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
 }
 
 export default function NewTournamentPage() {
+  // Next.js requires `useSearchParams()` to be wrapped in a Suspense boundary.
+  return (
+    <Suspense fallback={<div className="px-6 py-8 text-sm text-muted-foreground">Loading…</div>}>
+      <NewTournamentPageInner />
+    </Suspense>
+  )
+}
+
+function NewTournamentPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const prefillAppliedRef = useRef(false)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    clubId: '',
     venueName: '',
+    venueAddress: '',
     startDate: '',
     endDate: '',
     registrationStartDate: '',
@@ -99,7 +112,7 @@ export default function NewTournamentPage() {
     endDate: false,
   })
   const [addressError, setAddressError] = useState<string | null>(null)
-  const venueNameInputRef = useRef<HTMLInputElement>(null)
+  const venueAddressInputRef = useRef<HTMLInputElement>(null)
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
@@ -127,6 +140,29 @@ export default function NewTournamentPage() {
       alert('Error creating tournament structure: ' + error.message)
     },
   })
+
+  const { data: clubs } = trpc.club.list.useQuery(undefined)
+
+  useEffect(() => {
+    if (prefillAppliedRef.current) return
+    const clubIdFromQuery = searchParams.get('clubId')
+    if (!clubIdFromQuery) return
+    if (!clubs?.length) return
+
+    const selected = clubs.find((c) => c.id === clubIdFromQuery)
+    prefillAppliedRef.current = true
+    if (!selected) return
+
+    setFormData((prev) => {
+      if (prev.clubId) return prev
+      return {
+        ...prev,
+        clubId: selected.id,
+        venueName: selected.name,
+        venueAddress: selected.address || prev.venueAddress,
+      }
+    })
+  }, [clubs, searchParams])
 
   const validateBaseForm = () => {
     const nextErrors = {
@@ -180,7 +216,7 @@ export default function NewTournamentPage() {
   }
 
   const setupAddressAutocomplete = useCallback(async () => {
-    if (!venueNameInputRef.current) return
+    if (!venueAddressInputRef.current) return
 
     try {
       const googleApi = await loadGoogleMaps({
@@ -193,7 +229,7 @@ export default function NewTournamentPage() {
       if (addressAutocompleteRef.current) return
 
       addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(
-        venueNameInputRef.current,
+        venueAddressInputRef.current,
         {
           fields: ['formatted_address', 'geometry', 'place_id'],
           types: ['geocode'],
@@ -211,7 +247,7 @@ export default function NewTournamentPage() {
           setAddressError(null)
           setFormData((prev) => ({
             ...prev,
-            venueName: place.formatted_address,
+            venueAddress: place.formatted_address,
           }))
         })
     } catch (error) {
@@ -271,7 +307,7 @@ export default function NewTournamentPage() {
   }
 
   const handleVenueAddressBlur = async () => {
-    if (!formData.venueName.trim()) return
+    if (!formData.venueAddress.trim()) return
 
     try {
       const googleApi =
@@ -284,7 +320,7 @@ export default function NewTournamentPage() {
       googleRef.current = googleApi
       const geocoder = new googleApi.maps.Geocoder()
       geocoder.geocode(
-        { address: formData.venueName },
+        { address: formData.venueAddress },
         (results: any, status: any) => {
           if (status !== 'OK' || !results?.length) {
             setAddressError('Select a valid address from the list.')
@@ -300,7 +336,7 @@ export default function NewTournamentPage() {
           setAddressError(null)
           setFormData((prev) => ({
             ...prev,
-            venueName: result.formatted_address,
+            venueAddress: result.formatted_address,
           }))
         }
       )
@@ -333,7 +369,8 @@ export default function NewTournamentPage() {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
-      venueAddress: formData.venueName || undefined,
+      venueAddress: formData.venueAddress || undefined,
+      clubId: formData.clubId || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       registrationStartDate: formData.registrationStartDate || undefined,
@@ -362,6 +399,21 @@ export default function NewTournamentPage() {
   const handleStructureSave = (structure: TournamentStructureInput) => {
     setStructureDraft(structure)
     setShowStructureModal(false)
+  }
+
+  const handleClubSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value
+    setFormData((prev) => {
+      const next = { ...prev, clubId: selectedId }
+      if (!selectedId) return next
+      const selected = clubs?.find((c) => c.id === selectedId)
+      if (!selected) return next
+      return {
+        ...next,
+        venueName: selected.name,
+        venueAddress: selected.address || prev.venueAddress,
+      }
+    })
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -584,15 +636,54 @@ export default function NewTournamentPage() {
             </div>
 
             <div>
+              <label htmlFor="clubId" className="block text-sm font-medium text-gray-700 mb-2">
+                Host Club (optional)
+              </label>
+              <select
+                id="clubId"
+                name="clubId"
+                value={formData.clubId}
+                onChange={handleClubSelect}
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+              >
+                <option value="">No club (custom venue)</option>
+                {(clubs ?? []).map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.name}
+                    {club.city || club.state ? ` — ${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Selecting a club links this tournament to the club page.
+              </p>
+            </div>
+
+            <div>
               <label htmlFor="venueName" className="block text-sm font-medium text-gray-700 mb-2">
-                Venue
+                Venue Name (optional)
               </label>
               <input
                 type="text"
                 id="venueName"
                 name="venueName"
-                ref={venueNameInputRef}
                 value={formData.venueName}
+                onChange={handleChange}
+                className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                placeholder="e.g., Chicago Pickleball Center"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="venueAddress" className="block text-sm font-medium text-gray-700 mb-2">
+                Venue Address (optional)
+              </label>
+              <input
+                type="text"
+                id="venueAddress"
+                name="venueAddress"
+                ref={venueAddressInputRef}
+                value={formData.venueAddress}
                 onChange={handleChange}
                 onBlur={handleVenueAddressBlur}
                 autoComplete="off"

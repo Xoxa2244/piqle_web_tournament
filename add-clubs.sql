@@ -1,0 +1,292 @@
+-- Clubs / Organizations
+-- Adds:
+-- - clubs table (venue/community organizations)
+-- - followers, admins, announcements, booking requests
+-- - tournaments.club_id optional foreign key
+
+-- Enums for Prisma compatibility
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubKind') THEN
+    CREATE TYPE "ClubKind" AS ENUM ('VENUE', 'COMMUNITY');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubJoinPolicy') THEN
+    CREATE TYPE "ClubJoinPolicy" AS ENUM ('OPEN', 'APPROVAL');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubAdminRole') THEN
+    CREATE TYPE "ClubAdminRole" AS ENUM ('ADMIN', 'MODERATOR');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubBookingRequestStatus') THEN
+    CREATE TYPE "ClubBookingRequestStatus" AS ENUM ('NEW', 'IN_PROGRESS', 'CLOSED');
+  END IF;
+END
+$$;
+
+-- Clubs
+CREATE TABLE IF NOT EXISTS "clubs" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "name" TEXT NOT NULL,
+  "kind" "ClubKind" NOT NULL DEFAULT 'VENUE',
+  "join_policy" "ClubJoinPolicy" NOT NULL DEFAULT 'OPEN',
+  "description" TEXT,
+  "logo_url" TEXT,
+  "address" TEXT,
+  "city" TEXT,
+  "state" TEXT,
+  "country" TEXT,
+  "is_verified" BOOLEAN NOT NULL DEFAULT false,
+  "court_reserve_url" TEXT,
+  "booking_request_email" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- Add missing columns if clubs table already existed (idempotent patching)
+ALTER TABLE "clubs"
+  ADD COLUMN IF NOT EXISTS "logo_url" TEXT;
+
+ALTER TABLE "clubs"
+  ADD COLUMN IF NOT EXISTS "join_policy" "ClubJoinPolicy" NOT NULL DEFAULT 'OPEN';
+
+-- Link tournaments -> clubs
+ALTER TABLE "tournaments"
+  ADD COLUMN IF NOT EXISTS "club_id" UUID;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'tournaments_club_id_fkey'
+  ) THEN
+    ALTER TABLE "tournaments"
+      ADD CONSTRAINT "tournaments_club_id_fkey"
+      FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE SET NULL;
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "tournaments_club_id_idx" ON "tournaments" ("club_id");
+
+-- Followers
+CREATE TABLE IF NOT EXISTS "club_followers" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_followers_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_followers_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_followers_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_followers"
+      ADD CONSTRAINT "club_followers_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_followers_user_id_idx" ON "club_followers" ("user_id");
+
+-- Join requests (for closed clubs)
+-- Notes:
+-- - If club.join_policy = 'APPROVAL', users create a join request and admins approve.
+CREATE TABLE IF NOT EXISTS "club_join_requests" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_join_requests_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_join_requests_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_join_requests_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_join_requests"
+      ADD CONSTRAINT "club_join_requests_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_join_requests_club_id_created_at_idx"
+  ON "club_join_requests" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_join_requests_user_id_idx"
+  ON "club_join_requests" ("user_id");
+
+-- Admins
+CREATE TABLE IF NOT EXISTS "club_admins" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "role" "ClubAdminRole" NOT NULL DEFAULT 'ADMIN',
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_admins_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_admins_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_admins_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_admins"
+      ADD CONSTRAINT "club_admins_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_admins_user_id_idx" ON "club_admins" ("user_id");
+
+-- Announcements (admin-only posting in app; public reading)
+CREATE TABLE IF NOT EXISTS "club_announcements" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "title" TEXT,
+  "body" TEXT NOT NULL,
+  "created_by_user_id" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_announcements_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_announcements_created_by_user_id_fkey"
+    FOREIGN KEY ("created_by_user_id") REFERENCES "users" ("id") ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS "club_announcements_club_id_created_at_idx"
+  ON "club_announcements" ("club_id", "created_at");
+
+-- Booking requests / inquiries
+CREATE TABLE IF NOT EXISTS "club_booking_requests" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "requester_user_id" TEXT,
+  "requester_name" TEXT NOT NULL,
+  "requester_email" TEXT NOT NULL,
+  "requester_phone" TEXT,
+  "desired_start" TIMESTAMP,
+  "duration_minutes" INTEGER,
+  "players_count" INTEGER,
+  "message" TEXT,
+  "status" "ClubBookingRequestStatus" NOT NULL DEFAULT 'NEW',
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_booking_requests_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_booking_requests_requester_user_id_fkey"
+    FOREIGN KEY ("requester_user_id") REFERENCES "users" ("id") ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS "club_booking_requests_club_id_created_at_idx"
+  ON "club_booking_requests" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_booking_requests_requester_user_id_idx"
+  ON "club_booking_requests" ("requester_user_id");
+
+-- Club chat (MVP)
+-- Notes:
+-- - Write access is enforced in app (must "join" club, i.e. be a follower) + admins/moderators.
+-- - Moderation is soft-delete via deleted_at/deleted_by_user_id.
+CREATE TABLE IF NOT EXISTS "club_chat_messages" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "text" TEXT NOT NULL,
+  "deleted_at" TIMESTAMP,
+  "deleted_by_user_id" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_chat_messages_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_chat_messages_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_created_at_idx"
+  ON "club_chat_messages" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_chat_messages_user_id_idx"
+  ON "club_chat_messages" ("user_id");
+
+-- Helps per-user rate limiting queries (clubId + userId + recent created_at)
+CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_user_id_created_at_idx"
+  ON "club_chat_messages" ("club_id", "user_id", "created_at");
+
+-- Club invites (anti-spam tracking)
+-- Notes:
+-- - Email delivery is handled by the app (SMTP).
+-- - This table is used for rate limiting + audit trail.
+CREATE TABLE IF NOT EXISTS "club_invites" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "inviter_user_id" TEXT NOT NULL,
+  "invitee_user_id" TEXT,
+  "invitee_email" TEXT NOT NULL,
+  "delivered" BOOLEAN NOT NULL DEFAULT false,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_invites_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_invites_inviter_user_id_fkey"
+    FOREIGN KEY ("inviter_user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_invites_invitee_user_id_fkey"
+    FOREIGN KEY ("invitee_user_id") REFERENCES "users" ("id") ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS "club_invites_club_id_created_at_idx"
+  ON "club_invites" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_invites_inviter_user_id_created_at_idx"
+  ON "club_invites" ("inviter_user_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_invites_invitee_email_idx"
+  ON "club_invites" ("invitee_email");
+
+-- Club bans / blocklist
+-- Notes:
+-- - Used to prevent specific users from joining a club.
+-- - Admin/moderator only.
+CREATE TABLE IF NOT EXISTS "club_bans" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "banned_by_user_id" TEXT NOT NULL,
+  "reason" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_bans_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_bans_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_bans_banned_by_user_id_fkey"
+    FOREIGN KEY ("banned_by_user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_bans_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_bans"
+      ADD CONSTRAINT "club_bans_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_bans_club_id_created_at_idx"
+  ON "club_bans" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_bans_user_id_idx"
+  ON "club_bans" ("user_id");
