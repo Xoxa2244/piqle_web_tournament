@@ -1,8 +1,53 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
+import { getTeamSlotCount } from '../utils/teamSlots'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
+
+const decimalToNumber = (val: any): number | null => {
+  if (val === null || val === undefined) return null
+  if (typeof val === 'number') return Number.isFinite(val) ? val : null
+  if (typeof val === 'string') {
+    const n = Number(val)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof val.toNumber === 'function') {
+    const n = val.toNumber()
+    return Number.isFinite(n) ? n : null
+  }
+  const n = Number(val)
+  return Number.isFinite(n) ? n : null
+}
+
+const formatGenderLabel = (genders: Set<string>) => {
+  const parts: string[] = []
+  if (genders.has('MEN')) parts.push('Men')
+  if (genders.has('WOMEN')) parts.push('Women')
+  if (genders.has('MIXED')) parts.push('Mixed')
+  if (parts.length === 0) return 'Any'
+  return parts.join('/')
+}
+
+const computeDuprSummary = (mins: number[], maxs: number[]) => {
+  const min = mins.length ? Math.min(...mins) : null
+  const max = maxs.length ? Math.max(...maxs) : null
+  const fmt = (n: number) => n.toFixed(2).replace(/\.?0+$/, '')
+
+  if (min === null && max === null) {
+    return { duprMin: null as number | null, duprMax: null as number | null, duprLabel: null as string | null }
+  }
+
+  if (min !== null && max !== null) {
+    return { duprMin: min, duprMax: max, duprLabel: `DUPR ${fmt(min)}-${fmt(max)}` }
+  }
+
+  if (min !== null) {
+    return { duprMin: min, duprMax: null, duprLabel: `DUPR ${fmt(min)}+` }
+  }
+
+  return { duprMin: null, duprMax: max, duprLabel: `DUPR ≤${fmt(max!)}` }
+}
 
 const optionalHttpUrl = z.preprocess(
   (val) => {
@@ -179,6 +224,7 @@ export const clubRouter = createTRPCRouter({
               endDate: true,
               entryFeeCents: true,
               publicSlug: true,
+              format: true,
             },
           },
           announcements: {
@@ -207,6 +253,102 @@ export const clubRouter = createTRPCRouter({
 
       const isAdmin = club.admins.length > 0 && userId !== DUMMY_USER_ID
 
+      const tournamentIds = club.tournaments.map((t) => t.id)
+      const tournamentStatsById = new Map<
+        string,
+        {
+          totalSlots: number
+          filledSlots: number
+          genders: Set<string>
+          duprMins: number[]
+          duprMaxs: number[]
+        }
+      >()
+
+      if (tournamentIds.length > 0) {
+        const divisions = await ctx.prisma.division.findMany({
+          where: { tournamentId: { in: tournamentIds } },
+          select: {
+            tournamentId: true,
+            teamKind: true,
+            maxTeams: true,
+            constraints: {
+              select: {
+                genders: true,
+                minDupr: true,
+                maxDupr: true,
+                minTeamDupr: true,
+                maxTeamDupr: true,
+              },
+            },
+            teams: {
+              select: {
+                id: true,
+                _count: { select: { teamPlayers: true } },
+              },
+            },
+          },
+        })
+
+        for (const division of divisions) {
+          const agg =
+            tournamentStatsById.get(division.tournamentId) ??
+            {
+              totalSlots: 0,
+              filledSlots: 0,
+              genders: new Set<string>(),
+              duprMins: [],
+              duprMaxs: [],
+            }
+
+          const slotCount = getTeamSlotCount(
+            (division.teamKind ?? 'DOUBLES_2v2') as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
+          )
+          const teamsCount = division.teams.length || division.maxTeams || 0
+          const totalSlots = teamsCount * slotCount
+          const filledSlots = division.teams.reduce((sum, team) => {
+            const teamPlayers = team._count.teamPlayers
+            return sum + Math.min(teamPlayers, slotCount)
+          }, 0)
+
+          agg.totalSlots += totalSlots
+          agg.filledSlots += filledSlots
+
+          const g = division.constraints?.genders ?? 'ANY'
+          agg.genders.add(g)
+
+          const pushMin = (v: any) => {
+            const n = decimalToNumber(v)
+            if (n === null) return
+            agg.duprMins.push(n)
+          }
+          const pushMax = (v: any) => {
+            const n = decimalToNumber(v)
+            if (n === null) return
+            agg.duprMaxs.push(n)
+          }
+
+          pushMin(division.constraints?.minDupr)
+          pushMin(division.constraints?.minTeamDupr)
+          pushMax(division.constraints?.maxDupr)
+          pushMax(division.constraints?.maxTeamDupr)
+
+          tournamentStatsById.set(division.tournamentId, agg)
+        }
+      }
+
+      const tournaments = club.tournaments.map((t) => {
+        const stats = tournamentStatsById.get(t.id) ?? null
+        const genderLabel = stats ? formatGenderLabel(stats.genders) : null
+        const dupr = stats ? computeDuprSummary(stats.duprMins, stats.duprMaxs) : { duprMin: null, duprMax: null, duprLabel: null }
+        return {
+          ...t,
+          totals: stats ? { totalSlots: stats.totalSlots, filledSlots: stats.filledSlots } : null,
+          genderLabel,
+          ...dupr,
+        }
+      })
+
       const bookingRequests = isAdmin
         ? await ctx.prisma.clubBookingRequest.findMany({
             where: { clubId: input.id },
@@ -229,6 +371,7 @@ export const clubRouter = createTRPCRouter({
 
       return {
         ...club,
+        tournaments,
         followersCount: club._count.followers,
         isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
         isAdmin,

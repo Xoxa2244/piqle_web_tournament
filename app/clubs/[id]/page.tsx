@@ -549,6 +549,10 @@ function ClubEventsCalendar({
     endDate?: Date | string
     entryFeeCents?: number | null
     publicSlug?: string | null
+    format?: string | null
+    totals?: { totalSlots: number; filledSlots: number } | null
+    genderLabel?: string | null
+    duprLabel?: string | null
   }>
   eventsByDay: Map<string, any[]>
 }) {
@@ -567,6 +571,28 @@ function ClubEventsCalendar({
   const parseYmd = (key: string) => {
     const [y, m, d] = key.split('-').map((x) => Number(x))
     return new Date(y, (m ?? 1) - 1, d ?? 1)
+  }
+
+  const formatTournamentType = (format?: string | null) => {
+    switch (format) {
+      case 'SINGLE_ELIMINATION':
+        return 'Single elim'
+      case 'ROUND_ROBIN':
+        return 'Round robin'
+      case 'MLP':
+        return 'MLP'
+      case 'INDY_LEAGUE':
+        return 'Indy league'
+      case 'LEAGUE_ROUND_ROBIN':
+        return 'League RR'
+      default:
+        return 'Tournament'
+    }
+  }
+
+  const formatTime = (startDate: Date | string) => {
+    const d = new Date(startDate)
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   }
 
   return (
@@ -693,6 +719,12 @@ function ClubEventsCalendar({
             {selectedEvents.map((tournament: any) => {
               const fee = typeof tournament.entryFeeCents === 'number' ? tournament.entryFeeCents : 0
               const isPaid = fee > 0
+              const occupancy =
+                tournament.totals && tournament.totals.totalSlots
+                  ? `${tournament.totals.filledSlots}/${tournament.totals.totalSlots}`
+                  : null
+              const typeLabel = formatTournamentType(tournament.format)
+              const timeLabel = formatTime(tournament.startDate)
               return (
                 <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
                   <div className="min-w-0">
@@ -704,7 +736,7 @@ function ClubEventsCalendar({
                       {tournament.title}
                     </Link>
                     <div className="text-xs text-muted-foreground">
-                      {new Date(tournament.startDate).toLocaleString()}
+                      {timeLabel}
                     </div>
                     <div className="mt-1 flex items-center gap-2">
                       {isPaid ? (
@@ -712,6 +744,15 @@ function ClubEventsCalendar({
                       ) : (
                         <Badge variant="outline">Free</Badge>
                       )}
+                      <Badge variant="outline">{typeLabel}</Badge>
+                      {occupancy ? (
+                        <Badge variant="secondary" className="gap-1">
+                          <Users className="h-3 w-3" />
+                          {occupancy}
+                        </Badge>
+                      ) : null}
+                      {tournament.genderLabel ? <Badge variant="outline">{tournament.genderLabel}</Badge> : null}
+                      {tournament.duprLabel ? <Badge variant="outline">{tournament.duprLabel}</Badge> : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
