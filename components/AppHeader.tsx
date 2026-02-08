@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut, Menu, X } from 'lucide-react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Settings } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
@@ -18,8 +18,10 @@ export default function AppHeader() {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [burgerOpen, setBurgerOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const burgerRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
     { query: searchQuery },
@@ -45,10 +47,13 @@ export default function AppHeader() {
       if (burgerRef.current && burgerOpen && !burgerRef.current.contains(target)) {
         setBurgerOpen(false)
       }
+      if (userMenuRef.current && userMenuOpen && !userMenuRef.current.contains(target)) {
+        setUserMenuOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [burgerOpen])
+  }, [burgerOpen, userMenuOpen])
 
   useEffect(() => {
     setShowSearchDropdown(searchQuery.length >= 2)
@@ -87,20 +92,6 @@ export default function AppHeader() {
                   <span className="text-2xl font-bold text-lime-600">PIQLE</span>
                 )}
               </Link>
-              <nav className="hidden lg:flex items-center gap-6">
-                <Link
-                  href="/"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Home
-                </Link>
-                <Link
-                  href="/admin"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Tournament Management
-                </Link>
-              </nav>
             </div>
 
             {/* Spacer - auto, takes all remaining width */}
@@ -176,13 +167,16 @@ export default function AppHeader() {
               )}
             </div>
 
-              {/* User Profile & Logout - desktop only */}
-              <div className="hidden lg:flex items-center gap-[44px]">
+              {/* User block: dropdown (desktop) */}
+              <div ref={userMenuRef} className="hidden lg:block relative ml-6">
                 {isLoggedIn ? (
                   <>
-                    <Link
-                      href="/profile"
-                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
+                    <button
+                      type="button"
+                      onClick={() => setUserMenuOpen((o) => !o)}
+                      className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors border border-transparent hover:border-gray-200"
+                      aria-expanded={userMenuOpen}
+                      aria-haspopup="true"
                     >
                       {hasValidAvatar && !avatarError && avatarSrc ? (
                         <Image
@@ -201,14 +195,39 @@ export default function AppHeader() {
                       <span className="text-sm font-medium whitespace-nowrap truncate max-w-[120px] sm:max-w-[180px]">
                         {session?.user?.name || 'Username'}
                       </span>
-                    </Link>
-                    <button
-                      onClick={() => setShowLogoutModal(true)}
-                      className="p-2 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-                      title="Logout"
-                    >
-                      <LogOut className="h-5 w-5" />
+                      <ChevronDown className={`h-4 w-4 text-gray-400 flex-shrink-0 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
+                    {userMenuOpen && (
+                      <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                        <Link
+                          href="/profile"
+                          className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <UserIcon className="h-4 w-4 text-gray-500" />
+                          My Profile
+                        </Link>
+                        <Link
+                          href="/admin"
+                          className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <Settings className="h-4 w-4 text-gray-500" />
+                          Tournament Management
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserMenuOpen(false)
+                            setShowLogoutModal(true)
+                          }}
+                          className="flex items-center gap-2 px-4 py-2.5 text-left w-full text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                        >
+                          <LogOut className="h-4 w-4 text-gray-500" />
+                          Logout
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <Link
@@ -290,13 +309,6 @@ export default function AppHeader() {
                       )}
                     </div>
                     <Link
-                      href="/"
-                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-                      onClick={() => setBurgerOpen(false)}
-                    >
-                      Home
-                    </Link>
-                    <Link
                       href="/admin"
                       className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
                       onClick={() => setBurgerOpen(false)}
@@ -358,7 +370,7 @@ export default function AppHeader() {
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50"
           onClick={() => setShowLogoutModal(false)}
         >
           <div
