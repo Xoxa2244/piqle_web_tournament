@@ -1182,31 +1182,6 @@ function DivisionStageManagementContent() {
 
           {/* Right part - quick actions */}
           <div className="flex flex-col items-end gap-3">
-            {/* DUPR Upload buttons */}
-            {tournament?.allowDuprSubmission && allMatchesCompleted && (
-              <div className="flex items-center space-x-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUploadToDupr}
-                  disabled={isUploadingToDupr}
-                  className="flex items-center space-x-2"
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>{isUploadingToDupr ? 'Uploading...' : 'Upload to DUPR'}</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowDuprUploadLog(true)}
-                  className="flex items-center space-x-2"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span>Show upload log</span>
-                </Button>
-              </div>
-            )}
-            
             <div className="flex flex-col items-end gap-2">
               {/* Division switcher */}
               <div className="flex items-center space-x-2">
@@ -1325,6 +1300,39 @@ function DivisionStageManagementContent() {
         )}
         </div>
       </div>
+
+      {/* DUPR upload bar - separate row when all matches completed */}
+      {tournament?.allowDuprSubmission && allMatchesCompleted && (
+        <div
+          className="h-[60px] flex items-center justify-between w-full"
+          style={{ background: 'linear-gradient(to right, #3977DD, #061660)' }}
+        >
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
+          <img src="/logodupr.png" alt="DUPR" className="h-8 object-contain" />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUploadToDupr}
+              disabled={isUploadingToDupr}
+              className="flex items-center gap-2 border-white bg-transparent text-white hover:bg-white/15 hover:text-white"
+            >
+              <Upload className="h-4 w-4" />
+              <span>{isUploadingToDupr ? 'Uploading...' : 'Upload to DUPR'}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDuprUploadLog(true)}
+              className="flex items-center gap-2 bg-transparent text-white hover:bg-white/15 hover:text-white"
+            >
+              <FileText className="h-4 w-4" />
+              <span>Show upload log</span>
+            </Button>
+          </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* IndyLeague Score Input */}
