@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { Suspense, useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
@@ -69,6 +69,15 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
 }
 
 export default function NewTournamentPage() {
+  // Next.js requires `useSearchParams()` to be wrapped in a Suspense boundary.
+  return (
+    <Suspense fallback={<div className="px-6 py-8 text-sm text-muted-foreground">Loading…</div>}>
+      <NewTournamentPageInner />
+    </Suspense>
+  )
+}
+
+function NewTournamentPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
