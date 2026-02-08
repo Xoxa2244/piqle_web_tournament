@@ -36,12 +36,14 @@ function getTournamentStatus(tournament: { startDate: string; endDate?: string }
 }
 
 type TournamentsMapContentProps = {
+  searchQuery?: string
   filterUpcoming?: boolean
   filterInProgress?: boolean
   filterPast?: boolean
 }
 
 export function TournamentsMapContent({
+  searchQuery = '',
   filterUpcoming = true,
   filterInProgress = true,
   filterPast = false,
@@ -151,15 +153,20 @@ export function TournamentsMapContent({
   }, [])
 
   const filteredTournaments = useMemo(() => {
-    if (!(filterUpcoming || filterInProgress || filterPast)) return tournaments
-    return tournaments.filter((t) => {
+    let result = tournaments
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      result = result.filter((t) => t.name.toLowerCase().includes(q))
+    }
+    if (!(filterUpcoming || filterInProgress || filterPast)) return result
+    return result.filter((t) => {
       const status = getTournamentStatus(t)
       if (filterUpcoming && status === 'upcoming') return true
       if (filterInProgress && status === 'in_progress') return true
       if (filterPast && status === 'past') return true
       return false
     })
-  }, [tournaments, filterUpcoming, filterInProgress, filterPast])
+  }, [tournaments, searchQuery, filterUpcoming, filterInProgress, filterPast])
 
   const mapFocusLocation = useMemo(() => {
     if (filteredTournaments.length > 0) {

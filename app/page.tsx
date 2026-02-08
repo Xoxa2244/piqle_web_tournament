@@ -425,8 +425,7 @@ export default function HomePage() {
               <p className="text-gray-600 mt-2">Select a tournament to view results</p>
             </div>
 
-            {/* Search Input - hidden on Map tab */}
-            {filter !== 'map' && (
+            {/* Search Input */}
             <div className="mt-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -439,7 +438,6 @@ export default function HomePage() {
                 />
               </div>
             </div>
-            )}
 
             {/* Filter Tabs + Status Checkboxes + Sort */}
             <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
@@ -519,6 +517,7 @@ export default function HomePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {filter === 'map' ? (
           <TournamentsMapContent
+            searchQuery={searchQuery}
             filterUpcoming={filterUpcoming}
             filterInProgress={filterInProgress}
             filterPast={filterPast}
