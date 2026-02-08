@@ -45,7 +45,6 @@ import {
   Users, 
   Edit, 
   Trash2, 
-  MoreVertical,
   Plus,
   Search,
   Filter,
@@ -187,7 +186,6 @@ function WaitList({
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
-                onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
@@ -265,7 +263,6 @@ function PoolCard({
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
-                onContextMenu={() => {}}
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
@@ -285,7 +282,6 @@ function SortableTeam({
   onDelete,
   onExpand,
   isExpanded,
-  onContextMenu,
   onDeletePlayer,
   onPlayerContextMenu,
 }: {
@@ -294,7 +290,6 @@ function SortableTeam({
   onDelete: () => void
   onExpand: () => void
   isExpanded: boolean
-  onContextMenu: () => void
   onDeletePlayer: () => void
   onPlayerContextMenu: () => void
 }) {
@@ -360,15 +355,6 @@ function SortableTeam({
           className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
         >
           <Trash2 className="h-3 w-3" />
-        </Button>
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onContextMenu}
-          className="h-6 w-6 p-0"
-        >
-          <MoreVertical className="h-3 w-3" />
         </Button>
       </div>
     </div>
@@ -575,7 +561,6 @@ function DivisionCard({
                       onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
-                      onContextMenu={() => {}}
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
@@ -627,7 +612,6 @@ function DivisionCard({
                       onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
-                      onContextMenu={() => {}}
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
@@ -1739,7 +1723,6 @@ export default function DivisionsPage() {
                       onToggleExpansion={() => toggleTeamExpansion(team.id)}
                       onEdit={() => handleEditTeam(team)}
                       onDelete={() => handleDeleteTeam(team)}
-                      onContextMenu={() => {}}
                       onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={handleRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => handleMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
