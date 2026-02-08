@@ -5,6 +5,29 @@ import { getTeamSlotCount } from '../utils/teamSlots'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
 
+const isMissingDbRelation = (err: any, relationName: string) => {
+  const msg = String(err?.message ?? '').toLowerCase()
+  return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
+}
+
+const maskEmail = (email: string | null | undefined) => {
+  try {
+    const [localRaw, domainRaw] = String(email ?? '').split('@')
+    const local = (localRaw ?? '').trim()
+    const domain = (domainRaw ?? '').trim()
+    if (!local || !domain) return null
+
+    const localMasked = local.length <= 1 ? '*' : `${local[0]}***`
+    const domainParts = domain.split('.').filter(Boolean)
+    const tld = domainParts.length ? domainParts[domainParts.length - 1] : '***'
+    const domainMain = domainParts.length > 1 ? domainParts.slice(0, -1).join('.') : domainParts[0] ?? ''
+    const domainMasked = domainMain ? `${domainMain[0]}***` : '***'
+    return `${localMasked}@${domainMasked}.${tld}`
+  } catch {
+    return null
+  }
+}
+
 const decimalToNumber = (val: any): number | null => {
   if (val === null || val === undefined) return null
   if (typeof val === 'number') return Number.isFinite(val) ? val : null
@@ -252,6 +275,18 @@ export const clubRouter = createTRPCRouter({
       }
 
       const isAdmin = club.admins.length > 0 && userId !== DUMMY_USER_ID
+      let isBanned = false
+      if (userId !== DUMMY_USER_ID) {
+        try {
+          const ban = await ctx.prisma.clubBan.findUnique({
+            where: { clubId_userId: { clubId: input.id, userId } },
+            select: { id: true },
+          })
+          isBanned = Boolean(ban)
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_bans')) throw err
+        }
+      }
 
       const tournamentIds = club.tournaments.map((t) => t.id)
       const tournamentStatsById = new Map<
@@ -373,9 +408,10 @@ export const clubRouter = createTRPCRouter({
         ...club,
         tournaments,
         followersCount: club._count.followers,
-        isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
+        isFollowing: !isBanned && club.followers.length > 0 && userId !== DUMMY_USER_ID,
         isAdmin,
         bookingRequests,
+        isBanned,
       }
     }),
 
@@ -397,6 +433,19 @@ export const clubRouter = createTRPCRouter({
       if (existing) {
         await ctx.prisma.clubFollower.delete({ where: { id: existing.id } })
         return { isFollowing: false }
+      }
+
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You are banned from this club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
       }
 
       await ctx.prisma.clubFollower.create({
@@ -729,5 +778,226 @@ If you weren’t expecting this, you can ignore this email.`
       }
 
       return { success: true, delivered: true, reason: null as null }
+    }),
+
+  listMembers: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const myAdminRole = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { role: true },
+      })
+      if (!myAdminRole) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view members' })
+      }
+
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { createdAt: 'desc' },
+          take: 500,
+          select: {
+            userId: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                email: true, // only used to compute masked value
+              },
+            },
+          },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true, role: true },
+        }),
+      ])
+
+      const adminRoleByUserId = new Map(admins.map((a) => [a.userId, a.role] as const))
+
+      let bans: Array<{
+        userId: string
+        reason: string | null
+        createdAt: Date
+        user: { id: string; name: string | null; image: string | null; email: string }
+        bannedByUserId: string
+        bannedByUser: { id: string; name: string | null; image: string | null }
+      }> = []
+
+      try {
+        bans = await ctx.prisma.clubBan.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { createdAt: 'desc' },
+          take: 500,
+          select: {
+            userId: true,
+            reason: true,
+            createdAt: true,
+            bannedByUserId: true,
+            user: { select: { id: true, name: true, image: true, email: true } },
+            bannedByUser: { select: { id: true, name: true, image: true } },
+          },
+        })
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
+        bans = []
+      }
+
+      return {
+        myRole: myAdminRole.role,
+        members: followers.map((f) => ({
+          userId: f.userId,
+          joinedAt: f.createdAt,
+          role: adminRoleByUserId.get(f.userId) ?? null,
+          user: {
+            id: f.user.id,
+            name: f.user.name,
+            image: f.user.image,
+            emailMasked: maskEmail(f.user.email),
+          },
+        })),
+        bans: bans.map((b) => ({
+          userId: b.userId,
+          bannedAt: b.createdAt,
+          reason: b.reason ?? null,
+          user: {
+            id: b.user.id,
+            name: b.user.name,
+            image: b.user.image,
+            emailMasked: maskEmail(b.user.email),
+          },
+          bannedBy: {
+            userId: b.bannedByUserId,
+            name: b.bannedByUser.name,
+            image: b.bannedByUser.image,
+          },
+        })),
+      }
+    }),
+
+  kickMember: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can remove members' })
+      }
+
+      if (input.userId === currentUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot remove yourself' })
+      }
+
+      await ctx.prisma.clubFollower.deleteMany({
+        where: { clubId: input.clubId, userId: input.userId },
+      })
+
+      return { success: true }
+    }),
+
+  banUser: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+        userId: z.string(),
+        reason: z.string().max(300).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can ban users' })
+      }
+
+      if (input.userId === currentUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot ban yourself' })
+      }
+
+      const targetIsAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+        select: { id: true },
+      })
+      if (targetIsAdmin) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot ban a club admin/moderator. Remove admin role first.',
+        })
+      }
+
+      const reason = input.reason?.trim() || null
+
+      try {
+        await ctx.prisma.$transaction([
+          ctx.prisma.clubBan.upsert({
+            where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+            create: {
+              clubId: input.clubId,
+              userId: input.userId,
+              bannedByUserId: currentUserId,
+              reason,
+            },
+            update: {
+              bannedByUserId: currentUserId,
+              reason,
+            },
+          }),
+          ctx.prisma.clubFollower.deleteMany({
+            where: { clubId: input.clubId, userId: input.userId },
+          }),
+        ])
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_bans')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_bans table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
+    }),
+
+  unbanUser: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can unban users' })
+      }
+
+      try {
+        await ctx.prisma.clubBan.deleteMany({
+          where: { clubId: input.clubId, userId: input.userId },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_bans')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_bans table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
     }),
 })

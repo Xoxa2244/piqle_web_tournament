@@ -37,6 +37,8 @@ model User {
   clubChatMessages         ClubChatMessage[]
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
+  clubBans                 ClubBan[]
+  clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
   players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
@@ -172,6 +174,7 @@ model Club {
   bookingRequests    ClubBookingRequest[]
   chatMessages       ClubChatMessage[]
   invites            ClubInvite[]
+  bans               ClubBan[]
 
   @@map("clubs")
 }
@@ -279,6 +282,24 @@ model ClubInvite {
   @@index([inviterUserId, createdAt])
   @@index([inviteeEmail])
   @@map("club_invites")
+}
+
+model ClubBan {
+  id             String   @id @default(uuid())
+  clubId         String   @map("club_id")
+  userId         String   @map("user_id")
+  bannedByUserId String   @map("banned_by_user_id")
+  reason         String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  club        Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bannedByUser User @relation("ClubBanBannedBy", fields: [bannedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([clubId, createdAt])
+  @@index([userId])
+  @@map("club_bans")
 }
 
 model Court {

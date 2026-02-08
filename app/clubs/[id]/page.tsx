@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -133,6 +133,7 @@ export default function ClubDetailPage() {
 
   const followLabel = useMemo(() => {
     if (!club) return 'Join'
+    if ((club as any).isBanned) return 'Banned'
     return club.isFollowing ? 'Joined' : 'Join'
   }, [club])
 
@@ -158,11 +159,16 @@ export default function ClubDetailPage() {
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)
       return
     }
-    await toggleFollow.mutateAsync({ clubId })
-    await Promise.all([
-      utils.club.get.invalidate({ id: clubId }),
-      utils.club.list.invalidate(),
-    ])
+    try {
+      await toggleFollow.mutateAsync({ clubId })
+      await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
+    } catch (err: any) {
+      toast({
+        title: 'Failed',
+        description: err?.message || 'Could not update membership. Try again.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleBookingRequest = async (e: React.FormEvent) => {
@@ -280,10 +286,16 @@ export default function ClubDetailPage() {
               variant={club.isFollowing ? 'secondary' : 'default'}
               className="gap-2"
               onClick={handleToggleFollow}
-              disabled={toggleFollow.isPending}
-              title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
+              disabled={toggleFollow.isPending || (club as any).isBanned}
+              title={
+                !isLoggedIn
+                  ? 'Sign in to join clubs'
+                  : (club as any).isBanned
+                    ? 'You are banned from this club'
+                    : undefined
+              }
             >
-              <Users className="h-4 w-4" />
+              {(club as any).isBanned ? <Ban className="h-4 w-4" /> : <Users className="h-4 w-4" />}
               {followLabel}
             </Button>
             <Button
@@ -453,10 +465,13 @@ export default function ClubDetailPage() {
             </CardContent>
           </Card>
 
+          {club.isAdmin ? <ClubMembersAdminCard clubId={club.id} /> : null}
+
           <ClubChatCard
             clubId={club.id}
             isLoggedIn={isLoggedIn}
             isJoined={club.isFollowing}
+            isBanned={(club as any).isBanned}
             isAdmin={club.isAdmin}
             currentUserId={session?.user?.id}
             onJoinToggle={handleToggleFollow}
@@ -1274,6 +1289,7 @@ function ClubChatCard({
   clubId,
   isLoggedIn,
   isJoined,
+  isBanned,
   isAdmin,
   currentUserId,
   onJoinToggle,
@@ -1281,6 +1297,7 @@ function ClubChatCard({
   clubId: string
   isLoggedIn: boolean
   isJoined: boolean
+  isBanned: boolean
   isAdmin: boolean
   currentUserId?: string
   onJoinToggle: () => void
@@ -1309,7 +1326,7 @@ function ClubChatCard({
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const canPost = isLoggedIn && (isJoined || isAdmin)
+  const canPost = isLoggedIn && !isBanned && (isJoined || isAdmin)
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -1412,6 +1429,10 @@ function ClubChatCard({
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
             Sign in to join and chat with this club.
           </div>
+        ) : isBanned ? (
+          <div className="rounded-md border bg-red-50 p-3 text-sm text-red-800">
+            You are banned from this club.
+          </div>
         ) : !canPost ? (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
             <div className="min-w-0">Join this club to post messages.</div>
@@ -1445,6 +1466,201 @@ function ClubChatCard({
             </Button>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ClubMembersAdminCard({ clubId }: { clubId: string }) {
+  const { toast } = useToast()
+  const utils = trpc.useUtils()
+
+  const { data, isLoading, error } = trpc.club.listMembers.useQuery({ clubId }, { enabled: !!clubId })
+
+  const kickMember = trpc.club.kickMember.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.club.listMembers.invalidate({ clubId }), utils.club.get.invalidate({ id: clubId })])
+    },
+  })
+
+  const banUser = trpc.club.banUser.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.club.listMembers.invalidate({ clubId }), utils.club.get.invalidate({ id: clubId })])
+    },
+  })
+
+  const unbanUser = trpc.club.unbanUser.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.club.listMembers.invalidate({ clubId })])
+    },
+  })
+
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+
+  const members = useMemo(() => {
+    const all = (data?.members ?? []) as any[]
+    if (!q) return all
+    return all.filter((m) => {
+      const name = String(m?.user?.name ?? '').toLowerCase()
+      const email = String(m?.user?.emailMasked ?? '').toLowerCase()
+      const id = String(m?.userId ?? '').toLowerCase()
+      return name.includes(q) || email.includes(q) || id.includes(q)
+    })
+  }, [data?.members, q])
+
+  const bans = useMemo(() => {
+    const all = (data?.bans ?? []) as any[]
+    if (!q) return all
+    return all.filter((b) => {
+      const name = String(b?.user?.name ?? '').toLowerCase()
+      const email = String(b?.user?.emailMasked ?? '').toLowerCase()
+      const id = String(b?.userId ?? '').toLowerCase()
+      const reason = String(b?.reason ?? '').toLowerCase()
+      return name.includes(q) || email.includes(q) || id.includes(q) || reason.includes(q)
+    })
+  }, [data?.bans, q])
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          Members & bans (admins)
+        </CardTitle>
+        <div className="text-xs text-muted-foreground">
+          {members.length} member{members.length === 1 ? '' : 's'}
+          <span className="mx-1">•</span>
+          {bans.length} ban{bans.length === 1 ? '' : 's'}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Input
+          placeholder="Search members / bans…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        {isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
+        {error ? <div className="text-sm text-destructive">{error.message}</div> : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-900">Members</div>
+            {members.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No members.</div>
+            ) : (
+              <div className="rounded-md border divide-y bg-white">
+                {members.slice(0, 200).map((m: any) => (
+                  <div key={m.userId} className="p-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2">
+                      {m.user?.image ? (
+                        <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                          <Image src={m.user.image} alt="" fill className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
+                          {m.role ? <Badge variant="outline">{m.role}</Badge> : null}
+                        </div>
+                        {m.user?.emailMasked ? (
+                          <div className="text-xs text-muted-foreground truncate">{m.user.emailMasked}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={kickMember.isPending || banUser.isPending}
+                        onClick={async () => {
+                          if (!confirm('Remove this member from the club?')) return
+                          try {
+                            await kickMember.mutateAsync({ clubId, userId: m.userId })
+                            toast({ title: 'Removed', description: 'Member removed from the club.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                        Kick
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2"
+                        disabled={kickMember.isPending || banUser.isPending}
+                        onClick={async () => {
+                          const reason = prompt('Ban reason (optional):') || ''
+                          if (!confirm('Ban this user? They will not be able to re-join.')) return
+                          try {
+                            await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
+                            toast({ title: 'Banned', description: 'User banned.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        <Ban className="h-4 w-4" />
+                        Ban
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {members.length > 200 ? (
+              <div className="text-xs text-muted-foreground">Showing first 200 members.</div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-900">Bans</div>
+            {bans.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No bans.</div>
+            ) : (
+              <div className="rounded-md border divide-y bg-white">
+                {bans.slice(0, 200).map((b: any) => (
+                  <div key={b.userId} className="p-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
+                        {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
+                        {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
+                      </div>
+                      {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={unbanUser.isPending}
+                      onClick={async () => {
+                        if (!confirm('Unban this user?')) return
+                        try {
+                          await unbanUser.mutateAsync({ clubId, userId: b.userId })
+                          toast({ title: 'Unbanned', description: 'User can join again.' })
+                        } catch (err: any) {
+                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                        }
+                      }}
+                    >
+                      Unban
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {bans.length > 200 ? <div className="text-xs text-muted-foreground">Showing first 200 bans.</div> : null}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

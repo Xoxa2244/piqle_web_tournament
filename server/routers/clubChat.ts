@@ -18,6 +18,11 @@ if (extraBlocked.length) {
 
 const normalizeText = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ')
 
+const isMissingDbRelation = (err: any, relationName: string) => {
+  const msg = String(err?.message ?? '').toLowerCase()
+  return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
+}
+
 export const clubChatRouter = createTRPCRouter({
   list: publicProcedure
     .input(
@@ -103,6 +108,19 @@ export const clubChatRouter = createTRPCRouter({
 
       if (!club) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You are banned from this club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
       }
 
       if (!follower && !admin) {

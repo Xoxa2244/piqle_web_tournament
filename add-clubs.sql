@@ -214,3 +214,40 @@ CREATE INDEX IF NOT EXISTS "club_invites_inviter_user_id_created_at_idx"
   ON "club_invites" ("inviter_user_id", "created_at");
 CREATE INDEX IF NOT EXISTS "club_invites_invitee_email_idx"
   ON "club_invites" ("invitee_email");
+
+-- Club bans / blocklist
+-- Notes:
+-- - Used to prevent specific users from joining a club.
+-- - Admin/moderator only.
+CREATE TABLE IF NOT EXISTS "club_bans" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "banned_by_user_id" TEXT NOT NULL,
+  "reason" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_bans_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_bans_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_bans_banned_by_user_id_fkey"
+    FOREIGN KEY ("banned_by_user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_bans_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_bans"
+      ADD CONSTRAINT "club_bans_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_bans_club_id_created_at_idx"
+  ON "club_bans" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_bans_user_id_idx"
+  ON "club_bans" ("user_id");
