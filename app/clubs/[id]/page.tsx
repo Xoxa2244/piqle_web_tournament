@@ -590,6 +590,23 @@ function ClubEventsCalendar({
     }
   }
 
+  const formatTournamentTypeShort = (format?: string | null) => {
+    switch (format) {
+      case 'SINGLE_ELIMINATION':
+        return 'SE'
+      case 'ROUND_ROBIN':
+        return 'RR'
+      case 'MLP':
+        return 'MLP'
+      case 'INDY_LEAGUE':
+        return 'Indy'
+      case 'LEAGUE_ROUND_ROBIN':
+        return 'LRR'
+      default:
+        return null
+    }
+  }
+
   const formatTime = (startDate: Date | string) => {
     const d = new Date(startDate)
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -684,14 +701,29 @@ function ClubEventsCalendar({
                 <div className="mt-1 flex items-center gap-1">
                   <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />
                   {events[0]?.id ? (
+                    (() => {
+                      const first = events[0]
+                      const occupancy =
+                        first?.totals && first.totals.totalSlots
+                          ? `${first.totals.filledSlots}/${first.totals.totalSlots}`
+                          : null
+                      const shortType = formatTournamentTypeShort(first?.format)
+                      const meta = [formatTime(first.startDate), shortType, occupancy]
+                        .filter(Boolean)
+                        .join(' · ')
+                      const label = meta ? `${meta} · ${first?.title ?? 'Event'}` : first?.title ?? 'Event'
+
+                      return (
                     <Link
                       href={`/tournaments/${events[0].id}/register`}
                       className="text-[10px] text-blue-700 truncate hover:underline"
                       onClick={(e) => e.stopPropagation()}
                       title="Open registration"
                     >
-                      {events[0]?.title ?? 'Event'}
+                      {label}
                     </Link>
+                      )
+                    })()
                   ) : (
                     <div className="text-[10px] text-blue-700 truncate">
                       {events[0]?.title ?? 'Event'}
