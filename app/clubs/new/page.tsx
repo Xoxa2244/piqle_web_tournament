@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -12,8 +12,35 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft } from 'lucide-react'
+import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 
 export const dynamic = 'force-dynamic'
+
+type AddressDetails = {
+  formattedAddress: string
+  city?: string
+  state?: string
+  country?: string
+}
+
+const extractAddressDetails = (place: any): AddressDetails | null => {
+  if (!place?.formatted_address) return null
+
+  const components = place.address_components ?? []
+  const findComponent = (type: string) =>
+    components.find((component: any) => component.types?.includes(type))
+
+  return {
+    formattedAddress: place.formatted_address,
+    city:
+      findComponent('locality')?.long_name ??
+      findComponent('postal_town')?.long_name ??
+      findComponent('sublocality')?.long_name ??
+      findComponent('administrative_area_level_2')?.long_name,
+    state: findComponent('administrative_area_level_1')?.short_name,
+    country: findComponent('country')?.long_name,
+  }
+}
 
 export default function NewClubPage() {
   const router = useRouter()
@@ -47,6 +74,96 @@ export default function NewClubPage() {
     courtReserveUrl: '',
     bookingRequestEmail: '',
   })
+  const [addressError, setAddressError] = useState<string | null>(null)
+  const [addressSelected, setAddressSelected] = useState(false)
+  const addressInputRef = useRef<HTMLInputElement | null>(null)
+  const autocompleteRef = useRef<any>(null)
+  const listenerRef = useRef<any>(null)
+  const googleRef = useRef<any>(null)
+
+  const setupAutocomplete = useCallback(async () => {
+    if (!addressInputRef.current) return
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+
+    try {
+      const googleApi = await loadGoogleMaps({ apiKey, libraries: ['places'] })
+      googleRef.current = googleApi
+
+      if (autocompleteRef.current) return
+
+      autocompleteRef.current = new googleApi.maps.places.Autocomplete(addressInputRef.current, {
+        fields: ['formatted_address', 'geometry', 'place_id', 'address_components'],
+        types: ['geocode'],
+      })
+
+      listenerRef.current = autocompleteRef.current.addListener('place_changed', () => {
+        const place = autocompleteRef.current?.getPlace()
+        const details = extractAddressDetails(place)
+
+        if (!details) {
+          setAddressError('Select a valid address from the list.')
+          return
+        }
+
+        setAddressError(null)
+        setAddressSelected(true)
+        setForm((prev) => ({
+          ...prev,
+          address: details.formattedAddress,
+          city: details.city ?? prev.city,
+          state: details.state ?? prev.state,
+          country: details.country ?? prev.country,
+        }))
+      })
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : 'Failed to load Google Places.')
+    }
+  }, [])
+
+  useEffect(() => {
+    setupAutocomplete()
+    return () => {
+      listenerRef.current?.remove?.()
+    }
+  }, [setupAutocomplete])
+
+  const handleAddressBlur = async () => {
+    if (!form.address.trim()) return
+    if (addressSelected) return
+
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+    try {
+      const googleApi =
+        googleRef.current ?? (await loadGoogleMaps({ apiKey, libraries: ['places'] }))
+      googleRef.current = googleApi
+
+      const geocoder = new googleApi.maps.Geocoder()
+      geocoder.geocode({ address: form.address }, (results: any, status: any) => {
+        if (status !== 'OK' || !results?.length) {
+          setAddressError('Select a valid address from the list.')
+          return
+        }
+
+        const details = extractAddressDetails(results[0])
+        if (!details) {
+          setAddressError('Select a valid address from the list.')
+          return
+        }
+
+        setAddressError(null)
+        setAddressSelected(true)
+        setForm((prev) => ({
+          ...prev,
+          address: details.formattedAddress,
+          city: details.city ?? prev.city,
+          state: details.state ?? prev.state,
+          country: details.country ?? prev.country,
+        }))
+      })
+    } catch (error) {
+      setAddressError(error instanceof Error ? error.message : 'Failed to load Google Places.')
+    }
+  }
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -150,10 +267,18 @@ export default function NewClubPage() {
               <Label htmlFor="address">Address (optional)</Label>
               <Input
                 id="address"
+                ref={addressInputRef}
                 value={form.address}
-                onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))}
-                placeholder="e.g., 300 N State St, Chicago, IL"
+                onChange={(e) => {
+                  setAddressSelected(false)
+                  setForm((p) => ({ ...p, address: e.target.value }))
+                }}
+                onBlur={handleAddressBlur}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Start typing the address..."
               />
+              {addressError ? <p className="text-sm text-destructive">{addressError}</p> : null}
             </div>
 
             <div className="space-y-2">
@@ -188,4 +313,3 @@ export default function NewClubPage() {
     </div>
   )
 }
-
