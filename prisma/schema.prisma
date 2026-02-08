@@ -151,6 +151,7 @@ model Club {
   name               String
   kind               ClubKind             @default(VENUE)
   description        String?
+  logoUrl            String?              @map("logo_url")
   address            String?
   city               String?
   state              String?

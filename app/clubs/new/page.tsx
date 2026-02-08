@@ -11,8 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
+import Image from 'next/image'
+import AvatarCropper from '@/components/AvatarCropper'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +69,7 @@ export default function NewClubPage() {
     name: '',
     kind: 'VENUE' as 'VENUE' | 'COMMUNITY',
     description: '',
+    logoUrl: '',
     address: '',
     city: '',
     state: '',
@@ -80,6 +83,10 @@ export default function NewClubPage() {
   const autocompleteRef = useRef<any>(null)
   const listenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null)
+  const [showLogoCropper, setShowLogoCropper] = useState(false)
+  const [logoCropSrc, setLogoCropSrc] = useState<string | null>(null)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
   const setupAutocomplete = useCallback(async () => {
     if (!addressInputRef.current) return
@@ -171,6 +178,7 @@ export default function NewClubPage() {
       name: form.name,
       kind: form.kind,
       description: form.description || undefined,
+      logoUrl: form.logoUrl || undefined,
       address: form.address || undefined,
       city: form.city || undefined,
       state: form.state || undefined,
@@ -178,6 +186,83 @@ export default function NewClubPage() {
       courtReserveUrl: form.courtReserveUrl || undefined,
       bookingRequestEmail: form.bookingRequestEmail || undefined,
     })
+  }
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Invalid file', description: 'Please select an image file.', variant: 'destructive' })
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Max file size is 5MB.', variant: 'destructive' })
+      return
+    }
+
+    const url = URL.createObjectURL(file)
+    setLogoCropSrc(url)
+    setShowLogoCropper(true)
+  }
+
+  const handleLogoCropComplete = async (croppedImageUrl: string) => {
+    setShowLogoCropper(false)
+    setIsUploadingLogo(true)
+
+    try {
+      const response = await fetch(croppedImageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], 'club-logo.jpg', { type: 'image/jpeg' })
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadResponse = await fetch('/api/upload-club-logo', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        const payload = await uploadResponse.json().catch(() => ({}))
+        throw new Error(payload?.error || 'Failed to upload logo')
+      }
+
+      const payload = await uploadResponse.json()
+      if (!payload?.url) {
+        throw new Error('Upload response missing URL')
+      }
+
+      setForm((p) => ({ ...p, logoUrl: payload.url }))
+    } catch (error: any) {
+      toast({
+        title: 'Upload failed',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsUploadingLogo(false)
+      try {
+        URL.revokeObjectURL(croppedImageUrl)
+      } catch {}
+      if (logoCropSrc) {
+        try {
+          URL.revokeObjectURL(logoCropSrc)
+        } catch {}
+      }
+      setLogoCropSrc(null)
+      if (logoFileInputRef.current) {
+        logoFileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleRemoveLogo = () => {
+    setForm((p) => ({ ...p, logoUrl: '' }))
+    if (logoFileInputRef.current) {
+      logoFileInputRef.current.value = ''
+    }
   }
 
   return (
@@ -209,6 +294,39 @@ export default function NewClubPage() {
                 placeholder="e.g., Chicago Pickleball Center"
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Club logo (optional)</Label>
+              {form.logoUrl ? (
+                <div className="flex items-center gap-4">
+                  <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                    <Image src={form.logoUrl} alt="" fill className="object-cover" />
+                  </div>
+                  <Button type="button" variant="outline" onClick={handleRemoveLogo} className="gap-2">
+                    <X className="h-4 w-4" />
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoChange}
+                    className="hidden"
+                    id="club-logo"
+                  />
+                  <label htmlFor="club-logo" className="inline-flex">
+                    <Button type="button" variant="outline" className="gap-2" disabled={isUploadingLogo}>
+                      <Upload className="h-4 w-4" />
+                      {isUploadingLogo ? 'Uploading…' : 'Upload logo'}
+                    </Button>
+                  </label>
+                  <span className="text-xs text-muted-foreground">Square images work best.</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -310,6 +428,26 @@ export default function NewClubPage() {
           </form>
         </CardContent>
       </Card>
+
+      <AvatarCropper
+        imageSrc={logoCropSrc || ''}
+        isOpen={showLogoCropper}
+        onClose={() => {
+          setShowLogoCropper(false)
+          if (logoCropSrc) {
+            try {
+              URL.revokeObjectURL(logoCropSrc)
+            } catch {}
+          }
+          setLogoCropSrc(null)
+          if (logoFileInputRef.current) {
+            logoFileInputRef.current.value = ''
+          }
+        }}
+        onCrop={handleLogoCropComplete}
+        title="Crop club logo"
+        aspectRatio={1}
+      />
     </div>
   )
 }

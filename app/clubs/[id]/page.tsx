@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import { Calendar, ExternalLink, MapPin, ArrowLeft, Bell, Megaphone } from 'lucide-react'
+import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,27 @@ export default function ClubDetailPage() {
   })
 
   const canBook = Boolean(club?.courtReserveUrl)
+
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    const initials = parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
+    return initials || 'CL'
+  }
+
+  const ClubLogo = ({ name, logoUrl }: { name: string; logoUrl?: string | null }) => {
+    if (logoUrl) {
+      return (
+        <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 flex-shrink-0">
+          <Image src={logoUrl} alt="" fill className="object-cover" />
+        </div>
+      )
+    }
+    return (
+      <div className="w-16 h-16 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center flex-shrink-0">
+        <span className="text-sm font-semibold text-gray-600">{getInitials(name)}</span>
+      </div>
+    )
+  }
 
   const followLabel = useMemo(() => {
     if (!club) return 'Follow'
@@ -144,22 +166,27 @@ export default function ClubDetailPage() {
 
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="space-y-2 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-semibold truncate">{club.name}</h1>
-              {club.isVerified ? <Badge>Verified</Badge> : null}
-              <Badge variant="outline">{club.kind === 'VENUE' ? 'Venue' : 'Community'}</Badge>
+            <div className="flex items-start gap-3">
+              <ClubLogo name={club.name} logoUrl={club.logoUrl} />
+              <div className="min-w-0 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl font-semibold truncate">{club.name}</h1>
+                  {club.isVerified ? <Badge>Verified</Badge> : null}
+                  <Badge variant="outline">{club.kind === 'VENUE' ? 'Venue' : 'Community'}</Badge>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span className="truncate">
+                    {club.address || club.city || club.state
+                      ? `${club.address ? club.address : ''}${club.address && (club.city || club.state) ? ' • ' : ''}${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}`
+                      : 'Location not set'}
+                  </span>
+                </div>
+                {club.description ? (
+                  <p className="text-sm text-gray-700 max-w-2xl whitespace-pre-wrap">{club.description}</p>
+                ) : null}
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span className="truncate">
-                {club.address || club.city || club.state
-                  ? `${club.address ? club.address : ''}${club.address && (club.city || club.state) ? ' • ' : ''}${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}`
-                  : 'Location not set'}
-              </span>
-            </div>
-            {club.description ? (
-              <p className="text-sm text-gray-700 max-w-2xl whitespace-pre-wrap">{club.description}</p>
-            ) : null}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">

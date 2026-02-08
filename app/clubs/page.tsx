@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
+import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,17 +60,41 @@ export default function ClubsPage() {
     return (clubs ?? []).filter((c) => !c.isFollowing)
   }, [clubs, isLoggedIn])
 
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean)
+    const initials = parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
+    return initials || 'CL'
+  }
+
+  const ClubLogo = ({ name, logoUrl }: { name: string; logoUrl?: string | null }) => {
+    if (logoUrl) {
+      return (
+        <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex-shrink-0">
+          <Image src={logoUrl} alt="" fill className="object-cover" />
+        </div>
+      )
+    }
+    return (
+      <div className="w-12 h-12 rounded-lg border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-semibold text-gray-600">{getInitials(name)}</span>
+      </div>
+    )
+  }
+
   const renderClubCard = (club: any) => (
     <Card key={club.id} className="flex flex-col">
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="text-lg truncate">{club.name}</CardTitle>
-            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span className="truncate">
-                {club.city || club.state ? `${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}` : 'Location not set'}
-              </span>
+          <div className="flex items-start gap-3 min-w-0">
+            <ClubLogo name={club.name} logoUrl={club.logoUrl} />
+            <div className="min-w-0">
+              <CardTitle className="text-lg truncate">{club.name}</CardTitle>
+              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span className="truncate">
+                  {club.city || club.state ? `${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}` : 'Location not set'}
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">

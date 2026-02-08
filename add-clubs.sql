@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS "clubs" (
   "name" TEXT NOT NULL,
   "kind" "ClubKind" NOT NULL DEFAULT 'VENUE',
   "description" TEXT,
+  "logo_url" TEXT,
   "address" TEXT,
   "city" TEXT,
   "state" TEXT,
@@ -35,6 +36,10 @@ CREATE TABLE IF NOT EXISTS "clubs" (
   "created_at" TIMESTAMP NOT NULL DEFAULT now(),
   "updated_at" TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- Add missing columns if clubs table already existed (idempotent patching)
+ALTER TABLE "clubs"
+  ADD COLUMN IF NOT EXISTS "logo_url" TEXT;
 
 -- Link tournaments -> clubs
 ALTER TABLE "tournaments"
