@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { loadGoogleMaps } from "@/lib/googleMapsLoader"
 import type { LatLng, Tournament } from "@/types/tournament"
 import { Button } from "@/components/ui/button"
+import { Locate, MapPin } from "lucide-react"
 
 type MapWithTournamentsProps = {
   tournaments: Tournament[]
@@ -13,6 +14,19 @@ type MapWithTournamentsProps = {
 const DEFAULT_CENTER: LatLng = { lat: 39.8283, lng: -98.5795 }
 const DEFAULT_ZOOM = 4
 const FOCUS_ZOOM = 12
+
+function haversineDistanceKm(a: LatLng, b: LatLng): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+  return R * c
+}
 
 const buildInfoWindowContent = (tournament: Tournament) => {
   const href = tournament.publicSlug
@@ -115,6 +129,33 @@ export const MapWithTournaments = ({
     )
   }, [])
 
+  const focusNearestTournament = useCallback(() => {
+    if (!userLocation || tournaments.length === 0 || !mapInstanceRef.current || !googleRef.current || !infoWindowRef.current) {
+      return
+    }
+    let nearest: Tournament | null = null
+    let minDist = Infinity
+    for (const t of tournaments) {
+      const d = haversineDistanceKm(userLocation, { lat: t.lat, lng: t.lng })
+      if (d < minDist) {
+        minDist = d
+        nearest = t
+      }
+    }
+    if (!nearest) return
+    const pos = { lat: nearest.lat, lng: nearest.lng }
+    mapInstanceRef.current.panTo(pos)
+    mapInstanceRef.current.setZoom(FOCUS_ZOOM)
+    const marker = tournamentMarkersRef.current.get(nearest.id)
+    if (marker) {
+      infoWindowRef.current.setContent(buildInfoWindowContent(nearest))
+      infoWindowRef.current.open({
+        anchor: marker,
+        map: mapInstanceRef.current,
+      })
+    }
+  }, [userLocation, tournaments])
+
   useEffect(() => {
     initializeMap()
   }, [initializeMap])
@@ -216,12 +257,31 @@ export const MapWithTournaments = ({
     locateUser()
   }, [locateUser])
 
+  const hasLocation = userLocation !== null
+  const canFocusNearest = hasLocation && tournaments.length > 0
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <Button type="button" variant="outline" onClick={locateUser}>
+          <Locate className="h-4 w-4 mr-2" />
           {isLocating ? "Locating..." : "Use my location"}
         </Button>
+        <span
+          title={!hasLocation ? "Allow location access to find the nearest tournament" : undefined}
+          className="inline-flex"
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={focusNearestTournament}
+            disabled={!canFocusNearest}
+            className={!canFocusNearest ? "cursor-not-allowed" : undefined}
+          >
+            <MapPin className="h-4 w-4 mr-2" />
+            Nearest tournament
+          </Button>
+        </span>
         {geoError ? (
           <span className="text-sm text-muted-foreground">{geoError}</span>
         ) : null}
