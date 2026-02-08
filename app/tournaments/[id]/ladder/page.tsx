@@ -76,7 +76,7 @@ export default function TournamentLadderPage() {
       setSelectedMatchDayId('')
       return
     }
-    if (!selectedMatchDayId) setSelectedMatchDayId(orderedMatchDays[0]!.id)
+    if (!selectedMatchDayId) setSelectedMatchDayId(orderedMatchDays[orderedMatchDays.length - 1]!.id)
   }, [isLeague, orderedMatchDays, selectedMatchDayId])
 
   const { data: league } = trpc.ladder.leagueGetStatus.useQuery(
@@ -120,11 +120,11 @@ export default function TournamentLadderPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <Card>
-          <CardHeader>
+	  return (
+	    <div className="min-h-screen bg-gray-50">
+	      <div className="max-w-6xl mx-auto p-6 space-y-6">
+	        <Card>
+	          <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
               <span>{seatMap.title}</span>
               <Badge variant="secondary">{format}</Badge>
@@ -167,13 +167,35 @@ export default function TournamentLadderPage() {
                 </select>
               </div>
             )}
-          </CardContent>
-        </Card>
+	          </CardContent>
+	        </Card>
 
-        {isOneDay && oneDay && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3">
+	        <Card>
+	          <CardHeader>
+	            <CardTitle>How it works (MVP)</CardTitle>
+	            <CardDescription>Short rules for this ladder format.</CardDescription>
+	          </CardHeader>
+	          <CardContent className="text-sm text-gray-700">
+	            {isOneDay ? (
+	              <ul className="list-disc pl-5 space-y-1">
+	                <li>2 teams per court (court 1 is the top).</li>
+	                <li>If you win: you move up one court (court 1 winners stay). If you lose: you move down one court (bottom losers stay).</li>
+	                <li>The organizer advances rounds after all scores are entered.</li>
+	              </ul>
+	            ) : (
+	              <ul className="list-disc pl-5 space-y-1">
+	                <li>Pods of 4 teams (Pod 1 is the top).</li>
+	                <li>Each week: round robin inside each pod.</li>
+	                <li>After the week closes: Pod N #1 swaps with Pod N-1 #4.</li>
+	              </ul>
+	            )}
+	          </CardContent>
+	        </Card>
+
+	        {isOneDay && oneDay && (
+	          <Card>
+	            <CardHeader>
+	              <CardTitle className="flex items-center justify-between gap-3">
                 <span>One-day Ladder</span>
                 <Badge variant="secondary">Round {oneDay.currentRound || 0}</Badge>
               </CardTitle>
@@ -226,10 +248,10 @@ export default function TournamentLadderPage() {
           </Card>
         )}
 
-        {isLeague && league && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3">
+	        {isLeague && league && (
+	          <Card>
+	            <CardHeader>
+	              <CardTitle className="flex items-center justify-between gap-3">
                 <span>Ladder League</span>
                 {league.matchDay ? (
                   <Badge variant="secondary">
@@ -240,43 +262,60 @@ export default function TournamentLadderPage() {
                 )}
               </CardTitle>
               <CardDescription>Pods + weekly round robin.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {myStatus?.status === 'active' && (
-                <div className="rounded-md border bg-white p-3 text-sm">
+	            </CardHeader>
+	            <CardContent className="space-y-4">
+	              {myStatus?.status === 'active' && (
+	                <div className="rounded-md border bg-white p-3 text-sm">
                   <div className="text-gray-600">Your team</div>
                   <div className="font-medium text-gray-900">{myStatus.teamName}</div>
                 </div>
-              )}
+	              )}
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {league.standingsByPool.map((pod: any) => {
-                  const myTeam = myTeamId
-                  const isMyPod = myTeam ? pod.standings.some((s: any) => s.teamId === myTeam) : false
-                  return (
-                    <div
-                      key={pod.poolId}
-                      className={`rounded-lg border bg-white p-4 ${isMyPod ? 'border-blue-400' : ''}`}
+	              {league.matchDay && (
+	                <div className="text-sm text-gray-600">
+	                  Week status: <span className="font-medium text-gray-900">{league.matchDay.status}</span>
+	                  {Array.isArray(league.matches) && league.matches.length > 0 && (
+	                    <>
+	                      {' '}
+	                      • Matches: {league.matches.filter((m: any) => Boolean(m.winnerTeamId)).length}/{league.matches.length}
+	                    </>
+	                  )}
+	                </div>
+	              )}
+
+	              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+	                {league.standingsByPool.map((pod: any) => {
+	                  const myTeam = myTeamId
+	                  const isMyPod = myTeam ? pod.standings.some((s: any) => s.teamId === myTeam) : false
+	                  const podCount = league.standingsByPool.length
+	                  return (
+	                    <div
+	                      key={pod.poolId}
+	                      className={`rounded-lg border bg-white p-4 ${isMyPod ? 'border-blue-400' : ''}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="font-semibold text-gray-900">{pod.poolName}</div>
                         <Badge variant="secondary">Pod {pod.poolOrder}</Badge>
                       </div>
-                      <div className="mt-3 space-y-1 text-sm">
-                        {pod.standings.map((s: any, idx: number) => {
-                          const team = league.teams.find((t: any) => t.id === s.teamId)
-                          const isMine = s.teamId === myTeamId
-                          return (
-                            <div key={s.teamId} className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="w-5 text-xs text-gray-500">{idx + 1}.</span>
-                                <span className={isMine ? 'font-medium text-blue-900' : 'text-gray-900'}>
-                                  {team?.name ?? 'Team'}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                {s.wins}-{s.losses} ({s.pointDiff})
-                              </div>
+	                      <div className="mt-3 space-y-1 text-sm">
+	                        {pod.standings.map((s: any, idx: number) => {
+	                          const team = league.teams.find((t: any) => t.id === s.teamId)
+	                          const isMine = s.teamId === myTeamId
+	                          const isPromotionZone = pod.poolOrder > 1 && idx === 0
+	                          const isDemotionZone = pod.poolOrder < podCount && idx === pod.standings.length - 1
+	                          return (
+	                            <div key={s.teamId} className="flex items-center justify-between">
+	                              <div className="flex items-center gap-2">
+	                                <span className="w-5 text-xs text-gray-500">{idx + 1}.</span>
+	                                <span className={isMine ? 'font-medium text-blue-900' : 'text-gray-900'}>
+	                                  {team?.name ?? 'Team'}
+	                                </span>
+	                                {isPromotionZone && <Badge className="bg-green-600">UP</Badge>}
+	                                {isDemotionZone && <Badge className="bg-red-600">DOWN</Badge>}
+	                              </div>
+	                              <div className="text-xs text-gray-600">
+	                                {s.wins}-{s.losses} ({s.pointDiff})
+	                              </div>
                             </div>
                           )
                         })}

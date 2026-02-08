@@ -470,6 +470,18 @@ export const ladderRouter = createTRPCRouter({
 
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
 
+      const existingMatches = await ctx.prisma.match.findFirst({
+        where: { divisionId: input.divisionId, stage: 'ROUND_ROBIN', matchDayId: { not: null } },
+        select: { id: true },
+      })
+      if (existingMatches) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Pods cannot be re-initialized after week matches have been generated. Create a new division/tournament if you need to re-seed.',
+        })
+      }
+
       const teamCount = division.teams.length
       if (teamCount < input.podSizeTeams) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: `Need at least ${input.podSizeTeams} teams` })
@@ -565,6 +577,13 @@ export const ladderRouter = createTRPCRouter({
 
       const tournamentId = division.tournament.id
 
+      const hasAnyMatchesInDivision = Boolean(
+        await ctx.prisma.match.findFirst({
+          where: { divisionId: input.divisionId, stage: 'ROUND_ROBIN', matchDayId: { not: null } },
+          select: { id: true },
+        })
+      )
+
       let matchDayId = input.matchDayId ?? null
       let matchDay: { id: string; date: Date; status: string } | null = null
 
@@ -639,6 +658,7 @@ export const ladderRouter = createTRPCRouter({
         division: { id: division.id, name: division.name },
         pools: division.pools,
         teams: division.teams,
+        hasAnyMatchesInDivision,
         matchDay,
         matches,
         standingsByPool,
@@ -770,4 +790,3 @@ export const ladderRouter = createTRPCRouter({
       return { matchDayId: input.matchDayId, swaps, swapsApplied: applied }
     }),
 })
-

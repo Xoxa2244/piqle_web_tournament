@@ -258,6 +258,7 @@ function DivisionStageManagementContent() {
   const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
 
   // Set first match day as default for selected division
+  const dayFromUrl = searchParams.get('day')
   useEffect(() => {
     if (!isIndyLeague && !isLeagueRoundRobin) return
     if (!matchDaysForDivision || matchDaysForDivision.length === 0) {
@@ -266,11 +267,19 @@ function DivisionStageManagementContent() {
       }
       return
     }
+
+    if (dayFromUrl && matchDaysForDivision.some((d: any) => d.id === dayFromUrl)) {
+      if (selectedMatchDayId !== dayFromUrl) {
+        setSelectedMatchDayId(dayFromUrl)
+      }
+      return
+    }
+
     const isSelectedDayValid = matchDaysForDivision.some((day: any) => day.id === selectedMatchDayId)
     if (!selectedMatchDayId || !isSelectedDayValid) {
       setSelectedMatchDayId(matchDaysForDivision[0].id)
     }
-  }, [isIndyLeague, isLeagueRoundRobin, matchDaysForDivision, selectedMatchDayId])
+  }, [isIndyLeague, isLeagueRoundRobin, matchDaysForDivision, selectedMatchDayId, dayFromUrl])
 
   // Local state for optimistic updates
   const [localGameScores, setLocalGameScores] = useState<Record<string, { homeScore: number | null; awayScore: number | null }>>({})
