@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -70,7 +70,9 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
 
 export default function NewTournamentPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const prefillAppliedRef = useRef(false)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -131,6 +133,27 @@ export default function NewTournamentPage() {
   })
 
   const { data: clubs } = trpc.club.list.useQuery(undefined)
+
+  useEffect(() => {
+    if (prefillAppliedRef.current) return
+    const clubIdFromQuery = searchParams.get('clubId')
+    if (!clubIdFromQuery) return
+    if (!clubs?.length) return
+
+    const selected = clubs.find((c) => c.id === clubIdFromQuery)
+    prefillAppliedRef.current = true
+    if (!selected) return
+
+    setFormData((prev) => {
+      if (prev.clubId) return prev
+      return {
+        ...prev,
+        clubId: selected.id,
+        venueName: selected.name,
+        venueAddress: selected.address || prev.venueAddress,
+      }
+    })
+  }, [clubs, searchParams])
 
   const validateBaseForm = () => {
     const nextErrors = {

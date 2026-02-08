@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { Calendar, ExternalLink, MapPin, ArrowLeft, Bell, Megaphone } from 'lucide-react'
+import { Calendar, ExternalLink, MapPin, ArrowLeft, Bell, Megaphone, Plus } from 'lucide-react'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
@@ -215,11 +215,19 @@ export default function ClubDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
                 Upcoming tournaments
               </CardTitle>
+              {club.isAdmin ? (
+                <Button asChild size="sm" variant="outline" className="gap-2">
+                  <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
+                    <Plus className="h-4 w-4" />
+                    Create tournament
+                  </Link>
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-3">
               {club.tournaments.length === 0 ? (
