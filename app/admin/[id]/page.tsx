@@ -668,7 +668,8 @@ export default function TournamentDetailPage() {
                           <select
                             value={effectiveDivisionId ?? ''}
                             onChange={(e) => setSelectedWinnersDivisionId(e.target.value || null)}
-                            className="w-full max-w-xs pl-3 pr-10 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full max-w-xs pl-3 py-2 pr-[calc(12px+1rem)] text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center]"
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
                           >
                             {divisions.map((d) => (
                               <option key={d.id} value={d.id}>
