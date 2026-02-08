@@ -632,35 +632,33 @@ export default function HomePage() {
                         <span>Entry Fee: ${tournament.entryFee}</span>
                       </div>
                     )}
-
-                    {/* Tournament Director */}
-                    {tournament.user && (
-                      <div className="mt-4 pt-2 border-t border-gray-200">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-500">Tournament Director:</span>
-                          <Link
-                            href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
-                            className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
-                          >
-                            <AvatarImage
-                              src={(tournament.user as { image?: string | null }).image}
-                              alt={tournament.user.name || tournament.user.email || 'TD'}
-                              userId={tournament.user.id}
-                              size={18}
-                            />
-                            <span className="text-xs font-medium group-hover:underline">
-                              {tournament.user.name || tournament.user.email}
-                            </span>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Fixed bottom section: Like/Dislike, View Results, Join Tournament */}
+                  {/* Fixed bottom section: Tournament Director, Like/Dislike, View Results, Join — same strip as on /admin */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
+                    {/* Tournament Director — on the same divider strip */}
+                    {tournament.user && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs text-gray-500">Tournament Director:</span>
+                        <Link
+                          href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
+                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <AvatarImage
+                            src={(tournament.user as { image?: string | null }).image}
+                            alt={tournament.user.name || tournament.user.email || 'TD'}
+                            userId={tournament.user.id}
+                            size={18}
+                          />
+                          <span className="text-xs font-medium group-hover:underline">
+                            {tournament.user.name || tournament.user.email}
+                          </span>
+                        </Link>
+                      </div>
+                    )}
                     {/* Like/Dislike/Comments Buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
