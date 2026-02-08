@@ -141,6 +141,10 @@ function NewTournamentPageInner() {
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
+  const lastAddressSelectionRef = useRef<{ placeId: string | null; formatted: string | null }>({
+    placeId: null,
+    formatted: null,
+  })
   const [payoutStatus, setPayoutStatus] = useState<{
     hasAccount: boolean
     payoutsActive: boolean
@@ -389,15 +393,22 @@ function NewTournamentPageInner() {
       addressListenerRef.current =
         addressAutocompleteRef.current.addListener('place_changed', () => {
           const place = addressAutocompleteRef.current?.getPlace()
-          if (!place?.formatted_address) {
-            setAddressError('Select a valid address from the list.')
-            return
-          }
+          // `formatted_address` can be missing depending on the selection type / API response.
+          // Fall back to the input value (which Google updates) and don't show an error since it's optional.
+          const rawInput = (venueAddressInputRef.current?.value ?? '').trim()
+          const formatted =
+            (place?.formatted_address ? place.formatted_address.trim() : '') ||
+            rawInput ||
+            null
 
           setAddressError(null)
+          lastAddressSelectionRef.current = {
+            placeId: place?.place_id ?? null,
+            formatted,
+          }
           setFormData((prev) => ({
             ...prev,
-            venueAddress: place.formatted_address,
+            venueAddress: formatted ?? '',
           }))
         })
     } catch (error) {
@@ -456,8 +467,16 @@ function NewTournamentPageInner() {
     }
   }
 
-  const handleVenueAddressBlur = async () => {
-    if (!formData.venueAddress.trim()) return
+  const handleVenueAddressBlur = async (e?: React.FocusEvent<HTMLInputElement>) => {
+    const raw = (e?.target?.value ?? formData.venueAddress ?? '').trim()
+    if (!raw) return
+
+    // If user picked from Google Autocomplete, don't re-validate via Geocoder.
+    const last = lastAddressSelectionRef.current
+    if (last.placeId && last.formatted && last.formatted === raw) {
+      setAddressError(null)
+      return
+    }
 
     try {
       const googleApi =
@@ -470,20 +489,19 @@ function NewTournamentPageInner() {
       googleRef.current = googleApi
       const geocoder = new googleApi.maps.Geocoder()
       geocoder.geocode(
-        { address: formData.venueAddress },
+        { address: raw },
         (results: any, status: any) => {
-          if (status !== 'OK' || !results?.length) {
-            setAddressError('Select a valid address from the list.')
-            return
-          }
+          // Venue address is optional; don't block the flow if validation fails.
+          if (status !== 'OK' || !results?.length) return
 
           const result = results[0]
-          if (!result?.formatted_address) {
-            setAddressError('Select a valid address from the list.')
-            return
-          }
+          if (!result?.formatted_address) return
 
           setAddressError(null)
+          lastAddressSelectionRef.current = {
+            placeId: result.place_id ?? null,
+            formatted: result.formatted_address ?? null,
+          }
           setFormData((prev) => ({
             ...prev,
             venueAddress: result.formatted_address,
@@ -491,9 +509,7 @@ function NewTournamentPageInner() {
         }
       )
     } catch (error) {
-      setAddressError(
-        error instanceof Error ? error.message : 'Failed to load Google Places.'
-      )
+      // Best-effort only; keep address as-is.
     }
   }
 
