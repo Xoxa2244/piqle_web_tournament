@@ -42,14 +42,30 @@ const toLocalYmd = (date: Date) => {
 }
 
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
+const startOfWeek = (date: Date) => {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  d.setDate(d.getDate() - d.getDay()) // Sunday-start week
+  return d
+}
 const addDays = (date: Date, delta: number) => {
   const d = new Date(date)
   d.setDate(d.getDate() + delta)
   return d
 }
 const addMonths = (date: Date, delta: number) => new Date(date.getFullYear(), date.getMonth() + delta, 1)
+const addWeeks = (date: Date, delta: number) => addDays(date, delta * 7)
 
 const formatMonthYear = (date: Date) => `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`
+const formatWeekRange = (weekStart: Date) => {
+  const end = addDays(weekStart, 6)
+  const sameMonth = weekStart.getMonth() === end.getMonth() && weekStart.getFullYear() === end.getFullYear()
+  const startLabel = weekStart.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const endLabel = end.toLocaleDateString(
+    [],
+    sameMonth ? { day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }
+  )
+  return `${startLabel}–${endLabel}`
+}
 
 const buildMonthGrid = (month: Date) => {
   const first = startOfMonth(month)
@@ -562,6 +578,8 @@ function ClubEventsCalendar({
   const [selectedKey, setSelectedKey] = useState<string | null>(() =>
     tournaments[0] ? toLocalYmd(initialBase) : null
   )
+  const [calendarMode, setCalendarMode] = useState<'month' | 'week'>(() => 'month')
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(initialBase))
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
 
@@ -612,29 +630,39 @@ function ClubEventsCalendar({
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   }
 
+  const weekDays: Date[] = []
+  for (let i = 0; i < 7; i++) {
+    weekDays.push(addDays(weekStart, i))
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Button
+        <div className="inline-flex rounded-md border bg-white p-1">
+          <button
             type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => setMonth((m) => addMonths(m, -1))}
-            aria-label="Previous month"
+            onClick={() => setCalendarMode('month')}
+            className={cn(
+              'px-3 py-1 text-xs rounded-sm transition-colors',
+              calendarMode === 'month' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+            )}
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
+            Month
+          </button>
+          <button
             type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => setMonth((m) => addMonths(m, 1))}
-            aria-label="Next month"
+            onClick={() => {
+              setCalendarMode('week')
+              const base = selectedKey ? parseYmd(selectedKey) : now
+              setWeekStart(startOfWeek(base))
+            }}
+            className={cn(
+              'px-3 py-1 text-xs rounded-sm transition-colors',
+              calendarMode === 'week' ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-100'
+            )}
           >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <div className="text-sm font-medium text-gray-900">{formatMonthYear(month)}</div>
+            Week
+          </button>
         </div>
 
         <Button
@@ -642,7 +670,11 @@ function ClubEventsCalendar({
           variant="outline"
           size="sm"
           onClick={() => {
-            setMonth(startOfMonth(now))
+            if (calendarMode === 'month') {
+              setMonth(startOfMonth(now))
+            } else {
+              setWeekStart(startOfWeek(now))
+            }
             setSelectedKey(isTodayKey)
           }}
         >
@@ -650,91 +682,228 @@ function ClubEventsCalendar({
         </Button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-xs text-muted-foreground">
-        {DAY_LABELS.map((label) => (
-          <div key={label} className="px-1 py-1 text-center">
-            {label}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {grid.map((date) => {
-          const key = toLocalYmd(date)
-          const inMonth = date.getMonth() === month.getMonth()
-          const isToday = key === isTodayKey
-          const isSelected = selectedKey === key
-          const events = eventsByDay.get(key) ?? []
-          const eventCount = events.length
-
-          return (
-            <div
-              key={key}
-              onClick={() => setSelectedKey(key)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  setSelectedKey(key)
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className={cn(
-                'h-12 sm:h-14 rounded-md border px-2 py-1 text-left transition-colors',
-                inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
-                eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
-                isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
-                isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className={cn('text-xs font-medium', inMonth ? 'text-gray-900' : 'text-gray-400')}>
-                  {date.getDate()}
-                </div>
-                {eventCount > 0 ? (
-                  <div className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded px-1">
-                    {eventCount}
-                  </div>
-                ) : null}
-              </div>
-              {eventCount > 0 ? (
-                <div className="mt-1 flex items-center gap-1">
-                  <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                  {events[0]?.id ? (
-                    (() => {
-                      const first = events[0]
-                      const occupancy =
-                        first?.totals && first.totals.totalSlots
-                          ? `${first.totals.filledSlots}/${first.totals.totalSlots}`
-                          : null
-                      const shortType = formatTournamentTypeShort(first?.format)
-                      const meta = [formatTime(first.startDate), shortType, occupancy]
-                        .filter(Boolean)
-                        .join(' · ')
-                      const label = meta ? `${meta} · ${first?.title ?? 'Event'}` : first?.title ?? 'Event'
-
-                      return (
-                    <Link
-                      href={`/tournaments/${events[0].id}/register`}
-                      className="text-[10px] text-blue-700 truncate hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Open registration"
-                    >
-                      {label}
-                    </Link>
-                      )
-                    })()
-                  ) : (
-                    <div className="text-[10px] text-blue-700 truncate">
-                      {events[0]?.title ?? 'Event'}
-                    </div>
-                  )}
-                </div>
-              ) : null}
+      {calendarMode === 'month' ? (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setMonth((m) => addMonths(m, -1))}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setMonth((m) => addMonths(m, 1))}
+                aria-label="Next month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <div className="text-sm font-medium text-gray-900">{formatMonthYear(month)}</div>
             </div>
-          )
-        })}
-      </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-xs text-muted-foreground">
+            {DAY_LABELS.map((label) => (
+              <div key={label} className="px-1 py-1 text-center">
+                {label}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {grid.map((date) => {
+              const key = toLocalYmd(date)
+              const inMonth = date.getMonth() === month.getMonth()
+              const isToday = key === isTodayKey
+              const isSelected = selectedKey === key
+              const events = eventsByDay.get(key) ?? []
+              const eventCount = events.length
+              const maxShown = 2
+
+              return (
+                <div
+                  key={key}
+                  onClick={() => {
+                    setSelectedKey(key)
+                    setWeekStart(startOfWeek(date))
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedKey(key)
+                      setWeekStart(startOfWeek(date))
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className={cn(
+                    'h-16 sm:h-20 rounded-md border px-2 py-1 text-left transition-colors',
+                    inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
+                    eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
+                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
+                    isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={cn('text-xs font-medium', inMonth ? 'text-gray-900' : 'text-gray-400')}>
+                      {date.getDate()}
+                    </div>
+                    {eventCount > 0 ? (
+                      <div className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded px-1">
+                        {eventCount}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {eventCount > 0 ? (
+                    <div className="mt-1 space-y-1">
+                      {events.slice(0, maxShown).map((ev: any) => {
+                        const occupancy =
+                          ev?.totals && ev.totals.totalSlots ? `${ev.totals.filledSlots}/${ev.totals.totalSlots}` : null
+                        const shortType = formatTournamentTypeShort(ev?.format)
+                        const meta = [formatTime(ev.startDate), shortType, occupancy].filter(Boolean).join(' · ')
+                        const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
+
+                        return ev?.id ? (
+                          <Link
+                            key={ev.id}
+                            href={`/tournaments/${ev.id}/register`}
+                            className="block rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open registration"
+                          >
+                            {label}
+                          </Link>
+                        ) : (
+                          <div key={String(ev?.title ?? Math.random())} className="text-[10px] text-blue-800 truncate">
+                            {label}
+                          </div>
+                        )
+                      })}
+                      {eventCount > maxShown ? (
+                        <div className="text-[10px] text-muted-foreground">+{eventCount - maxShown} more</div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setWeekStart((w) => addWeeks(w, -1))}
+                aria-label="Previous week"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+                aria-label="Next week"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <div className="text-sm font-medium text-gray-900">{formatWeekRange(weekStart)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+            {weekDays.map((date) => {
+              const key = toLocalYmd(date)
+              const isToday = key === isTodayKey
+              const isSelected = selectedKey === key
+              const events = eventsByDay.get(key) ?? []
+
+              return (
+                <div
+                  key={key}
+                  className={cn(
+                    'rounded-md border p-2 bg-white',
+                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                  )}
+                >
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => setSelectedKey(key)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-gray-900">
+                        {DAY_LABELS[date.getDay()]} {date.getDate()}
+                      </div>
+                      {isToday ? (
+                        <div className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded px-1">
+                          Today
+                        </div>
+                      ) : null}
+                    </div>
+                  </button>
+
+                  <div className="mt-2 space-y-2">
+                    {events.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">No events</div>
+                    ) : (
+                      events.map((t: any) => {
+                        const fee = typeof t.entryFeeCents === 'number' ? t.entryFeeCents : 0
+                        const isPaid = fee > 0
+                        const occupancy =
+                          t?.totals && t.totals.totalSlots ? `${t.totals.filledSlots}/${t.totals.totalSlots}` : null
+                        const typeLabel = formatTournamentType(t.format)
+                        const timeLabel = formatTime(t.startDate)
+                        const showGender = t.genderLabel && t.genderLabel !== 'Any'
+
+                        return (
+                          <div key={t.id} className="rounded-md border bg-white p-2">
+                            <Link
+                              href={`/tournaments/${t.id}/register`}
+                              className="text-xs font-semibold text-gray-900 hover:underline block truncate"
+                              title="Open registration"
+                            >
+                              {t.title}
+                            </Link>
+                            <div className="mt-1 text-[11px] text-muted-foreground">{timeLabel}</div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {isPaid ? (
+                                <Badge variant="secondary">${fromCents(fee).toFixed(2)}</Badge>
+                              ) : (
+                                <Badge variant="outline">Free</Badge>
+                              )}
+                              <Badge variant="outline">{typeLabel}</Badge>
+                              {occupancy ? (
+                                <Badge variant="secondary" className="gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {occupancy}
+                                </Badge>
+                              ) : null}
+                              {showGender ? <Badge variant="outline">{t.genderLabel}</Badge> : null}
+                              {t.duprLabel ? <Badge variant="outline">{t.duprLabel}</Badge> : null}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       <div className="rounded-md border p-3 space-y-3">
         <div className="text-sm font-medium text-gray-900">
