@@ -95,7 +95,14 @@ function NewTournamentPageInner() {
     entryFee: '',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE' | 'LEAGUE_ROUND_ROBIN',
+    format: 'SINGLE_ELIMINATION' as
+      | 'SINGLE_ELIMINATION'
+      | 'ROUND_ROBIN'
+      | 'MLP'
+      | 'INDY_LEAGUE'
+      | 'LEAGUE_ROUND_ROBIN'
+      | 'ONE_DAY_LADDER'
+      | 'LADDER_LEAGUE',
     seasonLabel: '',
     timezone: '',
     image: '',
@@ -381,8 +388,14 @@ function NewTournamentPageInner() {
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
       format: formData.format,
-      seasonLabel: formData.format === 'INDY_LEAGUE' ? (formData.seasonLabel || undefined) : undefined,
-      timezone: formData.format === 'INDY_LEAGUE' ? (formData.timezone || undefined) : undefined,
+      seasonLabel:
+        formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
+          ? (formData.seasonLabel || undefined)
+          : undefined,
+      timezone:
+        formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
+          ? (formData.timezone || undefined)
+          : undefined,
     }
 
     if (structureDraft) {
@@ -841,6 +854,8 @@ function NewTournamentPageInner() {
                 <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                 <option value="ROUND_ROBIN">Round Robin</option>
                 <option value="LEAGUE_ROUND_ROBIN">League Round Robin</option>
+                <option value="ONE_DAY_LADDER">One-day Ladder</option>
+                <option value="LADDER_LEAGUE">Ladder League</option>
                 <option value="MLP">MiLP Tournament</option>
                 <option value="INDY_LEAGUE">Indy League</option>
               </select>
@@ -849,6 +864,10 @@ function NewTournamentPageInner() {
                   ? 'MLP format: 4-player teams (2F + 2M), 4 games per match, tiebreaker on 2:2'
                   : formData.format === 'INDY_LEAGUE'
                   ? 'Indy League: Multi-day league format with match days and 12-game matchups'
+                  : formData.format === 'ONE_DAY_LADDER'
+                  ? 'One-day Ladder: play on courts; winners move up, losers move down (fixed pairs/teams)'
+                  : formData.format === 'LADDER_LEAGUE'
+                  ? 'Ladder League: weekly pods (e.g. 4 teams), round robin each week, promote/demote between pods'
                   : formData.format === 'ROUND_ROBIN'
                   ? 'Round Robin: Standard single elimination bracket with play-in matches'
                   : formData.format === 'LEAGUE_ROUND_ROBIN'
@@ -857,7 +876,7 @@ function NewTournamentPageInner() {
               </p>
             </div>
 
-            {formData.format === 'INDY_LEAGUE' && (
+            {(formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE') && (
               <>
                 <div>
                   <label htmlFor="seasonLabel" className="block text-sm font-medium text-gray-700 mb-2">

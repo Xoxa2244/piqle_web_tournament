@@ -202,8 +202,12 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
-  // League Round Robin: matchups are not used; manage matches in Stages
-  if (tournament?.format === 'LEAGUE_ROUND_ROBIN') {
+  // League-style formats: matchups are not used
+  if (tournament?.format === 'LEAGUE_ROUND_ROBIN' || tournament?.format === 'LADDER_LEAGUE') {
+    const destination =
+      tournament?.format === 'LADDER_LEAGUE'
+        ? `/admin/${tournamentId}/ladder`
+        : `/admin/${tournamentId}/stages`
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-6xl mx-auto p-6">
@@ -218,10 +222,10 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
           <Card>
             <CardContent className="pt-6">
               <p className="text-gray-600 mb-4">
-                Matchups are not used for League Round Robin. Distribution is done via Round Robin in Stages.
+                Matchups are not used for this format. Use the tournament tools instead.
               </p>
-              <Button onClick={() => router.push(`/admin/${tournamentId}/stages`)}>
-                Go to Stages
+              <Button onClick={() => router.push(destination)}>
+                Go to {tournament?.format === 'LADDER_LEAGUE' ? 'Ladder' : 'Stages'}
               </Button>
             </CardContent>
           </Card>
@@ -492,4 +496,3 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     </div>
   )
 }
-

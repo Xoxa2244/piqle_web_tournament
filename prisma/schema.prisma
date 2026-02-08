@@ -985,6 +985,8 @@ enum TournamentFormat {
   MLP
   INDY_LEAGUE
   LEAGUE_ROUND_ROBIN
+  ONE_DAY_LADDER
+  LADDER_LEAGUE
 }
 
 enum GameType {

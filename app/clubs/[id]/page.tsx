@@ -791,6 +791,10 @@ function ClubEventsCalendar({
         return 'Indy league'
       case 'LEAGUE_ROUND_ROBIN':
         return 'League RR'
+      case 'ONE_DAY_LADDER':
+        return 'One-day ladder'
+      case 'LADDER_LEAGUE':
+        return 'Ladder league'
       default:
         return 'Tournament'
     }
@@ -808,6 +812,10 @@ function ClubEventsCalendar({
         return 'Indy'
       case 'LEAGUE_ROUND_ROBIN':
         return 'LRR'
+      case 'ONE_DAY_LADDER':
+        return 'LAD'
+      case 'LADDER_LEAGUE':
+        return 'LL'
       default:
         return null
     }
