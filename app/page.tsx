@@ -701,8 +701,8 @@ export default function HomePage() {
                       </button>
                     </div>
 
-                    {/* 16px gap before View Results (avoid margin collapse) */}
-                    <div className="pt-4">
+                    {/* 16px gap before View Results: cancel space-y-3 (12px) and set mt-4 (16px) */}
+                    <div className="-mt-3 mt-4">
                       <Link href={`/scoreboard/${tournament.id}`}>
                         <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                           View Results
