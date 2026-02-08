@@ -61,12 +61,12 @@ export default function ClubsPage() {
 
   const followingClubs = useMemo(() => {
     if (!isLoggedIn) return []
-    return (clubs ?? []).filter((c) => c.isFollowing)
+    return (clubs ?? []).filter((c: any) => c.isFollowing || c.isJoinPending)
   }, [clubs, isLoggedIn])
 
   const discoverClubs = useMemo(() => {
     if (!isLoggedIn) return clubs ?? []
-    return (clubs ?? []).filter((c) => !c.isFollowing)
+    return (clubs ?? []).filter((c: any) => !c.isFollowing && !c.isJoinPending)
   }, [clubs, isLoggedIn])
 
   const getInitials = (name: string) => {
@@ -166,13 +166,13 @@ export default function ClubsPage() {
             </Button>
           </Link>
           <Button
-            variant={club.isFollowing ? 'secondary' : 'default'}
+            variant={club.isFollowing || club.isJoinPending ? 'secondary' : 'default'}
             className="flex-1"
             onClick={() => onToggleFollow(club.id)}
-            disabled={toggleFollow.isPending}
+            disabled={toggleFollow.isPending || Boolean(club.isJoinPending)}
             title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
           >
-            {club.isFollowing ? 'Joined' : 'Join'}
+            {club.isFollowing ? 'Joined' : club.isJoinPending ? 'Pending' : club.joinPolicy === 'APPROVAL' ? 'Request' : 'Join'}
           </Button>
         </div>
       </CardContent>

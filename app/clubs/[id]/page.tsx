@@ -318,6 +318,24 @@ export default function ClubDetailPage() {
                   <UserMinus className="h-4 w-4" />
                   Leave
                 </Button>
+              ) : (club as any).joinPolicy === 'APPROVAL' ? (
+                (club as any).isJoinPending ? (
+                  <Button variant="secondary" className="gap-2" disabled title="Pending admin approval">
+                    <Users className="h-4 w-4" />
+                    Pending
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    className="gap-2"
+                    onClick={handleToggleFollow}
+                    disabled={toggleFollow.isPending}
+                    title={!isLoggedIn ? 'Sign in to request access' : undefined}
+                  >
+                    <Users className="h-4 w-4" />
+                    Request to join
+                  </Button>
+                )
               ) : (
                 <Button
                   variant="default"
@@ -505,6 +523,8 @@ export default function ClubDetailPage() {
               isLoggedIn={isLoggedIn}
               isJoined={club.isFollowing}
               isBanned={(club as any).isBanned}
+              joinPolicy={(club as any).joinPolicy}
+              isJoinPending={(club as any).isJoinPending}
               isAdmin={club.isAdmin}
               currentUserId={session?.user?.id}
               onJoinToggle={handleToggleFollow}
@@ -1350,6 +1370,8 @@ function ClubChatCard({
   isLoggedIn,
   isJoined,
   isBanned,
+  joinPolicy,
+  isJoinPending,
   isAdmin,
   currentUserId,
   onJoinToggle,
@@ -1358,6 +1380,8 @@ function ClubChatCard({
   isLoggedIn: boolean
   isJoined: boolean
   isBanned: boolean
+  joinPolicy?: 'OPEN' | 'APPROVAL' | null
+  isJoinPending?: boolean
   isAdmin: boolean
   currentUserId?: string
   onJoinToggle: () => void
@@ -1494,12 +1518,27 @@ function ClubChatCard({
             You are banned from this club.
           </div>
         ) : !canPost ? (
-          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-            <div className="min-w-0">Join this club to post messages.</div>
-            <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
-              Join
-            </Button>
-          </div>
+          joinPolicy === 'APPROVAL' ? (
+            isJoinPending ? (
+              <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+                Your join request is pending admin approval.
+              </div>
+            ) : (
+              <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
+                <div className="min-w-0">Request to join this club to post messages.</div>
+                <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
+                  Request
+                </Button>
+              </div>
+            )
+          ) : (
+            <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
+              <div className="min-w-0">Join this club to post messages.</div>
+              <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
+                Join
+              </Button>
+            </div>
+          )
         ) : (
           <div className="flex items-end gap-2">
             <Textarea
@@ -1537,6 +1576,18 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
 
   const { data, isLoading, error } = trpc.club.listMembers.useQuery({ clubId }, { enabled: !!clubId })
 
+  const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.club.listMembers.invalidate({ clubId }), utils.club.get.invalidate({ id: clubId })])
+    },
+  })
+
+  const rejectJoinRequest = trpc.club.rejectJoinRequest.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.club.listMembers.invalidate({ clubId })])
+    },
+  })
+
   const kickMember = trpc.club.kickMember.useMutation({
     onSuccess: async () => {
       await Promise.all([utils.club.listMembers.invalidate({ clubId }), utils.club.get.invalidate({ id: clubId })])
@@ -1557,6 +1608,17 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
 
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
+
+  const joinRequests = useMemo(() => {
+    const all = (data?.joinRequests ?? []) as any[]
+    if (!q) return all
+    return all.filter((r) => {
+      const name = String(r?.user?.name ?? '').toLowerCase()
+      const email = String(r?.user?.emailMasked ?? '').toLowerCase()
+      const id = String(r?.userId ?? '').toLowerCase()
+      return name.includes(q) || email.includes(q) || id.includes(q)
+    })
+  }, [data?.joinRequests, q])
 
   const members = useMemo(() => {
     const all = (data?.members ?? []) as any[]
@@ -1589,6 +1651,8 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
           Members & bans (admins)
         </CardTitle>
         <div className="text-xs text-muted-foreground">
+          {joinRequests.length} request{joinRequests.length === 1 ? '' : 's'}
+          <span className="mx-1">•</span>
           {members.length} member{members.length === 1 ? '' : 's'}
           <span className="mx-1">•</span>
           {bans.length} ban{bans.length === 1 ? '' : 's'}
@@ -1596,13 +1660,88 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <Input
-          placeholder="Search members / bans…"
+          placeholder="Search requests / members / bans…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
 
         {isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
         {error ? <div className="text-sm text-destructive">{error.message}</div> : null}
+
+        <div className="rounded-md border bg-white p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium text-gray-900">Join requests</div>
+            <div className="text-xs text-muted-foreground">{joinRequests.length}</div>
+          </div>
+
+          {joinRequests.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No pending requests.</div>
+          ) : (
+            <div className="divide-y rounded-md border">
+              {joinRequests.slice(0, 200).map((r: any) => (
+                <div key={r.userId} className="p-2 flex items-center justify-between gap-2 bg-white">
+                  <div className="min-w-0 flex items-center gap-2">
+                    {r.user?.image ? (
+                      <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                        <Image src={r.user.image} alt="" fill className="object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
+                        {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gap-2"
+                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                      onClick={async () => {
+                        if (!confirm('Approve this join request?')) return
+                        try {
+                          await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                          toast({ title: 'Approved', description: 'User joined the club.' })
+                        } catch (err: any) {
+                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                        }
+                      }}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                      onClick={async () => {
+                        if (!confirm('Reject this join request?')) return
+                        try {
+                          await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                          toast({ title: 'Rejected', description: 'Request rejected.' })
+                        } catch (err: any) {
+                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                        }
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {joinRequests.length > 200 ? (
+            <div className="text-xs text-muted-foreground">Showing first 200 requests.</div>
+          ) : null}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">

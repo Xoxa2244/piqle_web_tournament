@@ -10,6 +10,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubKind') THEN
     CREATE TYPE "ClubKind" AS ENUM ('VENUE', 'COMMUNITY');
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubJoinPolicy') THEN
+    CREATE TYPE "ClubJoinPolicy" AS ENUM ('OPEN', 'APPROVAL');
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ClubAdminRole') THEN
     CREATE TYPE "ClubAdminRole" AS ENUM ('ADMIN', 'MODERATOR');
   END IF;
@@ -24,6 +27,7 @@ CREATE TABLE IF NOT EXISTS "clubs" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "name" TEXT NOT NULL,
   "kind" "ClubKind" NOT NULL DEFAULT 'VENUE',
+  "join_policy" "ClubJoinPolicy" NOT NULL DEFAULT 'OPEN',
   "description" TEXT,
   "logo_url" TEXT,
   "address" TEXT,
@@ -40,6 +44,9 @@ CREATE TABLE IF NOT EXISTS "clubs" (
 -- Add missing columns if clubs table already existed (idempotent patching)
 ALTER TABLE "clubs"
   ADD COLUMN IF NOT EXISTS "logo_url" TEXT;
+
+ALTER TABLE "clubs"
+  ADD COLUMN IF NOT EXISTS "join_policy" "ClubJoinPolicy" NOT NULL DEFAULT 'OPEN';
 
 -- Link tournaments -> clubs
 ALTER TABLE "tournaments"
@@ -87,6 +94,38 @@ END
 $$;
 
 CREATE INDEX IF NOT EXISTS "club_followers_user_id_idx" ON "club_followers" ("user_id");
+
+-- Join requests (for closed clubs)
+-- Notes:
+-- - If club.join_policy = 'APPROVAL', users create a join request and admins approve.
+CREATE TABLE IF NOT EXISTS "club_join_requests" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_join_requests_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_join_requests_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'club_join_requests_unique_club_user'
+  ) THEN
+    ALTER TABLE "club_join_requests"
+      ADD CONSTRAINT "club_join_requests_unique_club_user" UNIQUE ("club_id", "user_id");
+  END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS "club_join_requests_club_id_created_at_idx"
+  ON "club_join_requests" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_join_requests_user_id_idx"
+  ON "club_join_requests" ("user_id");
 
 -- Admins
 CREATE TABLE IF NOT EXISTS "club_admins" (

@@ -10,6 +10,11 @@ const isMissingDbRelation = (err: any, relationName: string) => {
   return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
 }
 
+const isMissingDbColumn = (err: any, columnName: string) => {
+  const msg = String(err?.message ?? '').toLowerCase()
+  return msg.includes(`"${columnName.toLowerCase()}"`) && msg.includes('does not exist')
+}
+
 const maskEmail = (email: string | null | undefined) => {
   try {
     const [localRaw, domainRaw] = String(email ?? '').split('@')
@@ -94,6 +99,7 @@ const optionalHttpUrl = z.preprocess(
 const clubCreateInput = z.object({
   name: z.string().min(2).max(120),
   kind: z.enum(['VENUE', 'COMMUNITY']).default('VENUE'),
+  joinPolicy: z.enum(['OPEN', 'APPROVAL']).default('OPEN'),
   description: z.string().max(2000).optional(),
   logoUrl: z.string().url().optional(),
   address: z.string().max(300).optional(),
@@ -153,6 +159,7 @@ export const clubRouter = createTRPCRouter({
           id: true,
           name: true,
           kind: true,
+          joinPolicy: true,
           logoUrl: true,
           address: true,
           city: true,
@@ -166,6 +173,11 @@ export const clubRouter = createTRPCRouter({
             },
           },
           followers: {
+            where: { userId },
+            select: { id: true },
+            take: 1,
+          },
+          joinRequests: {
             where: { userId },
             select: { id: true },
             take: 1,
@@ -190,6 +202,7 @@ export const clubRouter = createTRPCRouter({
         id: club.id,
         name: club.name,
         kind: club.kind,
+        joinPolicy: club.joinPolicy ?? 'OPEN',
         logoUrl: club.logoUrl,
         address: club.address,
         city: club.city,
@@ -199,6 +212,7 @@ export const clubRouter = createTRPCRouter({
         followersCount: club._count.followers,
         tournamentsCount: club._count.tournaments,
         isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
+        isJoinPending: (club.joinRequests?.length ?? 0) > 0 && userId !== DUMMY_USER_ID,
         nextTournament: club.tournaments[0] ?? null,
       }))
     }),
@@ -215,6 +229,7 @@ export const clubRouter = createTRPCRouter({
           id: true,
           name: true,
           kind: true,
+          joinPolicy: true,
           description: true,
           logoUrl: true,
           address: true,
@@ -285,6 +300,19 @@ export const clubRouter = createTRPCRouter({
           isBanned = Boolean(ban)
         } catch (err: any) {
           if (!isMissingDbRelation(err, 'club_bans')) throw err
+        }
+      }
+
+      let isJoinPending = false
+      if (!isBanned && userId !== DUMMY_USER_ID && club.joinPolicy === 'APPROVAL') {
+        try {
+          const req = await ctx.prisma.clubJoinRequest.findUnique({
+            where: { clubId_userId: { clubId: input.id, userId } },
+            select: { id: true },
+          })
+          isJoinPending = Boolean(req)
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
         }
       }
 
@@ -409,6 +437,8 @@ export const clubRouter = createTRPCRouter({
         tournaments,
         followersCount: club._count.followers,
         isFollowing: !isBanned && club.followers.length > 0 && userId !== DUMMY_USER_ID,
+        isJoinPending:
+          !isBanned && club.followers.length === 0 && userId !== DUMMY_USER_ID ? isJoinPending : false,
         isAdmin,
         bookingRequests,
         isBanned,
@@ -419,6 +449,15 @@ export const clubRouter = createTRPCRouter({
     .input(z.object({ clubId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, joinPolicy: true },
+      })
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
 
       const existing = await ctx.prisma.clubFollower.findUnique({
         where: {
@@ -432,9 +471,18 @@ export const clubRouter = createTRPCRouter({
 
       if (existing) {
         await ctx.prisma.clubFollower.delete({ where: { id: existing.id } })
-        return { isFollowing: false }
+        // Best-effort cleanup in case a join request exists.
+        try {
+          await ctx.prisma.clubJoinRequest.deleteMany({
+            where: { clubId: input.clubId, userId },
+          })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+        }
+        return { isFollowing: false, isJoinPending: false, status: 'left' as const }
       }
 
+      // If banned, block joining/requesting.
       try {
         const ban = await ctx.prisma.clubBan.findUnique({
           where: { clubId_userId: { clubId: input.clubId, userId } },
@@ -448,6 +496,26 @@ export const clubRouter = createTRPCRouter({
         if (!isMissingDbRelation(err, 'club_bans')) throw err
       }
 
+      if (club.joinPolicy === 'APPROVAL') {
+        try {
+          await ctx.prisma.clubJoinRequest.upsert({
+            where: { clubId_userId: { clubId: input.clubId, userId } },
+            create: { clubId: input.clubId, userId },
+            update: {},
+          })
+        } catch (err: any) {
+          if (isMissingDbRelation(err, 'club_join_requests')) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'club_join_requests table is missing. Apply DB migration first.',
+            })
+          }
+          throw err
+        }
+
+        return { isFollowing: false, isJoinPending: true, status: 'pending' as const }
+      }
+
       await ctx.prisma.clubFollower.create({
         data: {
           clubId: input.clubId,
@@ -455,33 +523,56 @@ export const clubRouter = createTRPCRouter({
         },
       })
 
-      return { isFollowing: true }
+      // Best-effort cleanup: open clubs should not have join requests.
+      try {
+        await ctx.prisma.clubJoinRequest.deleteMany({
+          where: { clubId: input.clubId, userId },
+        })
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+      }
+
+      return { isFollowing: true, isJoinPending: false, status: 'joined' as const }
     }),
 
   create: protectedProcedure.input(clubCreateInput).mutation(async ({ ctx, input }) => {
-    const club = await ctx.prisma.club.create({
-      data: {
-        name: input.name.trim(),
-        kind: input.kind,
-        description: input.description?.trim() || null,
-        logoUrl: input.logoUrl?.trim() || null,
-        address: input.address?.trim() || null,
-        city: input.city?.trim() || null,
-        state: input.state?.trim() || null,
-        country: input.country?.trim() || null,
-        courtReserveUrl: input.courtReserveUrl?.trim() || null,
-        bookingRequestEmail: input.bookingRequestEmail?.trim() || null,
-        isVerified: false,
-        admins: {
-          create: {
-            userId: ctx.session.user.id,
-            role: 'ADMIN',
+    try {
+      const club = await ctx.prisma.club.create({
+        data: {
+          name: input.name.trim(),
+          kind: input.kind,
+          joinPolicy: input.joinPolicy,
+          description: input.description?.trim() || null,
+          logoUrl: input.logoUrl?.trim() || null,
+          address: input.address?.trim() || null,
+          city: input.city?.trim() || null,
+          state: input.state?.trim() || null,
+          country: input.country?.trim() || null,
+          courtReserveUrl: input.courtReserveUrl?.trim() || null,
+          bookingRequestEmail: input.bookingRequestEmail?.trim() || null,
+          isVerified: false,
+          admins: {
+            create: {
+              userId: ctx.session.user.id,
+              role: 'ADMIN',
+            },
           },
         },
-      },
-    })
+        select: {
+          id: true,
+        },
+      })
 
-    return club
+      return club
+    } catch (err: any) {
+      if (isMissingDbColumn(err, 'join_policy')) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'clubs.join_policy column is missing. Apply DB migration first.',
+        })
+      }
+      throw err
+    }
   }),
 
   createAnnouncement: protectedProcedure
@@ -847,6 +938,28 @@ If you weren’t expecting this, you can ignore this email.`
         bans = []
       }
 
+      let joinRequests: Array<{
+        userId: string
+        createdAt: Date
+        user: { id: string; name: string | null; image: string | null; email: string }
+      }> = []
+
+      try {
+        joinRequests = await ctx.prisma.clubJoinRequest.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { createdAt: 'desc' },
+          take: 500,
+          select: {
+            userId: true,
+            createdAt: true,
+            user: { select: { id: true, name: true, image: true, email: true } },
+          },
+        })
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+        joinRequests = []
+      }
+
       return {
         myRole: myAdminRole.role,
         members: followers.map((f) => ({
@@ -876,6 +989,16 @@ If you weren’t expecting this, you can ignore this email.`
             image: b.bannedByUser.image,
           },
         })),
+        joinRequests: joinRequests.map((r) => ({
+          userId: r.userId,
+          requestedAt: r.createdAt,
+          user: {
+            id: r.user.id,
+            name: r.user.name,
+            image: r.user.image,
+            emailMasked: maskEmail(r.user.email),
+          },
+        })),
       }
     }),
 
@@ -899,6 +1022,95 @@ If you weren’t expecting this, you can ignore this email.`
       await ctx.prisma.clubFollower.deleteMany({
         where: { clubId: input.clubId, userId: input.userId },
       })
+
+      return { success: true }
+    }),
+
+  approveJoinRequest: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can approve requests' })
+      }
+
+      // If the user is banned, don't allow approval.
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'This user is banned from the club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
+      }
+
+      let req: { id: string } | null = null
+      try {
+        req = await ctx.prisma.clubJoinRequest.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          select: { id: true },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_join_requests')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_join_requests table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      if (!req) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Join request not found' })
+      }
+
+      await ctx.prisma.$transaction([
+        ctx.prisma.clubFollower.upsert({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          create: { clubId: input.clubId, userId: input.userId },
+          update: {},
+        }),
+        ctx.prisma.clubJoinRequest.delete({ where: { id: req.id } }),
+      ])
+
+      return { success: true }
+    }),
+
+  rejectJoinRequest: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can reject requests' })
+      }
+
+      try {
+        await ctx.prisma.clubJoinRequest.deleteMany({
+          where: { clubId: input.clubId, userId: input.userId },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_join_requests')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_join_requests table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
 
       return { success: true }
     }),
@@ -966,6 +1178,15 @@ If you weren’t expecting this, you can ignore this email.`
           })
         }
         throw err
+      }
+
+      // Best-effort cleanup: banned users shouldn't have pending join requests.
+      try {
+        await ctx.prisma.clubJoinRequest.deleteMany({
+          where: { clubId: input.clubId, userId: input.userId },
+        })
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
       }
 
       return { success: true }

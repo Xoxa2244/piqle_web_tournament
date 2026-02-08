@@ -68,6 +68,7 @@ export default function NewClubPage() {
   const [form, setForm] = useState({
     name: '',
     kind: 'VENUE' as 'VENUE' | 'COMMUNITY',
+    joinPolicy: 'OPEN' as 'OPEN' | 'APPROVAL',
     description: '',
     logoUrl: '',
     address: '',
@@ -183,6 +184,7 @@ export default function NewClubPage() {
     createClub.mutate({
       name: form.name,
       kind: form.kind,
+      joinPolicy: form.joinPolicy,
       description: form.description || undefined,
       logoUrl: form.logoUrl || undefined,
       address: form.address || undefined,
@@ -357,6 +359,29 @@ export default function NewClubPage() {
                   Community/coach
                 </Button>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Membership</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={form.joinPolicy === 'OPEN' ? 'default' : 'outline'}
+                  onClick={() => setForm((p) => ({ ...p, joinPolicy: 'OPEN' }))}
+                >
+                  Open
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.joinPolicy === 'APPROVAL' ? 'default' : 'outline'}
+                  onClick={() => setForm((p) => ({ ...p, joinPolicy: 'APPROVAL' }))}
+                >
+                  Closed (approval)
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Open clubs let anyone join instantly. Closed clubs require admin approval.
+              </p>
             </div>
 
             <div className="space-y-2">

@@ -37,6 +37,7 @@ model User {
   clubChatMessages         ClubChatMessage[]
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
+  clubJoinRequests         ClubJoinRequest[]
   clubBans                 ClubBan[]
   clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
   players                  Player[]
@@ -155,6 +156,7 @@ model Club {
   id                 String               @id @default(uuid())
   name               String
   kind               ClubKind             @default(VENUE)
+  joinPolicy         ClubJoinPolicy       @default(OPEN) @map("join_policy")
   description        String?
   logoUrl            String?              @map("logo_url")
   address            String?
@@ -169,6 +171,7 @@ model Club {
 
   tournaments        Tournament[]
   followers          ClubFollower[]
+  joinRequests       ClubJoinRequest[]
   admins             ClubAdmin[]
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
@@ -191,6 +194,21 @@ model ClubFollower {
   @@unique([clubId, userId])
   @@index([userId])
   @@map("club_followers")
+}
+
+model ClubJoinRequest {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([clubId, createdAt])
+  @@index([userId])
+  @@map("club_join_requests")
 }
 
 model ClubAdmin {
@@ -834,6 +852,11 @@ enum UserRole {
 enum ClubKind {
   VENUE
   COMMUNITY
+}
+
+enum ClubJoinPolicy {
+  OPEN
+  APPROVAL
 }
 
 enum ClubAdminRole {
