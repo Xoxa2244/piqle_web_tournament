@@ -522,29 +522,22 @@ function NewTournamentPageInner() {
   const requiresPayoutsSetup =
     entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const [createArmed, setCreateArmed] = useState(true)
 
-    // Only create from the explicit final CTA. This prevents accidental submits (Enter key,
-    // or any unexpected submitter) from creating a tournament early.
-    const submitter = (e.nativeEvent as any)?.submitter as HTMLElement | undefined
-    const submitAction =
-      typeof submitter?.getAttribute === 'function'
-        ? submitter.getAttribute('data-action')
-        : null
-
-    // Prevent accidental submits (e.g. pressing Enter) from creating a tournament
-    // before the final "Publish" step.
-    if (stepIndex < totalSteps - 1) {
-      goNext()
+  useEffect(() => {
+    // Prevent an accidental second click from creating the tournament immediately
+    // when stepping into the final screen (double click on "Next").
+    if (stepIndex !== totalSteps - 1) {
+      setCreateArmed(true)
       return
     }
 
-    // If the submit was triggered by something other than the final create button, ignore it.
-    if (submitter && submitAction !== 'create') {
-      return
-    }
+    setCreateArmed(false)
+    const timer = window.setTimeout(() => setCreateArmed(true), 400)
+    return () => window.clearTimeout(timer)
+  }, [stepIndex, totalSteps])
 
+  const createTournament = () => {
     if (!validateBaseForm()) {
       // Jump user to the step with the missing required fields.
       if (!formData.title.trim()) setStepIndex(0)
@@ -590,6 +583,15 @@ function NewTournamentPageInner() {
       ...payload,
       structure: structureDraft!,
     })
+  }
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Allow Enter to behave like "Next" in earlier steps.
+    if (stepIndex < totalSteps - 1) {
+      goNext()
+    }
+    // On the final step, creation is explicit via the Create button onClick.
   }
 
   const handleStructureSave = (structure: TournamentStructureInput) => {
@@ -874,7 +876,7 @@ function NewTournamentPageInner() {
           <CardDescription>{currentStep.description}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleFormSubmit} className="space-y-6">
             {stepIndex === 0 ? (
               <>
                 <div>
@@ -1350,15 +1352,20 @@ function NewTournamentPageInner() {
                   </Button>
                 ) : (
                   <Button
-                    type="submit"
-                    data-action="create"
+                    type="button"
+                    onClick={createTournament}
                     disabled={
+                      !createArmed ||
                       createTournamentWithStructure.isPending ||
                       requiresPayoutsSetup ||
                       !structureDraft
                     }
                   >
-                    {createTournamentWithStructure.isPending ? 'Creating…' : 'Create Tournament'}
+                    {createTournamentWithStructure.isPending
+                      ? 'Creating…'
+                      : !createArmed
+                        ? 'One sec…'
+                        : 'Create Tournament'}
                   </Button>
                 )}
               </div>
