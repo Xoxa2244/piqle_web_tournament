@@ -14,8 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode } from 'lucide-react'
 import Image from 'next/image'
+import QRCode from 'react-qr-code'
 
 export const dynamic = 'force-dynamic'
 
@@ -1017,6 +1018,7 @@ function ClubInviteCard({
   const [inviteUrl, setInviteUrl] = useState('')
   const [userQuery, setUserQuery] = useState('')
   const [email, setEmail] = useState('')
+  const [showQr, setShowQr] = useState(false)
 
   const utils = trpc.useUtils()
   const sendInvite = trpc.club.sendInvite.useMutation()
@@ -1112,11 +1114,36 @@ function ClubInviteCard({
                 <Share2 className="h-4 w-4" />
                 {canShare ? 'Share' : 'Copy & Share'}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={() => setShowQr((v) => !v)}
+                disabled={!inviteUrl}
+                title="Show QR code"
+              >
+                <QrCode className="h-4 w-4" />
+                {showQr ? 'Hide QR' : 'QR'}
+              </Button>
             </div>
           </div>
           <div className="text-xs text-muted-foreground">
             Share this link in social media or copy it into a message.
           </div>
+          {showQr && inviteUrl ? (
+            <div className="rounded-md border bg-white p-3 flex flex-col sm:flex-row items-center gap-3">
+              <div className="rounded-md border bg-white p-2">
+                <QRCode
+                  value={inviteUrl}
+                  size={168}
+                  style={{ height: 'auto', maxWidth: '100%', width: 168 }}
+                />
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Scan to open the club page.
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {!isLoggedIn ? (
