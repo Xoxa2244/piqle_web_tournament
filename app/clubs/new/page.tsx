@@ -96,13 +96,15 @@ export default function NewClubPage() {
       const googleApi = await loadGoogleMaps({ apiKey, libraries: ['places'] })
       googleRef.current = googleApi
 
-      if (autocompleteRef.current) return
+      if (!autocompleteRef.current) {
+        autocompleteRef.current = new googleApi.maps.places.Autocomplete(addressInputRef.current, {
+          fields: ['formatted_address', 'geometry', 'place_id', 'address_components'],
+          types: ['geocode'],
+        })
+      }
 
-      autocompleteRef.current = new googleApi.maps.places.Autocomplete(addressInputRef.current, {
-        fields: ['formatted_address', 'geometry', 'place_id', 'address_components'],
-        types: ['geocode'],
-      })
-
+      // In React StrictMode (dev) effects can mount/cleanup twice; make sure we always have a listener attached.
+      listenerRef.current?.remove?.()
       listenerRef.current = autocompleteRef.current.addListener('place_changed', () => {
         const place = autocompleteRef.current?.getPlace()
         const details = extractAddressDetails(place)
@@ -135,7 +137,11 @@ export default function NewClubPage() {
   }, [setupAutocomplete])
 
   const handleAddressBlur = async () => {
-    if (!form.address.trim()) return
+    // Read from the input element, since Google Autocomplete can update the DOM value
+    // before React state updates (and blur can fire while selecting a suggestion).
+    const rawValue = addressInputRef.current?.value ?? form.address
+    const value = rawValue.trim()
+    if (!value) return
     if (addressSelected) return
 
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
@@ -145,7 +151,7 @@ export default function NewClubPage() {
       googleRef.current = googleApi
 
       const geocoder = new googleApi.maps.Geocoder()
-      geocoder.geocode({ address: form.address }, (results: any, status: any) => {
+      geocoder.geocode({ address: value }, (results: any, status: any) => {
         if (status !== 'OK' || !results?.length) {
           setAddressError('Select a valid address from the list.')
           return
