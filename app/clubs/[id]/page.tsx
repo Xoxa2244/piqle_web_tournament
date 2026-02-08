@@ -10,11 +10,53 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { Calendar, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus } from 'lucide-react'
+import { fromCents } from '@/lib/payment'
+import { cn } from '@/lib/utils'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus } from 'lucide-react'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+const toLocalYmd = (date: Date) => {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
+const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
+const addDays = (date: Date, delta: number) => {
+  const d = new Date(date)
+  d.setDate(d.getDate() + delta)
+  return d
+}
+const addMonths = (date: Date, delta: number) => new Date(date.getFullYear(), date.getMonth() + delta, 1)
+
+const formatMonthYear = (date: Date) => `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`
+
+const buildMonthGrid = (month: Date) => {
+  const first = startOfMonth(month)
+  const startOffset = first.getDay() // 0=Sun
+  const gridStart = addDays(first, -startOffset)
+  return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
+}
 
 export default function ClubDetailPage() {
   const params = useParams()
@@ -74,6 +116,8 @@ export default function ClubDetailPage() {
     if (!club) return 'Join'
     return club.isFollowing ? 'Joined' : 'Join'
   }, [club])
+
+  const tournaments = useMemo(() => club?.tournaments ?? [], [club])
 
   const handleToggleFollow = async () => {
     if (!isLoggedIn) {
@@ -156,6 +200,22 @@ export default function ClubDetailPage() {
     )
   }
 
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const t of tournaments) {
+      const d = new Date(t.startDate)
+      const key = toLocalYmd(d)
+      const list = map.get(key) ?? []
+      list.push(t)
+      map.set(key, list)
+    }
+    for (const [key, list] of map.entries()) {
+      list.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      map.set(key, list)
+    }
+    return map
+  }, [tournaments])
+
   return (
     <div className="space-y-6 px-6 py-8">
       <div className="space-y-3">
@@ -230,42 +290,71 @@ export default function ClubDetailPage() {
               ) : null}
             </CardHeader>
             <CardContent className="space-y-3">
-              {club.tournaments.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No upcoming events for this club yet.
-                </div>
-              ) : (
-                club.tournaments.map((tournament) => (
-                  <div
-                    key={tournament.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(tournament.startDate).toLocaleString()}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
-                          <Badge variant="secondary">Paid</Badge>
-                        ) : (
-                          <Badge variant="outline">Free</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link href={`/tournaments/${tournament.id}/register`}>
-                        <Button>Register</Button>
-                      </Link>
-                      {tournament.publicSlug ? (
-                        <Link href={`/t/${tournament.publicSlug}`}>
-                          <Button variant="outline">Public board</Button>
-                        </Link>
-                      ) : null}
-                    </div>
+              <Tabs defaultValue="list">
+                <div className="flex items-center justify-between gap-2">
+                  <TabsList className="h-9">
+                    <TabsTrigger value="list" className="px-3 py-1 text-xs">
+                      List
+                    </TabsTrigger>
+                    <TabsTrigger value="calendar" className="px-3 py-1 text-xs">
+                      Calendar
+                    </TabsTrigger>
+                  </TabsList>
+                  <div className="text-xs text-muted-foreground">
+                    Showing next {tournaments.length} event{tournaments.length === 1 ? '' : 's'}
                   </div>
-                ))
-              )}
+                </div>
+
+                <TabsContent value="list" className="space-y-3">
+                  {tournaments.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      No upcoming events for this club yet.
+                    </div>
+                  ) : (
+                    tournaments.map((tournament) => (
+                      <div
+                        key={tournament.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {new Date(tournament.startDate).toLocaleString()}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
+                              <Badge variant="secondary">Paid</Badge>
+                            ) : (
+                              <Badge variant="outline">Free</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/tournaments/${tournament.id}/register`}>
+                            <Button>
+                              {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
+                                ? `Pay & Join${typeof tournament.entryFeeCents === 'number' ? ` — $${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''}`
+                                : 'Join'}
+                            </Button>
+                          </Link>
+                          {tournament.publicSlug ? (
+                            <Link href={`/t/${tournament.publicSlug}`}>
+                              <Button variant="outline">Public board</Button>
+                            </Link>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+
+                <TabsContent value="calendar">
+                  <ClubEventsCalendar
+                    tournaments={tournaments}
+                    eventsByDay={eventsByDay}
+                  />
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
 
@@ -436,6 +525,182 @@ export default function ClubDetailPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ClubEventsCalendar({
+  tournaments,
+  eventsByDay,
+}: {
+  tournaments: Array<{
+    id: string
+    title: string
+    startDate: Date | string
+    endDate?: Date | string
+    entryFeeCents?: number | null
+    publicSlug?: string | null
+  }>
+  eventsByDay: Map<string, any[]>
+}) {
+  const now = new Date()
+  const initialBase = tournaments[0] ? new Date(tournaments[0].startDate) : now
+  const [month, setMonth] = useState(() => startOfMonth(initialBase))
+  const [selectedKey, setSelectedKey] = useState<string | null>(() =>
+    tournaments[0] ? toLocalYmd(initialBase) : null
+  )
+
+  const grid = useMemo(() => buildMonthGrid(month), [month])
+
+  const isTodayKey = toLocalYmd(now)
+  const selectedEvents = selectedKey ? (eventsByDay.get(selectedKey) ?? []) : []
+
+  const parseYmd = (key: string) => {
+    const [y, m, d] = key.split('-').map((x) => Number(x))
+    return new Date(y, (m ?? 1) - 1, d ?? 1)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setMonth((m) => addMonths(m, -1))}
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => setMonth((m) => addMonths(m, 1))}
+            aria-label="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <div className="text-sm font-medium text-gray-900">{formatMonthYear(month)}</div>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setMonth(startOfMonth(now))
+            setSelectedKey(isTodayKey)
+          }}
+        >
+          Today
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 text-xs text-muted-foreground">
+        {DAY_LABELS.map((label) => (
+          <div key={label} className="px-1 py-1 text-center">
+            {label}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {grid.map((date) => {
+          const key = toLocalYmd(date)
+          const inMonth = date.getMonth() === month.getMonth()
+          const isToday = key === isTodayKey
+          const isSelected = selectedKey === key
+          const events = eventsByDay.get(key) ?? []
+          const eventCount = events.length
+
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setSelectedKey(key)}
+              className={cn(
+                'h-12 sm:h-14 rounded-md border px-2 py-1 text-left transition-colors',
+                inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
+                eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
+                isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
+                isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className={cn('text-xs font-medium', inMonth ? 'text-gray-900' : 'text-gray-400')}>
+                  {date.getDate()}
+                </div>
+                {eventCount > 0 ? (
+                  <div className="text-[10px] font-semibold text-blue-700 bg-blue-100 rounded px-1">
+                    {eventCount}
+                  </div>
+                ) : null}
+              </div>
+              {eventCount > 0 ? (
+                <div className="mt-1 flex items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                  <div className="text-[10px] text-blue-700 truncate">
+                    {events[0]?.title ?? 'Event'}
+                  </div>
+                </div>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="rounded-md border p-3 space-y-3">
+        <div className="text-sm font-medium text-gray-900">
+          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
+        </div>
+        {!selectedKey ? (
+          <div className="text-sm text-muted-foreground">
+            Pick a date to see what is happening at this club.
+          </div>
+        ) : selectedEvents.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No events on this day.</div>
+        ) : (
+          <div className="space-y-2">
+            {selectedEvents.map((tournament: any) => {
+              const fee = typeof tournament.entryFeeCents === 'number' ? tournament.entryFeeCents : 0
+              const isPaid = fee > 0
+              return (
+                <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{tournament.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(tournament.startDate).toLocaleString()}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      {isPaid ? (
+                        <Badge variant="secondary">${fromCents(fee).toFixed(2)}</Badge>
+                      ) : (
+                        <Badge variant="outline">Free</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/tournaments/${tournament.id}/register`}>
+                      <Button size="sm">
+                        {isPaid ? 'Pay & Join' : 'Join'}
+                      </Button>
+                    </Link>
+                    {tournament.publicSlug ? (
+                      <Link href={`/t/${tournament.publicSlug}`}>
+                        <Button size="sm" variant="outline">
+                          Public board
+                        </Button>
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
