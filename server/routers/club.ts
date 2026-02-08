@@ -178,6 +178,11 @@ export const clubRouter = createTRPCRouter({
             select: { id: true },
             take: 1,
           },
+          admins: {
+            where: { userId },
+            select: { id: true },
+            take: 1,
+          },
           joinRequests: {
             where: { userId },
             select: { id: true },
@@ -213,6 +218,7 @@ export const clubRouter = createTRPCRouter({
         followersCount: club._count.followers,
         tournamentsCount: club._count.tournaments,
         isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
+        isAdmin: club.admins.length > 0 && userId !== DUMMY_USER_ID,
         isJoinPending: (club.joinRequests?.length ?? 0) > 0 && userId !== DUMMY_USER_ID,
         nextTournament: club.tournaments[0] ?? null,
       }))
