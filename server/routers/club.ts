@@ -35,7 +35,7 @@ const computeDuprSummary = (mins: number[], maxs: number[]) => {
   const fmt = (n: number) => n.toFixed(2).replace(/\.?0+$/, '')
 
   if (min === null && max === null) {
-    return { duprMin: null as number | null, duprMax: null as number | null, duprLabel: null as string | null }
+    return { duprMin: null as number | null, duprMax: null as number | null, duprLabel: 'DUPR Open' as string | null }
   }
 
   if (min !== null && max !== null) {
