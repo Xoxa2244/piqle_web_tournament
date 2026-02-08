@@ -91,6 +91,7 @@ export default function HomePage() {
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
+  const [modalTab, setModalTab] = useState<'information' | 'comments' | 'view-results'>('information')
   const [filter, setFilter] = useState<FilterType>('all')
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
@@ -109,9 +110,13 @@ export default function HomePage() {
     setBaseUrl(window.location.origin)
   }, [])
 
-  // Reset description expanded when opening/closing modal
+  // Reset description expanded and modal tab when opening/closing modal
   useEffect(() => {
-    if (!selectedTournament) setDescriptionExpanded(false)
+    if (!selectedTournament) {
+      setDescriptionExpanded(false)
+    } else {
+      setModalTab('information')
+    }
   }, [selectedTournament])
   
   // Get ratings for all tournaments
@@ -376,11 +381,8 @@ export default function HomePage() {
   }
 
   const handleCardClick = (tournamentId: string, e: React.MouseEvent) => {
-    // Don't open modal if clicking on View Results button or its parent Link
     const target = e.target as HTMLElement
-    if (target.closest('a[href*="/scoreboard/"]') || target.closest('button')) {
-      return
-    }
+    if (target.closest('button') || target.closest('a')) return
     setSelectedTournament(tournamentId)
   }
 
@@ -634,7 +636,7 @@ export default function HomePage() {
                     )}
                   </div>
 
-                  {/* Fixed bottom section: Tournament Director, Like/Dislike, View Results, Join — same strip as on /admin */}
+                  {/* Fixed bottom section: Tournament Director, Like/Dislike, Join — same strip as on /admin */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
                     {/* Tournament Director — on the same divider strip */}
                     {tournament.user && (
@@ -701,15 +703,6 @@ export default function HomePage() {
                       </button>
                     </div>
 
-                    {/* 16px gap only; !mt-4 overrides parent space-y-3 (removes 12px) */}
-                    <div className="!mt-4">
-                      <Link href={`/scoreboard/${tournament.id}`}>
-                        <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                          View Results
-                        </Button>
-                      </Link>
-                    </div>
-
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                       const registrationOpen = isRegistrationOpen(tournament)
@@ -722,8 +715,8 @@ export default function HomePage() {
 
                       return (
                         <Button
-                          className="w-full"
-                          variant={status === 'active' ? 'destructive' : 'default'}
+                          className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                          variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
                           disabled={!registrationOpen}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -811,7 +804,7 @@ export default function HomePage() {
                   )}
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
-                    <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
+                    <p className="text-gray-600 mt-1">Tournament Details</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -831,6 +824,46 @@ export default function HomePage() {
                       )}
                     </>
                   )}
+                  {(() => {
+                    const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                    const registrationOpen = isRegistrationOpen(tournament)
+                    const label =
+                      status === 'active'
+                        ? 'Cancel Registration'
+                        : status === 'waitlisted'
+                        ? 'Leave Waitlist'
+                        : 'Join Tournament'
+                    return (
+                      <Button
+                        className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                        variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
+                        disabled={!registrationOpen}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!session) {
+                            router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                            return
+                          }
+                          if (status === 'active') {
+                            if (confirm('Cancel registration?')) {
+                              cancelRegistration.mutate({ tournamentId: tournament.id })
+                            }
+                            return
+                          }
+                          if (status === 'waitlisted') {
+                            const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                            if (divisionId && confirm('Leave waitlist?')) {
+                              leaveWaitlist.mutate({ divisionId })
+                            }
+                            return
+                          }
+                          router.push(`/tournaments/${tournament.id}/register`)
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    )
+                  })()}
                   <button
                     onClick={() => {
                       setSelectedTournament(null)
@@ -843,247 +876,288 @@ export default function HomePage() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                {/* Left Side - Tournament Info */}
-                <div className="w-full lg:w-1/2 border-r-0 lg:border-r border-gray-200 overflow-y-auto p-6">
-                  <div className="space-y-4">
-                    
-                    {/* Description */}
-                    {tournament.description && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
-                        <div 
-                          className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
-                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                        />
-                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
-                          <button
-                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
-                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                          >
-                            {descriptionExpanded ? 'Show less' : 'Show more'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Tournament Info */}
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Information</h3>
-                      <div className="space-y-2">
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          <span>
-                            {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
-                          </span>
-                        </div>
-                        
-                        {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <ClipboardList className="h-4 w-4 mr-2" />
-                            <span>
-                              Registration: {(tournament as any).registrationStartDate
-                                ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
-                                : '—'}
-                              {' – '}
-                              {(tournament as any).registrationEndDate
-                                ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
-                                : '—'}
-                            </span>
-                          </div>
-                        )}
-                        
-                        {tournament.venueName && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <MapPin className="h-4 w-4 mr-2" />
-                            <span>{tournament.venueName}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Users className="h-4 w-4 mr-2" />
-                          <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
-                        </div>
-
-                        {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Trophy className="h-4 w-4 mr-2" />
-                            <span>Entry Fee: ${tournament.entryFee}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Divisions */}
-                    {tournament.divisions.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {(tournament.divisions as any[]).map((division: any) => (
-                            <Badge key={division.id} variant="secondary">
-                              {division.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tournament Director */}
-                    {tournament.user && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
-                        <Link
-                          href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
-                          className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
-                        >
-                          <AvatarImage
-                            src={(tournament.user as { image?: string | null }).image}
-                            alt={tournament.user.name || tournament.user.email || 'TD'}
-                            userId={tournament.user.id}
-                            size={32}
-                          />
-                          <span className="font-medium">
-                            {tournament.user.name || tournament.user.email}
-                          </span>
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+              {/* Tabs */}
+                <div className="border-b border-gray-200 px-6">
+                  <nav className="flex gap-6" aria-label="Tabs">
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('information')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'information'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Information
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('comments')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'comments'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Comments ({commentCounts?.[selectedTournament] || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('view-results')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'view-results'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      View Results
+                    </button>
+                  </nav>
                 </div>
 
-                {/* Right Side - Comments */}
-                <div className="w-full lg:w-1/2 overflow-y-auto flex flex-col border-t lg:border-t-0 border-gray-200">
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Comments ({commentCounts?.[selectedTournament] || 0})
-                    </h3>
-                  </div>
-                  
-                  {/* Comments List */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    {comments && comments.length > 0 ? (
-                      comments.map((comment) => {
-                        const isOwnComment = session?.user?.id === comment.user.id
-                        return (
-                          <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
-                            <div className="flex items-start space-x-3">
-                              <AvatarImage
-                                src={comment.user.image}
-                                alt={comment.user.name || comment.user.email || 'User'}
-                                userId={comment.user.id}
-                                size={32}
-                              />
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-medium text-sm text-gray-900">
-                                      {comment.user.name || comment.user.email}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
-                                    </span>
-                                  </div>
-                                  <div className="relative">
-                                    <button
-                                      onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
-                                      className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </button>
-                                    {openCommentMenu === comment.id && (
-                                      <>
-                                        <div 
-                                          className="fixed inset-0 z-10" 
-                                          onClick={() => setOpenCommentMenu(null)}
-                                        />
-                                        <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
-                                          {isOwnComment && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenCommentMenu(null)
-                                                if (confirm('Are you sure you want to delete this comment?')) {
-                                                  deleteComment.mutate({ commentId: comment.id })
-                                                }
-                                              }}
-                                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                              <span>Delete</span>
-                                            </button>
-                                          )}
-                                          <button
-                                            onClick={() => {
-                                              setOpenCommentMenu(null)
-                                              setReportCommentModal({
-                                                commentId: comment.id,
-                                                commentText: comment.text,
-                                                authorName: comment.user.name || 'Unknown',
-                                                authorEmail: comment.user.email || ''
-                                              })
-                                            }}
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                          >
-                                            <AlertTriangle className="h-4 w-4" />
-                                            <span>Report</span>
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-                                  {comment.text}
-                                </p>
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                  {/* Tab: Information */}
+                  {modalTab === 'information' && (
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div className="space-y-4">
+                        {/* Tournament status */}
+                        <div>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}
+                          >
+                            {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                          </span>
+                        </div>
+                        {tournament.description && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                            <div 
+                              className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                              dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                            />
+                            {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                              <button
+                                onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                                className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                              >
+                                {descriptionExpanded ? 'Show less' : 'Show more'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 mb-2">Information</h3>
+                          <div className="space-y-2">
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              <span>
+                                {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <ClipboardList className="h-4 w-4 mr-2" />
+                                <span>
+                                  Registration: {(tournament as any).registrationStartDate
+                                    ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                                    : '—'}
+                                  {' – '}
+                                  {(tournament as any).registrationEndDate
+                                    ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                                    : '—'}
+                                </span>
                               </div>
+                            )}
+                            {tournament.venueName && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <MapPin className="h-4 w-4 mr-2" />
+                                <span>{tournament.venueName}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Users className="h-4 w-4 mr-2" />
+                              <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <Trophy className="h-4 w-4 mr-2" />
+                                <span>Entry Fee: ${tournament.entryFee}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {tournament.divisions.length > 0 && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {(tournament.divisions as any[]).map((division: any) => (
+                                <Badge key={division.id} variant="secondary">
+                                  {division.name}
+                                </Badge>
+                              ))}
                             </div>
                           </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p>No comments yet. Be the first to comment!</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Comment Input */}
-                  {session ? (
-                    <div className="p-6 border-t border-gray-200">
-                      <div className="flex space-x-2">
-                        <Input
-                          placeholder="Write a comment..."
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault()
-                              handleCommentSubmit()
-                            }
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          onClick={handleCommentSubmit}
-                          disabled={!commentText.trim() || createComment.isPending}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Send className="h-4 w-4" />
-                        </Button>
+                        )}
+                        {tournament.user && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
+                            <Link
+                              href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
+                              className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
+                            >
+                              <AvatarImage
+                                src={(tournament.user as { image?: string | null }).image}
+                                alt={tournament.user.name || tournament.user.email || 'TD'}
+                                userId={tournament.user.id}
+                                size={32}
+                              />
+                              <span className="font-medium">
+                                {tournament.user.name || tournament.user.email}
+                              </span>
+                            </Link>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <div className="p-6 border-t border-gray-200 text-center">
-                      <p className="text-sm text-gray-500 mb-2">Please log in to post comments</p>
-                      <Link href="/auth/signin">
-                        <Button variant="outline" size="sm">
-                          Login
-                        </Button>
-                      </Link>
+                  )}
+
+                  {/* Tab: Comments */}
+                  {modalTab === 'comments' && (
+                    <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        {comments && comments.length > 0 ? (
+                          comments.map((comment) => {
+                            const isOwnComment = session?.user?.id === comment.user.id
+                            return (
+                              <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
+                                <div className="flex items-start space-x-3">
+                                  <AvatarImage
+                                    src={comment.user.image}
+                                    alt={comment.user.name || comment.user.email || 'User'}
+                                    userId={comment.user.id}
+                                    size={32}
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="flex items-center space-x-2">
+                                        <span className="font-medium text-sm text-gray-900">
+                                          {comment.user.name || comment.user.email}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
+                                        </span>
+                                      </div>
+                                      <div className="relative">
+                                        <button
+                                          onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
+                                          className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                        >
+                                          <MoreVertical className="h-4 w-4" />
+                                        </button>
+                                        {openCommentMenu === comment.id && (
+                                          <>
+                                            <div 
+                                              className="fixed inset-0 z-10" 
+                                              onClick={() => setOpenCommentMenu(null)}
+                                            />
+                                            <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                                              {isOwnComment && (
+                                                <button
+                                                  onClick={() => {
+                                                    setOpenCommentMenu(null)
+                                                    if (confirm('Are you sure you want to delete this comment?')) {
+                                                      deleteComment.mutate({ commentId: comment.id })
+                                                    }
+                                                  }}
+                                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                                >
+                                                  <Trash2 className="h-4 w-4" />
+                                                  <span>Delete</span>
+                                                </button>
+                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  setOpenCommentMenu(null)
+                                                  setReportCommentModal({
+                                                    commentId: comment.id,
+                                                    commentText: comment.text,
+                                                    authorName: comment.user.name || 'Unknown',
+                                                    authorEmail: comment.user.email || ''
+                                                  })
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                                              >
+                                                <AlertTriangle className="h-4 w-4" />
+                                                <span>Report</span>
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                      {comment.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                            <p>No comments yet. Be the first to comment!</p>
+                          </div>
+                        )}
+                      </div>
+                      {session ? (
+                        <div className="p-6 border-t border-gray-200 flex-shrink-0">
+                          <div className="flex space-x-2">
+                            <Input
+                              placeholder="Write a comment..."
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault()
+                                  handleCommentSubmit()
+                                }
+                              }}
+                              className="flex-1"
+                            />
+                            <Button
+                              onClick={handleCommentSubmit}
+                              disabled={!commentText.trim() || createComment.isPending}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-6 border-t border-gray-200 text-center flex-shrink-0">
+                          <p className="text-sm text-gray-500 mb-2">Please log in to post comments</p>
+                          <Link href="/auth/signin">
+                            <Button variant="outline" size="sm">
+                              Login
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: View Results */}
+                  {modalTab === 'view-results' && (
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <iframe
+                        src={`/scoreboard/${tournament.id}`}
+                        title="View Results"
+                        className="w-full flex-1 min-h-[60vh] border-0"
+                      />
                     </div>
                   )}
                 </div>
-              </div>
             </div>
           </div>
         )
