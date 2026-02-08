@@ -34,6 +34,7 @@ model User {
   clubAdminRoles           ClubAdmin[]
   clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
+  clubChatMessages         ClubChatMessage[]
   players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
@@ -167,6 +168,7 @@ model Club {
   admins             ClubAdmin[]
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
+  chatMessages       ClubChatMessage[]
 
   @@map("clubs")
 }
@@ -237,6 +239,24 @@ model ClubBookingRequest {
   @@index([clubId, createdAt])
   @@index([requesterUserId])
   @@map("club_booking_requests")
+}
+
+model ClubChatMessage {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  userId          String   @map("user_id")
+  text            String
+  deletedAt       DateTime? @map("deleted_at")
+  deletedByUserId String?  @map("deleted_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, createdAt])
+  @@index([userId])
+  @@map("club_chat_messages")
 }
 
 model Court {

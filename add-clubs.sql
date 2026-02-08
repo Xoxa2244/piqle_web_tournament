@@ -159,3 +159,27 @@ CREATE INDEX IF NOT EXISTS "club_booking_requests_club_id_created_at_idx"
   ON "club_booking_requests" ("club_id", "created_at");
 CREATE INDEX IF NOT EXISTS "club_booking_requests_requester_user_id_idx"
   ON "club_booking_requests" ("requester_user_id");
+
+-- Club chat (MVP)
+-- Notes:
+-- - Write access is enforced in app (must "join" club, i.e. be a follower) + admins/moderators.
+-- - Moderation is soft-delete via deleted_at/deleted_by_user_id.
+CREATE TABLE IF NOT EXISTS "club_chat_messages" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "text" TEXT NOT NULL,
+  "deleted_at" TIMESTAMP,
+  "deleted_by_user_id" TEXT,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_chat_messages_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_chat_messages_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_created_at_idx"
+  ON "club_chat_messages" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_chat_messages_user_id_idx"
+  ON "club_chat_messages" ("user_id");

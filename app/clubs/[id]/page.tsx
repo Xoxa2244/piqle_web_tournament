@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
@@ -407,6 +407,15 @@ export default function ClubDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <ClubChatCard
+            clubId={club.id}
+            isLoggedIn={isLoggedIn}
+            isJoined={club.isFollowing}
+            isAdmin={club.isAdmin}
+            currentUserId={session?.user?.id}
+            onJoinToggle={handleToggleFollow}
+          />
         </div>
 
         <div className="space-y-4">
@@ -726,5 +735,181 @@ function ClubEventsCalendar({
         )}
       </div>
     </div>
+  )
+}
+
+function ClubChatCard({
+  clubId,
+  isLoggedIn,
+  isJoined,
+  isAdmin,
+  currentUserId,
+  onJoinToggle,
+}: {
+  clubId: string
+  isLoggedIn: boolean
+  isJoined: boolean
+  isAdmin: boolean
+  currentUserId?: string
+  onJoinToggle: () => void
+}) {
+  const utils = trpc.useUtils()
+  const messageLimit = 100
+
+  const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery(
+    { clubId, limit: messageLimit },
+    { enabled: !!clubId }
+  )
+
+  const sendMessage = trpc.clubChat.send.useMutation({
+    onSuccess: async () => {
+      await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+    },
+  })
+
+  const deleteMessage = trpc.clubChat.delete.useMutation({
+    onSuccess: async () => {
+      await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+    },
+  })
+
+  const [draft, setDraft] = useState('')
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  const canPost = isLoggedIn && (isJoined || isAdmin)
+
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [])
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages?.length, scrollToBottom])
+
+  const handleSend = useCallback(async () => {
+    const text = draft.trim()
+    if (!text) return
+    if (!canPost || sendMessage.isPending) return
+
+    try {
+      await sendMessage.mutateAsync({ clubId, text })
+      setDraft('')
+      // Scroll after the list refetch lands.
+      setTimeout(scrollToBottom, 50)
+    } catch {
+      // toast is handled by global tRPC error or UI; keep MVP simple.
+    }
+  }, [draft, canPost, sendMessage, clubId, scrollToBottom])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <MessageCircle className="h-4 w-4" />
+          Club chat
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading chat…</div>
+        ) : null}
+        {error ? (
+          <div className="text-sm text-destructive">{error.message}</div>
+        ) : null}
+
+        <div
+          ref={listRef}
+          className="max-h-[360px] overflow-y-auto rounded-md border bg-white"
+        >
+          {!isLoading && (!messages || messages.length === 0) ? (
+            <div className="p-3 text-sm text-muted-foreground">
+              No messages yet. Start the conversation.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {(messages ?? []).map((m: any) => {
+                const isMine = currentUserId && m.userId === currentUserId
+                const canDelete = Boolean(isAdmin || isMine)
+
+                return (
+                  <div key={m.id} className="p-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {m.user?.name || m.user?.email || 'User'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                        </div>
+                        {isMine ? <Badge variant="secondary">You</Badge> : null}
+                      </div>
+                      <div className={cn('mt-1 text-sm whitespace-pre-wrap break-words', m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700')}>
+                        {m.isDeleted ? 'Message removed' : m.text}
+                      </div>
+                    </div>
+
+                    {canDelete && !m.isDeleted ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        disabled={deleteMessage.isPending}
+                        onClick={async () => {
+                          if (!confirm('Delete this message?')) return
+                          await deleteMessage.mutateAsync({ messageId: m.id })
+                        }}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {!isLoggedIn ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            Sign in to join and chat with this club.
+          </div>
+        ) : !canPost ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
+            <div className="min-w-0">Join this club to post messages.</div>
+            <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
+              Join
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Write a message…"
+              rows={2}
+              className="flex-1"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              className="gap-2"
+              disabled={!draft.trim() || sendMessage.isPending}
+              onClick={handleSend}
+            >
+              <Send className="h-4 w-4" />
+              Send
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
