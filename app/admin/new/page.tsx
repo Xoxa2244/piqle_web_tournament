@@ -525,10 +525,23 @@ function NewTournamentPageInner() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Only create from the explicit final CTA. This prevents accidental submits (Enter key,
+    // or any unexpected submitter) from creating a tournament early.
+    const submitter = (e.nativeEvent as any)?.submitter as HTMLElement | undefined
+    const submitAction =
+      typeof submitter?.getAttribute === 'function'
+        ? submitter.getAttribute('data-action')
+        : null
+
     // Prevent accidental submits (e.g. pressing Enter) from creating a tournament
     // before the final "Publish" step.
     if (stepIndex < totalSteps - 1) {
       goNext()
+      return
+    }
+
+    // If the submit was triggered by something other than the final create button, ignore it.
+    if (submitter && submitAction !== 'create') {
       return
     }
 
@@ -1338,6 +1351,7 @@ function NewTournamentPageInner() {
                 ) : (
                   <Button
                     type="submit"
+                    data-action="create"
                     disabled={
                       createTournamentWithStructure.isPending ||
                       requiresPayoutsSetup ||
