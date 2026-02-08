@@ -525,6 +525,13 @@ function NewTournamentPageInner() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Prevent accidental submits (e.g. pressing Enter) from creating a tournament
+    // before the final "Publish" step.
+    if (stepIndex < totalSteps - 1) {
+      goNext()
+      return
+    }
+
     if (!validateBaseForm()) {
       // Jump user to the step with the missing required fields.
       if (!formData.title.trim()) setStepIndex(0)
