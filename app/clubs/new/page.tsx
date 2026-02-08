@@ -318,12 +318,16 @@ export default function NewClubPage() {
                     className="hidden"
                     id="club-logo"
                   />
-                  <label htmlFor="club-logo" className="inline-flex">
-                    <Button type="button" variant="outline" className="gap-2" disabled={isUploadingLogo}>
-                      <Upload className="h-4 w-4" />
-                      {isUploadingLogo ? 'Uploading…' : 'Upload logo'}
-                    </Button>
-                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={isUploadingLogo}
+                    onClick={() => logoFileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    {isUploadingLogo ? 'Uploading…' : 'Upload logo'}
+                  </Button>
                   <span className="text-xs text-muted-foreground">Square images work best.</span>
                 </div>
               )}
