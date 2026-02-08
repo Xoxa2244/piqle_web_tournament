@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
 import Image from 'next/image'
+import { fromCents } from '@/lib/payment'
 
 export const dynamic = 'force-dynamic'
 
@@ -123,6 +124,26 @@ export default function ClubsPage() {
               </div>
               <div className="text-muted-foreground">
                 {new Date(club.nextTournament.startDate).toLocaleString()}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                {typeof club.nextTournament.entryFeeCents === 'number' && club.nextTournament.entryFeeCents > 0 ? (
+                  <Badge variant="secondary">
+                    ${fromCents(club.nextTournament.entryFeeCents).toFixed(2)}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline">Free</Badge>
+                )}
+                <Link
+                  href={`/tournaments/${club.nextTournament.id}/register`}
+                  className="ml-auto"
+                >
+                  <Button size="sm">
+                    {typeof club.nextTournament.entryFeeCents === 'number' &&
+                    club.nextTournament.entryFeeCents > 0
+                      ? 'Pay & Join'
+                      : 'Join'}
+                  </Button>
+                </Link>
               </div>
             </div>
           ) : (

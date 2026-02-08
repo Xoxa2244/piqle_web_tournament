@@ -100,6 +100,7 @@ export const clubRouter = createTRPCRouter({
               title: true,
               startDate: true,
               publicSlug: true,
+              entryFeeCents: true,
             },
           },
         },
