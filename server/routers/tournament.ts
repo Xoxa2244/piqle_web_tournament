@@ -289,11 +289,29 @@ const getUniqueTournamentSlug = async (
   return publicSlug
 }
 
+const assertClubAdminForClubTournament = async (ctx: { prisma: any; session: any }, clubId: string) => {
+  const userId = ctx.session.user.id
+  const role = await ctx.prisma.clubAdmin.findUnique({
+    where: { clubId_userId: { clubId, userId } },
+    select: { id: true },
+  })
+  if (!role) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only club admins can create tournaments for this club',
+    })
+  }
+}
+
 export const tournamentRouter = createTRPCRouter({
   create: tdProcedure
     .input(tournamentCreateInput)
     .mutation(async ({ ctx, input }) => {
       validateTournamentDates(input)
+
+      if (input.clubId) {
+        await assertClubAdminForClubTournament(ctx, input.clubId)
+      }
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const entryFeeCents = input.entryFeeCents ?? 0
@@ -347,6 +365,10 @@ export const tournamentRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       validateTournamentDates(input)
+
+      if (input.clubId) {
+        await assertClubAdminForClubTournament(ctx, input.clubId)
+      }
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'

@@ -40,6 +40,8 @@ model User {
   clubJoinRequests         ClubJoinRequest[]
   clubBans                 ClubBan[]
   clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
+  clubTournamentTemplatesCreated ClubTournamentTemplate[] @relation("ClubTournamentTemplateCreatedBy")
+  clubTournamentTemplatesUpdated ClubTournamentTemplate[] @relation("ClubTournamentTemplateUpdatedBy")
   players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
@@ -170,6 +172,7 @@ model Club {
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
   tournaments        Tournament[]
+  tournamentTemplates ClubTournamentTemplate[]
   followers          ClubFollower[]
   joinRequests       ClubJoinRequest[]
   admins             ClubAdmin[]
@@ -318,6 +321,27 @@ model ClubBan {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_bans")
+}
+
+model ClubTournamentTemplate {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  name            String
+  description     String?
+  config          Json
+  schemaVersion   Int      @default(1) @map("schema_version")
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  club          Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  createdByUser User  @relation("ClubTournamentTemplateCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  updatedByUser User? @relation("ClubTournamentTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clubId, name])
+  @@index([clubId, updatedAt])
+  @@map("club_tournament_templates")
 }
 
 model Court {

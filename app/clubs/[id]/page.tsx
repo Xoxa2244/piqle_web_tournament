@@ -12,9 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { fromCents } from '@/lib/payment'
+import { fromCents, toCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -553,6 +553,8 @@ export default function ClubDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
 
             {club.isAdmin ? <ClubMembersAdminCard clubId={club.id} /> : null}
 
@@ -1637,6 +1639,236 @@ function ClubChatCard({
             </Button>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const { toast } = useToast()
+  const utils = trpc.useUtils()
+
+  const { data: templates, isLoading, error } = trpc.clubTemplate.list.useQuery({ clubId }, { enabled: !!clubId })
+
+  const createDraft = trpc.clubTemplate.createDraftFromTemplate.useMutation()
+  const deleteTemplate = trpc.clubTemplate.delete.useMutation()
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [selected, setSelected] = useState<{ id: string; name: string } | null>(null)
+  const [draftForm, setDraftForm] = useState({
+    title: '',
+    startDate: '',
+    endDate: '',
+    registrationStartDate: '',
+    registrationEndDate: '',
+    entryFee: '',
+  })
+
+  const openCreate = (t: { id: string; name: string }) => {
+    const today = new Date().toISOString().slice(0, 10)
+    setSelected({ id: t.id, name: t.name })
+    setDraftForm({
+      title: '',
+      startDate: today,
+      endDate: today,
+      registrationStartDate: '',
+      registrationEndDate: '',
+      entryFee: '',
+    })
+    setCreateOpen(true)
+  }
+
+  const submitCreate = async () => {
+    if (!selected) return
+    if (!draftForm.startDate || !draftForm.endDate) {
+      toast({ title: 'Missing dates', description: 'Start and end dates are required.', variant: 'destructive' })
+      return
+    }
+
+    const fee = Number(draftForm.entryFee)
+    const entryFeeCents = Number.isFinite(fee) && fee > 0 ? toCents(fee) : undefined
+
+    try {
+      const res = await createDraft.mutateAsync({
+        templateId: selected.id,
+        title: draftForm.title.trim() ? draftForm.title.trim() : undefined,
+        startDate: draftForm.startDate,
+        endDate: draftForm.endDate,
+        registrationStartDate: draftForm.registrationStartDate || undefined,
+        registrationEndDate: draftForm.registrationEndDate || undefined,
+        entryFeeCents,
+      })
+
+      await utils.clubTemplate.list.invalidate({ clubId })
+      setCreateOpen(false)
+      router.push(`/admin/${res.tournamentId}`)
+    } catch (err: any) {
+      toast({ title: 'Failed', description: err?.message || 'Could not create draft.', variant: 'destructive' })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Layers className="h-4 w-4" />
+          Tournament templates
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="text-xs text-muted-foreground">
+          Templates are visible to all club admins. Creating from a template makes a <span className="font-medium">draft</span> (not public) until you enable Public board.
+        </div>
+
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading templates…</div>
+        ) : error ? (
+          <div className="text-sm text-red-700">
+            {error.message || 'Failed to load templates.'}
+          </div>
+        ) : (templates?.length ?? 0) === 0 ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            No templates yet. Open any club tournament and click <span className="font-medium">Save as template</span>.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(templates ?? []).map((t: any) => (
+              <div key={t.id} className="rounded-md border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 truncate">{t.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t.format ? `${t.format.replace(/_/g, ' ')} • ` : ''}
+                    {typeof t.divisionsCount === 'number' ? `${t.divisionsCount} division${t.divisionsCount === 1 ? '' : 's'} • ` : ''}
+                    Updated {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : ''}
+                  </div>
+                  {t.description ? <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{t.description}</div> : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" onClick={() => openCreate(t)} disabled={createDraft.isPending}>
+                    Create draft
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-red-700 border-red-200 hover:bg-red-50"
+                    disabled={deleteTemplate.isPending}
+                    onClick={async () => {
+                      if (!confirm('Delete this template?')) return
+                      try {
+                        await deleteTemplate.mutateAsync({ templateId: t.id })
+                        await utils.clubTemplate.list.invalidate({ clubId })
+                        toast({ title: 'Deleted', description: 'Template removed.' })
+                      } catch (err: any) {
+                        toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {createOpen && selected ? (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+            onClick={() => setCreateOpen(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold text-gray-900 truncate">Create draft</div>
+                  <div className="text-xs text-muted-foreground truncate">From template: {selected.name}</div>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setCreateOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">Title (optional)</div>
+                  <Input
+                    value={draftForm.title}
+                    onChange={(e) => setDraftForm((p) => ({ ...p, title: e.target.value }))}
+                    placeholder="Leave empty to use the template's default title"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Start date *</div>
+                    <Input
+                      type="date"
+                      value={draftForm.startDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, startDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">End date *</div>
+                    <Input
+                      type="date"
+                      value={draftForm.endDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, endDate: e.target.value }))}
+                      min={draftForm.startDate || undefined}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Registration start (optional)</div>
+                    <Input
+                      type="date"
+                      value={draftForm.registrationStartDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
+                      max={draftForm.startDate || undefined}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Registration end (optional)</div>
+                    <Input
+                      type="date"
+                      value={draftForm.registrationEndDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
+                      min={draftForm.registrationStartDate || undefined}
+                      max={draftForm.startDate || undefined}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">Entry fee (optional, USD)</div>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={draftForm.entryFee}
+                    onChange={(e) => setDraftForm((p) => ({ ...p, entryFee: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={submitCreate} disabled={createDraft.isPending}>
+                  {createDraft.isPending ? 'Creating…' : 'Create draft'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

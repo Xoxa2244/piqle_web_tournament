@@ -25,6 +25,7 @@ import { paymentRouter } from './payment'
 import { clubRouter } from './club'
 import { clubChatRouter } from './clubChat'
 import { ladderRouter } from './ladder'
+import { clubTemplateRouter } from './clubTemplate'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -52,6 +53,7 @@ export const appRouter = createTRPCRouter({
   payment: paymentRouter,
   club: clubRouter,
   clubChat: clubChatRouter,
+  clubTemplate: clubTemplateRouter,
   ladder: ladderRouter,
 })
 

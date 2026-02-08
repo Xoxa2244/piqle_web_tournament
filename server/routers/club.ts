@@ -149,7 +149,8 @@ export const clubRouter = createTRPCRouter({
         where.courtReserveUrl = { not: null }
       }
       if (input?.hasUpcomingEvents) {
-        where.tournaments = { some: { endDate: { gte: now } } }
+        // Only count public/published events as "upcoming" for discovery.
+        where.tournaments = { some: { endDate: { gte: now }, isPublicBoardEnabled: true } }
       }
 
       const clubs = await ctx.prisma.club.findMany({
@@ -184,7 +185,7 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now } },
+            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
             orderBy: { startDate: 'asc' },
             take: 1,
             select: {
@@ -252,7 +253,7 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now } },
+            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
             orderBy: { startDate: 'asc' },
             take: 20,
             select: {
