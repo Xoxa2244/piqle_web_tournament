@@ -9,6 +9,10 @@ import { Locate, MapPin } from "lucide-react"
 type MapWithTournamentsProps = {
   tournaments: Tournament[]
   focusLocation?: LatLng | null
+  /** When set together with focusLocation, opens this tournament's info window */
+  focusTournamentId?: string | null
+  /** Called once after opening the focused tournament's info window */
+  onFocusConsumed?: () => void
   /** When set, "Open tournament page" in the pin popup opens this modal instead of navigating */
   onOpenTournament?: (tournamentId: string) => void
 }
@@ -130,6 +134,8 @@ const buildInfoWindowContent = (
 export const MapWithTournaments = ({
   tournaments,
   focusLocation,
+  focusTournamentId,
+  onFocusConsumed,
   onOpenTournament,
 }: MapWithTournamentsProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""
@@ -337,6 +343,21 @@ export const MapWithTournaments = ({
     mapInstanceRef.current.panTo(focusLocation)
     mapInstanceRef.current.setZoom(FOCUS_ZOOM)
   }, [focusLocation])
+
+  // Open info window for focused tournament once markers exist
+  useEffect(() => {
+    if (!focusTournamentId || !infoWindowRef.current || !mapInstanceRef.current) return
+    const marker = tournamentMarkersRef.current.get(focusTournamentId)
+    const tournament = tournaments.find((t) => t.id === focusTournamentId)
+    if (marker && tournament) {
+      infoWindowRef.current.setContent(buildInfoWindowContent(tournament, onOpenTournamentRef.current))
+      infoWindowRef.current.open({
+        anchor: marker,
+        map: mapInstanceRef.current,
+      })
+      onFocusConsumed?.()
+    }
+  }, [focusTournamentId, tournaments, onFocusConsumed])
 
   useEffect(() => {
     locateUser()

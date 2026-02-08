@@ -93,6 +93,7 @@ export default function HomePage() {
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
   const [modalTab, setModalTab] = useState<'information' | 'comments' | 'view-results'>('information')
   const [filter, setFilter] = useState<FilterType>('all')
+  const [mapFocusTournamentId, setMapFocusTournamentId] = useState<string | null>(null)
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
@@ -533,6 +534,8 @@ export default function HomePage() {
             filterUpcoming={filterUpcoming}
             filterInProgress={filterInProgress}
             filterPast={filterPast}
+            focusTournamentId={mapFocusTournamentId}
+            onFocusConsumed={() => setMapFocusTournamentId(null)}
             onOpenTournament={setSelectedTournament}
           />
         ) : publicTournaments.length > 0 ? (
@@ -607,8 +610,25 @@ export default function HomePage() {
                       )}
                       
                       {tournament.venueName && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <MapPin className="h-4 w-4 mr-2" />
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFilter('map')
+                            setMapFocusTournamentId(tournament.id)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setFilter('map')
+                              setMapFocusTournamentId(tournament.id)
+                            }
+                          }}
+                          className={`flex items-center text-sm cursor-pointer hover:underline ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
+                        >
+                          <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
                           <span>{tournament.venueName}</span>
                         </div>
                       )}
@@ -980,8 +1000,25 @@ export default function HomePage() {
                               </div>
                             )}
                             {tournament.venueName && (
-                              <div className="flex items-center text-sm text-gray-600">
-                                <MapPin className="h-4 w-4 mr-2" />
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setSelectedTournament(null)
+                                  setFilter('map')
+                                  setMapFocusTournamentId(tournament.id)
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    setSelectedTournament(null)
+                                    setFilter('map')
+                                    setMapFocusTournamentId(tournament.id)
+                                  }
+                                }}
+                                className={`flex items-center text-sm cursor-pointer hover:underline ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
+                              >
+                                <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
                                 <span>{tournament.venueName}</span>
                               </div>
                             )}

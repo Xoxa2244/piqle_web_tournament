@@ -43,6 +43,10 @@ type TournamentsMapContentProps = {
   filterUpcoming?: boolean
   filterInProgress?: boolean
   filterPast?: boolean
+  /** When set, map focuses this tournament's pin and opens its info window */
+  focusTournamentId?: string | null
+  /** Called once the map has applied focus (so parent can clear focusTournamentId) */
+  onFocusConsumed?: () => void
   /** When set, "Open tournament page" in the pin popup opens this modal instead of navigating */
   onOpenTournament?: (tournamentId: string) => void
 }
@@ -52,6 +56,8 @@ export function TournamentsMapContent({
   filterUpcoming = true,
   filterInProgress = true,
   filterPast = false,
+  focusTournamentId = null,
+  onFocusConsumed,
   onOpenTournament,
 }: TournamentsMapContentProps = {}) {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
@@ -178,11 +184,15 @@ export function TournamentsMapContent({
   }, [tournaments, searchQuery, filterUpcoming, filterInProgress, filterPast])
 
   const mapFocusLocation = useMemo(() => {
+    if (focusTournamentId && filteredTournaments.length > 0) {
+      const t = filteredTournaments.find((x) => x.id === focusTournamentId)
+      if (t) return { lat: t.lat, lng: t.lng }
+    }
     if (filteredTournaments.length > 0) {
       return { lat: filteredTournaments[0].lat, lng: filteredTournaments[0].lng }
     }
     return focusLocation
-  }, [filteredTournaments, focusLocation])
+  }, [filteredTournaments, focusLocation, focusTournamentId])
 
   return (
     <div className="space-y-6">
@@ -202,6 +212,8 @@ export function TournamentsMapContent({
       <MapWithTournaments
         tournaments={filteredTournaments}
         focusLocation={mapFocusLocation}
+        focusTournamentId={focusTournamentId && filteredTournaments.some((t) => t.id === focusTournamentId) ? focusTournamentId : undefined}
+        onFocusConsumed={onFocusConsumed}
         onOpenTournament={onOpenTournament}
       />
     </div>
