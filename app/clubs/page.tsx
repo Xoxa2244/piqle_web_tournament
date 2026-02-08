@@ -118,7 +118,7 @@ export default function ClubsPage() {
         <div className="flex items-center gap-2">
           <Badge variant="outline">{club.kind === 'VENUE' ? 'Venue' : 'Community'}</Badge>
           <span className="text-xs text-muted-foreground">
-            {club.followersCount} follower{club.followersCount === 1 ? '' : 's'}
+            {club.followersCount} member{club.followersCount === 1 ? '' : 's'}
           </span>
         </div>
       </CardHeader>
@@ -170,9 +170,9 @@ export default function ClubsPage() {
             className="flex-1"
             onClick={() => onToggleFollow(club.id)}
             disabled={toggleFollow.isPending}
-            title={!isLoggedIn ? 'Sign in to follow clubs' : undefined}
+            title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
           >
-            {club.isFollowing ? 'Following' : 'Follow'}
+            {club.isFollowing ? 'Joined' : 'Join'}
           </Button>
         </div>
       </CardContent>
@@ -185,7 +185,7 @@ export default function ClubsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Clubs</h1>
           <p className="text-sm text-muted-foreground">
-            Follow clubs to get updates and discover upcoming events.
+            Join clubs to get updates and discover upcoming events.
           </p>
         </div>
         {isLoggedIn ? (
@@ -295,7 +295,7 @@ export default function ClubsPage() {
 
       {isLoggedIn && followingClubs.length > 0 ? (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Following</h2>
+          <h2 className="text-sm font-semibold text-gray-900">My clubs</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {followingClubs.map(renderClubCard)}
           </div>

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { Calendar, ExternalLink, MapPin, ArrowLeft, Bell, Megaphone, Plus } from 'lucide-react'
+import { Calendar, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus } from 'lucide-react'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
@@ -71,8 +71,8 @@ export default function ClubDetailPage() {
   }
 
   const followLabel = useMemo(() => {
-    if (!club) return 'Follow'
-    return club.isFollowing ? 'Following' : 'Follow'
+    if (!club) return 'Join'
+    return club.isFollowing ? 'Joined' : 'Join'
   }, [club])
 
   const handleToggleFollow = async () => {
@@ -195,9 +195,9 @@ export default function ClubDetailPage() {
               className="gap-2"
               onClick={handleToggleFollow}
               disabled={toggleFollow.isPending}
-              title={!isLoggedIn ? 'Sign in to follow clubs' : undefined}
+              title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
             >
-              <Bell className="h-4 w-4" />
+              <Users className="h-4 w-4" />
               {followLabel}
             </Button>
             {canBook ? (
