@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS "tournaments_club_id_idx" ON "tournaments" ("club_id"
 CREATE TABLE IF NOT EXISTS "club_followers" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "club_id" UUID NOT NULL,
-  "user_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
   "created_at" TIMESTAMP NOT NULL DEFAULT now(),
   CONSTRAINT "club_followers_club_id_fkey"
     FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
@@ -87,7 +87,7 @@ CREATE INDEX IF NOT EXISTS "club_followers_user_id_idx" ON "club_followers" ("us
 CREATE TABLE IF NOT EXISTS "club_admins" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "club_id" UUID NOT NULL,
-  "user_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
   "role" "ClubAdminRole" NOT NULL DEFAULT 'ADMIN',
   "created_at" TIMESTAMP NOT NULL DEFAULT now(),
   CONSTRAINT "club_admins_club_id_fkey"
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS "club_announcements" (
   "club_id" UUID NOT NULL,
   "title" TEXT,
   "body" TEXT NOT NULL,
-  "created_by_user_id" UUID,
+  "created_by_user_id" TEXT,
   "created_at" TIMESTAMP NOT NULL DEFAULT now(),
   "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
   CONSTRAINT "club_announcements_club_id_fkey"
@@ -133,7 +133,7 @@ CREATE INDEX IF NOT EXISTS "club_announcements_club_id_created_at_idx"
 CREATE TABLE IF NOT EXISTS "club_booking_requests" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "club_id" UUID NOT NULL,
-  "requester_user_id" UUID,
+  "requester_user_id" TEXT,
   "requester_name" TEXT NOT NULL,
   "requester_email" TEXT NOT NULL,
   "requester_phone" TEXT,
@@ -154,4 +154,3 @@ CREATE INDEX IF NOT EXISTS "club_booking_requests_club_id_created_at_idx"
   ON "club_booking_requests" ("club_id", "created_at");
 CREATE INDEX IF NOT EXISTS "club_booking_requests_requester_user_id_idx"
   ON "club_booking_requests" ("requester_user_id");
-
