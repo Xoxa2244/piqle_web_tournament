@@ -118,6 +118,21 @@ export default function ClubDetailPage() {
   }, [club])
 
   const tournaments = useMemo(() => club?.tournaments ?? [], [club])
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const t of tournaments) {
+      const d = new Date(t.startDate)
+      const key = toLocalYmd(d)
+      const list = map.get(key) ?? []
+      list.push(t)
+      map.set(key, list)
+    }
+    for (const [key, list] of map.entries()) {
+      list.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      map.set(key, list)
+    }
+    return map
+  }, [tournaments])
 
   const handleToggleFollow = async () => {
     if (!isLoggedIn) {
@@ -199,22 +214,6 @@ export default function ClubDetailPage() {
       </div>
     )
   }
-
-  const eventsByDay = useMemo(() => {
-    const map = new Map<string, any[]>()
-    for (const t of tournaments) {
-      const d = new Date(t.startDate)
-      const key = toLocalYmd(d)
-      const list = map.get(key) ?? []
-      list.push(t)
-      map.set(key, list)
-    }
-    for (const [key, list] of map.entries()) {
-      list.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
-      map.set(key, list)
-    }
-    return map
-  }, [tournaments])
 
   return (
     <div className="space-y-6 px-6 py-8">
