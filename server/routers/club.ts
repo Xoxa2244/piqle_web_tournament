@@ -517,4 +517,138 @@ export const clubRouter = createTRPCRouter({
 
       return { success: true }
     }),
+
+  sendInvite: protectedProcedure
+    .input(
+      z
+        .object({
+          clubId: z.string(),
+          inviteeUserId: z.string().optional(),
+          inviteeEmail: z.string().email().optional(),
+        })
+        .refine((v) => Boolean(v.inviteeUserId || v.inviteeEmail), {
+          message: 'Invitee is required',
+        })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const inviterUserId = ctx.session.user.id
+
+      const [club, isFollower, isAdmin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { id: true, name: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: inviterUserId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: inviterUserId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      if (!isFollower && !isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to invite others' })
+      }
+
+      if (input.inviteeUserId && input.inviteeUserId === inviterUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot invite yourself' })
+      }
+
+      let toEmail = input.inviteeEmail?.trim() || null
+      let toName: string | null = null
+
+      if (input.inviteeUserId) {
+        const user = await ctx.prisma.user.findUnique({
+          where: { id: input.inviteeUserId },
+          select: { email: true, name: true },
+        })
+        if (!user?.email) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User email not found' })
+        }
+        toEmail = user.email
+        toName = user.name ?? null
+      }
+
+      if (!toEmail) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invitee email is required' })
+      }
+
+      const baseUrlRaw =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+        ''
+      const baseUrl = baseUrlRaw.replace(/\/$/, '')
+      if (!baseUrl) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'App URL is not configured (NEXT_PUBLIC_APP_URL)',
+        })
+      }
+
+      const inviteUrl = `${baseUrl}/clubs/${club.id}?ref=invite`
+
+      const emailHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
+      const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'Piqle'
+      const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
+      const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
+
+      if (!emailHost || !emailPassword) {
+        // In development, don't block flows if SMTP isn't configured yet.
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[club.sendInvite] SMTP not configured. Would send invite:', {
+            toEmail,
+            clubId: club.id,
+            clubName: club.name,
+            inviteUrl,
+          })
+          return { success: true, delivered: false }
+        }
+
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Email is not configured (SMTP_HOST/SMTP_PASS).',
+        })
+      }
+
+      const nodemailer = await import('nodemailer')
+      const transporter = nodemailer.default.createTransport({
+        host: emailHost,
+        port: parseInt(emailPort),
+        secure: String(emailPort) === '465',
+        auth: {
+          user: emailUser,
+          pass: emailPassword,
+        },
+      })
+
+      const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || emailUser
+      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
+      const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
+
+      const inviterName = ctx.session.user.name || 'Someone'
+      const subject = `${inviterName} invited you to join ${club.name} on Piqle`
+      const greeting = toName ? `Hi ${toName},` : 'Hi,'
+      const text = `${greeting}
+
+${inviterName} invited you to join the club "${club.name}" on Piqle.
+
+Join here: ${inviteUrl}
+
+If you weren’t expecting this, you can ignore this email.`
+
+      await transporter.sendMail({
+        from: fromAddress,
+        to: toEmail,
+        subject,
+        text,
+      })
+
+      return { success: true, delivered: true }
+    }),
 })

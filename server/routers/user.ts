@@ -2,6 +2,38 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
 export const userRouter = createTRPCRouter({
+  search: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().min(2).max(120),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const q = input.query.trim()
+      if (!q) return []
+
+      const users = await ctx.prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { not: ctx.session.user.id },
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        take: 8,
+        orderBy: [{ name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+        },
+      })
+
+      return users
+    }),
+
   getProfile: protectedProcedure
     .query(async ({ ctx }) => {
       const user = await ctx.prisma.user.findUnique({
@@ -96,4 +128,3 @@ export const userRouter = createTRPCRouter({
       return updatedUser
     }),
 })
-

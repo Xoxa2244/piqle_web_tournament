@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents } from '@/lib/payment'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail } from 'lucide-react'
 import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
@@ -104,6 +104,8 @@ export default function ClubDetailPage() {
     title: '',
     body: '',
   })
+
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   const canBook = Boolean(club?.courtReserveUrl)
 
@@ -275,6 +277,14 @@ export default function ClubDetailPage() {
               <Users className="h-4 w-4" />
               {followLabel}
             </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setInviteOpen((v) => !v)}
+            >
+              <Share2 className="h-4 w-4" />
+              Invite
+            </Button>
             {canBook ? (
               <a href={club.courtReserveUrl!} target="_blank" rel="noreferrer">
                 <Button variant="outline" className="gap-2">
@@ -289,6 +299,16 @@ export default function ClubDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
+          {inviteOpen ? (
+            <ClubInviteCard
+              clubId={club.id}
+              clubName={club.name}
+              isLoggedIn={isLoggedIn}
+              canInvite={club.isFollowing || club.isAdmin}
+              onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
+            />
+          ) : null}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base flex items-center gap-2">
@@ -977,6 +997,209 @@ function ClubEventsCalendar({
         )}
       </div>
     </div>
+  )
+}
+
+function ClubInviteCard({
+  clubId,
+  clubName,
+  isLoggedIn,
+  canInvite,
+  onSignIn,
+}: {
+  clubId: string
+  clubName: string
+  isLoggedIn: boolean
+  canInvite: boolean
+  onSignIn: () => void
+}) {
+  const { toast } = useToast()
+  const [inviteUrl, setInviteUrl] = useState('')
+  const [userQuery, setUserQuery] = useState('')
+  const [email, setEmail] = useState('')
+
+  const utils = trpc.useUtils()
+  const sendInvite = trpc.club.sendInvite.useMutation()
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setInviteUrl(`${window.location.origin}/clubs/${clubId}?ref=invite`)
+  }, [clubId])
+
+  const canShare = typeof navigator !== 'undefined' && typeof (navigator as any).share === 'function'
+
+  const trimmedUserQuery = userQuery.trim()
+  const { data: users = [], isFetching: isSearching } = trpc.user.search.useQuery(
+    { query: trimmedUserQuery },
+    { enabled: isLoggedIn && canInvite && trimmedUserQuery.length >= 2 }
+  )
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({ title: 'Copied', description: 'Invite link copied to clipboard.' })
+    } catch {
+      toast({ title: 'Copy failed', description: 'Please copy it manually.', variant: 'destructive' })
+    }
+  }
+
+  const handleShare = async () => {
+    if (!inviteUrl) return
+    if (!canShare) {
+      await copyText(inviteUrl)
+      return
+    }
+    try {
+      await (navigator as any).share({
+        title: clubName,
+        text: `Join ${clubName} on Piqle`,
+        url: inviteUrl,
+      })
+    } catch {
+      // User dismissed share; don't show an error toast.
+    }
+  }
+
+  const handleInviteUser = async (inviteeUserId: string) => {
+    try {
+      const res = await sendInvite.mutateAsync({ clubId, inviteeUserId })
+      toast({
+        title: 'Invite sent',
+        description: res.delivered ? 'Email invite delivered.' : 'Invite prepared (email not configured).',
+      })
+      setUserQuery('')
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to invite', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
+  const handleInviteEmail = async () => {
+    const trimmed = email.trim()
+    if (!trimmed) return
+    try {
+      const res = await sendInvite.mutateAsync({ clubId, inviteeEmail: trimmed })
+      toast({
+        title: 'Invite sent',
+        description: res.delivered ? 'Email invite delivered.' : 'Invite prepared (email not configured).',
+      })
+      setEmail('')
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to invite', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Share2 className="h-4 w-4" />
+          Invite to this club
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-900">Invite link</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input value={inviteUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="gap-2" onClick={() => inviteUrl && copyText(inviteUrl)} disabled={!inviteUrl}>
+                <Copy className="h-4 w-4" />
+                Copy
+              </Button>
+              <Button type="button" className="gap-2" onClick={handleShare} disabled={!inviteUrl}>
+                <Share2 className="h-4 w-4" />
+                {canShare ? 'Share' : 'Copy & Share'}
+              </Button>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Share this link in social media or copy it into a message.
+          </div>
+        </div>
+
+        {!isLoggedIn ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
+            <div className="min-w-0">Sign in to invite registered users by email.</div>
+            <Button type="button" onClick={onSignIn}>
+              Sign in
+            </Button>
+          </div>
+        ) : !canInvite ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            Join this club to invite registered users by email.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-900">Invite registered users</div>
+              <Input
+                placeholder="Search by name or email (min 2 chars)"
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+              />
+              {trimmedUserQuery.length < 2 ? (
+                <div className="text-xs text-muted-foreground">Start typing to search users.</div>
+              ) : isSearching ? (
+                <div className="text-xs text-muted-foreground">Searching…</div>
+              ) : users.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No users found.</div>
+              ) : (
+                <div className="rounded-md border divide-y bg-white">
+                  {users.map((u: any) => (
+                    <div key={u.id} className="p-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex items-center gap-2">
+                        {u.image ? (
+                          <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                            <Image src={u.image} alt="" fill className="object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">{u.name || u.email}</div>
+                          <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2"
+                        disabled={sendInvite.isPending}
+                        onClick={() => handleInviteUser(u.id)}
+                      >
+                        <Mail className="h-4 w-4" />
+                        Invite
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-900">Invite by email</div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Email address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <Button type="button" className="gap-2" onClick={handleInviteEmail} disabled={sendInvite.isPending || !email.trim()}>
+                  <Mail className="h-4 w-4" />
+                  Send
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Works for both existing and new users.
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
