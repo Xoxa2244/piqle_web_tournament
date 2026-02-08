@@ -556,8 +556,8 @@ export default function HomePage() {
                     ) : (
                       <TournamentImagePlaceholder />
                     )}
-                    <div className="flex-1 min-w-0 flex justify-center">
-                      <CardTitle className="text-xl pr-10 line-clamp-2 break-words text-center">{tournament.title}</CardTitle>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-xl pr-10 line-clamp-2 break-words">{tournament.title}</CardTitle>
                     </div>
                   </div>
                   {/* Tournament status badge */}
@@ -658,7 +658,7 @@ export default function HomePage() {
                       </div>
                     )}
                     {/* Like/Dislike/Comments Buttons */}
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -701,12 +701,14 @@ export default function HomePage() {
                       </button>
                     </div>
 
-                    {/* View Results Button */}
-                    <Link href={`/scoreboard/${tournament.id}`}>
-                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        View Results
-                      </Button>
-                    </Link>
+                    {/* 16px gap before View Results (avoid margin collapse) */}
+                    <div className="pt-4">
+                      <Link href={`/scoreboard/${tournament.id}`}>
+                        <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                          View Results
+                        </Button>
+                      </Link>
+                    </div>
 
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
