@@ -218,7 +218,7 @@ export default function ClubDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                Upcoming tournaments
+                Upcoming events
               </CardTitle>
               {club.isAdmin ? (
                 <Button asChild size="sm" variant="outline" className="gap-2">
@@ -232,7 +232,7 @@ export default function ClubDetailPage() {
             <CardContent className="space-y-3">
               {club.tournaments.length === 0 ? (
                 <div className="text-sm text-muted-foreground">
-                  No upcoming tournaments for this club yet.
+                  No upcoming events for this club yet.
                 </div>
               ) : (
                 club.tournaments.map((tournament) => (

@@ -126,7 +126,7 @@ export default function ClubsPage() {
               </div>
             </div>
           ) : (
-            <div className="mt-1 text-muted-foreground">No upcoming tournaments yet.</div>
+            <div className="mt-1 text-muted-foreground">No upcoming events yet.</div>
           )}
         </div>
 

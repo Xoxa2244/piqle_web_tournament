@@ -91,7 +91,8 @@ export const clubRouter = createTRPCRouter({
             take: 1,
           },
           tournaments: {
-            where: { startDate: { gte: now } },
+            // Include both upcoming and currently running tournaments.
+            where: { endDate: { gte: now } },
             orderBy: { startDate: 'asc' },
             take: 1,
             select: {
@@ -154,7 +155,8 @@ export const clubRouter = createTRPCRouter({
             take: 1,
           },
           tournaments: {
-            where: { startDate: { gte: now } },
+            // Include both upcoming and currently running tournaments.
+            where: { endDate: { gte: now } },
             orderBy: { startDate: 'asc' },
             take: 20,
             select: {
