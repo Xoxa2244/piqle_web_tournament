@@ -260,6 +260,14 @@ export default function ClubDetailPage() {
                       : 'Location not set'}
                   </span>
                 </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Users className="h-4 w-4" />
+                  <span>
+                    {club.followersCount} joined
+                    <span className="mx-1">•</span>
+                    Join to chat and get updates
+                  </span>
+                </div>
                 {club.description ? (
                   <p className="text-sm text-gray-700 max-w-2xl whitespace-pre-wrap">{club.description}</p>
                 ) : null}
@@ -305,7 +313,7 @@ export default function ClubDetailPage() {
               clubId={club.id}
               clubName={club.name}
               isLoggedIn={isLoggedIn}
-              canInvite={club.isFollowing || club.isAdmin}
+              canEmailInvite={club.isAdmin}
               onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
             />
           ) : null}
@@ -1005,13 +1013,13 @@ function ClubInviteCard({
   clubId,
   clubName,
   isLoggedIn,
-  canInvite,
+  canEmailInvite,
   onSignIn,
 }: {
   clubId: string
   clubName: string
   isLoggedIn: boolean
-  canInvite: boolean
+  canEmailInvite: boolean
   onSignIn: () => void
 }) {
   const { toast } = useToast()
@@ -1019,6 +1027,7 @@ function ClubInviteCard({
   const [userQuery, setUserQuery] = useState('')
   const [email, setEmail] = useState('')
   const [showQr, setShowQr] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const utils = trpc.useUtils()
   const sendInvite = trpc.club.sendInvite.useMutation()
@@ -1033,7 +1042,7 @@ function ClubInviteCard({
   const trimmedUserQuery = userQuery.trim()
   const { data: users = [], isFetching: isSearching } = trpc.user.search.useQuery(
     { query: trimmedUserQuery },
-    { enabled: isLoggedIn && canInvite && trimmedUserQuery.length >= 2 }
+    { enabled: isLoggedIn && canEmailInvite && trimmedUserQuery.length >= 2 }
   )
 
   const copyText = async (text: string) => {
@@ -1066,8 +1075,15 @@ function ClubInviteCard({
     try {
       const res = await sendInvite.mutateAsync({ clubId, inviteeUserId })
       toast({
-        title: 'Invite sent',
-        description: res.delivered ? 'Email invite delivered.' : 'Invite prepared (email not configured).',
+        title: res.reason === 'already_joined' ? 'Already joined' : 'Invite sent',
+        description:
+          res.reason === 'already_joined'
+            ? 'This user already joined the club.'
+            : res.delivered
+              ? 'Email invite delivered.'
+              : res.reason === 'smtp_missing'
+                ? 'SMTP is not configured.'
+                : 'Invite queued.',
       })
       setUserQuery('')
       await utils.club.get.invalidate({ id: clubId })
@@ -1083,7 +1099,11 @@ function ClubInviteCard({
       const res = await sendInvite.mutateAsync({ clubId, inviteeEmail: trimmed })
       toast({
         title: 'Invite sent',
-        description: res.delivered ? 'Email invite delivered.' : 'Invite prepared (email not configured).',
+        description: res.delivered
+          ? 'Email invite delivered.'
+          : res.reason === 'smtp_missing'
+            ? 'SMTP is not configured.'
+            : 'Invite queued.',
       })
       setEmail('')
       await utils.club.get.invalidate({ id: clubId })
@@ -1148,81 +1168,101 @@ function ClubInviteCard({
 
         {!isLoggedIn ? (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-            <div className="min-w-0">Sign in to invite registered users by email.</div>
+            <div className="min-w-0">Sign in to send email invites (admins only).</div>
             <Button type="button" onClick={onSignIn}>
               Sign in
             </Button>
           </div>
-        ) : !canInvite ? (
+        ) : !canEmailInvite ? (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
-            Join this club to invite registered users by email.
+            Only club admins can send email invites. Use the invite link or QR code.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-gray-900">Invite registered users</div>
-              <Input
-                placeholder="Search by name or email (min 2 chars)"
-                value={userQuery}
-                onChange={(e) => setUserQuery(e.target.value)}
-              />
-              {trimmedUserQuery.length < 2 ? (
-                <div className="text-xs text-muted-foreground">Start typing to search users.</div>
-              ) : isSearching ? (
-                <div className="text-xs text-muted-foreground">Searching…</div>
-              ) : users.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No users found.</div>
-              ) : (
-                <div className="rounded-md border divide-y bg-white">
-                  {users.map((u: any) => (
-                    <div key={u.id} className="p-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex items-center gap-2">
-                        {u.image ? (
-                          <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
-                            <Image src={u.image} alt="" fill className="object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">{u.name || u.email}</div>
-                          <div className="text-xs text-muted-foreground truncate">{u.email}</div>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="gap-2"
-                        disabled={sendInvite.isPending}
-                        onClick={() => handleInviteUser(u.id)}
-                      >
-                        <Mail className="h-4 w-4" />
-                        Invite
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-medium text-gray-900">Email invites (admins)</div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setAdvancedOpen((v) => !v)}>
+                {advancedOpen ? 'Hide' : 'Show'}
+              </Button>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-gray-900">Invite by email</div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Email address"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <Button type="button" className="gap-2" onClick={handleInviteEmail} disabled={sendInvite.isPending || !email.trim()}>
-                  <Mail className="h-4 w-4" />
-                  Send
-                </Button>
+            {advancedOpen ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-gray-900">Invite registered users</div>
+                  <Input
+                    placeholder="Search by name or email (min 2 chars)"
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Emails are hidden for privacy.
+                  </div>
+                  {trimmedUserQuery.length < 2 ? (
+                    <div className="text-xs text-muted-foreground">Start typing to search users.</div>
+                  ) : isSearching ? (
+                    <div className="text-xs text-muted-foreground">Searching…</div>
+                  ) : users.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">No users found.</div>
+                  ) : (
+                    <div className="rounded-md border divide-y bg-white">
+                      {users.map((u: any) => (
+                        <div key={u.id} className="p-2 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex items-center gap-2">
+                            {u.image ? (
+                              <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                                <Image src={u.image} alt="" fill className="object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                            )}
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-900 truncate">{u.name || 'Piqle user'}</div>
+                              {u.emailMasked ? (
+                                <div className="text-xs text-muted-foreground truncate">{u.emailMasked}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="gap-2"
+                            disabled={sendInvite.isPending}
+                            onClick={() => handleInviteUser(u.id)}
+                          >
+                            <Mail className="h-4 w-4" />
+                            Invite
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-gray-900">Invite by email</div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Email address"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                    <Button type="button" className="gap-2" onClick={handleInviteEmail} disabled={sendInvite.isPending || !email.trim()}>
+                      <Mail className="h-4 w-4" />
+                      Send
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Limits apply to prevent spam.
+                  </div>
+                </div>
               </div>
+            ) : (
               <div className="text-xs text-muted-foreground">
-                Works for both existing and new users.
+                Limits apply to prevent spam.
               </div>
-            </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -533,18 +533,14 @@ export const clubRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const inviterUserId = ctx.session.user.id
 
-      const [club, isFollower, isAdmin] = await Promise.all([
+      const [club, adminRole] = await Promise.all([
         ctx.prisma.club.findUnique({
           where: { id: input.clubId },
           select: { id: true, name: true },
         }),
-        ctx.prisma.clubFollower.findUnique({
-          where: { clubId_userId: { clubId: input.clubId, userId: inviterUserId } },
-          select: { id: true },
-        }),
         ctx.prisma.clubAdmin.findUnique({
           where: { clubId_userId: { clubId: input.clubId, userId: inviterUserId } },
-          select: { id: true },
+          select: { id: true, role: true },
         }),
       ])
 
@@ -552,8 +548,9 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
-      if (!isFollower && !isAdmin) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to invite others' })
+      // Email invites are admin/moderator-only to prevent spam.
+      if (!adminRole) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can send email invites' })
       }
 
       if (input.inviteeUserId && input.inviteeUserId === inviterUserId) {
@@ -573,6 +570,14 @@ export const clubRouter = createTRPCRouter({
         }
         toEmail = user.email
         toName = user.name ?? null
+
+        const alreadyJoined = await ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: club.id, userId: input.inviteeUserId } },
+          select: { id: true },
+        })
+        if (alreadyJoined) {
+          return { success: true, delivered: false, reason: 'already_joined' as const }
+        }
       }
 
       if (!toEmail) {
@@ -593,10 +598,70 @@ export const clubRouter = createTRPCRouter({
 
       const inviteUrl = `${baseUrl}/clubs/${club.id}?ref=invite`
 
+      // Rate limiting (requires club_invites table; safe to skip if migration isn't applied yet).
+      const invitesPerDay = 20
+      const invitesPerMinute = 5
+      const now = new Date()
+      const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      const minuteAgo = new Date(now.getTime() - 60 * 1000)
+
+      try {
+        const [countDay, countMin] = await Promise.all([
+          ctx.prisma.clubInvite.count({
+            where: { clubId: club.id, inviterUserId, createdAt: { gte: dayAgo } },
+          }),
+          ctx.prisma.clubInvite.count({
+            where: { clubId: club.id, inviterUserId, createdAt: { gte: minuteAgo } },
+          }),
+        ])
+
+        if (countDay >= invitesPerDay || countMin >= invitesPerMinute) {
+          throw new TRPCError({
+            code: 'TOO_MANY_REQUESTS',
+            message: `Invite limit reached (${invitesPerDay}/day, ${invitesPerMinute}/minute).`,
+          })
+        }
+
+        const recentDuplicate = await ctx.prisma.clubInvite.findFirst({
+          where: { clubId: club.id, inviteeEmail: toEmail, createdAt: { gte: dayAgo } },
+          select: { id: true },
+        })
+        if (recentDuplicate) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'This email was already invited recently.' })
+        }
+      } catch (err: any) {
+        const msg = String(err?.message ?? '')
+        // If the table doesn't exist yet (migration not applied), skip rate limiting for now.
+        if (!msg.toLowerCase().includes('club_invites') && !msg.toLowerCase().includes('does not exist')) {
+          throw err
+        }
+      }
+
       const emailHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
       const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'Piqle'
       const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
       const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
+
+      // Persist invite attempt (best effort; safe to skip if migration isn't applied yet).
+      let inviteId: string | null = null
+      try {
+        const invite = await ctx.prisma.clubInvite.create({
+          data: {
+            clubId: club.id,
+            inviterUserId,
+            inviteeUserId: input.inviteeUserId ?? null,
+            inviteeEmail: toEmail,
+            delivered: false,
+          },
+          select: { id: true },
+        })
+        inviteId = invite.id
+      } catch (err: any) {
+        const msg = String(err?.message ?? '')
+        if (!msg.toLowerCase().includes('club_invites') && !msg.toLowerCase().includes('does not exist')) {
+          throw err
+        }
+      }
 
       if (!emailHost || !emailPassword) {
         // In development, don't block flows if SMTP isn't configured yet.
@@ -607,7 +672,7 @@ export const clubRouter = createTRPCRouter({
             clubName: club.name,
             inviteUrl,
           })
-          return { success: true, delivered: false }
+          return { success: true, delivered: false, reason: 'smtp_missing' as const }
         }
 
         throw new TRPCError({
@@ -649,6 +714,20 @@ If you weren’t expecting this, you can ignore this email.`
         text,
       })
 
-      return { success: true, delivered: true }
+      if (inviteId) {
+        try {
+          await ctx.prisma.clubInvite.update({
+            where: { id: inviteId },
+            data: { delivered: true },
+          })
+        } catch (err: any) {
+          const msg = String(err?.message ?? '')
+          if (!msg.toLowerCase().includes('club_invites') && !msg.toLowerCase().includes('does not exist')) {
+            throw err
+          }
+        }
+      }
+
+      return { success: true, delivered: true, reason: null as null }
     }),
 })

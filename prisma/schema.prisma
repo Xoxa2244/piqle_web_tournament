@@ -35,6 +35,8 @@ model User {
   clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
   clubChatMessages         ClubChatMessage[]
+  clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
+  clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
@@ -169,6 +171,7 @@ model Club {
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
   chatMessages       ClubChatMessage[]
+  invites            ClubInvite[]
 
   @@map("clubs")
 }
@@ -257,6 +260,25 @@ model ClubChatMessage {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_chat_messages")
+}
+
+model ClubInvite {
+  id            String   @id @default(uuid())
+  clubId        String   @map("club_id")
+  inviterUserId String   @map("inviter_user_id")
+  inviteeUserId String?  @map("invitee_user_id")
+  inviteeEmail  String   @map("invitee_email")
+  delivered     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  inviter User @relation("ClubInviteInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  invitee User? @relation("ClubInviteInvitee", fields: [inviteeUserId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt])
+  @@index([inviterUserId, createdAt])
+  @@index([inviteeEmail])
+  @@map("club_invites")
 }
 
 model Court {

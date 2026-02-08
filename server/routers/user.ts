@@ -1,6 +1,24 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
+const maskEmail = (email: string) => {
+  try {
+    const [localRaw, domainRaw] = email.split('@')
+    const local = (localRaw ?? '').trim()
+    const domain = (domainRaw ?? '').trim()
+    if (!local || !domain) return '***'
+
+    const localMasked = local.length <= 1 ? '*' : `${local[0]}***`
+    const domainParts = domain.split('.').filter(Boolean)
+    const tld = domainParts.length ? domainParts[domainParts.length - 1] : '***'
+    const domainMain = domainParts.length > 1 ? domainParts.slice(0, -1).join('.') : domainParts[0] ?? ''
+    const domainMasked = domainMain ? `${domainMain[0]}***` : '***'
+    return `${localMasked}@${domainMasked}.${tld}`
+  } catch {
+    return '***'
+  }
+}
+
 export const userRouter = createTRPCRouter({
   search: protectedProcedure
     .input(
@@ -26,12 +44,17 @@ export const userRouter = createTRPCRouter({
         select: {
           id: true,
           name: true,
-          email: true,
           image: true,
+          email: true, // Used to compute masked value; never return raw email.
         },
       })
 
-      return users
+      return users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        image: u.image,
+        emailMasked: u.email ? maskEmail(u.email) : null,
+      }))
     }),
 
   getProfile: protectedProcedure

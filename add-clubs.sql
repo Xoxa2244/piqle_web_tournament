@@ -183,3 +183,30 @@ CREATE INDEX IF NOT EXISTS "club_chat_messages_club_id_created_at_idx"
   ON "club_chat_messages" ("club_id", "created_at");
 CREATE INDEX IF NOT EXISTS "club_chat_messages_user_id_idx"
   ON "club_chat_messages" ("user_id");
+
+-- Club invites (anti-spam tracking)
+-- Notes:
+-- - Email delivery is handled by the app (SMTP).
+-- - This table is used for rate limiting + audit trail.
+CREATE TABLE IF NOT EXISTS "club_invites" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "club_id" UUID NOT NULL,
+  "inviter_user_id" TEXT NOT NULL,
+  "invitee_user_id" TEXT,
+  "invitee_email" TEXT NOT NULL,
+  "delivered" BOOLEAN NOT NULL DEFAULT false,
+  "created_at" TIMESTAMP NOT NULL DEFAULT now(),
+  CONSTRAINT "club_invites_club_id_fkey"
+    FOREIGN KEY ("club_id") REFERENCES "clubs" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_invites_inviter_user_id_fkey"
+    FOREIGN KEY ("inviter_user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+  CONSTRAINT "club_invites_invitee_user_id_fkey"
+    FOREIGN KEY ("invitee_user_id") REFERENCES "users" ("id") ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS "club_invites_club_id_created_at_idx"
+  ON "club_invites" ("club_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_invites_inviter_user_id_created_at_idx"
+  ON "club_invites" ("inviter_user_id", "created_at");
+CREATE INDEX IF NOT EXISTS "club_invites_invitee_email_idx"
+  ON "club_invites" ("invitee_email");
