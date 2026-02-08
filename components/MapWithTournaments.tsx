@@ -30,6 +30,28 @@ function haversineDistanceKm(a: LatLng, b: LatLng): number {
   return R * c
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function getMapPinStatus(t: { startDate: string; endDate?: string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(t.startDate)
+  const end = t.endDate ? new Date(t.endDate) : start
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+
 const buildInfoWindowContent = (
   tournament: Tournament,
   onOpenTournament?: (tournamentId: string) => void
@@ -37,28 +59,70 @@ const buildInfoWindowContent = (
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     tournament.address
   )}`
-  const openLink =
+  const status = getMapPinStatus(tournament)
+  const statusLabel = status === 'past' ? 'Past' : status === 'upcoming' ? 'Upcoming' : 'In progress'
+  const statusBg =
+    status === 'past'
+      ? '#f3f4f6'
+      : status === 'upcoming'
+        ? '#dbeafe'
+        : '#d1fae8'
+  const statusColor =
+    status === 'past'
+      ? '#6b7280'
+      : status === 'upcoming'
+        ? '#1d4ed8'
+        : '#047857'
+  const imgSrc =
+    tournament.image && tournament.image.trim()
+      ? tournament.image
+      : '/tournament-placeholder.png'
+  const startStr = new Date(tournament.startDate).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const endStr = tournament.endDate
+    ? new Date(tournament.endDate).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : startStr
+  const datesStr = startStr === endStr ? startStr : `${startStr} – ${endStr}`
+  const entryFeeStr =
+    tournament.entryFeeCents != null && tournament.entryFeeCents > 0
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: (tournament.currency || 'usd').toUpperCase(),
+        }).format(tournament.entryFeeCents / 100)
+      : 'Free'
+
+  const openButton =
     onOpenTournament != null
-      ? `<a href="#" class="open-tournament-modal-link" data-tournament-id="${tournament.id}" style="color: #2563eb; text-decoration: underline;">Open tournament page</a>`
+      ? `<a href="#" class="open-tournament-modal-link" data-tournament-id="${tournament.id}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; border: none; cursor: pointer;">Open tournament</a>`
       : (() => {
           const href = tournament.publicSlug
             ? `/t/${tournament.publicSlug}`
             : `/admin/${tournament.id}`
-          return `<a href="${href}" style="color: #2563eb; text-decoration: underline;">Open tournament page</a>`
+          return `<a href="${href}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Open tournament</a>`
         })()
+
   return `
-    <div style="min-width: 220px">
-      <div style="font-weight: 600; margin-bottom: 4px;">${tournament.name}</div>
-      <div style="margin-bottom: 4px;">${new Date(
-        tournament.startDate
-      ).toLocaleString()}</div>
-      <div style="margin-bottom: 4px;">${tournament.clubName}</div>
-      <div style="margin-bottom: 8px;">
-        <a href="${mapsHref}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">
-          ${tournament.address}
-        </a>
+    <div style="min-width: 260px; font-family: system-ui, sans-serif;">
+      <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+        <img src="${imgSrc}" alt="" style="width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex-shrink: 0;" />
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; font-size: 15px; line-height: 1.3;">${escapeHtml(tournament.name)}</div>
+          <span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: ${statusBg}; color: ${statusColor};">${statusLabel}</span>
+        </div>
       </div>
-      ${openLink}
+      <div style="font-size: 13px; color: #374151; margin-bottom: 4px;"><strong>Entry Fee:</strong> ${entryFeeStr}</div>
+      <div style="font-size: 13px; color: #374151; margin-bottom: 4px;"><strong>Dates:</strong> ${datesStr}</div>
+      <div style="font-size: 13px; color: #374151; margin-bottom: 6px;">
+        <a href="${mapsHref}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">${escapeHtml(tournament.address)}</a>
+      </div>
+      ${openButton}
     </div>
   `
 }

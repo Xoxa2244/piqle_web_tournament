@@ -13,6 +13,9 @@ type ApiTournament = {
   clubName: string
   address: string
   publicSlug?: string
+  image?: string
+  entryFeeCents?: number
+  currency?: string
 }
 
 type ApiResponse = {

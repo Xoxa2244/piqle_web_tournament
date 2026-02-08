@@ -17,6 +17,9 @@ export type Tournament = {
   city?: string
   state?: string
   country?: string
+  image?: string
+  entryFeeCents?: number
+  currency?: string
 }
 
 export type PlaceDetails = {
