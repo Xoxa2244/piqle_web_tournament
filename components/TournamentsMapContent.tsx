@@ -40,6 +40,8 @@ type TournamentsMapContentProps = {
   filterUpcoming?: boolean
   filterInProgress?: boolean
   filterPast?: boolean
+  /** When set, "Open tournament page" in the pin popup opens this modal instead of navigating */
+  onOpenTournament?: (tournamentId: string) => void
 }
 
 export function TournamentsMapContent({
@@ -47,6 +49,7 @@ export function TournamentsMapContent({
   filterUpcoming = true,
   filterInProgress = true,
   filterPast = false,
+  onOpenTournament,
 }: TournamentsMapContentProps = {}) {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [focusLocation, setFocusLocation] = useState<LatLng | null>(null)
@@ -196,6 +199,7 @@ export function TournamentsMapContent({
       <MapWithTournaments
         tournaments={filteredTournaments}
         focusLocation={mapFocusLocation}
+        onOpenTournament={onOpenTournament}
       />
     </div>
   )

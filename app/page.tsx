@@ -533,6 +533,7 @@ export default function HomePage() {
             filterUpcoming={filterUpcoming}
             filterInProgress={filterInProgress}
             filterPast={filterPast}
+            onOpenTournament={setSelectedTournament}
           />
         ) : publicTournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

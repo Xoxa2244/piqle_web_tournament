@@ -9,6 +9,8 @@ import { Locate, MapPin } from "lucide-react"
 type MapWithTournamentsProps = {
   tournaments: Tournament[]
   focusLocation?: LatLng | null
+  /** When set, "Open tournament page" in the pin popup opens this modal instead of navigating */
+  onOpenTournament?: (tournamentId: string) => void
 }
 
 const DEFAULT_CENTER: LatLng = { lat: 39.8283, lng: -98.5795 }
@@ -28,13 +30,22 @@ function haversineDistanceKm(a: LatLng, b: LatLng): number {
   return R * c
 }
 
-const buildInfoWindowContent = (tournament: Tournament) => {
-  const href = tournament.publicSlug
-    ? `/t/${tournament.publicSlug}`
-    : `/admin/${tournament.id}`
+const buildInfoWindowContent = (
+  tournament: Tournament,
+  onOpenTournament?: (tournamentId: string) => void
+) => {
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     tournament.address
   )}`
+  const openLink =
+    onOpenTournament != null
+      ? `<a href="#" class="open-tournament-modal-link" data-tournament-id="${tournament.id}" style="color: #2563eb; text-decoration: underline;">Open tournament page</a>`
+      : (() => {
+          const href = tournament.publicSlug
+            ? `/t/${tournament.publicSlug}`
+            : `/admin/${tournament.id}`
+          return `<a href="${href}" style="color: #2563eb; text-decoration: underline;">Open tournament page</a>`
+        })()
   return `
     <div style="min-width: 220px">
       <div style="font-weight: 600; margin-bottom: 4px;">${tournament.name}</div>
@@ -47,9 +58,7 @@ const buildInfoWindowContent = (tournament: Tournament) => {
           ${tournament.address}
         </a>
       </div>
-      <a href="${href}" style="color: #2563eb; text-decoration: underline;">
-        Open tournament page
-      </a>
+      ${openLink}
     </div>
   `
 }
@@ -57,6 +66,7 @@ const buildInfoWindowContent = (tournament: Tournament) => {
 export const MapWithTournaments = ({
   tournaments,
   focusLocation,
+  onOpenTournament,
 }: MapWithTournamentsProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -65,6 +75,8 @@ export const MapWithTournaments = ({
   const infoWindowRef = useRef<any>(null)
   const tournamentMarkersRef = useRef<Map<string, any>>(new Map())
   const userMarkerRef = useRef<any>(null)
+  const onOpenTournamentRef = useRef(onOpenTournament)
+  onOpenTournamentRef.current = onOpenTournament
   const [mapError, setMapError] = useState<string | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(false)
@@ -93,6 +105,15 @@ export const MapWithTournaments = ({
       })
 
       infoWindowRef.current = new googleApi.maps.InfoWindow()
+      googleApi.maps.event.addListener(infoWindowRef.current, 'domready', () => {
+        const link = document.querySelector('.open-tournament-modal-link')
+        if (!link || !onOpenTournamentRef.current) return
+        link.addEventListener('click', (e: Event) => {
+          e.preventDefault()
+          const id = link.getAttribute('data-tournament-id')
+          if (id) onOpenTournamentRef.current?.(id)
+        })
+      })
     } catch (error) {
       setMapError(
         error instanceof Error ? error.message : "Failed to load Google Maps."
@@ -148,7 +169,7 @@ export const MapWithTournaments = ({
     mapInstanceRef.current.setZoom(FOCUS_ZOOM)
     const marker = tournamentMarkersRef.current.get(nearest.id)
     if (marker) {
-      infoWindowRef.current.setContent(buildInfoWindowContent(nearest))
+      infoWindowRef.current.setContent(buildInfoWindowContent(nearest, onOpenTournamentRef.current))
       infoWindowRef.current.open({
         anchor: marker,
         map: mapInstanceRef.current,
@@ -196,7 +217,7 @@ export const MapWithTournaments = ({
           return
         }
 
-        infoWindowRef.current.setContent(buildInfoWindowContent(tournament))
+        infoWindowRef.current.setContent(buildInfoWindowContent(tournament, onOpenTournamentRef.current))
         infoWindowRef.current.open({
           anchor: marker,
           map: mapInstanceRef.current!,
