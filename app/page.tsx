@@ -16,8 +16,9 @@ import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
 import { Checkbox } from '@/components/ui/checkbox'
+import { TournamentsMapContent } from '@/components/TournamentsMapContent'
 
-type FilterType = 'my' | 'all'
+type FilterType = 'my' | 'all' | 'map'
 type SortType = 'date-desc' | 'date-asc'
 
 // Placeholder when tournament has no image. Uses public/tournament-placeholder.png.
@@ -424,7 +425,8 @@ export default function HomePage() {
               <p className="text-gray-600 mt-2">Select a tournament to view results</p>
             </div>
 
-            {/* Search Input */}
+            {/* Search Input - hidden on Map tab */}
+            {filter !== 'map' && (
             <div className="mt-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -437,6 +439,7 @@ export default function HomePage() {
                 />
               </div>
             </div>
+            )}
 
             {/* Filter Tabs + Status Checkboxes + Sort */}
             <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
@@ -460,6 +463,16 @@ export default function HomePage() {
                   }`}
                 >
                   My tournaments
+                </button>
+                <button
+                  onClick={() => setFilter('map')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'map'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  View on Map
                 </button>
               </div>
               <div className="flex items-center gap-4 ml-auto">
@@ -487,7 +500,8 @@ export default function HomePage() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortType)}
-                  className="text-sm border border-gray-300 rounded-md pl-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] pr-[2.5rem]"
+                  disabled={filter === 'map'}
+                  className={`text-sm border border-gray-300 rounded-md pl-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] pr-[2.5rem] ${filter === 'map' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   }}
@@ -503,7 +517,13 @@ export default function HomePage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {publicTournaments.length > 0 ? (
+        {filter === 'map' ? (
+          <TournamentsMapContent
+            filterUpcoming={filterUpcoming}
+            filterInProgress={filterInProgress}
+            filterPast={filterPast}
+          />
+        ) : publicTournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {publicTournaments.map((tournament) => (
               <Card 

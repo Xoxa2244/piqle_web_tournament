@@ -7,6 +7,7 @@ export type Tournament = {
   id: string
   name: string
   startDate: string
+  endDate?: string
   clubName: string
   address: string
   lat: number
