@@ -127,10 +127,10 @@ export default function ClubDetailPage() {
       list.push(t)
       map.set(key, list)
     }
-    for (const [key, list] of map.entries()) {
+    map.forEach((list, key) => {
       list.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
       map.set(key, list)
-    }
+    })
     return map
   }, [tournaments])
 
