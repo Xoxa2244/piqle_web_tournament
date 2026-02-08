@@ -543,7 +543,7 @@ export default function HomePage() {
                   </div>
                 )}
                 <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                     {(tournament as any).image ? (
                       <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
                         <Image
@@ -556,8 +556,8 @@ export default function HomePage() {
                     ) : (
                       <TournamentImagePlaceholder />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
+                    <div className="flex-1 min-w-0 flex justify-center">
+                      <CardTitle className="text-xl pr-10 line-clamp-2 break-words text-center">{tournament.title}</CardTitle>
                     </div>
                   </div>
                   {/* Tournament status badge */}
@@ -658,7 +658,7 @@ export default function HomePage() {
                       </div>
                     )}
                     {/* Like/Dislike/Comments Buttons */}
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-4">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
