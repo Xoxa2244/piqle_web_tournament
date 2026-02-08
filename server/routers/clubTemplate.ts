@@ -175,18 +175,31 @@ const playersPerTeamToKind = (playersPerTeam: 1 | 2 | 4) => {
   return 'SQUAD_4v4'
 }
 
-const getUniqueTournamentSlug = async (ctx: { prisma: any }, title: string) => {
+const getUniqueTournamentSlug = async (prisma: any, title: string) => {
   const base = title.toLowerCase().replace(/\s+/g, '-')
   let publicSlug = base || 'tournament'
   let counter = 1
   const baseSlug = publicSlug
 
-  while (await ctx.prisma.tournament.findUnique({ where: { publicSlug } })) {
+  while (await prisma.tournament.findUnique({ where: { publicSlug } })) {
     publicSlug = `${baseSlug}-${counter}`
     counter++
   }
 
   return publicSlug
+}
+
+const addDaysUtc = (date: Date, days: number) => new Date(date.getTime() + days * 24 * 60 * 60 * 1000)
+
+const addMonthsUtc = (date: Date, months: number) => {
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth()
+  const day = date.getUTCDate()
+
+  const targetMonth = month + months
+  const lastDayOfTargetMonth = new Date(Date.UTC(year, targetMonth + 1, 0)).getUTCDate()
+  const clampedDay = Math.min(day, lastDayOfTargetMonth)
+  return new Date(Date.UTC(year, targetMonth, clampedDay))
 }
 
 export const clubTemplateRouter = createTRPCRouter({
@@ -281,6 +294,12 @@ export const clubTemplateRouter = createTRPCRouter({
         registrationStartDate: z.string().transform((str) => new Date(str)).optional(),
         registrationEndDate: z.string().transform((str) => new Date(str)).optional(),
         entryFeeCents: z.number().int().min(0).optional(),
+        recurrence: z
+          .object({
+            frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY']),
+            count: z.number().int().min(1).max(12),
+          })
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -319,164 +338,189 @@ export const clubTemplateRouter = createTRPCRouter({
         })
       }
 
-      validateTournamentDates({
-        startDate: input.startDate,
-        endDate: input.endDate,
-        registrationStartDate: input.registrationStartDate,
-        registrationEndDate: input.registrationEndDate,
-      })
-
       const config = parsed.data
       const title = input.title?.trim() || config.tournament.title
 
-      const publicSlug = await getUniqueTournamentSlug(ctx, title)
       const entryFeeCents = input.entryFeeCents ?? 0
       const entryFeeDecimal = entryFeeCents > 0 ? new Prisma.Decimal(entryFeeCents / 100) : null
 
-      const created = await ctx.prisma.$transaction(async (tx: any) => {
-        const createdTournament = await tx.tournament.create({
-          data: {
-            title,
-            description: config.tournament.description ?? null,
-            rulesUrl: config.tournament.rulesUrl ?? null,
-            venueName: config.tournament.venueName ?? null,
-            venueAddress: config.tournament.venueAddress ?? null,
-            clubId: template.clubId,
-            startDate: input.startDate,
-            endDate: input.endDate,
-            registrationStartDate: input.registrationStartDate ?? null,
-            registrationEndDate: input.registrationEndDate ?? null,
-            entryFee: entryFeeDecimal,
-            entryFeeCents,
-            currency: (config.tournament.currency ?? 'usd') as string,
-            isPublicBoardEnabled: false, // always draft
-            allowDuprSubmission: Boolean(config.tournament.allowDuprSubmission),
-            format: config.tournament.format,
-            seasonLabel: config.tournament.seasonLabel ?? null,
-            timezone: config.tournament.timezone ?? null,
-            publicSlug,
-            userId: ctx.session.user.id,
-            hasDivisions: config.structure.mode === 'WITH_DIVISIONS',
-          },
-          select: { id: true },
-        })
+      const count = input.recurrence?.count ?? 1
+      const frequency = input.recurrence?.frequency ?? null
 
-        if (config.structure.mode === 'WITH_DIVISIONS') {
-          for (const divisionInput of config.structure.divisions) {
-            const teamKind = playersPerTeamToKind(divisionInput.playersPerTeam)
-            const division = await tx.division.create({
-              data: {
-                tournamentId: createdTournament.id,
-                name: divisionInput.name.trim(),
-                teamKind,
-                pairingMode: 'FIXED',
-                poolCount: divisionInput.poolCount,
-                maxTeams: divisionInput.teamCount,
-                constraints: {
-                  create: {
-                    minDupr: divisionInput.constraints.individualDupr.enabled ? divisionInput.constraints.individualDupr.min ?? null : null,
-                    maxDupr: divisionInput.constraints.individualDupr.enabled ? divisionInput.constraints.individualDupr.max ?? null : null,
-                    minTeamDupr: divisionInput.constraints.teamDupr.enabled ? divisionInput.constraints.teamDupr.min ?? null : null,
-                    maxTeamDupr: divisionInput.constraints.teamDupr.enabled ? divisionInput.constraints.teamDupr.max ?? null : null,
-                    minAge: divisionInput.constraints.age.enabled ? divisionInput.constraints.age.min ?? null : null,
-                    maxAge: divisionInput.constraints.age.enabled ? divisionInput.constraints.age.max ?? null : null,
-                    genders: divisionInput.constraints.gender.enabled ? (divisionInput.constraints.gender.value || 'ANY') : 'ANY',
-                    enforcement: divisionInput.constraints.enforcement,
-                  },
-                },
-                pools: {
-                  create: Array.from({ length: divisionInput.poolCount }, (_, index) => ({
-                    name: divisionInput.poolCount === 1 ? 'Pool 1' : `Pool ${index + 1}`,
-                    order: index + 1,
-                  })),
-                },
-              },
-              include: { pools: { orderBy: { order: 'asc' } } },
-            })
+      const shift = (date: Date, index: number) => {
+        if (!frequency || count <= 1) return date
+        if (frequency === 'WEEKLY') return addDaysUtc(date, 7 * index)
+        if (frequency === 'BIWEEKLY') return addDaysUtc(date, 14 * index)
+        return addMonthsUtc(date, index)
+      }
 
-            const pools = division.pools
-            for (let i = 0; i < divisionInput.teamCount; i++) {
-              const pool = pools[i % pools.length]
-              await tx.team.create({
-                data: {
-                  divisionId: division.id,
-                  name: `Team ${i + 1}`,
-                  poolId: pool?.id,
-                },
-              })
-            }
-          }
-        } else {
-          const playersPerTeam = config.structure.playersPerTeam
-          const teamKind = playersPerTeamToKind(playersPerTeam)
-          const maxTeams = playersPerTeam === 1 ? config.structure.playerCount : config.structure.teamCount
+      const occurrences = Array.from({ length: count }, (_, index) => ({
+        startDate: shift(input.startDate, index),
+        endDate: shift(input.endDate, index),
+        registrationStartDate: input.registrationStartDate ? shift(input.registrationStartDate, index) : undefined,
+        registrationEndDate: input.registrationEndDate ? shift(input.registrationEndDate, index) : undefined,
+      }))
 
-          const division = await tx.division.create({
+      // Validate each occurrence. This is cheap and avoids creating partial series.
+      for (const occ of occurrences) {
+        validateTournamentDates(occ)
+      }
+
+      const createdIds = await ctx.prisma.$transaction(async (tx: any) => {
+        const ids: string[] = []
+
+        for (let index = 0; index < occurrences.length; index++) {
+          const occ = occurrences[index]!
+          const publicSlug = await getUniqueTournamentSlug(tx, title)
+
+          const createdTournament = await tx.tournament.create({
             data: {
-              tournamentId: createdTournament.id,
-              name: 'Main',
-              teamKind,
-              pairingMode: 'FIXED',
-              poolCount: 0,
-              maxTeams: maxTeams ?? undefined,
-              constraints: {
-                create: {
-                  genders: 'ANY',
-                  enforcement: 'INFO',
-                },
-              },
+              title,
+              description: config.tournament.description ?? null,
+              rulesUrl: config.tournament.rulesUrl ?? null,
+              venueName: config.tournament.venueName ?? null,
+              venueAddress: config.tournament.venueAddress ?? null,
+              clubId: template.clubId,
+              startDate: occ.startDate,
+              endDate: occ.endDate,
+              registrationStartDate: occ.registrationStartDate ?? null,
+              registrationEndDate: occ.registrationEndDate ?? null,
+              entryFee: entryFeeDecimal,
+              entryFeeCents,
+              currency: (config.tournament.currency ?? 'usd') as string,
+              isPublicBoardEnabled: false, // always draft
+              allowDuprSubmission: Boolean(config.tournament.allowDuprSubmission),
+              format: config.tournament.format,
+              seasonLabel: config.tournament.seasonLabel ?? null,
+              timezone: config.tournament.timezone ?? null,
+              publicSlug,
+              userId: ctx.session.user.id,
+              hasDivisions: config.structure.mode === 'WITH_DIVISIONS',
             },
             select: { id: true },
           })
 
-          if (playersPerTeam === 1 && config.structure.playerCount) {
-            await tx.player.createMany({
-              data: Array.from({ length: config.structure.playerCount }, (_, index) => ({
-                firstName: 'Player',
-                lastName: String(index + 1),
-                tournamentId: createdTournament.id,
-              })),
-            })
-          }
-
-          if (playersPerTeam !== 1 && config.structure.teamCount) {
-            for (let i = 0; i < config.structure.teamCount; i++) {
-              await tx.team.create({
+          if (config.structure.mode === 'WITH_DIVISIONS') {
+            for (const divisionInput of config.structure.divisions) {
+              const teamKind = playersPerTeamToKind(divisionInput.playersPerTeam)
+              const division = await tx.division.create({
                 data: {
-                  divisionId: division.id,
-                  name: `Team ${i + 1}`,
+                  tournamentId: createdTournament.id,
+                  name: divisionInput.name.trim(),
+                  teamKind,
+                  pairingMode: 'FIXED',
+                  poolCount: divisionInput.poolCount,
+                  maxTeams: divisionInput.teamCount,
+                  constraints: {
+                    create: {
+                      minDupr: divisionInput.constraints.individualDupr.enabled ? divisionInput.constraints.individualDupr.min ?? null : null,
+                      maxDupr: divisionInput.constraints.individualDupr.enabled ? divisionInput.constraints.individualDupr.max ?? null : null,
+                      minTeamDupr: divisionInput.constraints.teamDupr.enabled ? divisionInput.constraints.teamDupr.min ?? null : null,
+                      maxTeamDupr: divisionInput.constraints.teamDupr.enabled ? divisionInput.constraints.teamDupr.max ?? null : null,
+                      minAge: divisionInput.constraints.age.enabled ? divisionInput.constraints.age.min ?? null : null,
+                      maxAge: divisionInput.constraints.age.enabled ? divisionInput.constraints.age.max ?? null : null,
+                      genders: divisionInput.constraints.gender.enabled ? (divisionInput.constraints.gender.value || 'ANY') : 'ANY',
+                      enforcement: divisionInput.constraints.enforcement,
+                    },
+                  },
+                  pools: {
+                    create: Array.from({ length: divisionInput.poolCount }, (_, index) => ({
+                      name: divisionInput.poolCount === 1 ? 'Pool 1' : `Pool ${index + 1}`,
+                      order: index + 1,
+                    })),
+                  },
                 },
+                include: { pools: { orderBy: { order: 'asc' } } },
+              })
+
+              const pools = division.pools
+              for (let i = 0; i < divisionInput.teamCount; i++) {
+                const pool = pools[i % pools.length]
+                await tx.team.create({
+                  data: {
+                    divisionId: division.id,
+                    name: `Team ${i + 1}`,
+                    poolId: pool?.id,
+                  },
+                })
+              }
+            }
+          } else {
+            const playersPerTeam = config.structure.playersPerTeam
+            const teamKind = playersPerTeamToKind(playersPerTeam)
+            const maxTeams = playersPerTeam === 1 ? config.structure.playerCount : config.structure.teamCount
+
+            const division = await tx.division.create({
+              data: {
+                tournamentId: createdTournament.id,
+                name: 'Main',
+                teamKind,
+                pairingMode: 'FIXED',
+                poolCount: 0,
+                maxTeams: maxTeams ?? undefined,
+                constraints: {
+                  create: {
+                    genders: 'ANY',
+                    enforcement: 'INFO',
+                  },
+                },
+              },
+              select: { id: true },
+            })
+
+            if (playersPerTeam === 1 && config.structure.playerCount) {
+              await tx.player.createMany({
+                data: Array.from({ length: config.structure.playerCount }, (_, index) => ({
+                  firstName: 'Player',
+                  lastName: String(index + 1),
+                  tournamentId: createdTournament.id,
+                })),
               })
             }
-          }
-        }
 
-        await tx.auditLog.create({
-          data: {
-            actorUserId: ctx.session.user.id,
-            tournamentId: createdTournament.id,
-            action: 'CREATE',
-            entityType: 'Tournament',
-            entityId: createdTournament.id,
-            payload: {
-              source: 'CLUB_TEMPLATE',
-              templateId: template.id,
-              overrides: {
-                title: input.title ?? null,
-                startDate: input.startDate,
-                endDate: input.endDate,
-                registrationStartDate: input.registrationStartDate ?? null,
-                registrationEndDate: input.registrationEndDate ?? null,
-                entryFeeCents,
+            if (playersPerTeam !== 1 && config.structure.teamCount) {
+              for (let i = 0; i < config.structure.teamCount; i++) {
+                await tx.team.create({
+                  data: {
+                    divisionId: division.id,
+                    name: `Team ${i + 1}`,
+                  },
+                })
+              }
+            }
+          }
+
+          await tx.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: createdTournament.id,
+              action: 'CREATE',
+              entityType: 'Tournament',
+              entityId: createdTournament.id,
+              payload: {
+                source: 'CLUB_TEMPLATE',
+                templateId: template.id,
+                recurrence: input.recurrence ?? null,
+                occurrenceIndex: index,
+                overrides: {
+                  title: input.title ?? null,
+                  startDate: occ.startDate,
+                  endDate: occ.endDate,
+                  registrationStartDate: occ.registrationStartDate ?? null,
+                  registrationEndDate: occ.registrationEndDate ?? null,
+                  entryFeeCents,
+                },
               },
             },
-          },
-        })
+          })
 
-        return createdTournament
+          ids.push(createdTournament.id)
+        }
+
+        return ids
       })
 
-      return { tournamentId: created.id }
+      return { tournamentId: createdIds[0]!, tournamentIds: createdIds }
     }),
 
   saveFromTournament: protectedProcedure

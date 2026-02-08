@@ -1663,6 +1663,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
     registrationStartDate: '',
     registrationEndDate: '',
     entryFee: '',
+    isRecurring: false,
+    recurrenceFrequency: 'WEEKLY' as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+    recurrenceCount: 4,
   })
 
   const openCreate = (t: { id: string; name: string }) => {
@@ -1675,6 +1678,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
       registrationStartDate: '',
       registrationEndDate: '',
       entryFee: '',
+      isRecurring: false,
+      recurrenceFrequency: 'WEEKLY',
+      recurrenceCount: 4,
     })
     setCreateOpen(true)
   }
@@ -1686,10 +1692,23 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
       return
     }
 
+    if (draftForm.isRecurring) {
+      const count = Number(draftForm.recurrenceCount)
+      if (!Number.isFinite(count) || count < 1 || count > 12) {
+        toast({ title: 'Invalid recurrence', description: 'Occurrences must be between 1 and 12.', variant: 'destructive' })
+        return
+      }
+    }
+
     const fee = Number(draftForm.entryFee)
     const entryFeeCents = Number.isFinite(fee) && fee > 0 ? toCents(fee) : undefined
 
     try {
+      const recurrence =
+        draftForm.isRecurring && draftForm.recurrenceCount > 1
+          ? { frequency: draftForm.recurrenceFrequency, count: draftForm.recurrenceCount }
+          : undefined
+
       const res = await createDraft.mutateAsync({
         templateId: selected.id,
         title: draftForm.title.trim() ? draftForm.title.trim() : undefined,
@@ -1698,10 +1717,14 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
         registrationStartDate: draftForm.registrationStartDate || undefined,
         registrationEndDate: draftForm.registrationEndDate || undefined,
         entryFeeCents,
+        recurrence,
       })
 
       await utils.clubTemplate.list.invalidate({ clubId })
       setCreateOpen(false)
+      if ((res as any)?.tournamentIds?.length > 1) {
+        toast({ title: 'Drafts created', description: `Created ${(res as any).tournamentIds.length} draft tournaments.` })
+      }
       router.push(`/admin/${res.tournamentId}`)
     } catch (err: any) {
       toast({ title: 'Failed', description: err?.message || 'Could not create draft.', variant: 'destructive' })
@@ -1856,6 +1879,65 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                     placeholder="0.00"
                   />
                 </div>
+
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={draftForm.isRecurring}
+                        onChange={(e) => setDraftForm((p) => ({ ...p, isRecurring: e.target.checked }))}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      Create series
+                    </label>
+                  </div>
+
+                  {draftForm.isRecurring ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Frequency</div>
+                        <select
+                          value={draftForm.recurrenceFrequency}
+                          onChange={(e) =>
+                            setDraftForm((p) => ({ ...p, recurrenceFrequency: e.target.value as any }))
+                          }
+                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                        >
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="BIWEEKLY">Every 2 weeks</option>
+                          <option value="MONTHLY">Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Occurrences</div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={draftForm.recurrenceCount}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            const safe = Number.isFinite(n) ? Math.max(1, Math.min(12, Math.trunc(n))) : 1
+                            setDraftForm((p) => ({ ...p, recurrenceCount: safe }))
+                          }}
+                        />
+                        <div className="mt-1 text-xs text-muted-foreground">Max 12. Includes the first draft.</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      Create one draft now. You can always create more later from the same template.
+                    </div>
+                  )}
+
+                  {draftForm.isRecurring ? (
+                    <div className="text-xs text-gray-600">
+                      This will create <span className="font-medium">{draftForm.recurrenceCount}</span> draft tournaments (not public).
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-2">
@@ -1863,7 +1945,11 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                   Cancel
                 </Button>
                 <Button type="button" onClick={submitCreate} disabled={createDraft.isPending}>
-                  {createDraft.isPending ? 'Creating…' : 'Create draft'}
+                  {createDraft.isPending
+                    ? 'Creating…'
+                    : draftForm.isRecurring && draftForm.recurrenceCount > 1
+                      ? `Create ${draftForm.recurrenceCount} drafts`
+                      : 'Create draft'}
                 </Button>
               </div>
             </div>
