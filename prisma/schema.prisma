@@ -30,6 +30,10 @@ model User {
   accounts                 Account[]
   assistantAssignments     AssistantAssignment[]
   auditLogs                AuditLog[]
+  clubFollows              ClubFollower[]
+  clubAdminRoles           ClubAdmin[]
+  clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
+  clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
   players                  Player[]
   sessions                 Session[]
   tournaments              Tournament[]
@@ -102,6 +106,7 @@ model Tournament {
   rulesUrl                String?
   venueName               String?
   venueAddress            String?
+  clubId                  String?                   @map("club_id")
   startDate               DateTime
   endDate                 DateTime
   registrationStartDate   DateTime?                 @map("registration_start_date")
@@ -135,8 +140,102 @@ model Tournament {
   courts                  Court[]
   waitlistEntries         WaitlistEntry[]
   payments                Payment[]
+  club                    Club?                     @relation(fields: [clubId], references: [id], onDelete: SetNull)
 
+  @@index([clubId])
   @@map("tournaments")
+}
+
+model Club {
+  id                 String               @id @default(uuid())
+  name               String
+  kind               ClubKind             @default(VENUE)
+  description        String?
+  address            String?
+  city               String?
+  state              String?
+  country            String?
+  isVerified         Boolean              @default(false) @map("is_verified")
+  courtReserveUrl    String?              @map("court_reserve_url")
+  bookingRequestEmail String?             @map("booking_request_email")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  tournaments        Tournament[]
+  followers          ClubFollower[]
+  admins             ClubAdmin[]
+  announcements      ClubAnnouncement[]
+  bookingRequests    ClubBookingRequest[]
+
+  @@map("clubs")
+}
+
+model ClubFollower {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId])
+  @@map("club_followers")
+}
+
+model ClubAdmin {
+  id        String        @id @default(uuid())
+  clubId    String        @map("club_id")
+  userId    String        @map("user_id")
+  role      ClubAdminRole @default(ADMIN)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  club      Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId])
+  @@map("club_admins")
+}
+
+model ClubAnnouncement {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  title           String?
+  body            String
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  createdByUser   User?    @relation("ClubAnnouncementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt])
+  @@map("club_announcements")
+}
+
+model ClubBookingRequest {
+  id              String                  @id @default(uuid())
+  clubId          String                  @map("club_id")
+  requesterUserId String?                 @map("requester_user_id")
+  requesterName   String                  @map("requester_name")
+  requesterEmail  String                  @map("requester_email")
+  requesterPhone  String?                 @map("requester_phone")
+  desiredStart    DateTime?               @map("desired_start")
+  durationMinutes Int?                    @map("duration_minutes")
+  playersCount    Int?                    @map("players_count")
+  message         String?                 @map("message")
+  status          ClubBookingRequestStatus @default(NEW)
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  club            Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  requesterUser   User?                   @relation("ClubBookingRequestRequestedBy", fields: [requesterUserId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt])
+  @@index([requesterUserId])
+  @@map("club_booking_requests")
 }
 
 model Court {
@@ -666,6 +765,22 @@ model IndyGame {
 enum UserRole {
   TD
   ASSISTANT
+}
+
+enum ClubKind {
+  VENUE
+  COMMUNITY
+}
+
+enum ClubAdminRole {
+  ADMIN
+  MODERATOR
+}
+
+enum ClubBookingRequestStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
 }
 
 enum AccessLevel {
