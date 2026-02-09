@@ -549,7 +549,7 @@ export default function HomePage() {
                 {baseUrl && (
                   <div className="absolute top-4 right-4 z-10">
                     <ShareButton
-                      url={`${baseUrl}/scoreboard/${tournament.id}`}
+                      url={`${baseUrl}/?open=${tournament.id}`}
                       title={tournament.title}
                       iconOnly
                       size="sm"
