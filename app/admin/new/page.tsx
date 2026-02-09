@@ -11,6 +11,7 @@ import Image from 'next/image'
 import { ChevronLeft, ChevronRight, Layers, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
+import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -617,11 +618,7 @@ function NewTournamentPageInner() {
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const start = formData.startDate || today
     const end = formData.endDate || start
-    const startParts = start.split('-').map((v) => Number(v))
-    const startWeekday =
-      startParts.length === 3 && startParts.every((n) => Number.isFinite(n))
-        ? new Date(startParts[0]!, startParts[1]! - 1, startParts[2]!).getDay()
-        : 0
+    const startWeekday = parseYmdToUtc(start)?.getUTCDay() ?? 0
     setTemplateDraftForm({
       title: '',
       startDate: start,
@@ -696,6 +693,52 @@ function NewTournamentPageInner() {
     return true
   }
 
+  const templateRecurrencePreview = useMemo<
+    { items: string[] } | { error: string } | null
+  >(() => {
+    if (!templateDraftForm.isRecurring || templateDraftForm.recurrenceCount <= 1) return null
+
+    const start = parseYmdToUtc(templateDraftForm.startDate)
+    const end = parseYmdToUtc(templateDraftForm.endDate)
+    if (!start || !end) return null
+    const durationMs = end.getTime() - start.getTime()
+    if (durationMs < 0) return { error: 'End date must be on or after start date.' }
+
+    const config = {
+      frequency: templateDraftForm.recurrenceFrequency,
+      count: templateDraftForm.recurrenceCount,
+      weekdays:
+        templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
+        templateDraftForm.recurrenceFrequency === 'BIWEEKLY'
+          ? templateDraftForm.recurrenceWeekdays
+          : undefined,
+    } as const
+
+    const generated = generateRecurringStartDates(start, config)
+    if ('error' in generated) return { error: generated.error }
+
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    const items = generated.startDates.map((s) => {
+      const e = new Date(s.getTime() + durationMs)
+      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+    })
+
+    return { items }
+  }, [
+    templateDraftForm.isRecurring,
+    templateDraftForm.recurrenceCount,
+    templateDraftForm.recurrenceFrequency,
+    templateDraftForm.recurrenceWeekdays,
+    templateDraftForm.startDate,
+    templateDraftForm.endDate,
+  ])
+
   const handleCreateFromTemplate = async () => {
     if (!selectedTemplateId) return
     if (!validateTemplateDraft()) return
@@ -737,10 +780,12 @@ function NewTournamentPageInner() {
         recurrence,
       })
       setTemplateDraftOpen(false)
-      if ((res as any)?.tournamentIds?.length > 1) {
-        alert(`Created ${(res as any).tournamentIds.length} draft tournaments.`)
+      const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
+      if (Array.isArray(ids) && ids.length > 1) {
+        router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
+      } else {
+        router.push(`/admin/${res.tournamentId}`)
       }
-      router.push(`/admin/${res.tournamentId}`)
     } catch (err: any) {
       alert(err?.message || 'Failed to create from template')
     }
@@ -1538,11 +1583,7 @@ function NewTournamentPageInner() {
                         setTemplateDraftForm((p) => {
                           const next = { ...p, isRecurring: checked }
                           if (checked && (p.recurrenceWeekdays?.length ?? 0) < 1) {
-                            const parts = String(p.startDate || '').split('-').map((v) => Number(v))
-                            const wd =
-                              parts.length === 3 && parts.every((n) => Number.isFinite(n))
-                                ? new Date(parts[0]!, parts[1]! - 1, parts[2]!).getDay()
-                                : 0
+                            const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
                             next.recurrenceWeekdays = [wd]
                           }
                           return next
@@ -1566,11 +1607,7 @@ function NewTournamentPageInner() {
                             const next = { ...p, recurrenceFrequency: value }
                             const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
                             if (isWeeklyLike && (p.recurrenceWeekdays?.length ?? 0) < 1) {
-                              const parts = String(p.startDate || '').split('-').map((v) => Number(v))
-                              const wd =
-                                parts.length === 3 && parts.every((n) => Number.isFinite(n))
-                                  ? new Date(parts[0]!, parts[1]! - 1, parts[2]!).getDay()
-                                  : 0
+                              const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
                               next.recurrenceWeekdays = [wd]
                             }
                             return next
@@ -1655,6 +1692,26 @@ function NewTournamentPageInner() {
                   <div className="text-xs text-gray-600">
                     This will create <span className="font-medium">{templateDraftForm.recurrenceCount}</span>{' '}
                     draft tournaments (not public).
+                  </div>
+                ) : null}
+
+                {templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1 ? (
+                  <div className="rounded-md border border-gray-200 bg-white p-3">
+                    <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
+                    {templateRecurrencePreview && 'error' in templateRecurrencePreview ? (
+                      <div className="text-xs text-red-700">{templateRecurrencePreview.error}</div>
+                    ) : templateRecurrencePreview && 'items' in templateRecurrencePreview && templateRecurrencePreview.items.length ? (
+                      <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
+                        {templateRecurrencePreview.items.map((label, idx) => (
+                          <li key={idx} className="flex gap-2">
+                            <span className="w-5 text-gray-400">{idx + 1}.</span>
+                            <span className="flex-1">{label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="text-xs text-gray-500">Pick dates to see a preview.</div>
+                    )}
                   </div>
                 ) : null}
               </div>
