@@ -195,11 +195,15 @@ const addMonthsUtc = (date: Date, months: number) => {
   const year = date.getUTCFullYear()
   const month = date.getUTCMonth()
   const day = date.getUTCDate()
+  const hour = date.getUTCHours()
+  const minute = date.getUTCMinutes()
+  const second = date.getUTCSeconds()
+  const ms = date.getUTCMilliseconds()
 
   const targetMonth = month + months
   const lastDayOfTargetMonth = new Date(Date.UTC(year, targetMonth + 1, 0)).getUTCDate()
   const clampedDay = Math.min(day, lastDayOfTargetMonth)
-  return new Date(Date.UTC(year, targetMonth, clampedDay))
+  return new Date(Date.UTC(year, targetMonth, clampedDay, hour, minute, second, ms))
 }
 
 export const clubTemplateRouter = createTRPCRouter({
@@ -296,8 +300,9 @@ export const clubTemplateRouter = createTRPCRouter({
         entryFeeCents: z.number().int().min(0).optional(),
         recurrence: z
           .object({
-            frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY']),
+            frequency: z.enum(['DAILY', 'WEEKLY', 'BIWEEKLY', 'MONTHLY']),
             count: z.number().int().min(1).max(12),
+            weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
           })
           .optional(),
       })
@@ -346,20 +351,64 @@ export const clubTemplateRouter = createTRPCRouter({
 
       const count = input.recurrence?.count ?? 1
       const frequency = input.recurrence?.frequency ?? null
+      const recurrenceWeekdays = input.recurrence?.weekdays ?? null
 
-      const shift = (date: Date, index: number) => {
-        if (!frequency || count <= 1) return date
-        if (frequency === 'WEEKLY') return addDaysUtc(date, 7 * index)
-        if (frequency === 'BIWEEKLY') return addDaysUtc(date, 14 * index)
-        return addMonthsUtc(date, index)
+      const durationMs = input.endDate.getTime() - input.startDate.getTime()
+      const regStartOffsetMs = input.registrationStartDate
+        ? input.registrationStartDate.getTime() - input.startDate.getTime()
+        : null
+      const regEndOffsetMs = input.registrationEndDate
+        ? input.registrationEndDate.getTime() - input.startDate.getTime()
+        : null
+
+      const buildOccurrence = (startDate: Date) => ({
+        startDate,
+        endDate: new Date(startDate.getTime() + durationMs),
+        registrationStartDate:
+          regStartOffsetMs === null ? undefined : new Date(startDate.getTime() + regStartOffsetMs),
+        registrationEndDate:
+          regEndOffsetMs === null ? undefined : new Date(startDate.getTime() + regEndOffsetMs),
+      })
+
+      const startDates: Date[] = []
+      if (!frequency || count <= 1) {
+        startDates.push(input.startDate)
+      } else if (frequency === 'DAILY') {
+        for (let i = 0; i < count; i++) {
+          startDates.push(addDaysUtc(input.startDate, i))
+        }
+      } else if (frequency === 'MONTHLY') {
+        for (let i = 0; i < count; i++) {
+          startDates.push(addMonthsUtc(input.startDate, i))
+        }
+      } else {
+        // WEEKLY / BIWEEKLY
+        const intervalWeeks = frequency === 'BIWEEKLY' ? 2 : 1
+        const selectedDays =
+          recurrenceWeekdays && recurrenceWeekdays.length
+            ? Array.from(new Set(recurrenceWeekdays)).sort((a, b) => a - b)
+            : [input.startDate.getUTCDay()]
+
+        // Scan forward day-by-day from the chosen startDate and collect matching weekdays.
+        // Safety cap avoids accidental infinite loops (count is capped anyway).
+        const maxScanDays = 366
+        for (let offsetDays = 0; startDates.length < count && offsetDays <= maxScanDays; offsetDays++) {
+          const candidate = addDaysUtc(input.startDate, offsetDays)
+          const weekIndex = Math.floor(offsetDays / 7)
+          if (weekIndex % intervalWeeks !== 0) continue
+          if (!selectedDays.includes(candidate.getUTCDay())) continue
+          startDates.push(candidate)
+        }
+
+        if (startDates.length < count) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Could not generate recurring dates. Adjust weekdays or count.',
+          })
+        }
       }
 
-      const occurrences = Array.from({ length: count }, (_, index) => ({
-        startDate: shift(input.startDate, index),
-        endDate: shift(input.endDate, index),
-        registrationStartDate: input.registrationStartDate ? shift(input.registrationStartDate, index) : undefined,
-        registrationEndDate: input.registrationEndDate ? shift(input.registrationEndDate, index) : undefined,
-      }))
+      const occurrences = startDates.map(buildOccurrence)
 
       // Validate each occurrence. This is cheap and avoids creating partial series.
       for (const occ of occurrences) {

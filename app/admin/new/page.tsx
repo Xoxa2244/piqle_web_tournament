@@ -131,8 +131,9 @@ function NewTournamentPageInner() {
     registrationEndDate: '',
     entryFee: '',
     isRecurring: false,
-    recurrenceFrequency: 'WEEKLY' as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+    recurrenceFrequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
     recurrenceCount: 4,
+    recurrenceWeekdays: [] as number[],
   })
   const [requiredErrors, setRequiredErrors] = useState({
     title: false,
@@ -612,9 +613,15 @@ function NewTournamentPageInner() {
       alert('Choose a template first')
       return
     }
-    const today = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const start = formData.startDate || today
     const end = formData.endDate || start
+    const startParts = start.split('-').map((v) => Number(v))
+    const startWeekday =
+      startParts.length === 3 && startParts.every((n) => Number.isFinite(n))
+        ? new Date(startParts[0]!, startParts[1]! - 1, startParts[2]!).getDay()
+        : 0
     setTemplateDraftForm({
       title: '',
       startDate: start,
@@ -625,6 +632,7 @@ function NewTournamentPageInner() {
       isRecurring: false,
       recurrenceFrequency: 'WEEKLY',
       recurrenceCount: 4,
+      recurrenceWeekdays: [startWeekday],
     })
     setTemplateDraftOpen(true)
   }
@@ -674,6 +682,15 @@ function NewTournamentPageInner() {
         alert('Occurrences must be between 1 and 12.')
         return false
       }
+
+      if (
+        (templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
+          templateDraftForm.recurrenceFrequency === 'BIWEEKLY') &&
+        (templateDraftForm.recurrenceWeekdays?.length ?? 0) < 1
+      ) {
+        alert('Pick at least one weekday for weekly recurrence.')
+        return false
+      }
     }
 
     return true
@@ -701,6 +718,11 @@ function NewTournamentPageInner() {
           ? {
               frequency: templateDraftForm.recurrenceFrequency,
               count: templateDraftForm.recurrenceCount,
+              weekdays:
+                templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
+                templateDraftForm.recurrenceFrequency === 'BIWEEKLY'
+                  ? templateDraftForm.recurrenceWeekdays
+                  : undefined,
             }
           : undefined
 
@@ -1511,12 +1533,21 @@ function NewTournamentPageInner() {
                     <input
                       type="checkbox"
                       checked={templateDraftForm.isRecurring}
-                      onChange={(e) =>
-                        setTemplateDraftForm((p) => ({
-                          ...p,
-                          isRecurring: e.target.checked,
-                        }))
-                      }
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setTemplateDraftForm((p) => {
+                          const next = { ...p, isRecurring: checked }
+                          if (checked && (p.recurrenceWeekdays?.length ?? 0) < 1) {
+                            const parts = String(p.startDate || '').split('-').map((v) => Number(v))
+                            const wd =
+                              parts.length === 3 && parts.every((n) => Number.isFinite(n))
+                                ? new Date(parts[0]!, parts[1]! - 1, parts[2]!).getDay()
+                                : 0
+                            next.recurrenceWeekdays = [wd]
+                          }
+                          return next
+                        })
+                      }}
                       className="h-4 w-4 rounded border-gray-300"
                     />
                     Create series
@@ -1529,14 +1560,25 @@ function NewTournamentPageInner() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
                       <select
                         value={templateDraftForm.recurrenceFrequency}
-                        onChange={(e) =>
-                          setTemplateDraftForm((p) => ({
-                            ...p,
-                            recurrenceFrequency: e.target.value as any,
-                          }))
-                        }
+                        onChange={(e) => {
+                          const value = e.target.value as any
+                          setTemplateDraftForm((p) => {
+                            const next = { ...p, recurrenceFrequency: value }
+                            const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
+                            if (isWeeklyLike && (p.recurrenceWeekdays?.length ?? 0) < 1) {
+                              const parts = String(p.startDate || '').split('-').map((v) => Number(v))
+                              const wd =
+                                parts.length === 3 && parts.every((n) => Number.isFinite(n))
+                                  ? new Date(parts[0]!, parts[1]! - 1, parts[2]!).getDay()
+                                  : 0
+                              next.recurrenceWeekdays = [wd]
+                            }
+                            return next
+                          })
+                        }}
                         className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
                       >
+                        <option value="DAILY">Daily</option>
                         <option value="WEEKLY">Weekly</option>
                         <option value="BIWEEKLY">Every 2 weeks</option>
                         <option value="MONTHLY">Monthly</option>
@@ -1558,6 +1600,50 @@ function NewTournamentPageInner() {
                       />
                       <p className="mt-1 text-xs text-gray-500">Max 12. Includes the first draft.</p>
                     </div>
+
+                    {(templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
+                      templateDraftForm.recurrenceFrequency === 'BIWEEKLY') ? (
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Weekdays</label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { v: 0, l: 'Sun' },
+                            { v: 1, l: 'Mon' },
+                            { v: 2, l: 'Tue' },
+                            { v: 3, l: 'Wed' },
+                            { v: 4, l: 'Thu' },
+                            { v: 5, l: 'Fri' },
+                            { v: 6, l: 'Sat' },
+                          ].map((d) => {
+                            const selected = (templateDraftForm.recurrenceWeekdays ?? []).includes(d.v)
+                            return (
+                              <button
+                                key={d.v}
+                                type="button"
+                                onClick={() => {
+                                  setTemplateDraftForm((p) => {
+                                    const current = p.recurrenceWeekdays ?? []
+                                    const has = current.includes(d.v)
+                                    const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
+                                    // Keep at least one day selected for weekly schedules.
+                                    if (nextDays.length < 1) return p
+                                    return { ...p, recurrenceWeekdays: nextDays.sort((a, b) => a - b) }
+                                  })
+                                }}
+                                className={`px-3 py-2 rounded-lg border text-sm ${
+                                  selected
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                {d.l}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">Example: select Tue + Fri.</p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="text-xs text-gray-500">
