@@ -150,7 +150,7 @@ function NewTournamentPageInner() {
     endDate: '',
     registrationStartDate: '',
     registrationEndDate: '',
-    entryFee: '80',
+    entryFee: '',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as TournamentFormat,
@@ -187,6 +187,11 @@ function NewTournamentPageInner() {
     count: 4,
     weekdays: [] as number[],
   })
+  const [saveTemplateForm, setSaveTemplateForm] = useState({
+    enabled: false,
+    name: '',
+    description: '',
+  })
   const [requiredErrors, setRequiredErrors] = useState({
     title: false,
     startDate: false,
@@ -208,7 +213,21 @@ function NewTournamentPageInner() {
   }>({ hasAccount: false, payoutsActive: false, isLoading: true })
 
   const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
-    onSuccess: (tournament) => {
+    onSuccess: async (tournament) => {
+      if (saveTemplateForm.enabled && saveTemplateForm.name.trim().length >= 2) {
+        const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
+        if (canSave) {
+          try {
+            await saveTemplateFromTournament.mutateAsync({
+              tournamentId: tournament.id,
+              name: saveTemplateForm.name.trim(),
+              description: saveTemplateForm.description.trim() ? saveTemplateForm.description.trim() : undefined,
+            })
+          } catch (err: any) {
+            alert(err?.message || 'Failed to save club template')
+          }
+        }
+      }
       router.push(`/admin/${tournament.id}`)
     },
     onError: (error) => {
@@ -218,8 +237,25 @@ function NewTournamentPageInner() {
   })
 
   const createTournamentSeriesWithStructure = trpc.tournament.createSeriesWithStructure.useMutation({
-    onSuccess: (res: any) => {
+    onSuccess: async (res: any) => {
       const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
+      const firstId = Array.isArray(ids) && ids.length ? String(ids[0]) : String(res?.tournamentId)
+
+      if (saveTemplateForm.enabled && saveTemplateForm.name.trim().length >= 2) {
+        const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
+        if (canSave && firstId) {
+          try {
+            await saveTemplateFromTournament.mutateAsync({
+              tournamentId: firstId,
+              name: saveTemplateForm.name.trim(),
+              description: saveTemplateForm.description.trim() ? saveTemplateForm.description.trim() : undefined,
+            })
+          } catch (err: any) {
+            alert(err?.message || 'Failed to save club template')
+          }
+        }
+      }
+
       if (Array.isArray(ids) && ids.length > 1) {
         router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
       } else {
@@ -246,6 +282,7 @@ function NewTournamentPageInner() {
     )
 
   const createDraftFromTemplate = trpc.clubTemplate.createDraftFromTemplate.useMutation()
+  const saveTemplateFromTournament = trpc.clubTemplate.saveFromTournament.useMutation()
 
   useEffect(() => {
     if (prefillAppliedRef.current) return
@@ -627,7 +664,8 @@ function NewTournamentPageInner() {
   const isSeries = seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
   const isCreating =
     createTournamentWithStructure.isPending ||
-    createTournamentSeriesWithStructure.isPending
+    createTournamentSeriesWithStructure.isPending ||
+    saveTemplateFromTournament.isPending
 
   const [createArmed, setCreateArmed] = useState(true)
 
@@ -658,6 +696,20 @@ function NewTournamentPageInner() {
     if (requiresPayoutsSetup) {
       alert('Connect payouts with Stripe before creating a paid tournament.')
       return
+    }
+
+    if (saveTemplateForm.enabled) {
+      const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
+      if (!canSave) {
+        alert('Select a club where you are an admin to save a club template.')
+        setStepIndex(0)
+        return
+      }
+      if (saveTemplateForm.name.trim().length < 2) {
+        alert('Template name is required (min 2 chars).')
+        setStepIndex(3)
+        return
+      }
     }
 
     const payload = {
@@ -720,6 +772,19 @@ function NewTournamentPageInner() {
   const handleStructureSave = (structure: TournamentStructureInput) => {
     setStructureDraft(structure)
     setShowStructureModal(false)
+  }
+
+  const quickDivision =
+    structureDraft?.mode === 'WITH_DIVISIONS' && structureDraft.divisions.length === 1
+      ? structureDraft.divisions[0]
+      : null
+
+  const updateQuickDivision = (updater: (division: any) => any) => {
+    setStructureDraft((prev) => {
+      if (!prev || prev.mode !== 'WITH_DIVISIONS' || prev.divisions.length !== 1) return prev
+      const nextDivision = updater(prev.divisions[0])
+      return { ...prev, divisions: [nextDivision] }
+    })
   }
 
   const selectedTemplate = useMemo(
@@ -1602,7 +1667,7 @@ function NewTournamentPageInner() {
                       Structure <span className="text-red-600">*</span>
                     </div>
                     <Button type="button" variant="outline" onClick={() => setShowStructureModal(true)}>
-                      {structureDraft ? 'Edit structure' : 'Set up structure'}
+                      Advanced
                     </Button>
                   </div>
                   {structureDraft ? (
@@ -1617,6 +1682,98 @@ function NewTournamentPageInner() {
                       Required. Define divisions and team counts so players can join.
                     </div>
                   )}
+
+                  {quickDivision ? (
+                    <div className="rounded-lg border border-gray-200 bg-white p-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <div className="text-xs font-medium text-gray-700 mb-2">Players / team</div>
+                          <div className="flex gap-2">
+                            {([1, 2, 4] as const).map((value) => {
+                              const forceSquad = formData.format === 'MLP' || formData.format === 'INDY_LEAGUE'
+                              const disableSingles = formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE'
+                              const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1)
+                              const selected = quickDivision.playersPerTeam === value
+                              return (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    if (disabled) return
+                                    updateQuickDivision((d) => ({ ...d, playersPerTeam: value }))
+                                  }}
+                                  className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
+                                    selected
+                                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                      : disabled
+                                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {value}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {(formData.format === 'MLP' || formData.format === 'INDY_LEAGUE') ? (
+                            <div className="mt-2 text-xs text-gray-500">This format requires 4-player teams.</div>
+                          ) : null}
+                          {(formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE') ? (
+                            <div className="mt-2 text-xs text-gray-500">Ladder formats require teams (not 1v1).</div>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-medium text-gray-700 mb-2">
+                            {quickDivision.playersPerTeam === 1 ? 'Players (slots)' : 'Teams'}
+                          </div>
+                          <input
+                            type="number"
+                            min={2}
+                            step={1}
+                            value={quickDivision.teamCount}
+                            onChange={(e) => {
+                              const n = Number(e.target.value)
+                              const safe = Number.isFinite(n) ? Math.max(2, Math.trunc(n)) : 2
+                              updateQuickDivision((d) => ({ ...d, teamCount: safe }))
+                            }}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                          />
+                          {formData.format === 'ONE_DAY_LADDER' && quickDivision.teamCount % 2 !== 0 ? (
+                            <div className="mt-2 text-xs text-red-700">One-day ladder requires an even number of teams.</div>
+                          ) : null}
+                          {formData.format === 'LADDER_LEAGUE' && quickDivision.teamCount % 4 !== 0 ? (
+                            <div className="mt-2 text-xs text-red-700">Ladder league requires teams to be a multiple of 4.</div>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-medium text-gray-700 mb-2">Pools</div>
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={quickDivision.poolCount}
+                            onChange={(e) => {
+                              const n = Number(e.target.value)
+                              const safe = Number.isFinite(n) ? Math.max(1, Math.trunc(n)) : 1
+                              updateQuickDivision((d) => ({ ...d, poolCount: safe }))
+                            }}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                          />
+                          <div className="mt-2 text-xs text-gray-500">
+                            Most common: 1–4 pools.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : structureDraft ? (
+                    <div className="text-xs text-gray-500">
+                      Quick setup is available for a single-division structure. Use <span className="font-medium">Advanced</span> for multiple divisions or constraints.
+                    </div>
+                  ) : null}
+
                   {formData.format === 'ONE_DAY_LADDER' ? (
                     <div className="text-xs text-gray-500">
                       One-day ladder requires an even number of teams and currently supports team formats (doubles/squad).
@@ -1730,6 +1887,68 @@ function NewTournamentPageInner() {
                 {isSeries ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     Recurring series creates <span className="font-medium">drafts only</span>. Publish each one when ready.
+                  </div>
+                ) : null}
+
+                {formData.clubId && (selectedClub as any)?.isAdmin ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-gray-900">Club template (optional)</div>
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={saveTemplateForm.enabled}
+                          onChange={(e) => {
+                            const checked = e.target.checked
+                            setSaveTemplateForm((p) => {
+                              const next = { ...p, enabled: checked }
+                              if (checked && !p.name.trim()) {
+                                next.name = formData.title.trim()
+                              }
+                              return next
+                            })
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        Save as template
+                      </label>
+                    </div>
+
+                    {saveTemplateForm.enabled ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Template name *
+                          </label>
+                          <input
+                            type="text"
+                            value={saveTemplateForm.name}
+                            onChange={(e) => setSaveTemplateForm((p) => ({ ...p, name: e.target.value }))}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                            placeholder="e.g., Weekly Open Doubles"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Template description (optional)
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={saveTemplateForm.description}
+                            onChange={(e) => setSaveTemplateForm((p) => ({ ...p, description: e.target.value }))}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                            placeholder="Notes for club admins (pricing, courts, etc.)"
+                          />
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          Visible to <span className="font-medium">all admins</span> of this club.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-500">
+                        Save this configuration as a preset so club admins can create drafts in 1 click later.
+                      </div>
+                    )}
                   </div>
                 ) : null}
 

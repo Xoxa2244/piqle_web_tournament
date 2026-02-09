@@ -652,13 +652,15 @@ export const tournamentRouter = createTRPCRouter({
       const createdIds = await ctx.prisma.$transaction(async (tx: any) => {
         const ids: string[] = []
 
-        for (const occ of occurrences) {
-          // Avoid creating a bunch of drafts with identical titles.
+        const baseRaw = (input.publicSlug || input.title).toLowerCase().replace(/\s+/g, '-')
+        const baseSafe = baseRaw.replace(/[^a-z0-9-]/g, '') || 'tournament'
+
+        for (let index = 0; index < occurrences.length; index++) {
+          const occ = occurrences[index]!
           const occYmd = formatYmdUtc(occ.startDate)
-          const occTitle = `${input.title} (${occYmd})`
-          const baseRaw = (input.publicSlug || input.title).toLowerCase().replace(/\s+/g, '-')
-          const baseSafe = baseRaw.replace(/[^a-z0-9-]/g, '') || 'tournament'
-          const candidateSlug = `${baseSafe}-${occYmd}`
+          // Keep the first draft's title clean so it's suitable for saving as a template.
+          const occTitle = index === 0 ? input.title : `${input.title} (${occYmd})`
+          const candidateSlug = index === 0 ? baseSafe : `${baseSafe}-${occYmd}`
           const occSlug = await getUniqueTournamentSlug(
             { prisma: tx },
             { ...input, title: occTitle, publicSlug: candidateSlug } as any
