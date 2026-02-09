@@ -16,6 +16,56 @@ import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
 
+type TournamentFormat =
+  | 'SINGLE_ELIMINATION'
+  | 'ROUND_ROBIN'
+  | 'MLP'
+  | 'INDY_LEAGUE'
+  | 'LEAGUE_ROUND_ROBIN'
+  | 'ONE_DAY_LADDER'
+  | 'LADDER_LEAGUE'
+
+const emptyDivisionConstraints = () => ({
+  individualDupr: { enabled: false as const, min: undefined as number | undefined, max: undefined as number | undefined },
+  teamDupr: { enabled: false as const, min: undefined as number | undefined, max: undefined as number | undefined },
+  age: { enabled: false as const, min: undefined as number | undefined, max: undefined as number | undefined },
+  gender: { enabled: false as const, value: 'ANY' as const },
+  enforcement: 'INFO' as const,
+})
+
+const buildRecommendedStructure = (format: TournamentFormat): TournamentStructureInput => {
+  const make = (division: { name: string; playersPerTeam: 1 | 2 | 4; teamCount: number; poolCount: number }): TournamentStructureInput => ({
+    mode: 'WITH_DIVISIONS',
+    divisions: [
+      {
+        name: division.name,
+        playersPerTeam: division.playersPerTeam,
+        teamCount: division.teamCount,
+        poolCount: division.poolCount,
+        constraints: emptyDivisionConstraints(),
+      },
+    ],
+  })
+
+  switch (format) {
+    case 'MLP':
+      return make({ name: 'MiLP Open', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+    case 'INDY_LEAGUE':
+      return make({ name: 'Indy League', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+    case 'ONE_DAY_LADDER':
+      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+    case 'LADDER_LEAGUE':
+      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+    case 'LEAGUE_ROUND_ROBIN':
+      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 16, poolCount: 4 })
+    case 'ROUND_ROBIN':
+      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+    case 'SINGLE_ELIMINATION':
+    default:
+      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+  }
+}
+
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -100,17 +150,10 @@ function NewTournamentPageInner() {
     endDate: '',
     registrationStartDate: '',
     registrationEndDate: '',
-    entryFee: '',
+    entryFee: '80',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as
-      | 'SINGLE_ELIMINATION'
-      | 'ROUND_ROBIN'
-      | 'MLP'
-      | 'INDY_LEAGUE'
-      | 'LEAGUE_ROUND_ROBIN'
-      | 'ONE_DAY_LADDER'
-      | 'LADDER_LEAGUE',
+    format: 'SINGLE_ELIMINATION' as TournamentFormat,
     seasonLabel: '',
     timezone: '',
     image: '',
@@ -121,7 +164,9 @@ function NewTournamentPageInner() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
-  const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(null)
+  const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(() => (
+    buildRecommendedStructure('SINGLE_ELIMINATION')
+  ))
   const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateDraftForm, setTemplateDraftForm] = useState({
@@ -135,6 +180,12 @@ function NewTournamentPageInner() {
     recurrenceFrequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
     recurrenceCount: 4,
     recurrenceWeekdays: [] as number[],
+  })
+  const [seriesDraftForm, setSeriesDraftForm] = useState({
+    enabled: false,
+    frequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+    count: 4,
+    weekdays: [] as number[],
   })
   const [requiredErrors, setRequiredErrors] = useState({
     title: false,
@@ -163,6 +214,21 @@ function NewTournamentPageInner() {
     onError: (error) => {
       console.error('Error creating tournament structure:', error)
       alert('Error creating tournament structure: ' + error.message)
+    },
+  })
+
+  const createTournamentSeriesWithStructure = trpc.tournament.createSeriesWithStructure.useMutation({
+    onSuccess: (res: any) => {
+      const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
+      if (Array.isArray(ids) && ids.length > 1) {
+        router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
+      } else {
+        router.push(`/admin/${res.tournamentId}`)
+      }
+    },
+    onError: (error) => {
+      console.error('Error creating tournament series:', error)
+      alert('Error creating tournament series: ' + error.message)
     },
   })
 
@@ -310,6 +376,22 @@ function NewTournamentPageInner() {
       }
     }
 
+    if (seriesDraftForm.enabled) {
+      const count = Number(seriesDraftForm.count)
+      if (!Number.isFinite(count) || count < 2 || count > 12) {
+        alert('Occurrences must be between 2 and 12.')
+        return false
+      }
+
+      if (
+        (seriesDraftForm.frequency === 'WEEKLY' || seriesDraftForm.frequency === 'BIWEEKLY') &&
+        (seriesDraftForm.weekdays?.length ?? 0) < 1
+      ) {
+        alert('Pick at least one weekday for weekly recurrence.')
+        return false
+      }
+    }
+
     return true
   }
 
@@ -347,6 +429,22 @@ function NewTournamentPageInner() {
       const odd = divisions.find((d) => (d.teamCount ?? 0) % 2 !== 0)
       if (odd) {
         alert('One-day ladder requires an even number of teams per division.')
+        return false
+      }
+    }
+
+    if (formData.format === 'LADDER_LEAGUE') {
+      const bad = divisions.find((d) => (d.teamCount ?? 0) % 4 !== 0)
+      if (bad) {
+        alert('Ladder league requires the number of teams to be a multiple of 4 per division.')
+        return false
+      }
+    }
+
+    if (formData.format === 'MLP') {
+      const bad = divisions.find((d) => d.playersPerTeam !== 4)
+      if (bad) {
+        alert('MiLP format requires 4-player teams.')
         return false
       }
     }
@@ -526,6 +624,10 @@ function NewTournamentPageInner() {
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
   const requiresPayoutsSetup =
     entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
+  const isSeries = seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
+  const isCreating =
+    createTournamentWithStructure.isPending ||
+    createTournamentSeriesWithStructure.isPending
 
   const [createArmed, setCreateArmed] = useState(true)
 
@@ -570,7 +672,7 @@ function NewTournamentPageInner() {
       registrationEndDate: formData.registrationEndDate || undefined,
       entryFeeCents: entryFeeCents || 0,
       currency: 'usd' as const,
-      isPublicBoardEnabled: formData.isPublicBoardEnabled,
+      isPublicBoardEnabled: isSeries ? false : formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
       image: formData.image || undefined,
       format: formData.format,
@@ -584,10 +686,26 @@ function NewTournamentPageInner() {
           : undefined,
     }
 
-    createTournamentWithStructure.mutate({
-      ...payload,
-      structure: structureDraft!,
-    })
+    if (isSeries) {
+      const weekdays =
+        seriesDraftForm.frequency === 'WEEKLY' || seriesDraftForm.frequency === 'BIWEEKLY'
+          ? seriesDraftForm.weekdays
+          : undefined
+      createTournamentSeriesWithStructure.mutate({
+        ...payload,
+        structure: structureDraft!,
+        recurrence: {
+          frequency: seriesDraftForm.frequency,
+          count: seriesDraftForm.count,
+          weekdays,
+        },
+      })
+    } else {
+      createTournamentWithStructure.mutate({
+        ...payload,
+        structure: structureDraft!,
+      })
+    }
   }
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -739,6 +857,52 @@ function NewTournamentPageInner() {
     templateDraftForm.endDate,
   ])
 
+  const seriesRecurrencePreview = useMemo<
+    { items: string[] } | { error: string } | null
+  >(() => {
+    if (!seriesDraftForm.enabled || seriesDraftForm.count <= 1) return null
+    if (!formData.startDate || !formData.endDate) return null
+
+    const start = parseYmdToUtc(formData.startDate)
+    const end = parseYmdToUtc(formData.endDate)
+    if (!start || !end) return null
+    const durationMs = end.getTime() - start.getTime()
+    if (durationMs < 0) return { error: 'End date must be on or after start date.' }
+
+    const config = {
+      frequency: seriesDraftForm.frequency,
+      count: seriesDraftForm.count,
+      weekdays:
+        seriesDraftForm.frequency === 'WEEKLY' || seriesDraftForm.frequency === 'BIWEEKLY'
+          ? seriesDraftForm.weekdays
+          : undefined,
+    } as const
+
+    const generated = generateRecurringStartDates(start, config)
+    if ('error' in generated) return { error: generated.error }
+
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    const items = generated.startDates.map((s) => {
+      const e = new Date(s.getTime() + durationMs)
+      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+    })
+
+    return { items }
+  }, [
+    seriesDraftForm.enabled,
+    seriesDraftForm.count,
+    seriesDraftForm.frequency,
+    seriesDraftForm.weekdays,
+    formData.startDate,
+    formData.endDate,
+  ])
+
   const handleCreateFromTemplate = async () => {
     if (!selectedTemplateId) return
     if (!validateTemplateDraft()) return
@@ -814,7 +978,7 @@ function NewTournamentPageInner() {
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
     if (name === 'format') {
-      setStructureDraft(null)
+      setStructureDraft(buildRecommendedStructure(value as TournamentFormat))
     }
     if (name === 'title' || name === 'startDate' || name === 'endDate') {
       setRequiredErrors(prev => ({
@@ -1198,6 +1362,149 @@ function NewTournamentPageInner() {
                     />
                   </div>
                 </div>
+
+                <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={seriesDraftForm.enabled}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setSeriesDraftForm((p) => {
+                            const next = { ...p, enabled: checked }
+                            const isWeeklyLike = p.frequency === 'WEEKLY' || p.frequency === 'BIWEEKLY'
+                            if (checked && isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
+                              const wd = parseYmdToUtc(formData.startDate)?.getUTCDay() ?? 0
+                              next.weekdays = [wd]
+                            }
+                            return next
+                          })
+                        }}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      Create series
+                    </label>
+                  </div>
+
+                  {seriesDraftForm.enabled ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
+                        <select
+                          value={seriesDraftForm.frequency}
+                          onChange={(e) => {
+                            const value = e.target.value as any
+                            setSeriesDraftForm((p) => {
+                              const next = { ...p, frequency: value }
+                              const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
+                              if (isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
+                                const wd = parseYmdToUtc(formData.startDate)?.getUTCDay() ?? 0
+                                next.weekdays = [wd]
+                              }
+                              return next
+                            })
+                          }}
+                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                        >
+                          <option value="DAILY">Daily</option>
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="BIWEEKLY">Every 2 weeks</option>
+                          <option value="MONTHLY">Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Occurrences</label>
+                        <input
+                          type="number"
+                          min={2}
+                          max={12}
+                          value={seriesDraftForm.count}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            const safe = Number.isFinite(n) ? Math.max(2, Math.min(12, Math.trunc(n))) : 2
+                            setSeriesDraftForm((p) => ({ ...p, count: safe }))
+                          }}
+                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Max 12. Includes the first draft.</p>
+                      </div>
+
+                      {(seriesDraftForm.frequency === 'WEEKLY' ||
+                        seriesDraftForm.frequency === 'BIWEEKLY') ? (
+                        <div className="sm:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Weekdays</label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { v: 0, l: 'Sun' },
+                              { v: 1, l: 'Mon' },
+                              { v: 2, l: 'Tue' },
+                              { v: 3, l: 'Wed' },
+                              { v: 4, l: 'Thu' },
+                              { v: 5, l: 'Fri' },
+                              { v: 6, l: 'Sat' },
+                            ].map((d) => {
+                              const selected = (seriesDraftForm.weekdays ?? []).includes(d.v)
+                              return (
+                                <button
+                                  key={d.v}
+                                  type="button"
+                                  onClick={() => {
+                                    setSeriesDraftForm((p) => {
+                                      const current = p.weekdays ?? []
+                                      const has = current.includes(d.v)
+                                      const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
+                                      if (nextDays.length < 1) return p
+                                      return { ...p, weekdays: nextDays.sort((a, b) => a - b) }
+                                    })
+                                  }}
+                                  className={`px-3 py-2 rounded-lg border text-sm ${
+                                    selected
+                                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {d.l}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500">Example: select Tue + Fri.</p>
+                        </div>
+                      ) : null}
+
+                      <div className="sm:col-span-2 text-xs text-gray-600">
+                        This creates <span className="font-medium">{seriesDraftForm.count}</span> drafts. We keep them{' '}
+                        <span className="font-medium">unpublished</span> so you can review before publishing.
+                      </div>
+
+                      {seriesDraftForm.count > 1 ? (
+                        <div className="sm:col-span-2 rounded-md border border-gray-200 bg-white p-3">
+                          <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
+                          {seriesRecurrencePreview && 'error' in seriesRecurrencePreview ? (
+                            <div className="text-xs text-red-700">{seriesRecurrencePreview.error}</div>
+                          ) : seriesRecurrencePreview && 'items' in seriesRecurrencePreview && seriesRecurrencePreview.items.length ? (
+                            <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
+                              {seriesRecurrencePreview.items.map((label, idx) => (
+                                <li key={idx} className="flex gap-2">
+                                  <span className="w-5 text-gray-400">{idx + 1}.</span>
+                                  <span className="flex-1">{label}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="text-xs text-gray-500">Pick dates to see a preview.</div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">
+                      Create a single tournament, or turn this on to generate a draft series (weekly league, etc).
+                    </div>
+                  )}
+                </div>
               </>
             ) : null}
 
@@ -1409,8 +1716,9 @@ function NewTournamentPageInner() {
                     type="checkbox"
                     id="isPublicBoardEnabled"
                     name="isPublicBoardEnabled"
-                    checked={formData.isPublicBoardEnabled}
+                    checked={isSeries ? false : formData.isPublicBoardEnabled}
                     onChange={handleChange}
+                    disabled={isSeries}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
@@ -1418,6 +1726,12 @@ function NewTournamentPageInner() {
                     <span className="text-gray-500 font-normal">(uncheck to keep it as a draft)</span>
                   </label>
                 </div>
+
+                {isSeries ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Recurring series creates <span className="font-medium">drafts only</span>. Publish each one when ready.
+                  </div>
+                ) : null}
 
                 {!structureDraft ? (
                   <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -1449,16 +1763,18 @@ function NewTournamentPageInner() {
                     onClick={createTournament}
                     disabled={
                       !createArmed ||
-                      createTournamentWithStructure.isPending ||
+                      isCreating ||
                       requiresPayoutsSetup ||
                       !structureDraft
                     }
                   >
-                    {createTournamentWithStructure.isPending
+                    {isCreating
                       ? 'Creating…'
                       : !createArmed
                         ? 'One sec…'
-                        : 'Create Tournament'}
+                        : isSeries
+                          ? `Create ${seriesDraftForm.count} drafts`
+                          : 'Create Tournament'}
                   </Button>
                 )}
               </div>
