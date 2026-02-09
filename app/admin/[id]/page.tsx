@@ -655,6 +655,10 @@ export default function TournamentDetailPage() {
 
                     return (
                       <div>
+                        <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                          <Trophy className="h-5 w-5 text-amber-500" />
+                          Winners
+                        </p>
                         <div className="mb-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
                           <select
