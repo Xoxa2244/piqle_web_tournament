@@ -11,6 +11,7 @@ import Link from 'next/link'
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragStartEvent,
   PointerSensor,
   useSensor,
@@ -136,7 +137,8 @@ function WaitList({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  dropTargetId
 }: {
   division: Division
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
@@ -149,6 +151,7 @@ function WaitList({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  dropTargetId?: string | null
 }) {
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   
@@ -189,6 +192,7 @@ function WaitList({
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                dropTargetId={dropTargetId}
               />
             ))}
           </div>
@@ -211,7 +215,8 @@ function PoolCard({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  dropTargetId
 }: {
   pool: Pool
   division: Division
@@ -225,6 +230,7 @@ function PoolCard({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  dropTargetId?: string | null
 }) {
   // Compute teams for this pool dynamically
   const poolTeams = division.teams.filter(team => team.poolId === pool.id)
@@ -266,6 +272,7 @@ function PoolCard({
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                dropTargetId={dropTargetId}
               />
             ))}
           </div>
@@ -384,7 +391,8 @@ function DivisionCard({
   onMovePlayerBetweenSlots,
   tournamentFormat,
   waitlistEntries,
-  onOpenAssignWaitlist
+  onOpenAssignWaitlist,
+  dropTargetId
 }: {
   division: Division
   isExpanded: boolean
@@ -408,6 +416,7 @@ function DivisionCard({
   tournamentFormat?: string
   waitlistEntries: any[]
   onOpenAssignWaitlist: (entry: any, division: Division) => void
+  dropTargetId?: string | null
 }) {
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const activeTeams = division.teams.filter(team => team.poolId !== null)
@@ -564,6 +573,7 @@ function DivisionCard({
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>
@@ -588,6 +598,7 @@ function DivisionCard({
                     onAddPlayerToSlot={onAddPlayerToSlot}
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                     onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                    dropTargetId={dropTargetId}
                   />
                 ))}
               </div>
@@ -615,6 +626,7 @@ function DivisionCard({
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>
@@ -634,6 +646,7 @@ function DivisionCard({
               onAddPlayerToSlot={onAddPlayerToSlot}
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
               onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+              dropTargetId={dropTargetId}
             />
 
             <div className="mt-4 border-t pt-4">
@@ -686,6 +699,7 @@ export default function DivisionsPage() {
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set())
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
@@ -1164,10 +1178,23 @@ export default function DivisionsPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTeam(event.active.id as string)
+    setDropTargetId(null)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const overId = event.over?.id
+    const activeId = event.active?.id
+    const isPlayerDrag = typeof activeId === 'string' && /^player-.+-slot-\d+$/.test(activeId)
+    if (isPlayerDrag && typeof overId === 'string' && overId !== activeId && /^player-.+-slot-\d+$/.test(overId)) {
+      setDropTargetId(overId)
+    } else {
+      setDropTargetId(null)
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+    setDropTargetId(null)
 
     if (!over) {
       setActiveTeam(null)
@@ -1726,6 +1753,7 @@ export default function DivisionsPage() {
                       onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={handleRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => handleMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))
                 )}
@@ -1759,6 +1787,7 @@ export default function DivisionsPage() {
               <DndContext
                 sensors={sensors}
                 onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
               >
                 <div className="space-y-4">
@@ -1787,6 +1816,7 @@ export default function DivisionsPage() {
                       tournamentFormat={tournament?.format}
                       waitlistEntries={waitlistEntries}
                       onOpenAssignWaitlist={handleOpenAssignWaitlist}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>
