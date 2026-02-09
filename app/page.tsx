@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,9 +16,9 @@ import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import ComplaintModal from '@/components/ComplaintModal'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Suspense } from 'react'
+import { TournamentsMapContent } from '@/components/TournamentsMapContent'
 
-type FilterType = 'my' | 'all'
+type FilterType = 'my' | 'all' | 'map'
 type SortType = 'date-desc' | 'date-asc'
 
 // Placeholder when tournament has no image. Uses public/tournament-placeholder.png.
@@ -85,13 +85,15 @@ function AvatarImage({
   )
 }
 
-function HomePageContent() {
+export default function HomePage() {
   const { data: session } = useSession()
   const router = useRouter()
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
+  const [modalTab, setModalTab] = useState<'information' | 'comments' | 'view-results'>('information')
   const [filter, setFilter] = useState<FilterType>('all')
+  const [mapFocusTournamentId, setMapFocusTournamentId] = useState<string | null>(null)
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
@@ -102,7 +104,6 @@ function HomePageContent() {
   const [commentText, setCommentText] = useState('')
   const [openCommentMenu, setOpenCommentMenu] = useState<string | null>(null)
   const [reportCommentModal, setReportCommentModal] = useState<{commentId: string, commentText: string, authorName: string, authorEmail: string} | null>(null)
-  const searchParams = useSearchParams()
   const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -110,17 +111,13 @@ function HomePageContent() {
     setBaseUrl(window.location.origin)
   }, [])
 
-  // Open tournament card from URL ?open=TOURNAMENT_ID (e.g. from invitation email)
+  // Reset description expanded and modal tab when opening/closing modal
   useEffect(() => {
-    const openId = searchParams.get('open')
-    if (!openId || !tournaments?.length) return
-    const exists = tournaments.some((t) => t.id === openId)
-    if (exists) setSelectedTournament(openId)
-  }, [searchParams, tournaments])
-
-  // Reset description expanded when opening/closing modal
-  useEffect(() => {
-    if (!selectedTournament) setDescriptionExpanded(false)
+    if (!selectedTournament) {
+      setDescriptionExpanded(false)
+    } else {
+      setModalTab('information')
+    }
   }, [selectedTournament])
   
   // Get ratings for all tournaments
@@ -319,16 +316,6 @@ function HomePageContent() {
     return now >= start && now <= end
   }
 
-  const getRegistrationDisabledReason = (tournament: any): string | null => {
-    if (isRegistrationOpen(tournament)) return null
-    const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
-    const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
-    const now = new Date()
-    const format = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    if (now < start) return `Registration opens on ${format(start)}`
-    return `Registration closed on ${format(end)}`
-  }
-
   // Filter tournaments based on selected filter, search query, and status checkboxes
   const filteredTournaments = useMemo(() => {
     if (!tournaments) return []
@@ -395,11 +382,8 @@ function HomePageContent() {
   }
 
   const handleCardClick = (tournamentId: string, e: React.MouseEvent) => {
-    // Don't open modal if clicking on Tournament Info button or its parent Link
     const target = e.target as HTMLElement
-    if (target.closest('a[href*="/scoreboard/"]') || target.closest('button')) {
-      return
-    }
+    if (target.closest('button') || target.closest('a')) return
     setSelectedTournament(tournamentId)
   }
 
@@ -446,15 +430,25 @@ function HomePageContent() {
 
             {/* Search Input */}
             <div className="mt-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
                 <Input
                   type="text"
                   placeholder="Search tournaments by name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 max-w-md"
+                  className="pl-10 pr-10"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -480,6 +474,16 @@ function HomePageContent() {
                   }`}
                 >
                   My tournaments
+                </button>
+                <button
+                  onClick={() => setFilter('map')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    filter === 'map'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  View on Map
                 </button>
               </div>
               <div className="flex items-center gap-4 ml-auto">
@@ -507,7 +511,8 @@ function HomePageContent() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortType)}
-                  className="text-sm border border-gray-300 rounded-md pl-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] pr-[2.5rem]"
+                  disabled={filter === 'map'}
+                  className={`text-sm border border-gray-300 rounded-md pl-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] pr-[2.5rem] ${filter === 'map' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   }}
@@ -523,7 +528,17 @@ function HomePageContent() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {publicTournaments.length > 0 ? (
+        {filter === 'map' ? (
+          <TournamentsMapContent
+            searchQuery={searchQuery}
+            filterUpcoming={filterUpcoming}
+            filterInProgress={filterInProgress}
+            filterPast={filterPast}
+            focusTournamentId={mapFocusTournamentId}
+            onFocusConsumed={() => setMapFocusTournamentId(null)}
+            onOpenTournament={setSelectedTournament}
+          />
+        ) : publicTournaments.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {publicTournaments.map((tournament) => (
               <Card 
@@ -534,7 +549,7 @@ function HomePageContent() {
                 {baseUrl && (
                   <div className="absolute top-4 right-4 z-10">
                     <ShareButton
-                      url={`${baseUrl}/scoreboard/${tournament.id}`}
+                      url={`${baseUrl}/?open=${tournament.id}`}
                       title={tournament.title}
                       iconOnly
                       size="sm"
@@ -544,7 +559,7 @@ function HomePageContent() {
                   </div>
                 )}
                 <CardHeader className="flex-shrink-0">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                     {(tournament as any).image ? (
                       <div className="w-11 h-11 flex-shrink-0 relative overflow-hidden rounded-lg">
                         <Image
@@ -558,7 +573,7 @@ function HomePageContent() {
                       <TournamentImagePlaceholder />
                     )}
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-xl pr-10">{tournament.title}</CardTitle>
+                      <CardTitle className="text-xl pr-10 line-clamp-2 break-words">{tournament.title}</CardTitle>
                     </div>
                   </div>
                   {/* Tournament status badge */}
@@ -595,8 +610,25 @@ function HomePageContent() {
                       )}
                       
                       {tournament.venueName && (
-                        <div className="flex items-center text-sm text-gray-600">
-                          <MapPin className="h-4 w-4 mr-2" />
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFilter('map')
+                            setMapFocusTournamentId(tournament.id)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setFilter('map')
+                              setMapFocusTournamentId(tournament.id)
+                            }
+                          }}
+                          className={`flex items-center text-sm cursor-pointer hover:underline ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
+                        >
+                          <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
                           <span>{tournament.venueName}</span>
                         </div>
                       )}
@@ -633,33 +665,31 @@ function HomePageContent() {
                         <span>Entry Fee: ${tournament.entryFee}</span>
                       </div>
                     )}
-
-                    {/* Tournament Director */}
-                    {tournament.user && (
-                      <div className="mt-4 pt-2 border-t border-gray-200">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs text-gray-500">Tournament Director:</span>
-                          <Link
-                            href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
-                            className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
-                          >
-                            <AvatarImage
-                              src={(tournament.user as { image?: string | null }).image}
-                              alt={tournament.user.name || tournament.user.email || 'TD'}
-                              userId={tournament.user.id}
-                              size={18}
-                            />
-                            <span className="text-xs font-medium group-hover:underline">
-                              {tournament.user.name || tournament.user.email}
-                            </span>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Fixed bottom section: Like/Dislike, View Results, Join Tournament */}
+                  {/* Fixed bottom section: Tournament Director, Like/Dislike, Join — same strip as on /admin */}
                   <div className="pt-4 border-t border-gray-200 mt-auto flex-shrink-0 space-y-3">
+                    {/* Tournament Director — on the same divider strip */}
+                    {tournament.user && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs text-gray-500">Tournament Director:</span>
+                        <Link
+                          href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
+                          className="flex items-center space-x-1.5 text-gray-700 hover:text-gray-900 transition-colors group"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <AvatarImage
+                            src={(tournament.user as { image?: string | null }).image}
+                            alt={tournament.user.name || tournament.user.email || 'TD'}
+                            userId={tournament.user.id}
+                            size={18}
+                          />
+                          <span className="text-xs font-medium group-hover:underline">
+                            {tournament.user.name || tournament.user.email}
+                          </span>
+                        </Link>
+                      </div>
+                    )}
                     {/* Like/Dislike/Comments Buttons */}
                     <div className="flex items-center gap-2">
                       <button
@@ -704,13 +734,6 @@ function HomePageContent() {
                       </button>
                     </div>
 
-                    {/* Tournament Info Button */}
-                    <Link href={`/scoreboard/${tournament.id}`}>
-                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        Tournament Info
-                      </Button>
-                    </Link>
-
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                       const registrationOpen = isRegistrationOpen(tournament)
@@ -720,16 +743,11 @@ function HomePageContent() {
                           : status === 'waitlisted'
                           ? 'Leave Waitlist'
                           : 'Join Tournament'
-                      const disabledReason = !registrationOpen && label === 'Join Tournament' ? getRegistrationDisabledReason(tournament) : null
 
                       return (
-                        <span
-                          className="block w-full"
-                          title={disabledReason ?? undefined}
-                        >
                         <Button
-                          className="w-full"
-                          variant={status === 'active' ? 'destructive' : 'default'}
+                          className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                          variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
                           disabled={!registrationOpen}
                           onClick={(e) => {
                             e.stopPropagation()
@@ -755,7 +773,6 @@ function HomePageContent() {
                         >
                           {label}
                         </Button>
-                        </span>
                       )
                     })()}
                   </div>
@@ -818,7 +835,7 @@ function HomePageContent() {
                   )}
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
-                    <p className="text-gray-600 mt-1">Tournament Details & Comments</p>
+                    <p className="text-gray-600 mt-1">Tournament Details</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -838,6 +855,46 @@ function HomePageContent() {
                       )}
                     </>
                   )}
+                  {(() => {
+                    const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                    const registrationOpen = isRegistrationOpen(tournament)
+                    const label =
+                      status === 'active'
+                        ? 'Cancel Registration'
+                        : status === 'waitlisted'
+                        ? 'Leave Waitlist'
+                        : 'Join Tournament'
+                    return (
+                      <Button
+                        className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                        variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
+                        disabled={!registrationOpen}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!session) {
+                            router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                            return
+                          }
+                          if (status === 'active') {
+                            if (confirm('Cancel registration?')) {
+                              cancelRegistration.mutate({ tournamentId: tournament.id })
+                            }
+                            return
+                          }
+                          if (status === 'waitlisted') {
+                            const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                            if (divisionId && confirm('Leave waitlist?')) {
+                              leaveWaitlist.mutate({ divisionId })
+                            }
+                            return
+                          }
+                          router.push(`/tournaments/${tournament.id}/register`)
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    )
+                  })()}
                   <button
                     onClick={() => {
                       setSelectedTournament(null)
@@ -850,247 +907,305 @@ function HomePageContent() {
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                {/* Left Side - Tournament Info */}
-                <div className="w-full lg:w-1/2 border-r-0 lg:border-r border-gray-200 overflow-y-auto p-6">
-                  <div className="space-y-4">
-                    
-                    {/* Description */}
-                    {tournament.description && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
-                        <div 
-                          className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
-                          dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
-                        />
-                        {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
-                          <button
-                            onClick={() => setDescriptionExpanded(!descriptionExpanded)}
-                            className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                          >
-                            {descriptionExpanded ? 'Show less' : 'Show more'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Tournament Info */}
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Information</h3>
-                      <div className="space-y-2">
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          <span>
-                            {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
-                          </span>
-                        </div>
-                        
-                        {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <ClipboardList className="h-4 w-4 mr-2" />
-                            <span>
-                              Registration: {(tournament as any).registrationStartDate
-                                ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
-                                : '—'}
-                              {' – '}
-                              {(tournament as any).registrationEndDate
-                                ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
-                                : '—'}
-                            </span>
-                          </div>
-                        )}
-                        
-                        {tournament.venueName && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <MapPin className="h-4 w-4 mr-2" />
-                            <span>{tournament.venueName}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Users className="h-4 w-4 mr-2" />
-                          <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
-                        </div>
-
-                        {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Trophy className="h-4 w-4 mr-2" />
-                            <span>Entry Fee: ${tournament.entryFee}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Divisions */}
-                    {tournament.divisions.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {(tournament.divisions as any[]).map((division: any) => (
-                            <Badge key={division.id} variant="secondary">
-                              {division.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tournament Director */}
-                    {tournament.user && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
-                        <Link
-                          href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
-                          className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
-                        >
-                          <AvatarImage
-                            src={(tournament.user as { image?: string | null }).image}
-                            alt={tournament.user.name || tournament.user.email || 'TD'}
-                            userId={tournament.user.id}
-                            size={32}
-                          />
-                          <span className="font-medium">
-                            {tournament.user.name || tournament.user.email}
-                          </span>
-                        </Link>
-                      </div>
-                    )}
-                  </div>
+              {/* Tabs */}
+                <div className="border-b border-gray-200 px-6">
+                  <nav className="flex gap-6" aria-label="Tabs">
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('information')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'information'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Information
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('comments')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'comments'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Comments ({commentCounts?.[selectedTournament] || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalTab('view-results')}
+                      className={`py-4 text-sm font-medium border-b-2 transition-colors ${
+                        modalTab === 'view-results'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      View Results
+                    </button>
+                  </nav>
                 </div>
 
-                {/* Right Side - Comments */}
-                <div className="w-full lg:w-1/2 overflow-y-auto flex flex-col border-t lg:border-t-0 border-gray-200">
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Comments ({commentCounts?.[selectedTournament] || 0})
-                    </h3>
-                  </div>
-                  
-                  {/* Comments List */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    {comments && comments.length > 0 ? (
-                      comments.map((comment) => {
-                        const isOwnComment = session?.user?.id === comment.user.id
-                        return (
-                          <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
-                            <div className="flex items-start space-x-3">
-                              <AvatarImage
-                                src={comment.user.image}
-                                alt={comment.user.name || comment.user.email || 'User'}
-                                userId={comment.user.id}
-                                size={32}
-                              />
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-medium text-sm text-gray-900">
-                                      {comment.user.name || comment.user.email}
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
-                                    </span>
-                                  </div>
-                                  <div className="relative">
-                                    <button
-                                      onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
-                                      className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </button>
-                                    {openCommentMenu === comment.id && (
-                                      <>
-                                        <div 
-                                          className="fixed inset-0 z-10" 
-                                          onClick={() => setOpenCommentMenu(null)}
-                                        />
-                                        <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
-                                          {isOwnComment && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenCommentMenu(null)
-                                                if (confirm('Are you sure you want to delete this comment?')) {
-                                                  deleteComment.mutate({ commentId: comment.id })
-                                                }
-                                              }}
-                                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                              <span>Delete</span>
-                                            </button>
-                                          )}
-                                          <button
-                                            onClick={() => {
-                                              setOpenCommentMenu(null)
-                                              setReportCommentModal({
-                                                commentId: comment.id,
-                                                commentText: comment.text,
-                                                authorName: comment.user.name || 'Unknown',
-                                                authorEmail: comment.user.email || ''
-                                              })
-                                            }}
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                          >
-                                            <AlertTriangle className="h-4 w-4" />
-                                            <span>Report</span>
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
-                                  {comment.text}
-                                </p>
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                  {/* Tab: Information */}
+                  {modalTab === 'information' && (
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div className="space-y-4">
+                        {/* Tournament status */}
+                        <div>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}
+                          >
+                            {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                          </span>
+                        </div>
+                        {tournament.description && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                            <div 
+                              className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                              dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                            />
+                            {(tournament.description.split('\n').length > 3 || tournament.description.length > 150) && (
+                              <button
+                                onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                                className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                              >
+                                {descriptionExpanded ? 'Show less' : 'Show more'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 mb-2">Information</h3>
+                          <div className="space-y-2">
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              <span>
+                                {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <ClipboardList className="h-4 w-4 mr-2" />
+                                <span>
+                                  Registration: {(tournament as any).registrationStartDate
+                                    ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                                    : '—'}
+                                  {' – '}
+                                  {(tournament as any).registrationEndDate
+                                    ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                                    : '—'}
+                                </span>
                               </div>
+                            )}
+                            {tournament.venueName && (
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setSelectedTournament(null)
+                                  setFilter('map')
+                                  setMapFocusTournamentId(tournament.id)
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    setSelectedTournament(null)
+                                    setFilter('map')
+                                    setMapFocusTournamentId(tournament.id)
+                                  }
+                                }}
+                                className={`flex items-center text-sm cursor-pointer hover:underline ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
+                              >
+                                <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+                                <span>{tournament.venueName}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Users className="h-4 w-4 mr-2" />
+                              <span>{tournament.divisions.length} division{tournament.divisions.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            {tournament.entryFee && parseFloat(tournament.entryFee) > 0 && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <Trophy className="h-4 w-4 mr-2" />
+                                <span>Entry Fee: ${tournament.entryFee}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {tournament.divisions.length > 0 && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {(tournament.divisions as any[]).map((division: any) => (
+                                <Badge key={division.id} variant="secondary">
+                                  {division.name}
+                                </Badge>
+                              ))}
                             </div>
                           </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p>No comments yet. Be the first to comment!</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Comment Input */}
-                  {session ? (
-                    <div className="p-6 border-t border-gray-200">
-                      <div className="flex space-x-2">
-                        <Input
-                          placeholder="Write a comment..."
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault()
-                              handleCommentSubmit()
-                            }
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          onClick={handleCommentSubmit}
-                          disabled={!commentText.trim() || createComment.isPending}
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Send className="h-4 w-4" />
-                        </Button>
+                        )}
+                        {tournament.user && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
+                            <Link
+                              href={session?.user?.id && String(tournament.user.id) === String(session.user.id) ? '/profile' : `/profile/${tournament.user.id}`}
+                              className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
+                            >
+                              <AvatarImage
+                                src={(tournament.user as { image?: string | null }).image}
+                                alt={tournament.user.name || tournament.user.email || 'TD'}
+                                userId={tournament.user.id}
+                                size={32}
+                              />
+                              <span className="font-medium">
+                                {tournament.user.name || tournament.user.email}
+                              </span>
+                            </Link>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <div className="p-6 border-t border-gray-200 text-center">
-                      <p className="text-sm text-gray-500 mb-2">Please log in to post comments</p>
-                      <Link href="/auth/signin">
-                        <Button variant="outline" size="sm">
-                          Login
-                        </Button>
-                      </Link>
+                  )}
+
+                  {/* Tab: Comments */}
+                  {modalTab === 'comments' && (
+                    <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        {comments && comments.length > 0 ? (
+                          comments.map((comment) => {
+                            const isOwnComment = session?.user?.id === comment.user.id
+                            return (
+                              <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
+                                <div className="flex items-start space-x-3">
+                                  <AvatarImage
+                                    src={comment.user.image}
+                                    alt={comment.user.name || comment.user.email || 'User'}
+                                    userId={comment.user.id}
+                                    size={32}
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div className="flex items-center space-x-2">
+                                        <span className="font-medium text-sm text-gray-900">
+                                          {comment.user.name || comment.user.email}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
+                                        </span>
+                                      </div>
+                                      <div className="relative">
+                                        <button
+                                          onClick={() => setOpenCommentMenu(openCommentMenu === comment.id ? null : comment.id)}
+                                          className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                                        >
+                                          <MoreVertical className="h-4 w-4" />
+                                        </button>
+                                        {openCommentMenu === comment.id && (
+                                          <>
+                                            <div 
+                                              className="fixed inset-0 z-10" 
+                                              onClick={() => setOpenCommentMenu(null)}
+                                            />
+                                            <div className="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[120px]">
+                                              {isOwnComment && (
+                                                <button
+                                                  onClick={() => {
+                                                    setOpenCommentMenu(null)
+                                                    if (confirm('Are you sure you want to delete this comment?')) {
+                                                      deleteComment.mutate({ commentId: comment.id })
+                                                    }
+                                                  }}
+                                                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                                >
+                                                  <Trash2 className="h-4 w-4" />
+                                                  <span>Delete</span>
+                                                </button>
+                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  setOpenCommentMenu(null)
+                                                  setReportCommentModal({
+                                                    commentId: comment.id,
+                                                    commentText: comment.text,
+                                                    authorName: comment.user.name || 'Unknown',
+                                                    authorEmail: comment.user.email || ''
+                                                  })
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                                              >
+                                                <AlertTriangle className="h-4 w-4" />
+                                                <span>Report</span>
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                                      {comment.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                            <p>No comments yet. Be the first to comment!</p>
+                          </div>
+                        )}
+                      </div>
+                      {session ? (
+                        <div className="p-6 border-t border-gray-200 flex-shrink-0">
+                          <div className="flex space-x-2">
+                            <Input
+                              placeholder="Write a comment..."
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault()
+                                  handleCommentSubmit()
+                                }
+                              }}
+                              className="flex-1"
+                            />
+                            <Button
+                              onClick={handleCommentSubmit}
+                              disabled={!commentText.trim() || createComment.isPending}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-6 border-t border-gray-200 text-center flex-shrink-0">
+                          <p className="text-sm text-gray-500 mb-2">Please log in to post comments</p>
+                          <Link href="/auth/signin">
+                            <Button variant="outline" size="sm">
+                              Login
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab: View Results */}
+                  {modalTab === 'view-results' && (
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <iframe
+                        src={`/scoreboard/${tournament.id}/embed`}
+                        title="View Results"
+                        className="w-full flex-1 min-h-[60vh] border-0"
+                      />
                     </div>
                   )}
                 </div>
-              </div>
             </div>
           </div>
         )
@@ -1146,22 +1261,5 @@ function HomePageContent() {
         )
       })()}
     </div>
-  )
-}
-
-export default function HomePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">Loading tournaments...</p>
-          </div>
-        </div>
-      }
-    >
-      <HomePageContent />
-    </Suspense>
   )
 }

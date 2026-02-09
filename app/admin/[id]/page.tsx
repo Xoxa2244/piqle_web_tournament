@@ -655,54 +655,24 @@ export default function TournamentDetailPage() {
 
                     return (
                       <div>
-                        <div className="flex items-center justify-between gap-4 mb-3">
-                          <p className="text-lg font-semibold text-black flex items-center gap-2 shrink-0">
-                            <Trophy className="h-5 w-5 text-amber-500" />
-                            Winners
-                          </p>
-                          {divisions.length === 0 ? null : (
-                            <div className="flex items-center space-x-2 shrink-0">
-                              <span className="text-sm font-medium text-gray-700">Division:</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => {
-                                  const currentIndex = divisions.findIndex((d) => d.id === effectiveDivisionId)
-                                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : divisions.length - 1
-                                  setSelectedWinnersDivisionId(divisions[prevIndex].id)
-                                }}
-                              >
-                                <ChevronLeft className="h-4 w-4" />
-                              </Button>
-                              <select
-                                value={effectiveDivisionId ?? ''}
-                                onChange={(e) => setSelectedWinnersDivisionId(e.target.value || null)}
-                                className="pl-3 py-1.5 border border-gray-300 rounded-md text-sm pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center] min-w-[12rem]"
-                                style={{
-                                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-                                }}
-                              >
-                                {divisions.map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name} ({(d.teams?.length ?? 0)} teams)
-                                  </option>
-                                ))}
-                              </select>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => {
-                                  const currentIndex = divisions.findIndex((d) => d.id === effectiveDivisionId)
-                                  const nextIndex = currentIndex < divisions.length - 1 ? currentIndex + 1 : 0
-                                  setSelectedWinnersDivisionId(divisions[nextIndex].id)
-                                }}
-                              >
-                                <ChevronRight className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
+                        <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                          <Trophy className="h-5 w-5 text-amber-500" />
+                          Winners
+                        </p>
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                          <select
+                            value={effectiveDivisionId ?? ''}
+                            onChange={(e) => setSelectedWinnersDivisionId(e.target.value || null)}
+                            className="w-full max-w-xs pl-3 py-2 pr-[calc(12px+1rem)] text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center]"
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
+                          >
+                            {divisions.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         {divisions.length === 0 ? (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
@@ -1152,24 +1122,33 @@ export default function TournamentDetailPage() {
                   </div>
                 ) : (
                   <div className="flex items-center space-x-4">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="tournament-image-edit"
-                    />
-                    <label
-                      htmlFor="tournament-image-edit"
-                      className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors"
-                    >
-                      <Upload className="h-4 w-4" />
-                      <span>Upload Image</span>
-                    </label>
-                    {isUploadingImage && (
-                      <span className="text-sm text-gray-500">Uploading...</span>
-                    )}
+                    <div className="w-48 h-48 rounded-lg overflow-hidden border border-gray-300 flex-shrink-0 bg-gray-100">
+                      <img
+                        src="/tournament-placeholder.png"
+                        alt="No tournament image"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                        id="tournament-image-edit"
+                      />
+                      <label
+                        htmlFor="tournament-image-edit"
+                        className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors w-fit"
+                      >
+                        <Upload className="h-4 w-4" />
+                        <span>Upload Image</span>
+                      </label>
+                      {isUploadingImage && (
+                        <span className="text-sm text-gray-500">Uploading...</span>
+                      )}
+                    </div>
                   </div>
                 )}
                 <p className="mt-1 text-sm text-gray-500">

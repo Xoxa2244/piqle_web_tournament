@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,8 +52,10 @@ interface PlayoffMatch {
 
 export default function PublicCoursePage() {
   const params = useParams()
+  const pathname = usePathname()
   const router = useRouter()
   const tournamentId = params.id as string
+  const isEmbed = pathname?.includes('/embed') ?? false
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
@@ -194,15 +196,19 @@ export default function PublicCoursePage() {
           {/* Desktop Header */}
           <div className="hidden sm:flex items-center justify-between py-4">
             <div className="flex items-center space-x-4">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                <span className="text-sm font-medium">Back</span>
-              </button>
-              <div className="h-6 w-px bg-gray-300"></div>
+              {!isEmbed && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    <ArrowLeft className="h-5 w-5 mr-2" />
+                    <span className="text-sm font-medium">Back</span>
+                  </button>
+                  <div className="h-6 w-px bg-gray-300"></div>
+                </>
+              )}
               <h1 className="text-2xl font-bold text-gray-900">
                 Tournament Results: {tournament.title}
               </h1>
@@ -253,17 +259,18 @@ export default function PublicCoursePage() {
 
           {/* Mobile Header */}
           <div className="sm:hidden py-4 space-y-3">
-            {/* Back Button */}
-            <div>
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                <span className="text-sm font-medium">Back</span>
-              </button>
-            </div>
+            {!isEmbed && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  <ArrowLeft className="h-5 w-5 mr-2" />
+                  <span className="text-sm font-medium">Back</span>
+                </button>
+              </div>
+            )}
             
             {/* Tournament Title */}
             <div>

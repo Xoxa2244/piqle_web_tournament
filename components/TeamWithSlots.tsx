@@ -11,7 +11,6 @@ import {
   User, 
   Edit, 
   Trash2, 
-  MoreVertical,
   Plus,
   Star
 } from 'lucide-react'
@@ -61,7 +60,6 @@ interface TeamWithSlotsProps {
   onToggleExpansion: () => void
   onEdit: () => void
   onDelete: () => void
-  onContextMenu: () => void
   onAddPlayer: (slotIndex: number, playerId: string) => void
   onRemovePlayer: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
@@ -78,7 +76,6 @@ export default function TeamWithSlots({
   onToggleExpansion,
   onEdit,
   onDelete,
-  onContextMenu,
   onAddPlayer,
   onRemovePlayer,
   onMovePlayer,
@@ -296,17 +293,6 @@ export default function TeamWithSlots({
             >
               <Trash2 className="h-3 w-3" />
             </Button>
-            
-            {teamKind !== 'SINGLES_1v1' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onContextMenu}
-                className="h-6 w-6 p-0"
-              >
-                <MoreVertical className="h-3 w-3" />
-              </Button>
-            )}
           </div>
         </div>
 

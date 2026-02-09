@@ -81,8 +81,12 @@ function TournamentNavBarContent({
                   />
                 </div>
               ) : (
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-bold text-sm">P</span>
+                <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border-2 border-slate-200 bg-gray-100">
+                  <img
+                    src="/tournament-placeholder.png"
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               )}
               <div>
