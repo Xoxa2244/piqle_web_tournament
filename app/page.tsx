@@ -382,7 +382,6 @@ export default function HomePage() {
   }
 
   const handleCardClick = (tournamentId: string, e: React.MouseEvent) => {
-    // Don't open modal if clicking on Tournament Info button or its parent Link
     const target = e.target as HTMLElement
     if (target.closest('button') || target.closest('a')) return
     setSelectedTournament(tournamentId)
@@ -734,13 +733,6 @@ export default function HomePage() {
                         <span>{commentCounts?.[tournament.id] || 0}</span>
                       </button>
                     </div>
-
-                    {/* Tournament Info Button */}
-                    <Link href={`/scoreboard/${tournament.id}`}>
-                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        Tournament Info
-                      </Button>
-                    </Link>
 
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
