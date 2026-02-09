@@ -7,6 +7,7 @@ export type Tournament = {
   id: string
   name: string
   startDate: string
+  endDate?: string
   clubName: string
   address: string
   lat: number
@@ -16,6 +17,9 @@ export type Tournament = {
   city?: string
   state?: string
   country?: string
+  image?: string
+  entryFeeCents?: number
+  currency?: string
 }
 
 export type PlaceDetails = {

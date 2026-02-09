@@ -4,38 +4,129 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { loadGoogleMaps } from "@/lib/googleMapsLoader"
 import type { LatLng, Tournament } from "@/types/tournament"
 import { Button } from "@/components/ui/button"
+import { Locate, MapPin } from "lucide-react"
 
 type MapWithTournamentsProps = {
   tournaments: Tournament[]
   focusLocation?: LatLng | null
+  /** When set together with focusLocation, opens this tournament's info window */
+  focusTournamentId?: string | null
+  /** Called once after opening the focused tournament's info window */
+  onFocusConsumed?: () => void
+  /** When set, "Open tournament page" in the pin popup opens this modal instead of navigating */
+  onOpenTournament?: (tournamentId: string) => void
 }
 
 const DEFAULT_CENTER: LatLng = { lat: 39.8283, lng: -98.5795 }
 const DEFAULT_ZOOM = 4
 const FOCUS_ZOOM = 12
 
-const buildInfoWindowContent = (tournament: Tournament) => {
-  const href = tournament.publicSlug
-    ? `/t/${tournament.publicSlug}`
-    : `/admin/${tournament.id}`
+function haversineDistanceKm(a: LatLng, b: LatLng): number {
+  const R = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+  return R * c
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function getMapPinStatus(t: { startDate: string; endDate?: string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(t.startDate)
+  const end = t.endDate ? new Date(t.endDate) : start
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+
+const buildInfoWindowContent = (
+  tournament: Tournament,
+  onOpenTournament?: (tournamentId: string) => void
+) => {
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     tournament.address
   )}`
+  const status = getMapPinStatus(tournament)
+  const statusLabel = status === 'past' ? 'Past' : status === 'upcoming' ? 'Upcoming' : 'In progress'
+  const statusBg =
+    status === 'past'
+      ? '#f3f4f6'
+      : status === 'upcoming'
+        ? '#dbeafe'
+        : '#d1fae8'
+  const statusColor =
+    status === 'past'
+      ? '#6b7280'
+      : status === 'upcoming'
+        ? '#1d4ed8'
+        : '#047857'
+  const imgSrc =
+    tournament.image && tournament.image.trim()
+      ? tournament.image
+      : '/tournament-placeholder.png'
+  const startStr = new Date(tournament.startDate).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const endStr = tournament.endDate
+    ? new Date(tournament.endDate).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : startStr
+  const datesStr = startStr === endStr ? startStr : `${startStr} – ${endStr}`
+  const entryFeeStr =
+    tournament.entryFeeCents != null && tournament.entryFeeCents > 0
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: (tournament.currency || 'usd').toUpperCase(),
+        }).format(tournament.entryFeeCents / 100)
+      : 'Free'
+
+  const openButton =
+    onOpenTournament != null
+      ? `<a href="#" class="open-tournament-modal-link" data-tournament-id="${tournament.id}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; border: none; cursor: pointer;">Open tournament</a>`
+      : (() => {
+          const href = tournament.publicSlug
+            ? `/t/${tournament.publicSlug}`
+            : `/admin/${tournament.id}`
+          return `<a href="${href}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Open tournament</a>`
+        })()
+
   return `
-    <div style="min-width: 220px">
-      <div style="font-weight: 600; margin-bottom: 4px;">${tournament.name}</div>
-      <div style="margin-bottom: 4px;">${new Date(
-        tournament.startDate
-      ).toLocaleString()}</div>
-      <div style="margin-bottom: 4px;">${tournament.clubName}</div>
-      <div style="margin-bottom: 8px;">
-        <a href="${mapsHref}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">
-          ${tournament.address}
-        </a>
+    <div style="min-width: 260px; font-family: system-ui, sans-serif;">
+      <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+        <img src="${imgSrc}" alt="" style="width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex-shrink: 0;" />
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; font-size: 15px; line-height: 1.3;">${escapeHtml(tournament.name)}</div>
+          <span style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; background: ${statusBg}; color: ${statusColor};">${statusLabel}</span>
+        </div>
       </div>
-      <a href="${href}" style="color: #2563eb; text-decoration: underline;">
-        Open tournament page
-      </a>
+      <div style="font-size: 13px; color: #374151; margin-bottom: 4px;"><strong>Entry Fee:</strong> ${entryFeeStr}</div>
+      <div style="font-size: 13px; color: #374151; margin-bottom: 4px;"><strong>Dates:</strong> ${datesStr}</div>
+      <div style="font-size: 13px; color: #374151; margin-bottom: 6px;">
+        <a href="${mapsHref}" target="_blank" rel="noreferrer" style="color: #2563eb; text-decoration: underline;">${escapeHtml(tournament.address)}</a>
+      </div>
+      ${openButton}
     </div>
   `
 }
@@ -43,6 +134,9 @@ const buildInfoWindowContent = (tournament: Tournament) => {
 export const MapWithTournaments = ({
   tournaments,
   focusLocation,
+  focusTournamentId,
+  onFocusConsumed,
+  onOpenTournament,
 }: MapWithTournamentsProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -51,6 +145,8 @@ export const MapWithTournaments = ({
   const infoWindowRef = useRef<any>(null)
   const tournamentMarkersRef = useRef<Map<string, any>>(new Map())
   const userMarkerRef = useRef<any>(null)
+  const onOpenTournamentRef = useRef(onOpenTournament)
+  onOpenTournamentRef.current = onOpenTournament
   const [mapError, setMapError] = useState<string | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(false)
@@ -79,6 +175,15 @@ export const MapWithTournaments = ({
       })
 
       infoWindowRef.current = new googleApi.maps.InfoWindow()
+      googleApi.maps.event.addListener(infoWindowRef.current, 'domready', () => {
+        const link = document.querySelector('.open-tournament-modal-link')
+        if (!link || !onOpenTournamentRef.current) return
+        link.addEventListener('click', (e: Event) => {
+          e.preventDefault()
+          const id = link.getAttribute('data-tournament-id')
+          if (id) onOpenTournamentRef.current?.(id)
+        })
+      })
     } catch (error) {
       setMapError(
         error instanceof Error ? error.message : "Failed to load Google Maps."
@@ -114,6 +219,33 @@ export const MapWithTournaments = ({
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }, [])
+
+  const focusNearestTournament = useCallback(() => {
+    if (!userLocation || tournaments.length === 0 || !mapInstanceRef.current || !googleRef.current || !infoWindowRef.current) {
+      return
+    }
+    let nearest: Tournament | null = null
+    let minDist = Infinity
+    for (const t of tournaments) {
+      const d = haversineDistanceKm(userLocation, { lat: t.lat, lng: t.lng })
+      if (d < minDist) {
+        minDist = d
+        nearest = t
+      }
+    }
+    if (!nearest) return
+    const pos = { lat: nearest.lat, lng: nearest.lng }
+    mapInstanceRef.current.panTo(pos)
+    mapInstanceRef.current.setZoom(FOCUS_ZOOM)
+    const marker = tournamentMarkersRef.current.get(nearest.id)
+    if (marker) {
+      infoWindowRef.current.setContent(buildInfoWindowContent(nearest, onOpenTournamentRef.current))
+      infoWindowRef.current.open({
+        anchor: marker,
+        map: mapInstanceRef.current,
+      })
+    }
+  }, [userLocation, tournaments])
 
   useEffect(() => {
     initializeMap()
@@ -155,7 +287,7 @@ export const MapWithTournaments = ({
           return
         }
 
-        infoWindowRef.current.setContent(buildInfoWindowContent(tournament))
+        infoWindowRef.current.setContent(buildInfoWindowContent(tournament, onOpenTournamentRef.current))
         infoWindowRef.current.open({
           anchor: marker,
           map: mapInstanceRef.current!,
@@ -212,16 +344,50 @@ export const MapWithTournaments = ({
     mapInstanceRef.current.setZoom(FOCUS_ZOOM)
   }, [focusLocation])
 
+  // Open info window for focused tournament once markers exist
+  useEffect(() => {
+    if (!focusTournamentId || !infoWindowRef.current || !mapInstanceRef.current) return
+    const marker = tournamentMarkersRef.current.get(focusTournamentId)
+    const tournament = tournaments.find((t) => t.id === focusTournamentId)
+    if (marker && tournament) {
+      infoWindowRef.current.setContent(buildInfoWindowContent(tournament, onOpenTournamentRef.current))
+      infoWindowRef.current.open({
+        anchor: marker,
+        map: mapInstanceRef.current,
+      })
+      onFocusConsumed?.()
+    }
+  }, [focusTournamentId, tournaments, onFocusConsumed])
+
   useEffect(() => {
     locateUser()
   }, [locateUser])
+
+  const hasLocation = userLocation !== null
+  const canFocusNearest = hasLocation && tournaments.length > 0
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <Button type="button" variant="outline" onClick={locateUser}>
+          <Locate className="h-4 w-4 mr-2" />
           {isLocating ? "Locating..." : "Use my location"}
         </Button>
+        <span
+          title={!hasLocation ? "Allow location access to find the nearest tournament" : undefined}
+          className="inline-flex"
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={focusNearestTournament}
+            disabled={!canFocusNearest}
+            className={!canFocusNearest ? "cursor-not-allowed" : undefined}
+          >
+            <MapPin className="h-4 w-4 mr-2" />
+            Nearest tournament
+          </Button>
+        </span>
         {geoError ? (
           <span className="text-sm text-muted-foreground">{geoError}</span>
         ) : null}
