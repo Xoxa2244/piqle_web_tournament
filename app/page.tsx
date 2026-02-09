@@ -1074,7 +1074,9 @@ export default function HomePage() {
                     <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                       <div className="flex-1 overflow-y-auto p-6 space-y-4">
                         {comments && comments.length > 0 ? (
-                          comments.map((comment) => {
+                          [...comments]
+                            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                            .map((comment) => {
                             const isOwnComment = session?.user?.id === comment.user.id
                             return (
                               <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
