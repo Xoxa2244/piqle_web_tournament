@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -778,6 +778,10 @@ export default function DivisionsPage() {
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
+  const localDivisionsRef = useRef<Division[]>([])
+  useEffect(() => {
+    localDivisionsRef.current = localDivisions
+  }, [localDivisions])
   const [availablePlayers, setAvailablePlayers] = useState<any[]>([])
   
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
@@ -922,16 +926,22 @@ export default function DivisionsPage() {
 
   const movePlayerBetweenSlotsMutation = trpc.teamPlayer.movePlayerBetweenSlots.useMutation({
     onMutate: async (variables) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await utils.tournament.get.cancel({ id: tournamentId })
+      const previousDivisions = localDivisionsRef.current
       // Optimistically update the UI immediately
       optimisticMovePlayer(variables.fromTeamId, variables.toTeamId, variables.fromSlotIndex, variables.toSlotIndex)
+      return { previousDivisions }
     },
     onSuccess: () => {
-      // Refetch to sync with server state
       refetch()
     },
-    onError: (error) => {
-      // Rollback on error
-      refetch()
+    onError: (error, _variables, context) => {
+      if (context?.previousDivisions) {
+        setLocalDivisions(context.previousDivisions)
+      } else {
+        refetch()
+      }
       alert(`Error moving player: ${error.message}`)
     }
   })
@@ -1023,30 +1033,27 @@ export default function DivisionsPage() {
             if (fromTeamId === toTeamId) {
               // Same team - swap or reorder
               if (targetPlayer) {
-                // Find indices in unsorted array
                 const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
                 const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
-                
                 if (fromIndex !== -1 && toIndex !== -1) {
-                  // Swap
-                  newTeamPlayers[fromIndex] = targetPlayer
-                  newTeamPlayers[toIndex] = playerToMove
-                }
-              }
-              // If moving to empty slot within same team, no change needed
-            } else {
-              // Different team - remove from this team
-              if (targetPlayer) {
-                // Find indices in unsorted array
-                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
-                const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
-                
-                if (fromIndex !== -1 && toIndex !== -1) {
-                  // Swap - replace with target player
-                  newTeamPlayers[fromIndex] = targetPlayer
+                  newTeamPlayers[fromIndex] = { ...targetPlayer, slotIndex: fromSlotIndex }
+                  newTeamPlayers[toIndex] = { ...playerToMove, slotIndex: toSlotIndex }
                 }
               } else {
-                // Just remove
+                // Move to empty slot within same team: update slotIndex
+                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
+                if (fromIndex !== -1) {
+                  newTeamPlayers[fromIndex] = { ...playerToMove, slotIndex: toSlotIndex }
+                }
+              }
+            } else {
+              // Different team - remove from this team or swap
+              if (targetPlayer) {
+                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
+                if (fromIndex !== -1) {
+                  newTeamPlayers[fromIndex] = { ...targetPlayer, slotIndex: fromSlotIndex }
+                }
+              } else {
                 const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
                 if (fromIndex !== -1) {
                   newTeamPlayers.splice(fromIndex, 1)
@@ -1065,14 +1072,12 @@ export default function DivisionsPage() {
             const newTeamPlayers = [...team.teamPlayers]
             
             if (targetPlayer) {
-              // Swap - target player already moved to from team
               const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
               if (toIndex !== -1) {
-                newTeamPlayers[toIndex] = playerToMove
+                newTeamPlayers[toIndex] = { ...playerToMove, slotIndex: toSlotIndex }
               }
             } else {
-              // Add to empty slot - append to end
-              newTeamPlayers.push(playerToMove)
+              newTeamPlayers.push({ ...playerToMove, slotIndex: toSlotIndex })
             }
             
             return {
