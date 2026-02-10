@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import Link from 'next/link'
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragStartEvent,
   PointerSensor,
   useSensor,
@@ -136,7 +137,8 @@ function WaitList({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  dropTargetId
 }: {
   division: Division
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => void
@@ -149,6 +151,7 @@ function WaitList({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  dropTargetId?: string | null
 }) {
   const waitListTeams = division.teams.filter(team => team.poolId === null)
   
@@ -189,6 +192,7 @@ function WaitList({
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                dropTargetId={dropTargetId}
               />
             ))}
           </div>
@@ -211,7 +215,8 @@ function PoolCard({
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
-  onMovePlayerBetweenSlots
+  onMovePlayerBetweenSlots,
+  dropTargetId
 }: {
   pool: Pool
   division: Division
@@ -225,6 +230,7 @@ function PoolCard({
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
+  dropTargetId?: string | null
 }) {
   // Compute teams for this pool dynamically
   const poolTeams = division.teams.filter(team => team.poolId === pool.id)
@@ -266,6 +272,7 @@ function PoolCard({
                 onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                 onRemovePlayer={onRemovePlayerFromSlot}
                 onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                dropTargetId={dropTargetId}
               />
             ))}
           </div>
@@ -384,7 +391,8 @@ function DivisionCard({
   onMovePlayerBetweenSlots,
   tournamentFormat,
   waitlistEntries,
-  onOpenAssignWaitlist
+  onOpenAssignWaitlist,
+  dropTargetId
 }: {
   division: Division
   isExpanded: boolean
@@ -408,6 +416,7 @@ function DivisionCard({
   tournamentFormat?: string
   waitlistEntries: any[]
   onOpenAssignWaitlist: (entry: any, division: Division) => void
+  dropTargetId?: string | null
 }) {
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const activeTeams = division.teams.filter(team => team.poolId !== null)
@@ -564,6 +573,7 @@ function DivisionCard({
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>
@@ -588,6 +598,7 @@ function DivisionCard({
                     onAddPlayerToSlot={onAddPlayerToSlot}
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                     onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+                    dropTargetId={dropTargetId}
                   />
                 ))}
               </div>
@@ -615,6 +626,7 @@ function DivisionCard({
                       onAddPlayer={(slotIndex, playerId) => onAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={onRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => onMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>
@@ -634,6 +646,7 @@ function DivisionCard({
               onAddPlayerToSlot={onAddPlayerToSlot}
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
               onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
+              dropTargetId={dropTargetId}
             />
 
             <div className="mt-4 border-t pt-4">
@@ -686,6 +699,7 @@ export default function DivisionsPage() {
   const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set())
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
@@ -764,6 +778,10 @@ export default function DivisionsPage() {
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
+  const localDivisionsRef = useRef<Division[]>([])
+  useEffect(() => {
+    localDivisionsRef.current = localDivisions
+  }, [localDivisions])
   const [availablePlayers, setAvailablePlayers] = useState<any[]>([])
   
   // Filter out divisions with 0 teams that were merged (i.e., there's a merged division containing their ID)
@@ -908,16 +926,22 @@ export default function DivisionsPage() {
 
   const movePlayerBetweenSlotsMutation = trpc.teamPlayer.movePlayerBetweenSlots.useMutation({
     onMutate: async (variables) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await utils.tournament.get.cancel({ id: tournamentId })
+      const previousDivisions = localDivisionsRef.current
       // Optimistically update the UI immediately
       optimisticMovePlayer(variables.fromTeamId, variables.toTeamId, variables.fromSlotIndex, variables.toSlotIndex)
+      return { previousDivisions }
     },
     onSuccess: () => {
-      // Refetch to sync with server state
       refetch()
     },
-    onError: (error) => {
-      // Rollback on error
-      refetch()
+    onError: (error, _variables, context) => {
+      if (context?.previousDivisions) {
+        setLocalDivisions(context.previousDivisions)
+      } else {
+        refetch()
+      }
       alert(`Error moving player: ${error.message}`)
     }
   })
@@ -1009,30 +1033,27 @@ export default function DivisionsPage() {
             if (fromTeamId === toTeamId) {
               // Same team - swap or reorder
               if (targetPlayer) {
-                // Find indices in unsorted array
                 const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
                 const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
-                
                 if (fromIndex !== -1 && toIndex !== -1) {
-                  // Swap
-                  newTeamPlayers[fromIndex] = targetPlayer
-                  newTeamPlayers[toIndex] = playerToMove
-                }
-              }
-              // If moving to empty slot within same team, no change needed
-            } else {
-              // Different team - remove from this team
-              if (targetPlayer) {
-                // Find indices in unsorted array
-                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
-                const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
-                
-                if (fromIndex !== -1 && toIndex !== -1) {
-                  // Swap - replace with target player
-                  newTeamPlayers[fromIndex] = targetPlayer
+                  newTeamPlayers[fromIndex] = { ...targetPlayer, slotIndex: fromSlotIndex }
+                  newTeamPlayers[toIndex] = { ...playerToMove, slotIndex: toSlotIndex }
                 }
               } else {
-                // Just remove
+                // Move to empty slot within same team: update slotIndex
+                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
+                if (fromIndex !== -1) {
+                  newTeamPlayers[fromIndex] = { ...playerToMove, slotIndex: toSlotIndex }
+                }
+              }
+            } else {
+              // Different team - remove from this team or swap
+              if (targetPlayer) {
+                const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
+                if (fromIndex !== -1) {
+                  newTeamPlayers[fromIndex] = { ...targetPlayer, slotIndex: fromSlotIndex }
+                }
+              } else {
                 const fromIndex = newTeamPlayers.findIndex(tp => tp.id === playerToMove.id)
                 if (fromIndex !== -1) {
                   newTeamPlayers.splice(fromIndex, 1)
@@ -1051,14 +1072,12 @@ export default function DivisionsPage() {
             const newTeamPlayers = [...team.teamPlayers]
             
             if (targetPlayer) {
-              // Swap - target player already moved to from team
               const toIndex = newTeamPlayers.findIndex(tp => tp.id === targetPlayer.id)
               if (toIndex !== -1) {
-                newTeamPlayers[toIndex] = playerToMove
+                newTeamPlayers[toIndex] = { ...playerToMove, slotIndex: toSlotIndex }
               }
             } else {
-              // Add to empty slot - append to end
-              newTeamPlayers.push(playerToMove)
+              newTeamPlayers.push({ ...playerToMove, slotIndex: toSlotIndex })
             }
             
             return {
@@ -1164,10 +1183,23 @@ export default function DivisionsPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveTeam(event.active.id as string)
+    setDropTargetId(null)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const overId = event.over?.id
+    const activeId = event.active?.id
+    const isPlayerDrag = typeof activeId === 'string' && /^player-.+-slot-\d+$/.test(activeId)
+    if (isPlayerDrag && typeof overId === 'string' && overId !== activeId && /^player-.+-slot-\d+$/.test(overId)) {
+      setDropTargetId(overId)
+    } else {
+      setDropTargetId(null)
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+    setDropTargetId(null)
 
     if (!over) {
       setActiveTeam(null)
@@ -1726,6 +1758,7 @@ export default function DivisionsPage() {
                       onAddPlayer={(slotIndex, playerId) => handleAddPlayerToSlot(team.id, slotIndex, playerId)}
                       onRemovePlayer={handleRemovePlayerFromSlot}
                       onMovePlayer={(fromTeamId, toTeamId, fromSlot, toSlot) => handleMovePlayerBetweenSlots(fromTeamId, toTeamId, fromSlot, toSlot)}
+                      dropTargetId={dropTargetId}
                     />
                   ))
                 )}
@@ -1759,6 +1792,7 @@ export default function DivisionsPage() {
               <DndContext
                 sensors={sensors}
                 onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
               >
                 <div className="space-y-4">
@@ -1787,6 +1821,7 @@ export default function DivisionsPage() {
                       tournamentFormat={tournament?.format}
                       waitlistEntries={waitlistEntries}
                       onOpenAssignWaitlist={handleOpenAssignWaitlist}
+                      dropTargetId={dropTargetId}
                     />
                   ))}
                 </div>

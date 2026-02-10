@@ -37,6 +37,7 @@ interface PlayerSlotProps {
   onRemovePlayer: (slotIndex: number) => void
   onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
+  isDropTarget?: boolean
 }
 
 export default function PlayerSlot({
@@ -47,7 +48,8 @@ export default function PlayerSlot({
   onAddPlayer,
   onRemovePlayer,
   onMovePlayer,
-  isDragDisabled = false
+  isDragDisabled = false,
+  isDropTarget = false
 }: PlayerSlotProps) {
   const slotId = `player-${teamId}-slot-${slotIndex}`
   const isDisabled = !player || isDragDisabled
@@ -86,7 +88,11 @@ export default function PlayerSlot({
   return (
     <div 
       ref={setNodeRef}
-      className="flex items-center space-x-2 p-2 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg"
+      className={`flex items-center space-x-2 p-2 rounded-lg border-2 border-dashed transition-colors ${
+        isDropTarget
+          ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 ring-offset-1'
+          : 'bg-gray-50 border-gray-300'
+      }`}
     >
       <div className="flex items-center justify-center w-6 h-6 bg-gray-200 rounded-full">
         <span className="text-xs font-medium text-gray-500">{slotIndex + 1}</span>
@@ -114,8 +120,12 @@ export default function PlayerSlot({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center space-x-2 p-2 bg-white border rounded-lg shadow-sm ${
+      className={`flex items-center space-x-2 p-2 rounded-lg border shadow-sm transition-colors ${
         isDragging ? 'opacity-50' : ''
+      } ${
+        isDropTarget
+          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400 ring-offset-1'
+          : 'bg-white border-gray-200'
       }`}
     >
       {/* Drag handle moved to the beginning */}
