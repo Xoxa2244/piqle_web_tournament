@@ -126,7 +126,7 @@ export const tournamentInvitationRouter = createTRPCRouter({
           })
           const tournament = await fetchTournamentForEmail(ctx.prisma, input.tournamentId)
           const baseUrl = getAppBaseUrl(input.baseUrl)
-          const acceptLink = `${baseUrl}/invitation/${existingInvitation.id}/respond?action=accept`
+          const acceptLink = `${baseUrl}/tournaments/${input.tournamentId}/register?inviteAction=accept&invitationId=${existingInvitation.id}`
           const declineLink = `${baseUrl}/invitation/${existingInvitation.id}/respond?action=decline`
           const html = buildInvitationEmailHtml(tournament, baseUrl, acceptLink, declineLink)
           await sendHtmlEmail(user.email, `Invitation: ${tournament?.title ?? 'Tournament'}`, html)
@@ -145,7 +145,7 @@ export const tournamentInvitationRouter = createTRPCRouter({
 
       const tournament = await fetchTournamentForEmail(ctx.prisma, input.tournamentId)
       const baseUrl = getAppBaseUrl(input.baseUrl)
-      const acceptLink = `${baseUrl}/invitation/${invitation.id}/respond?action=accept`
+      const acceptLink = `${baseUrl}/tournaments/${input.tournamentId}/register?inviteAction=accept&invitationId=${invitation.id}`
       const declineLink = `${baseUrl}/invitation/${invitation.id}/respond?action=decline`
       const html = buildInvitationEmailHtml(tournament, baseUrl, acceptLink, declineLink)
       await sendHtmlEmail(user.email, `Invitation: ${tournament?.title ?? 'Tournament'}`, html)

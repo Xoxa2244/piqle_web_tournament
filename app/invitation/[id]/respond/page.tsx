@@ -114,7 +114,7 @@ export default function InvitationRespondPage() {
           </CardHeader>
           <CardContent>
             {action === 'accept' ? (
-              <p className="text-gray-600">You have been added to the tournament. Redirecting to registration...</p>
+              <p className="text-gray-600">Invitation accepted. Redirecting to registration...</p>
             ) : (
               <p className="text-gray-600">You have declined the invitation. You can be invited again later.</p>
             )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
@@ -59,14 +59,38 @@ export default function TournamentRegistrationPage() {
   const cancelRegistrationMutation = trpc.registration.cancelRegistration.useMutation()
   const joinWaitlistMutation = trpc.registration.joinWaitlist.useMutation()
   const leaveWaitlistMutation = trpc.registration.leaveWaitlist.useMutation()
+  const acceptInvitationMutation = trpc.tournamentInvitation.accept.useMutation()
+  const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
   const utils = trpc.useUtils()
 
   useEffect(() => {
     if (authStatus === 'unauthenticated' && tournamentId) {
-      const callbackUrl = `/tournaments/${tournamentId}/register`
+      const queryString = typeof window !== 'undefined' ? window.location.search : ''
+      const callbackUrl = `/tournaments/${tournamentId}/register${queryString}`
       router.replace(`/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`)
     }
   }, [authStatus, router, tournamentId])
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !tournamentId || inviteAcceptHandled) return
+    const params = new URLSearchParams(window.location.search)
+    const inviteAction = params.get('inviteAction')
+    const invitationId = params.get('invitationId')
+    if (inviteAction !== 'accept' || !invitationId) return
+
+    setInviteAcceptHandled(true)
+    const processInviteAccept = async () => {
+      try {
+        await acceptInvitationMutation.mutateAsync({ invitationId })
+      } catch (error: any) {
+        alert(error.message || 'Failed to process invitation')
+      } finally {
+        router.replace(`/tournaments/${tournamentId}/register`)
+      }
+    }
+
+    processInviteAccept()
+  }, [authStatus, tournamentId, inviteAcceptHandled, acceptInvitationMutation, router])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
