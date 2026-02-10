@@ -885,7 +885,10 @@ function DivisionStageManagementContent() {
   const handleRetryDuprSubmission = async (matchId: string) => {
     if (!tournamentId || !tournament?.allowDuprSubmission) return
 
-    setRetryingMatchIds((prev) => [...new Set([...prev, matchId])])
+    setRetryingMatchIds((prev) => {
+      if (prev.includes(matchId)) return prev
+      return [...prev, matchId]
+    })
     setDuprUploadLog((prev) =>
       prev.map((entry) =>
         entry.matchId === matchId ? { ...entry, status: 'PROCESSING', error: null } : entry
