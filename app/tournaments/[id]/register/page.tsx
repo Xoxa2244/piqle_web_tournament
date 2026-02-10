@@ -396,7 +396,7 @@ function DivisionSeatMap({
 
         {!hasAvailableSlots && !isWaitlistedInDivision && (
           <div className="border-t pt-4">
-            <div className="text-sm text-gray-600 mb-2">No available slots in this division.</div>
+            <div className="text-sm text-gray-600 mb-2">There are no available spots at the moment.</div>
             <Button onClick={onJoinWaitlist} disabled={!isRegistrationOpen}>
               Join Waitlist
             </Button>

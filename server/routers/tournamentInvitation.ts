@@ -3,7 +3,21 @@ import { TRPCError } from '@trpc/server'
 import type { PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
+import { getTeamSlotCount } from '../utils/teamSlots'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+
+const NO_SPOTS_MESSAGE = 'There are no available spots at the moment.'
+
+function isRegistrationOpen(tournament: {
+  registrationStartDate: Date | null
+  registrationEndDate: Date | null
+  startDate: Date
+}) {
+  const start = tournament.registrationStartDate ?? tournament.startDate
+  const end = tournament.registrationEndDate ?? tournament.startDate
+  const now = new Date()
+  return now >= new Date(start) && now <= new Date(end)
+}
 
 function getAppBaseUrl(baseUrlFromClient?: string | null): string {
   if (baseUrlFromClient && baseUrlFromClient.startsWith('http')) return baseUrlFromClient.replace(/\/$/, '')
@@ -168,7 +182,16 @@ export const tournamentInvitationRouter = createTRPCRouter({
       const invitation = await ctx.prisma.tournamentInvitation.findUnique({
         where: { id: input.invitationId },
         include: {
-          tournament: { select: { id: true, title: true } },
+          tournament: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+              registrationStartDate: true,
+              registrationEndDate: true,
+              entryFeeCents: true,
+            },
+          },
           invitedUser: { select: { id: true, email: true, name: true } },
         },
       })
@@ -182,24 +205,147 @@ export const tournamentInvitationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only respond to your own invitation.' })
       }
 
+      const tournament = invitation.tournament
+      if (!isRegistrationOpen(tournament)) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration is closed for this tournament.' })
+      }
+
       const [firstName, ...lastParts] = (invitation.invitedUser.name || '').trim().split(/\s+/)
       const lastName = lastParts.join(' ') || firstName || 'Player'
+      const isPaid = (tournament.entryFeeCents ?? 0) > 0
 
-      await ctx.prisma.$transaction([
-        ctx.prisma.tournamentInvitation.update({
+      if (isPaid) {
+        await ctx.prisma.$transaction([
+          ctx.prisma.tournamentInvitation.update({
+            where: { id: input.invitationId },
+            data: { status: 'ACCEPTED' },
+          }),
+          ctx.prisma.player.create({
+            data: {
+              tournamentId: invitation.tournamentId,
+              userId: invitation.invitedUserId,
+              firstName: firstName || 'Player',
+              lastName,
+              email: invitation.invitedUser.email,
+            },
+          },
+        ])
+        return { success: true, tournamentId: invitation.tournamentId }
+      }
+
+      const tournamentWithDivisions = await ctx.prisma.tournament.findUnique({
+        where: { id: invitation.tournamentId },
+        include: {
+          divisions: {
+            include: {
+              teams: {
+                include: {
+                  teamPlayers: true,
+                },
+              },
+            },
+          },
+        },
+      })
+      if (!tournamentWithDivisions) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found.' })
+      }
+
+      type TeamSlot = { teamId: string; divisionId: string; slotIndex: number }
+      let firstFree: TeamSlot | null = null
+      for (const division of tournamentWithDivisions.divisions) {
+        const teamKind = (division.teamKind || 'DOUBLES_2v2') as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
+        const slotCount = getTeamSlotCount(teamKind)
+        for (const team of division.teams) {
+          const usedSlots = new Set(
+            team.teamPlayers
+              .map((tp) => tp.slotIndex)
+              .filter((idx): idx is number => idx !== null && idx !== undefined)
+          )
+          for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
+            if (!usedSlots.has(slotIndex)) {
+              firstFree = { teamId: team.id, divisionId: division.id, slotIndex }
+              break
+            }
+          }
+          if (firstFree) break
+        }
+        if (firstFree) break
+      }
+
+      if (!firstFree) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: NO_SPOTS_MESSAGE })
+      }
+
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.tournamentInvitation.update({
           where: { id: input.invitationId },
           data: { status: 'ACCEPTED' },
-        }),
-        ctx.prisma.player.create({
-          data: {
-            tournamentId: invitation.tournamentId,
-            userId: invitation.invitedUserId,
-            firstName: firstName || 'Player',
-            lastName,
-            email: invitation.invitedUser.email,
+        })
+
+        let player = await tx.player.findUnique({
+          where: {
+            userId_tournamentId: {
+              userId: ctx.session.user.id,
+              tournamentId: invitation.tournamentId,
+            },
           },
-        }),
-      ])
+        })
+        if (!player) {
+          player = await tx.player.create({
+            data: {
+              tournamentId: invitation.tournamentId,
+              userId: invitation.invitedUserId,
+              firstName: firstName || 'Player',
+              lastName,
+              email: invitation.invitedUser.email ?? undefined,
+              isWaitlist: false,
+            },
+          })
+        } else {
+          const existingTeamPlayer = await tx.teamPlayer.findFirst({
+            where: {
+              playerId: player.id,
+              team: { division: { tournamentId: invitation.tournamentId } },
+            },
+          })
+          if (existingTeamPlayer) return
+        }
+
+        await tx.waitlistEntry.deleteMany({
+          where: {
+            playerId: player.id,
+            tournamentId: invitation.tournamentId,
+          },
+        })
+        await tx.player.update({
+          where: { id: player.id },
+          data: { isWaitlist: false },
+        })
+
+        const teamPlayer = await tx.teamPlayer.create({
+          data: {
+            teamId: firstFree.teamId,
+            playerId: player.id,
+            slotIndex: firstFree.slotIndex,
+          },
+        })
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: invitation.tournamentId,
+            action: 'PLAYER_CLAIM_SLOT',
+            entityType: 'TeamPlayer',
+            entityId: teamPlayer.id,
+            payload: {
+              teamId: firstFree.teamId,
+              divisionId: firstFree.divisionId,
+              slotIndex: firstFree.slotIndex,
+            },
+          },
+        })
+      })
 
       return { success: true, tournamentId: invitation.tournamentId }
     }),
