@@ -215,12 +215,12 @@ export const tournamentInvitationRouter = createTRPCRouter({
       const isPaid = (tournament.entryFeeCents ?? 0) > 0
 
       if (isPaid) {
-        await ctx.prisma.$transaction([
-          ctx.prisma.tournamentInvitation.update({
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.tournamentInvitation.update({
             where: { id: input.invitationId },
             data: { status: 'ACCEPTED' },
-          }),
-          ctx.prisma.player.create({
+          })
+          await tx.player.create({
             data: {
               tournamentId: invitation.tournamentId,
               userId: invitation.invitedUserId,
@@ -228,9 +228,9 @@ export const tournamentInvitationRouter = createTRPCRouter({
               lastName,
               email: invitation.invitedUser.email,
             },
-          },
-        ]);
-        return { success: true, tournamentId: invitation.tournamentId };
+          })
+        })
+        return { success: true, tournamentId: invitation.tournamentId }
       }
 
       const tournamentWithDivisions = await ctx.prisma.tournament.findUnique({
