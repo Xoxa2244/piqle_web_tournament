@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { tournamentId } = await req.json()
+    const { tournamentId, matchId } = await req.json()
     if (!tournamentId) {
       return NextResponse.json({ error: 'Tournament ID is required' }, { status: 400 })
     }
@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
                   { duprSubmissionStatus: 'PENDING' },
                   { duprSubmissionStatus: 'FAILED' },
                 ],
+                ...(matchId ? { id: matchId } : {}),
               },
               include: {
                 teamA: {
