@@ -229,8 +229,8 @@ export const tournamentInvitationRouter = createTRPCRouter({
               email: invitation.invitedUser.email,
             },
           },
-        ])
-        return { success: true, tournamentId: invitation.tournamentId }
+        ]);
+        return { success: true, tournamentId: invitation.tournamentId };
       }
 
       const tournamentWithDivisions = await ctx.prisma.tournament.findUnique({
