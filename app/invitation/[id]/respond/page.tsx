@@ -27,7 +27,7 @@ export default function InvitationRespondPage() {
   const acceptMutation = trpc.tournamentInvitation.accept.useMutation({
     onSuccess: (data) => {
       setDone(true)
-      setTimeout(() => router.push(`/scoreboard/${data.tournamentId}`), 2000)
+      setTimeout(() => router.push(`/tournaments/${data.tournamentId}/register`), 1500)
     },
     onError: (e) => setError(e.message),
   })
@@ -114,7 +114,7 @@ export default function InvitationRespondPage() {
           </CardHeader>
           <CardContent>
             {action === 'accept' ? (
-              <p className="text-gray-600">You have been added to the tournament. Redirecting to players list...</p>
+              <p className="text-gray-600">You have been added to the tournament. Redirecting to registration...</p>
             ) : (
               <p className="text-gray-600">You have declined the invitation. You can be invited again later.</p>
             )}
