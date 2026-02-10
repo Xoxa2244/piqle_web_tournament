@@ -133,6 +133,7 @@ function DivisionStageManagementContent() {
     error?: string | null
   }>>([])
   const [isUploadingToDupr, setIsUploadingToDupr] = useState(false)
+  const [retryingMatchIds, setRetryingMatchIds] = useState<string[]>([])
   const suppressRegenerateAlertRef = useRef(false)
 
 
@@ -882,10 +883,50 @@ function DivisionStageManagementContent() {
   }
 
   const handleRetryDuprSubmission = async (matchId: string) => {
-    // TODO: Implement DUPR retry submission logic
-    // For now, just refetch to update UI
-    refetchDivision()
-    refetchTournament()
+    if (!tournamentId || !tournament?.allowDuprSubmission) return
+
+    setRetryingMatchIds((prev) => [...new Set([...prev, matchId])])
+    setDuprUploadLog((prev) =>
+      prev.map((entry) =>
+        entry.matchId === matchId ? { ...entry, status: 'PROCESSING', error: null } : entry
+      )
+    )
+
+    try {
+      const response = await fetch('/api/dupr/submit-tournament', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tournamentId, matchId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to retry DUPR submission')
+      }
+
+      if (data.log) {
+        setDuprUploadLog((prev) => [
+          ...prev.filter((entry) => entry.matchId !== matchId),
+          ...data.log,
+        ])
+      }
+
+      refetchDivision()
+      refetchTournament()
+    } catch (error: any) {
+      setDuprUploadLog((prev) =>
+        prev.map((entry) =>
+          entry.matchId === matchId
+            ? { ...entry, status: 'FAILED', error: error.message || 'Retry failed' }
+            : entry
+        )
+      )
+    } finally {
+      setRetryingMatchIds((prev) => prev.filter((id) => id !== matchId))
+    }
   }
 
   // Check if MLP match needs tiebreaker
@@ -3008,6 +3049,8 @@ function DivisionStageManagementContent() {
         onClose={() => setShowDuprUploadLog(false)}
         logEntries={duprUploadLog}
         isUploading={isUploadingToDupr}
+        onRetry={handleRetryDuprSubmission}
+        retryingMatchIds={retryingMatchIds}
       />
     </div>
   )
