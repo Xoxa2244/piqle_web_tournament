@@ -181,7 +181,15 @@ export default function TournamentRegistrationPage() {
               </div>
             )}
             {myStatus?.status === 'active' && (
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
+                <p className="text-sm font-medium text-green-700">
+                  You are already registered in this tournament.
+                  {myStatus.divisionName && myStatus.teamName && (
+                    <span className="block font-normal text-gray-600 mt-1">
+                      {myStatus.divisionName} · {myStatus.teamName}
+                    </span>
+                  )}
+                </p>
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
                   Cancel Registration
                 </Button>
