@@ -5,17 +5,6 @@ import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
 
-function isRegistrationOpen(tournament: {
-  registrationStartDate: Date | null
-  registrationEndDate: Date | null
-  startDate: Date
-}) {
-  const start = tournament.registrationStartDate ?? tournament.startDate
-  const end = tournament.registrationEndDate ?? tournament.startDate
-  const now = new Date()
-  return now >= new Date(start) && now <= new Date(end)
-}
-
 function getAppBaseUrl(baseUrlFromClient?: string | null): string {
   if (baseUrlFromClient && baseUrlFromClient.startsWith('http')) return baseUrlFromClient.replace(/\/$/, '')
   const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
@@ -182,19 +171,6 @@ export const tournamentInvitationRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const invitation = await ctx.prisma.tournamentInvitation.findUnique({
         where: { id: input.invitationId },
-        include: {
-          tournament: {
-            select: {
-              id: true,
-              title: true,
-              startDate: true,
-              registrationStartDate: true,
-              registrationEndDate: true,
-              entryFeeCents: true,
-            },
-          },
-          invitedUser: { select: { id: true, email: true, name: true } },
-        },
       })
       if (!invitation) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitation not found.' })
@@ -206,38 +182,9 @@ export const tournamentInvitationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only respond to your own invitation.' })
       }
 
-      const tournament = invitation.tournament
-      if (!isRegistrationOpen(tournament)) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration is closed for this tournament.' })
-      }
-
-      const [firstName, ...lastParts] = (invitation.invitedUser.name || '').trim().split(/\s+/)
-      const lastName = lastParts.join(' ') || firstName || 'Player'
-
-      await ctx.prisma.$transaction(async (tx) => {
-        await tx.tournamentInvitation.update({
-          where: { id: input.invitationId },
-          data: { status: 'ACCEPTED' },
-        })
-        const existing = await tx.player.findUnique({
-          where: {
-            userId_tournamentId: {
-              userId: invitation.invitedUserId,
-              tournamentId: invitation.tournamentId,
-            },
-          },
-        })
-        if (!existing) {
-          await tx.player.create({
-            data: {
-              tournamentId: invitation.tournamentId,
-              userId: invitation.invitedUserId,
-              firstName: firstName || 'Player',
-              lastName,
-              email: invitation.invitedUser.email,
-            },
-          })
-        }
+      await ctx.prisma.tournamentInvitation.update({
+        where: { id: input.invitationId },
+        data: { status: 'ACCEPTED' },
       })
 
       return { success: true, tournamentId: invitation.tournamentId }
