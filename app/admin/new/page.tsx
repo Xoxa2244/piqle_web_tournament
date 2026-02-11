@@ -1787,20 +1787,29 @@ function NewTournamentPageInner() {
                         <div>
                           <div className="text-xs font-medium text-gray-700 mb-2">Teams</div>
                           <input
-                            type="number"
-                            step={1}
-                            value={quickDivision.teamCount}
+                            type="text"
+                            inputMode="numeric"
+                            value={Number.isFinite(quickDivision.teamCount) ? String(quickDivision.teamCount) : ''}
                             onChange={(e) => {
-                              const n = Number(e.target.value)
-                              const safe = Number.isFinite(n) ? Math.trunc(n) : 0
+                              const raw = e.target.value.replace(/[^\d-]/g, '')
+                              if (!raw.trim()) {
+                                updateQuickDivision((d) => ({ ...d, teamCount: Number.NaN }))
+                                return
+                              }
+                              const n = Number(raw)
+                              const safe = Number.isFinite(n) ? Math.trunc(n) : Number.NaN
                               updateQuickDivision((d) => ({ ...d, teamCount: safe }))
                             }}
                             className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                           />
-                          {formData.format === 'ONE_DAY_LADDER' && quickDivision.teamCount % 2 !== 0 ? (
+                          {formData.format === 'ONE_DAY_LADDER' &&
+                          Number.isFinite(quickDivision.teamCount) &&
+                          quickDivision.teamCount % 2 !== 0 ? (
                             <div className="mt-2 text-xs text-red-700">One-day ladder requires an even number of teams.</div>
                           ) : null}
-                          {formData.format === 'LADDER_LEAGUE' && quickDivision.teamCount % 4 !== 0 ? (
+                          {formData.format === 'LADDER_LEAGUE' &&
+                          Number.isFinite(quickDivision.teamCount) &&
+                          quickDivision.teamCount % 4 !== 0 ? (
                             <div className="mt-2 text-xs text-red-700">Ladder league requires teams to be a multiple of 4.</div>
                           ) : null}
                         </div>
@@ -1808,12 +1817,17 @@ function NewTournamentPageInner() {
                         <div>
                           <div className="text-xs font-medium text-gray-700 mb-2">Pools</div>
                           <input
-                            type="number"
-                            step={1}
-                            value={quickDivision.poolCount}
+                            type="text"
+                            inputMode="numeric"
+                            value={Number.isFinite(quickDivision.poolCount) ? String(quickDivision.poolCount) : ''}
                             onChange={(e) => {
-                              const n = Number(e.target.value)
-                              const safe = Number.isFinite(n) ? Math.trunc(n) : 0
+                              const raw = e.target.value.replace(/[^\d-]/g, '')
+                              if (!raw.trim()) {
+                                updateQuickDivision((d) => ({ ...d, poolCount: Number.NaN }))
+                                return
+                              }
+                              const n = Number(raw)
+                              const safe = Number.isFinite(n) ? Math.trunc(n) : Number.NaN
                               updateQuickDivision((d) => ({ ...d, poolCount: safe }))
                             }}
                             className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
