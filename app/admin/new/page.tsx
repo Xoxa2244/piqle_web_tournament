@@ -2072,6 +2072,7 @@ function NewTournamentPageInner() {
                 ) : (
                   <Button
                     type="button"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={createTournament}
                     disabled={
                       !createArmed ||
