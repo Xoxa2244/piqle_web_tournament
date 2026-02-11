@@ -1772,9 +1772,7 @@ function NewTournamentPageInner() {
                         </div>
 
                         <div>
-                          <div className="text-xs font-medium text-gray-700 mb-2">
-                            {quickDivision.playersPerTeam === 1 ? 'Players (slots)' : 'Teams'}
-                          </div>
+                          <div className="text-xs font-medium text-gray-700 mb-2">Teams</div>
                           <input
                             type="number"
                             min={2}
@@ -1951,7 +1949,6 @@ function NewTournamentPageInner() {
                 {!isSeries ? (
                   <p className="text-xs text-gray-500">
                     When enabled, the tournament is published on the public board and visible on the main page.
-                    When disabled, it stays as a draft and is visible only to admins.
                   </p>
                 ) : null}
 
