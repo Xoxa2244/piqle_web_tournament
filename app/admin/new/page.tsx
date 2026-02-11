@@ -1928,8 +1928,7 @@ function NewTournamentPageInner() {
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
-                        Publish tournament{' '}
-                        <span className="text-gray-500 font-normal">(uncheck to keep it as a draft)</span>
+                        Enable public results board
                       </label>
                     </div>
                     {isSeries ? (
@@ -1949,6 +1948,12 @@ function NewTournamentPageInner() {
                     </div>
                   ) : null}
                 </div>
+                {!isSeries ? (
+                  <p className="text-xs text-gray-500">
+                    When enabled, the tournament is published on the public board and visible on the main page.
+                    When disabled, it stays as a draft and is visible only to admins.
+                  </p>
+                ) : null}
 
                 {isSeries ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
