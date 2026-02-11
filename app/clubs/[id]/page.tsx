@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
+import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { cn } from '@/lib/utils'
 import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
@@ -1688,6 +1689,11 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
     recurrenceWeekdays: [] as number[],
   })
 
+  useEffect(() => {
+    if (ENABLE_RECURRING_DRAFTS) return
+    setDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
+  }, [])
+
   const openCreate = (t: { id: string; name: string }) => {
     const now = new Date()
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -1715,7 +1721,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
       return
     }
 
-    if (draftForm.isRecurring) {
+    if (ENABLE_RECURRING_DRAFTS && draftForm.isRecurring) {
       const count = Number(draftForm.recurrenceCount)
       if (!Number.isFinite(count) || count < 1 || count > 12) {
         toast({ title: 'Invalid recurrence', description: 'Occurrences must be between 1 and 12.', variant: 'destructive' })
@@ -1736,7 +1742,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
 
     try {
       const recurrence =
-        draftForm.isRecurring && draftForm.recurrenceCount > 1
+        ENABLE_RECURRING_DRAFTS && draftForm.isRecurring && draftForm.recurrenceCount > 1
           ? {
               frequency: draftForm.recurrenceFrequency,
               count: draftForm.recurrenceCount,
@@ -1774,7 +1780,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
   const recurrencePreview = useMemo<
     { items: string[] } | { error: string } | null
   >(() => {
-    if (!draftForm.isRecurring || draftForm.recurrenceCount <= 1) return null
+    if (!ENABLE_RECURRING_DRAFTS || !draftForm.isRecurring || draftForm.recurrenceCount <= 1) return null
 
     const start = parseYmdToUtc(draftForm.startDate)
     const end = parseYmdToUtc(draftForm.endDate)
@@ -1965,7 +1971,13 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                   />
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <div
+                  className={
+                    ENABLE_RECURRING_DRAFTS
+                      ? 'rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3'
+                      : 'hidden'
+                  }
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
                     <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -2086,7 +2098,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                     </div>
                   ) : null}
 
-                  {draftForm.isRecurring && draftForm.recurrenceCount > 1 ? (
+                  {ENABLE_RECURRING_DRAFTS &&
+                  draftForm.isRecurring &&
+                  draftForm.recurrenceCount > 1 ? (
                     <div className="rounded-md border border-gray-200 bg-white p-3">
                       <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
                       {recurrencePreview && 'error' in recurrencePreview ? (
@@ -2115,7 +2129,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                 <Button type="button" onClick={submitCreate} disabled={createDraft.isPending}>
                   {createDraft.isPending
                     ? 'Creating…'
-                    : draftForm.isRecurring && draftForm.recurrenceCount > 1
+                    : ENABLE_RECURRING_DRAFTS &&
+                        draftForm.isRecurring &&
+                        draftForm.recurrenceCount > 1
                       ? `Create ${draftForm.recurrenceCount} drafts`
                       : 'Create draft'}
                 </Button>

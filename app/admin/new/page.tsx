@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, Layers, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
+import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -211,6 +212,12 @@ function NewTournamentPageInner() {
     payoutsActive: boolean
     isLoading: boolean
   }>({ hasAccount: false, payoutsActive: false, isLoading: true })
+
+  useEffect(() => {
+    if (ENABLE_RECURRING_DRAFTS) return
+    setSeriesDraftForm((prev) => (prev.enabled ? { ...prev, enabled: false } : prev))
+    setTemplateDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
+  }, [])
 
   const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
     onSuccess: async (tournament) => {
@@ -413,7 +420,7 @@ function NewTournamentPageInner() {
       }
     }
 
-    if (seriesDraftForm.enabled) {
+    if (ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled) {
       const count = Number(seriesDraftForm.count)
       if (!Number.isFinite(count) || count < 2 || count > 12) {
         alert('Occurrences must be between 2 and 12.')
@@ -683,7 +690,8 @@ function NewTournamentPageInner() {
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
   const requiresPayoutsSetup =
     entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
-  const isSeries = seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
+  const isSeries =
+    ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
   const isCreating =
     createTournamentWithStructure.isPending ||
     createTournamentSeriesWithStructure.isPending ||
@@ -882,7 +890,7 @@ function NewTournamentPageInner() {
       }
     }
 
-    if (templateDraftForm.isRecurring) {
+    if (ENABLE_RECURRING_DRAFTS && templateDraftForm.isRecurring) {
       const count = Number(templateDraftForm.recurrenceCount)
       if (!Number.isFinite(count) || count < 1 || count > 12) {
         alert('Occurrences must be between 1 and 12.')
@@ -905,7 +913,7 @@ function NewTournamentPageInner() {
   const templateRecurrencePreview = useMemo<
     { items: string[] } | { error: string } | null
   >(() => {
-    if (!templateDraftForm.isRecurring || templateDraftForm.recurrenceCount <= 1) return null
+    if (!ENABLE_RECURRING_DRAFTS || !templateDraftForm.isRecurring || templateDraftForm.recurrenceCount <= 1) return null
 
     const start = parseYmdToUtc(templateDraftForm.startDate)
     const end = parseYmdToUtc(templateDraftForm.endDate)
@@ -951,7 +959,7 @@ function NewTournamentPageInner() {
   const seriesRecurrencePreview = useMemo<
     { items: string[] } | { error: string } | null
   >(() => {
-    if (!seriesDraftForm.enabled || seriesDraftForm.count <= 1) return null
+    if (!ENABLE_RECURRING_DRAFTS || !seriesDraftForm.enabled || seriesDraftForm.count <= 1) return null
     if (!formData.startDate || !formData.endDate) return null
 
     const start = parseYmdToUtc(formData.startDate)
@@ -1012,7 +1020,7 @@ function NewTournamentPageInner() {
 
     try {
       const recurrence =
-        templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1
+        ENABLE_RECURRING_DRAFTS && templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1
           ? {
               frequency: templateDraftForm.recurrenceFrequency,
               count: templateDraftForm.recurrenceCount,
@@ -1456,156 +1464,158 @@ function NewTournamentPageInner() {
                   </div>
                 </div>
 
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={seriesDraftForm.enabled}
-                        onChange={(e) => {
-                          const checked = e.target.checked
-                          setSeriesDraftForm((p) => {
-                            const next = { ...p, enabled: checked }
-                            const isWeeklyLike = p.frequency === 'WEEKLY' || p.frequency === 'BIWEEKLY'
-                            if (checked && isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
-                              const wd = parseYmdToUtc(formData.startDate)?.getUTCDay() ?? 0
-                              next.weekdays = [wd]
-                            }
-                            return next
-                          })
-                        }}
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                      Create series
-                    </label>
-                  </div>
-
-                  {seriesDraftForm.enabled ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
-                        <select
-                          value={seriesDraftForm.frequency}
+                {ENABLE_RECURRING_DRAFTS ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={seriesDraftForm.enabled}
                           onChange={(e) => {
-                            const value = e.target.value as any
+                            const checked = e.target.checked
                             setSeriesDraftForm((p) => {
-                              const next = { ...p, frequency: value }
-                              const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
-                              if (isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
+                              const next = { ...p, enabled: checked }
+                              const isWeeklyLike = p.frequency === 'WEEKLY' || p.frequency === 'BIWEEKLY'
+                              if (checked && isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
                                 const wd = parseYmdToUtc(formData.startDate)?.getUTCDay() ?? 0
                                 next.weekdays = [wd]
                               }
                               return next
                             })
                           }}
-                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
-                        >
-                          <option value="DAILY">Daily</option>
-                          <option value="WEEKLY">Weekly</option>
-                          <option value="BIWEEKLY">Every 2 weeks</option>
-                          <option value="MONTHLY">Monthly</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Occurrences</label>
-                        <input
-                          type="number"
-                          min={2}
-                          max={12}
-                          value={seriesDraftForm.count}
-                          onChange={(e) => {
-                            const n = Number(e.target.value)
-                            const next = Number.isFinite(n) ? Math.trunc(n) : 0
-                            setSeriesDraftForm((p) => ({ ...p, count: next }))
-                          }}
-                          onBlur={() => {
-                            setSeriesDraftForm((p) => {
-                              const safe = Number.isFinite(p.count)
-                                ? Math.max(2, Math.min(12, Math.trunc(p.count)))
-                                : 2
-                              return { ...p, count: safe }
-                            })
-                          }}
-                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                          className="h-4 w-4 rounded border-gray-300"
                         />
-                        <p className="mt-1 text-xs text-gray-500">Max 12. Includes the first draft.</p>
-                      </div>
+                        Create series
+                      </label>
+                    </div>
 
-                      {(seriesDraftForm.frequency === 'WEEKLY' ||
-                        seriesDraftForm.frequency === 'BIWEEKLY') ? (
-                        <div className="sm:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Weekdays</label>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              { v: 0, l: 'Sun' },
-                              { v: 1, l: 'Mon' },
-                              { v: 2, l: 'Tue' },
-                              { v: 3, l: 'Wed' },
-                              { v: 4, l: 'Thu' },
-                              { v: 5, l: 'Fri' },
-                              { v: 6, l: 'Sat' },
-                            ].map((d) => {
-                              const selected = (seriesDraftForm.weekdays ?? []).includes(d.v)
-                              return (
-                                <button
-                                  key={d.v}
-                                  type="button"
-                                  onClick={() => {
-                                    setSeriesDraftForm((p) => {
-                                      const current = p.weekdays ?? []
-                                      const has = current.includes(d.v)
-                                      const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
-                                      if (nextDays.length < 1) return p
-                                      return { ...p, weekdays: nextDays.sort((a, b) => a - b) }
-                                    })
-                                  }}
-                                  className={`px-3 py-2 rounded-lg border text-sm ${
-                                    selected
-                                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                                  }`}
-                                >
-                                  {d.l}
-                                </button>
-                              )
-                            })}
+                    {seriesDraftForm.enabled ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
+                          <select
+                            value={seriesDraftForm.frequency}
+                            onChange={(e) => {
+                              const value = e.target.value as any
+                              setSeriesDraftForm((p) => {
+                                const next = { ...p, frequency: value }
+                                const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
+                                if (isWeeklyLike && (p.weekdays?.length ?? 0) < 1) {
+                                  const wd = parseYmdToUtc(formData.startDate)?.getUTCDay() ?? 0
+                                  next.weekdays = [wd]
+                                }
+                                return next
+                              })
+                            }}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                          >
+                            <option value="DAILY">Daily</option>
+                            <option value="WEEKLY">Weekly</option>
+                            <option value="BIWEEKLY">Every 2 weeks</option>
+                            <option value="MONTHLY">Monthly</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Occurrences</label>
+                          <input
+                            type="number"
+                            min={2}
+                            max={12}
+                            value={seriesDraftForm.count}
+                            onChange={(e) => {
+                              const n = Number(e.target.value)
+                              const next = Number.isFinite(n) ? Math.trunc(n) : 0
+                              setSeriesDraftForm((p) => ({ ...p, count: next }))
+                            }}
+                            onBlur={() => {
+                              setSeriesDraftForm((p) => {
+                                const safe = Number.isFinite(p.count)
+                                  ? Math.max(2, Math.min(12, Math.trunc(p.count)))
+                                  : 2
+                                return { ...p, count: safe }
+                              })
+                            }}
+                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Max 12. Includes the first draft.</p>
+                        </div>
+
+                        {(seriesDraftForm.frequency === 'WEEKLY' ||
+                          seriesDraftForm.frequency === 'BIWEEKLY') ? (
+                          <div className="sm:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Weekdays</label>
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { v: 0, l: 'Sun' },
+                                { v: 1, l: 'Mon' },
+                                { v: 2, l: 'Tue' },
+                                { v: 3, l: 'Wed' },
+                                { v: 4, l: 'Thu' },
+                                { v: 5, l: 'Fri' },
+                                { v: 6, l: 'Sat' },
+                              ].map((d) => {
+                                const selected = (seriesDraftForm.weekdays ?? []).includes(d.v)
+                                return (
+                                  <button
+                                    key={d.v}
+                                    type="button"
+                                    onClick={() => {
+                                      setSeriesDraftForm((p) => {
+                                        const current = p.weekdays ?? []
+                                        const has = current.includes(d.v)
+                                        const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
+                                        if (nextDays.length < 1) return p
+                                        return { ...p, weekdays: nextDays.sort((a, b) => a - b) }
+                                      })
+                                    }}
+                                    className={`px-3 py-2 rounded-lg border text-sm ${
+                                      selected
+                                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {d.l}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">Example: select Tue + Fri.</p>
                           </div>
-                          <p className="mt-1 text-xs text-gray-500">Example: select Tue + Fri.</p>
-                        </div>
-                      ) : null}
+                        ) : null}
 
-                      <div className="sm:col-span-2 text-xs text-gray-600">
-                        This creates <span className="font-medium">{seriesDraftForm.count}</span> drafts. We keep them{' '}
-                        <span className="font-medium">unpublished</span> so you can review before publishing.
+                        <div className="sm:col-span-2 text-xs text-gray-600">
+                          This creates <span className="font-medium">{seriesDraftForm.count}</span> drafts. We keep them{' '}
+                          <span className="font-medium">unpublished</span> so you can review before publishing.
+                        </div>
+
+                        {seriesDraftForm.count > 1 ? (
+                          <div className="sm:col-span-2 rounded-md border border-gray-200 bg-white p-3">
+                            <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
+                            {seriesRecurrencePreview && 'error' in seriesRecurrencePreview ? (
+                              <div className="text-xs text-red-700">{seriesRecurrencePreview.error}</div>
+                            ) : seriesRecurrencePreview && 'items' in seriesRecurrencePreview && seriesRecurrencePreview.items.length ? (
+                              <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
+                                {seriesRecurrencePreview.items.map((label, idx) => (
+                                  <li key={idx} className="flex gap-2">
+                                    <span className="w-5 text-gray-400">{idx + 1}.</span>
+                                    <span className="flex-1">{label}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-xs text-gray-500">Pick dates to see a preview.</div>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
-
-                      {seriesDraftForm.count > 1 ? (
-                        <div className="sm:col-span-2 rounded-md border border-gray-200 bg-white p-3">
-                          <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
-                          {seriesRecurrencePreview && 'error' in seriesRecurrencePreview ? (
-                            <div className="text-xs text-red-700">{seriesRecurrencePreview.error}</div>
-                          ) : seriesRecurrencePreview && 'items' in seriesRecurrencePreview && seriesRecurrencePreview.items.length ? (
-                            <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
-                              {seriesRecurrencePreview.items.map((label, idx) => (
-                                <li key={idx} className="flex gap-2">
-                                  <span className="w-5 text-gray-400">{idx + 1}.</span>
-                                  <span className="flex-1">{label}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <div className="text-xs text-gray-500">Pick dates to see a preview.</div>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">
-                      Create a single tournament, or turn this on to generate a draft series (weekly league, etc).
-                    </div>
-                  )}
-                </div>
+                    ) : (
+                      <div className="text-xs text-gray-500">
+                        Create a single tournament, or turn this on to generate a draft series (weekly league, etc).
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </>
             ) : null}
 
@@ -2162,7 +2172,13 @@ function NewTournamentPageInner() {
                 />
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div
+                className={
+                  ENABLE_RECURRING_DRAFTS
+                    ? 'rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3'
+                    : 'hidden'
+                }
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
                   <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -2294,7 +2310,9 @@ function NewTournamentPageInner() {
                   </div>
                 ) : null}
 
-                {templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1 ? (
+                {ENABLE_RECURRING_DRAFTS &&
+                templateDraftForm.isRecurring &&
+                templateDraftForm.recurrenceCount > 1 ? (
                   <div className="rounded-md border border-gray-200 bg-white p-3">
                     <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
                     {templateRecurrencePreview && 'error' in templateRecurrencePreview ? (
@@ -2327,7 +2345,9 @@ function NewTournamentPageInner() {
               >
                 {createDraftFromTemplate.isPending
                   ? 'Creating…'
-                  : templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1
+                  : ENABLE_RECURRING_DRAFTS &&
+                      templateDraftForm.isRecurring &&
+                      templateDraftForm.recurrenceCount > 1
                     ? `Create ${templateDraftForm.recurrenceCount} drafts`
                     : 'Create draft'}
               </Button>
