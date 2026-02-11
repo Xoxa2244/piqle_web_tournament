@@ -92,6 +92,20 @@ export default function AppHeader() {
                   <span className="text-2xl font-bold text-lime-600">PIQLE</span>
                 )}
               </Link>
+              <nav className="hidden lg:flex items-center gap-6">
+                <Link
+                  href="/clubs"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Clubs
+                </Link>
+                <Link
+                  href="/players"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Players
+                </Link>
+              </nav>
             </div>
 
             {/* Spacer - auto, takes all remaining width */}
@@ -314,6 +328,20 @@ export default function AppHeader() {
                       onClick={() => setBurgerOpen(false)}
                     >
                       Tournament Management
+                    </Link>
+                    <Link
+                      href="/clubs"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      Clubs
+                    </Link>
+                    <Link
+                      href="/players"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      Players
                     </Link>
                     {isLoggedIn ? (
                       <>
