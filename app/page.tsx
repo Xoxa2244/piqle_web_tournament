@@ -157,6 +157,11 @@ function HomePageContent() {
     { tournamentId: selectedTournament || '' },
     { enabled: !!selectedTournament }
   )
+
+  const { data: myTournamentInvitation } = trpc.tournamentInvitation.getMineByTournament.useQuery(
+    { tournamentId: selectedTournament || '' },
+    { enabled: !!session && !!selectedTournament }
+  )
   
   const toggleRating = trpc.rating.toggleRating.useMutation({
     onMutate: async ({ tournamentId, rating }) => {
@@ -278,6 +283,41 @@ function HomePageContent() {
   const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
     onSuccess: () => {
       utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
+  const acceptTournamentInvitation = trpc.tournamentInvitation.accept.useMutation({
+    onSuccess: (data) => {
+      utils.tournamentInvitation.getMineByTournament.invalidate({ tournamentId: data.tournamentId })
+      utils.notification.list.invalidate({ limit: 20 })
+      router.push(`/tournaments/${data.tournamentId}/register`)
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const declineTournamentInvitation = trpc.tournamentInvitation.decline.useMutation({
+    onSuccess: () => {
+      if (selectedTournament) {
+        utils.tournamentInvitation.getMineByTournament.invalidate({ tournamentId: selectedTournament })
+      }
+      utils.notification.list.invalidate({ limit: 20 })
+      toast({
+        title: 'Invitation declined',
+        description: 'You declined this tournament invitation.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      })
     },
   })
 
@@ -867,6 +907,39 @@ function HomePageContent() {
                     </>
                   )}
                   {(() => {
+                    const pendingInvitation =
+                      myTournamentInvitation?.status === 'PENDING' && myTournamentInvitation?.tournamentId === tournament.id
+                        ? myTournamentInvitation
+                        : null
+
+                    if (pendingInvitation) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600 mr-1">You were invited to this tournament</span>
+                          <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={acceptTournamentInvitation.isPending || declineTournamentInvitation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              acceptTournamentInvitation.mutate({ invitationId: pendingInvitation.id })
+                            }}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={acceptTournamentInvitation.isPending || declineTournamentInvitation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              declineTournamentInvitation.mutate({ invitationId: pendingInvitation.id })
+                            }}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )
+                    }
+
                     const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                     const registrationOpen = isRegistrationOpen(tournament)
                     const label =

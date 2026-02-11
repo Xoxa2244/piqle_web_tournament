@@ -227,6 +227,27 @@ export const tournamentInvitationRouter = createTRPCRouter({
       if (inv.invitedUserId !== ctx.session.user.id) return null
       return inv
     }),
+
+  getMineByTournament: protectedProcedure
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const inv = await ctx.prisma.tournamentInvitation.findUnique({
+        where: {
+          tournamentId_invitedUserId: {
+            tournamentId: input.tournamentId,
+            invitedUserId: ctx.session.user.id,
+          },
+        },
+        select: {
+          id: true,
+          tournamentId: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+      return inv
+    }),
 })
 
 async function fetchTournamentForEmail(prisma: PrismaClient, tournamentId: string) {
