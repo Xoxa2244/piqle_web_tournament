@@ -90,20 +90,9 @@ export default function ClubDetailPage() {
 
   const toggleFollow = trpc.club.toggleFollow.useMutation()
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
-  const createBookingRequest = trpc.club.createBookingRequest.useMutation()
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
-
-  const [bookingForm, setBookingForm] = useState({
-    requesterName: '',
-    requesterEmail: '',
-    requesterPhone: '',
-    desiredStart: '',
-    durationMinutes: 60,
-    playersCount: 8,
-    message: '',
-  })
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
@@ -119,25 +108,7 @@ export default function ClubDetailPage() {
 
   const bookingUrl = (club?.courtReserveUrl ?? '').trim()
   const canBook = Boolean(bookingUrl)
-  const bookingHost = useMemo(() => {
-    if (!bookingUrl) return ''
-    try {
-      return new URL(bookingUrl).hostname.replace(/^www\./, '')
-    } catch {
-      return ''
-    }
-  }, [bookingUrl])
-  const isCourtReserveBooking = bookingHost.toLowerCase().includes('courtreserve')
-  const openBookingLabel = isCourtReserveBooking
-    ? 'Open CourtReserve'
-    : bookingHost
-      ? `Open ${bookingHost}`
-      : 'Open booking'
-  const fastBookingLabel = isCourtReserveBooking
-    ? 'Fast booking on CourtReserve'
-    : bookingHost
-      ? `Open booking (${bookingHost})`
-      : 'Open booking'
+  const bookingButtonLabel = 'Booking courts'
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -241,34 +212,6 @@ export default function ClubDetailPage() {
         description: err?.message || 'Try again',
         variant: 'destructive',
       })
-    }
-  }
-
-  const handleBookingRequest = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await createBookingRequest.mutateAsync({
-        clubId,
-        requesterName: bookingForm.requesterName,
-        requesterEmail: bookingForm.requesterEmail,
-        requesterPhone: bookingForm.requesterPhone || undefined,
-        desiredStart: bookingForm.desiredStart ? new Date(bookingForm.desiredStart).toISOString() : undefined,
-        durationMinutes: bookingForm.durationMinutes || undefined,
-        playersCount: bookingForm.playersCount || undefined,
-        message: bookingForm.message || undefined,
-      })
-      toast({ title: 'Request sent', description: 'The club will respond soon.' })
-      setBookingForm({
-        requesterName: '',
-        requesterEmail: '',
-        requesterPhone: '',
-        desiredStart: '',
-        durationMinutes: 60,
-        playersCount: 8,
-        message: '',
-      })
-    } catch (err: any) {
-      toast({ title: 'Failed to send request', description: err?.message || 'Try again', variant: 'destructive' })
     }
   }
 
@@ -481,7 +424,7 @@ export default function ClubDetailPage() {
                 <a href={bookingUrl} target="_blank" rel="noreferrer">
                   <Button variant="outline" className="gap-2">
                     <ExternalLink className="h-4 w-4" />
-                    {openBookingLabel}
+                    {bookingButtonLabel}
                   </Button>
                 </a>
               ) : null}
@@ -722,7 +665,7 @@ export default function ClubDetailPage() {
                   <a href={bookingUrl} target="_blank" rel="noreferrer" className="block">
                     <Button variant="outline" className="w-full gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      {fastBookingLabel}
+                      {bookingButtonLabel}
                     </Button>
                   </a>
                 ) : (
@@ -730,108 +673,6 @@ export default function ClubDetailPage() {
                     Online booking is not configured for this club yet.
                   </div>
                 )}
-
-                <div className="rounded-md border p-3 space-y-3">
-                  <div className="text-sm font-medium text-gray-900">Send a booking request</div>
-                  <div className="text-xs text-muted-foreground">
-                    This is a request, not a confirmed reservation.
-                  </div>
-                  <form onSubmit={handleBookingRequest} className="space-y-3">
-                    <Input
-                      placeholder="Your name"
-                      value={bookingForm.requesterName}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterName: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      placeholder="Email"
-                      type="email"
-                      value={bookingForm.requesterEmail}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterEmail: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      placeholder="Phone (optional)"
-                      value={bookingForm.requesterPhone}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterPhone: e.target.value }))}
-                    />
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium text-gray-700">Preferred date/time</div>
-                      <Input
-                        type="datetime-local"
-                        value={bookingForm.desiredStart}
-                        onChange={(e) => setBookingForm((p) => ({ ...p, desiredStart: e.target.value }))}
-                      />
-                      <div className="text-xs text-muted-foreground">Your local time.</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-gray-700">Duration (minutes)</div>
-                        <Input
-                          type="number"
-                          min={15}
-                          max={480}
-                          step={15}
-                          value={bookingForm.durationMinutes}
-                          onChange={(e) => setBookingForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-gray-700">Players</div>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={64}
-                          value={bookingForm.playersCount}
-                          onChange={(e) => setBookingForm((p) => ({ ...p, playersCount: Number(e.target.value) }))}
-                        />
-                      </div>
-                    </div>
-                    <Textarea
-                      placeholder="Message (optional)"
-                      value={bookingForm.message}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, message: e.target.value }))}
-                      rows={4}
-                    />
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={createBookingRequest.isPending}
-                    >
-                      {createBookingRequest.isPending ? 'Sending…' : 'Send request'}
-                    </Button>
-                  </form>
-                </div>
-
-                {club.isAdmin ? (
-                  <div className="rounded-md border p-3 space-y-3">
-                    <div className="text-sm font-medium text-gray-900">Recent requests (admins)</div>
-                    {(club as any).bookingRequests?.length ? (
-                      <div className="space-y-2">
-                        {(club as any).bookingRequests.map((req: any) => (
-                          <div key={req.id} className="rounded-md bg-gray-50 p-2 text-sm">
-                            <div className="font-medium text-gray-900">
-                              {req.requesterName}{' '}
-                              <span className="font-normal text-muted-foreground">
-                                ({req.requesterEmail})
-                              </span>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {req.desiredStart ? `Desired: ${new Date(req.desiredStart).toLocaleString()}` : 'Desired: —'}
-                              {req.durationMinutes ? ` • ${req.durationMinutes} min` : ''}
-                              {req.playersCount ? ` • ${req.playersCount} players` : ''}
-                            </div>
-                            {req.message ? (
-                              <div className="mt-1 whitespace-pre-wrap text-gray-700">{req.message}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No booking requests yet.</div>
-                    )}
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </div>
