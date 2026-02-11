@@ -494,15 +494,31 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
-      const existing = await ctx.prisma.clubFollower.findUnique({
-        where: {
-          clubId_userId: {
-            clubId: input.clubId,
-            userId,
+      const [existing, adminRole] = await Promise.all([
+        ctx.prisma.clubFollower.findUnique({
+          where: {
+            clubId_userId: {
+              clubId: input.clubId,
+              userId,
+            },
           },
-        },
-        select: { id: true },
-      })
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: {
+            clubId_userId: {
+              clubId: input.clubId,
+              userId,
+            },
+          },
+          select: { id: true },
+        }),
+      ])
+
+      // Club admins are implicit members; don't allow join/leave toggle for them.
+      if (adminRole) {
+        return { isFollowing: true, isJoinPending: false, status: 'admin' as const }
+      }
 
       if (existing) {
         await ctx.prisma.clubFollower.delete({ where: { id: existing.id } })

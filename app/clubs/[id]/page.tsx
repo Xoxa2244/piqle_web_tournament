@@ -404,6 +404,11 @@ export default function ClubDetailPage() {
                   <Ban className="h-4 w-4" />
                   Banned
                 </Button>
+              ) : club.isAdmin ? (
+                <Button variant="secondary" className="gap-2" disabled title="You are an admin of this club">
+                  <Users className="h-4 w-4" />
+                  Admin
+                </Button>
               ) : club.isFollowing ? (
                 <Button
                   variant="destructive"

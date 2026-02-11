@@ -490,6 +490,28 @@ function NewTournamentPageInner() {
   }
 
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1))
+  const canLeaveStep = (idx: number) => {
+    if (idx === 0) return validateBasicsStep()
+    if (idx === 1) return validateScheduleStep()
+    if (idx === 2) return validateFormatStep()
+    return true
+  }
+
+  const goToStep = (targetIndex: number) => {
+    if (targetIndex < 0 || targetIndex > totalSteps - 1) return
+    if (targetIndex === stepIndex) return
+
+    if (targetIndex < stepIndex) {
+      setStepIndex(targetIndex)
+      return
+    }
+
+    for (let idx = stepIndex; idx < targetIndex; idx++) {
+      if (!canLeaveStep(idx)) return
+    }
+    setStepIndex(targetIndex)
+  }
+
   const goNext = () => {
     if (stepIndex === 0) {
       if (!validateBasicsStep()) return
@@ -687,6 +709,10 @@ function NewTournamentPageInner() {
       // Jump user to the step with the missing required fields.
       if (!formData.title.trim()) setStepIndex(0)
       else setStepIndex(1)
+      return
+    }
+    if (!validateScheduleStep()) {
+      setStepIndex(1)
       return
     }
     if (!validateFormatStep()) {
@@ -1168,15 +1194,17 @@ function NewTournamentPageInner() {
             const isActive = idx === stepIndex
             const isDone = idx < stepIndex
             return (
-              <div
+              <button
                 key={s.key}
+                type="button"
+                onClick={() => goToStep(idx)}
                 className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
                   isActive
                     ? 'border-blue-200 bg-blue-50 text-blue-900'
                     : isDone
                       ? 'border-gray-200 bg-white text-gray-700'
                       : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}
+                } transition-colors hover:bg-gray-100`}
               >
                 <span
                   className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
@@ -1186,7 +1214,7 @@ function NewTournamentPageInner() {
                   {idx + 1}
                 </span>
                 <span className="font-medium">{s.title}</span>
-              </div>
+              </button>
             )
           })}
         </div>
@@ -1488,8 +1516,16 @@ function NewTournamentPageInner() {
                           value={seriesDraftForm.count}
                           onChange={(e) => {
                             const n = Number(e.target.value)
-                            const safe = Number.isFinite(n) ? Math.max(2, Math.min(12, Math.trunc(n))) : 2
-                            setSeriesDraftForm((p) => ({ ...p, count: safe }))
+                            const next = Number.isFinite(n) ? Math.trunc(n) : 0
+                            setSeriesDraftForm((p) => ({ ...p, count: next }))
+                          }}
+                          onBlur={() => {
+                            setSeriesDraftForm((p) => {
+                              const safe = Number.isFinite(p.count)
+                                ? Math.max(2, Math.min(12, Math.trunc(p.count)))
+                                : 2
+                              return { ...p, count: safe }
+                            })
                           }}
                           className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                         />
@@ -1687,7 +1723,7 @@ function NewTournamentPageInner() {
                     <div className="rounded-lg border border-gray-200 bg-white p-3">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <div className="text-xs font-medium text-gray-700 mb-2">Players / team</div>
+                          <div className="text-xs font-medium text-gray-700 mb-2">Players per team</div>
                           <div className="flex gap-2">
                             {([1, 2, 4] as const).map((value) => {
                               const forceSquad = formData.format === 'MLP' || formData.format === 'INDY_LEAGUE'
@@ -1722,6 +1758,7 @@ function NewTournamentPageInner() {
                           {(formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE') ? (
                             <div className="mt-2 text-xs text-gray-500">Ladder formats require teams (not 1v1).</div>
                           ) : null}
+                          <div className="mt-2 text-xs text-gray-500">1 = Singles, 2 = Doubles, 4 = Squad.</div>
                         </div>
 
                         <div>
@@ -1868,20 +1905,39 @@ function NewTournamentPageInner() {
                   </p>
                 </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="isPublicBoardEnabled"
-                    name="isPublicBoardEnabled"
-                    checked={isSeries ? false : formData.isPublicBoardEnabled}
-                    onChange={handleChange}
-                    disabled={isSeries}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
-                    Publish tournament{' '}
-                    <span className="text-gray-500 font-normal">(uncheck to keep it as a draft)</span>
-                  </label>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="isPublicBoardEnabled"
+                        name="isPublicBoardEnabled"
+                        checked={isSeries ? false : formData.isPublicBoardEnabled}
+                        onChange={handleChange}
+                        disabled={isSeries}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
+                        Publish tournament{' '}
+                        <span className="text-gray-500 font-normal">(uncheck to keep it as a draft)</span>
+                      </label>
+                    </div>
+                    {isSeries ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSeriesDraftForm((p) => ({ ...p, enabled: false }))}
+                      >
+                        Switch to single
+                      </Button>
+                    ) : null}
+                  </div>
+                  {isSeries ? (
+                    <div className="text-xs text-amber-800">
+                      Series mode always creates drafts. Disable series to publish a single tournament.
+                    </div>
+                  ) : null}
                 </div>
 
                 {isSeries ? (
@@ -2165,8 +2221,16 @@ function NewTournamentPageInner() {
                         value={templateDraftForm.recurrenceCount}
                         onChange={(e) => {
                           const n = Number(e.target.value)
-                          const safe = Number.isFinite(n) ? Math.max(1, Math.min(12, Math.trunc(n))) : 1
-                          setTemplateDraftForm((p) => ({ ...p, recurrenceCount: safe }))
+                          const next = Number.isFinite(n) ? Math.trunc(n) : 0
+                          setTemplateDraftForm((p) => ({ ...p, recurrenceCount: next }))
+                        }}
+                        onBlur={() => {
+                          setTemplateDraftForm((p) => {
+                            const safe = Number.isFinite(p.recurrenceCount)
+                              ? Math.max(1, Math.min(12, Math.trunc(p.recurrenceCount)))
+                              : 1
+                            return { ...p, recurrenceCount: safe }
+                          })
                         }}
                         className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                       />
