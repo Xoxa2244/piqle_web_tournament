@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
+import { createTRPCRouter, protectedProcedure } from '../trpc'
 import profanity from 'leo-profanity'
 
 // Load dictionaries once at module init.
@@ -24,7 +24,7 @@ const isMissingDbRelation = (err: any, relationName: string) => {
 }
 
 export const clubChatRouter = createTRPCRouter({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z.object({
         clubId: z.string(),
@@ -32,10 +32,49 @@ export const clubChatRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const clubId = input.clubId
       const limit = input.limit ?? 50
 
+      const [club, follower, admin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      // If banned, block reading chat (best effort if migration isn't applied yet).
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You are banned from this club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
+      }
+
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to view the chat' })
+      }
+
       const raw = await ctx.prisma.clubChatMessage.findMany({
-        where: { clubId: input.clubId },
+        where: { clubId },
         orderBy: { createdAt: 'desc' },
         take: limit,
         include: {

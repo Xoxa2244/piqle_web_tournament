@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -92,6 +92,8 @@ export default function ClubDetailPage() {
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
   const createBookingRequest = trpc.club.createBookingRequest.useMutation()
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
+  const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
+  const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
 
   const [bookingForm, setBookingForm] = useState({
     requesterName: '',
@@ -108,11 +110,34 @@ export default function ClubDetailPage() {
     body: '',
   })
 
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
+  const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
+
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
 
-  const canBook = Boolean(club?.courtReserveUrl)
+  const bookingUrl = (club?.courtReserveUrl ?? '').trim()
+  const canBook = Boolean(bookingUrl)
+  const bookingHost = useMemo(() => {
+    if (!bookingUrl) return ''
+    try {
+      return new URL(bookingUrl).hostname.replace(/^www\./, '')
+    } catch {
+      return ''
+    }
+  }, [bookingUrl])
+  const isCourtReserveBooking = bookingHost.toLowerCase().includes('courtreserve')
+  const openBookingLabel = isCourtReserveBooking
+    ? 'Open CourtReserve'
+    : bookingHost
+      ? `Open ${bookingHost}`
+      : 'Open booking'
+  const fastBookingLabel = isCourtReserveBooking
+    ? 'Fast booking on CourtReserve'
+    : bookingHost
+      ? `Open booking (${bookingHost})`
+      : 'Open booking'
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -264,6 +289,49 @@ export default function ClubDetailPage() {
     }
   }
 
+  const startEditAnnouncement = (a: any) => {
+    setEditingAnnouncementId(a.id)
+    setEditingAnnouncementForm({ title: a.title || '', body: a.body || '' })
+  }
+
+  const cancelEditAnnouncement = () => {
+    setEditingAnnouncementId(null)
+    setEditingAnnouncementForm({ title: '', body: '' })
+  }
+
+  const handleSaveAnnouncement = async () => {
+    if (!isLoggedIn) return
+    if (!editingAnnouncementId) return
+    try {
+      await updateAnnouncement.mutateAsync({
+        clubId,
+        announcementId: editingAnnouncementId,
+        title: editingAnnouncementForm.title || undefined,
+        body: editingAnnouncementForm.body,
+      })
+      toast({ title: 'Updated', description: 'Announcement updated.' })
+      cancelEditAnnouncement()
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to update', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
+  const handleDeleteAnnouncement = async (announcementId: string) => {
+    if (!isLoggedIn) return
+    if (!confirm('Delete this announcement?')) return
+    try {
+      await deleteAnnouncement.mutateAsync({ clubId, announcementId })
+      toast({ title: 'Deleted', description: 'Announcement removed.' })
+      if (editingAnnouncementId === announcementId) {
+        cancelEditAnnouncement()
+      }
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to delete', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6 px-6 py-8">
@@ -388,19 +456,27 @@ export default function ClubDetailPage() {
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => setInviteOpen((v) => !v)}
-              >
-                <Share2 className="h-4 w-4" />
-                Invite
-              </Button>
+              {club.isAdmin ? (
+                <Button asChild variant="outline" className="gap-2">
+                  <Link href={`/clubs/${clubId}/edit`}>
+                    <Pencil className="h-4 w-4" />
+                    Edit club
+                  </Link>
+                </Button>
+              ) : null}
+
+              {club.isFollowing || club.isAdmin ? (
+                <Button variant="outline" className="gap-2" onClick={() => setInviteOpen((v) => !v)}>
+                  <Share2 className="h-4 w-4" />
+                  Invite
+                </Button>
+              ) : null}
+
               {canBook ? (
-                <a href={club.courtReserveUrl!} target="_blank" rel="noreferrer">
+                <a href={bookingUrl} target="_blank" rel="noreferrer">
                   <Button variant="outline" className="gap-2">
                     <ExternalLink className="h-4 w-4" />
-                    Open CourtReserve
+                    {openBookingLabel}
                   </Button>
                 </a>
               ) : null}
@@ -410,7 +486,7 @@ export default function ClubDetailPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
-            {inviteOpen ? (
+            {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
                 clubId={club.id}
                 clubName={club.name}
@@ -544,11 +620,70 @@ export default function ClubDetailPage() {
                           <div className="font-medium text-gray-900 truncate">{a.title || 'Update'}</div>
                           <div className="text-xs text-muted-foreground">
                             {new Date(a.createdAt).toLocaleString()}
+                            {a.updatedAt && new Date(a.updatedAt).getTime() > new Date(a.createdAt).getTime()
+                              ? ` • edited ${new Date(a.updatedAt).toLocaleString()}`
+                              : ''}
                             {a.createdByUser?.name ? ` • ${a.createdByUser.name}` : ''}
                           </div>
                         </div>
+                        {club.isAdmin ? (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5"
+                              onClick={() => startEditAnnouncement(a)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="gap-1.5"
+                              disabled={deleteAnnouncement.isPending}
+                              onClick={() => handleDeleteAnnouncement(a.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{a.body}</div>
+                      {editingAnnouncementId === a.id && club.isAdmin ? (
+                        <div className="space-y-2 rounded-md border bg-gray-50 p-3">
+                          <Input
+                            placeholder="Title (optional)"
+                            value={editingAnnouncementForm.title}
+                            onChange={(e) =>
+                              setEditingAnnouncementForm((p) => ({ ...p, title: e.target.value }))
+                            }
+                          />
+                          <Textarea
+                            value={editingAnnouncementForm.body}
+                            onChange={(e) =>
+                              setEditingAnnouncementForm((p) => ({ ...p, body: e.target.value }))
+                            }
+                            rows={4}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={cancelEditAnnouncement}>
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleSaveAnnouncement}
+                              disabled={updateAnnouncement.isPending || !editingAnnouncementForm.body.trim()}
+                            >
+                              {updateAnnouncement.isPending ? 'Saving…' : 'Save'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap">{a.body}</div>
+                      )}
                     </div>
                   ))
                 )}
@@ -579,10 +714,10 @@ export default function ClubDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {canBook ? (
-                  <a href={club.courtReserveUrl!} target="_blank" rel="noreferrer" className="block">
+                  <a href={bookingUrl} target="_blank" rel="noreferrer" className="block">
                     <Button variant="outline" className="w-full gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      Fast booking on CourtReserve
+                      {fastBookingLabel}
                     </Button>
                   </a>
                 ) : (
@@ -615,29 +750,37 @@ export default function ClubDetailPage() {
                       value={bookingForm.requesterPhone}
                       onChange={(e) => setBookingForm((p) => ({ ...p, requesterPhone: e.target.value }))}
                     />
-                    <Input
-                      type="datetime-local"
-                      value={bookingForm.desiredStart}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, desiredStart: e.target.value }))}
-                    />
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-gray-700">Preferred date/time</div>
+                      <Input
+                        type="datetime-local"
+                        value={bookingForm.desiredStart}
+                        onChange={(e) => setBookingForm((p) => ({ ...p, desiredStart: e.target.value }))}
+                      />
+                      <div className="text-xs text-muted-foreground">Your local time.</div>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={15}
-                        max={480}
-                        step={15}
-                        value={bookingForm.durationMinutes}
-                        onChange={(e) => setBookingForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
-                        placeholder="Duration (min)"
-                      />
-                      <Input
-                        type="number"
-                        min={1}
-                        max={64}
-                        value={bookingForm.playersCount}
-                        onChange={(e) => setBookingForm((p) => ({ ...p, playersCount: Number(e.target.value) }))}
-                        placeholder="# players"
-                      />
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Duration (minutes)</div>
+                        <Input
+                          type="number"
+                          min={15}
+                          max={480}
+                          step={15}
+                          value={bookingForm.durationMinutes}
+                          onChange={(e) => setBookingForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Players</div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={64}
+                          value={bookingForm.playersCount}
+                          onChange={(e) => setBookingForm((p) => ({ ...p, playersCount: Number(e.target.value) }))}
+                        />
+                      </div>
                     </div>
                     <Textarea
                       placeholder="Message (optional)"
@@ -771,11 +914,26 @@ function ClubEventsCalendar({
   )
   const [calendarMode, setCalendarMode] = useState<'month' | 'week'>(() => 'month')
   const [weekStart, setWeekStart] = useState(() => startOfWeek(initialBase))
+  const detailsRef = useRef<HTMLDivElement | null>(null)
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
 
   const isTodayKey = toLocalYmd(now)
   const selectedEvents = selectedKey ? (eventsByDay.get(selectedKey) ?? []) : []
+
+  const openDay = useCallback(
+    (key: string, date: Date, opts?: { scrollToDetails?: boolean }) => {
+      setSelectedKey(key)
+      setWeekStart(startOfWeek(date))
+      if (opts?.scrollToDetails) {
+        // Let the details section render before scrolling.
+        setTimeout(() => {
+          detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 30)
+      }
+    },
+    []
+  )
 
   const parseYmd = (key: string) => {
     const [y, m, d] = key.split('-').map((x) => Number(x))
@@ -920,35 +1078,33 @@ function ClubEventsCalendar({
               const key = toLocalYmd(date)
               const inMonth = date.getMonth() === month.getMonth()
               const isToday = key === isTodayKey
-              const isSelected = selectedKey === key
-              const events = eventsByDay.get(key) ?? []
-              const eventCount = events.length
-              const maxShown = 2
+	              const isSelected = selectedKey === key
+	              const events = eventsByDay.get(key) ?? []
+	              const eventCount = events.length
+	              const maxShown = 1
 
-              return (
-                <div
-                  key={key}
-                  onClick={() => {
-                    setSelectedKey(key)
-                    setWeekStart(startOfWeek(date))
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setSelectedKey(key)
-                      setWeekStart(startOfWeek(date))
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  className={cn(
-                    'h-16 sm:h-20 rounded-md border px-2 py-1 text-left transition-colors',
-                    inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
-                    eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
-                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
-                    isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
-                  )}
-                >
+	              return (
+	                <div
+	                  key={key}
+	                  onClick={() => {
+	                    openDay(key, date, { scrollToDetails: eventCount > 0 })
+	                  }}
+	                  onKeyDown={(e) => {
+	                    if (e.key === 'Enter' || e.key === ' ') {
+	                      e.preventDefault()
+	                      openDay(key, date, { scrollToDetails: eventCount > 0 })
+	                    }
+	                  }}
+	                  role="button"
+	                  tabIndex={0}
+	                  className={cn(
+	                    'h-16 sm:h-20 rounded-md border px-2 py-1 text-left transition-colors overflow-hidden',
+	                    inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
+	                    eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
+	                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
+	                    isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
+	                  )}
+	                >
                   <div className="flex items-start justify-between gap-2">
                     <div className={cn('text-xs font-medium', inMonth ? 'text-gray-900' : 'text-gray-400')}>
                       {date.getDate()}
@@ -984,14 +1140,23 @@ function ClubEventsCalendar({
                             {label}
                           </div>
                         )
-                      })}
-                      {eventCount > maxShown ? (
-                        <div className="text-[10px] text-muted-foreground">+{eventCount - maxShown} more</div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              )
+	                      })}
+	                      {eventCount > maxShown ? (
+	                        <button
+	                          type="button"
+	                          className="text-[10px] text-muted-foreground hover:underline"
+	                          onClick={(e) => {
+	                            e.stopPropagation()
+	                            openDay(key, date, { scrollToDetails: true })
+	                          }}
+	                        >
+	                          +{eventCount - maxShown} more
+	                        </button>
+	                      ) : null}
+	                    </div>
+	                  ) : null}
+	                </div>
+	              )
             })}
           </div>
         </>
@@ -1036,11 +1201,11 @@ function ClubEventsCalendar({
                     isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
                   )}
                 >
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => setSelectedKey(key)}
-                  >
+	                  <button
+	                    type="button"
+	                    className="w-full text-left"
+	                    onClick={() => openDay(key, date, { scrollToDetails: events.length > 0 })}
+	                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs font-semibold text-gray-900">
                         {DAY_LABELS[date.getDay()]} {date.getDate()}
@@ -1102,12 +1267,12 @@ function ClubEventsCalendar({
             })}
           </div>
         </>
-      )}
+	      )}
 
-      <div className="rounded-md border p-3 space-y-3">
-        <div className="text-sm font-medium text-gray-900">
-          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
-        </div>
+	      <div ref={detailsRef} className="rounded-md border p-3 space-y-3">
+	        <div className="text-sm font-medium text-gray-900">
+	          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
+	        </div>
         {!selectedKey ? (
           <div className="text-sm text-muted-foreground">
             Pick a date to see what is happening at this club.
@@ -1465,9 +1630,10 @@ function ClubChatCard({
   const { toast } = useToast()
   const messageLimit = 100
 
+  const canView = isLoggedIn && !isBanned && (isJoined || isAdmin)
   const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery(
     { clubId, limit: messageLimit },
-    { enabled: !!clubId }
+    { enabled: !!clubId && canView }
   )
 
   const sendMessage = trpc.clubChat.send.useMutation({
@@ -1485,7 +1651,7 @@ function ClubChatCard({
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const canPost = isLoggedIn && !isBanned && (isJoined || isAdmin)
+  const canPost = canView
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -1524,65 +1690,69 @@ function ClubChatCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isLoading ? (
+        {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
-        {error ? (
+        {error && canView ? (
           <div className="text-sm text-destructive">{error.message}</div>
         ) : null}
 
-        <div
-          ref={listRef}
-          className="max-h-[360px] overflow-y-auto rounded-md border bg-white"
-        >
-          {!isLoading && (!messages || messages.length === 0) ? (
-            <div className="p-3 text-sm text-muted-foreground">
-              No messages yet. Start the conversation.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {(messages ?? []).map((m: any) => {
-                const isMine = currentUserId && m.userId === currentUserId
-                const canDelete = Boolean(isAdmin || isMine)
+        {canView ? (
+          <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-md border bg-white">
+            {!isLoading && (!messages || messages.length === 0) ? (
+              <div className="p-3 text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+            ) : (
+              <div className="divide-y">
+                {(messages ?? []).map((m: any) => {
+                  const isMine = currentUserId && m.userId === currentUserId
+                  const canDelete = Boolean(isAdmin || isMine)
 
-                return (
-                  <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {m.user?.name || 'User'}
+                  return (
+                    <div key={m.id} className="p-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                          </div>
+                          {isMine ? <Badge variant="secondary">You</Badge> : null}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                        <div
+                          className={cn(
+                            'mt-1 text-sm whitespace-pre-wrap break-words',
+                            m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700'
+                          )}
+                        >
+                          {m.isDeleted ? 'Message removed' : m.text}
                         </div>
-                        {isMine ? <Badge variant="secondary">You</Badge> : null}
                       </div>
-                      <div className={cn('mt-1 text-sm whitespace-pre-wrap break-words', m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700')}>
-                        {m.isDeleted ? 'Message removed' : m.text}
-                      </div>
+
+                      {canDelete && !m.isDeleted ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          disabled={deleteMessage.isPending}
+                          onClick={async () => {
+                            if (!confirm('Delete this message?')) return
+                            await deleteMessage.mutateAsync({ messageId: m.id })
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </div>
-
-                    {canDelete && !m.isDeleted ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        disabled={deleteMessage.isPending}
-                        onClick={async () => {
-                          if (!confirm('Delete this message?')) return
-                          await deleteMessage.mutateAsync({ messageId: m.id })
-                        }}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            Join this club to view chat history and post messages.
+          </div>
+        )}
 
         {!isLoggedIn ? (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
@@ -1596,11 +1766,11 @@ function ClubChatCard({
           joinPolicy === 'APPROVAL' ? (
             isJoinPending ? (
               <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
-                Your join request is pending admin approval.
+                Your join request is pending admin approval. Chat will open after approval.
               </div>
             ) : (
               <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-                <div className="min-w-0">Request to join this club to post messages.</div>
+                <div className="min-w-0">Request to join this club to view and post messages.</div>
                 <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                   Request
                 </Button>
@@ -1608,7 +1778,7 @@ function ClubChatCard({
             )
           ) : (
             <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-              <div className="min-w-0">Join this club to post messages.</div>
+              <div className="min-w-0">Join this club to view and post messages.</div>
               <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                 Join
               </Button>
