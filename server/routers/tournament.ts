@@ -715,6 +715,7 @@ export const tournamentRouter = createTRPCRouter({
           endDate: true,
           registrationStartDate: true,
           registrationEndDate: true,
+          allowDuprSubmission: true,
         },
       })
 
@@ -795,6 +796,48 @@ export const tournamentRouter = createTRPCRouter({
         where: { id },
         data,
       })
+
+      if (input.allowDuprSubmission === true && currentTournament.allowDuprSubmission === false) {
+        const matches = await ctx.prisma.match.findMany({
+          where: {
+            division: { tournamentId: id },
+            sendToDupr: false,
+            tiebreaker: null,
+          },
+          select: {
+            id: true,
+            winnerTeamId: true,
+            games: {
+              select: {
+                scoreA: true,
+                scoreB: true,
+              },
+            },
+          },
+        })
+
+        const completedMatchIds = matches
+          .filter((match) => {
+            if (match.winnerTeamId) return true
+            if (!match.games || match.games.length === 0) return false
+            return match.games.every((game) =>
+              game.scoreA !== null &&
+              game.scoreA !== undefined &&
+              game.scoreB !== null &&
+              game.scoreB !== undefined &&
+              game.scoreA >= 0 &&
+              game.scoreB >= 0
+            )
+          })
+          .map((match) => match.id)
+
+        if (completedMatchIds.length > 0) {
+          await ctx.prisma.match.updateMany({
+            where: { id: { in: completedMatchIds } },
+            data: { sendToDupr: true },
+          })
+        }
+      }
 
       // Log the update
       await ctx.prisma.auditLog.create({
