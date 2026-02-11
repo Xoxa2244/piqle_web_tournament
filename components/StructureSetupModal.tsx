@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Minus, Layers } from 'lucide-react'
+import { Plus, Layers } from 'lucide-react'
 
 type ConstraintRange = {
   enabled: boolean
@@ -16,8 +16,8 @@ type GenderConstraintValue = 'ANY' | 'MEN' | 'WOMEN' | 'MIXED'
 type DivisionForm = {
   id: string
   name: string
-  poolCount: number
-  teamCount: number
+  poolCount: string
+  teamCount: string
   playersPerTeam: 1 | 2 | 4
   constraints: {
     individualDupr: ConstraintRange
@@ -30,8 +30,6 @@ type DivisionForm = {
     enforcement: 'INFO' | 'HARD'
   }
 }
-
-type StructureMode = 'WITH_DIVISIONS' | 'NO_DIVISIONS'
 
 export type TournamentStructureInput =
   | {
@@ -68,8 +66,8 @@ interface StructureSetupModalProps {
 const defaultDivision = (index: number): DivisionForm => ({
   id: `division-${Date.now()}-${index}`,
   name: `Division ${index + 1}`,
-  poolCount: 1,
-  teamCount: 2,
+  poolCount: '1',
+  teamCount: '2',
   playersPerTeam: 2,
   constraints: {
     individualDupr: { enabled: false, min: '', max: '' },
@@ -84,6 +82,12 @@ const parseOptionalNumber = (value: string) => {
   if (!value.trim()) return undefined
   const parsed = Number(value)
   return Number.isNaN(parsed) ? undefined : parsed
+}
+
+const parseIntegerOrDefault = (value: string, fallback: number) => {
+  const parsed = Number(value.trim())
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.trunc(parsed)
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
@@ -156,47 +160,6 @@ const RangeField = ({
   )
 }
 
-const Stepper = ({
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  value: number
-  min: number
-  max?: number
-  onChange: (value: number) => void
-}) => {
-  const handleStep = (delta: number) => {
-    const next = value + delta
-    if (next < min) return
-    if (typeof max === 'number' && next > max) return
-    onChange(next)
-  }
-
-  return (
-    <div className="flex items-center space-x-2">
-      <button
-        type="button"
-        onClick={() => handleStep(-1)}
-        className="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50"
-        aria-label="Decrease"
-      >
-        <Minus className="w-4 h-4" />
-      </button>
-      <div className="w-12 text-center font-semibold">{value}</div>
-      <button
-        type="button"
-        onClick={() => handleStep(1)}
-        className="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50"
-        aria-label="Increase"
-      >
-        <Plus className="w-4 h-4" />
-      </button>
-    </div>
-  )
-}
-
 export default function StructureSetupModal({
   isOpen,
   isSaving = false,
@@ -204,24 +167,19 @@ export default function StructureSetupModal({
   onClose,
   onSave,
 }: StructureSetupModalProps) {
-  const [mode, setMode] = useState<StructureMode>('WITH_DIVISIONS')
   const [divisions, setDivisions] = useState<DivisionForm[]>([defaultDivision(0)])
-  const [playersPerTeam, setPlayersPerTeam] = useState<1 | 2 | 4>(2)
-  const [teamCount, setTeamCount] = useState(4)
-  const [playerCount, setPlayerCount] = useState(8)
 
   useEffect(() => {
     if (!isOpen) return
     if (!initialStructure) return
 
     if (initialStructure.mode === 'WITH_DIVISIONS') {
-      setMode('WITH_DIVISIONS')
       setDivisions(
         initialStructure.divisions.map((division, index) => ({
           id: `division-${Date.now()}-${index}`,
           name: division.name || `Division ${index + 1}`,
-          poolCount: division.poolCount,
-          teamCount: division.teamCount,
+          poolCount: String(division.poolCount),
+          teamCount: String(division.teamCount),
           playersPerTeam: division.playersPerTeam,
           constraints: {
             individualDupr: {
@@ -249,49 +207,52 @@ export default function StructureSetupModal({
       )
       return
     }
-
-    setMode('NO_DIVISIONS')
-    setPlayersPerTeam(initialStructure.playersPerTeam)
-    setTeamCount(initialStructure.teamCount ?? 4)
-    setPlayerCount(initialStructure.playerCount ?? 8)
+    const fallbackPlayersPerTeam = initialStructure.playersPerTeam
+    const fallbackTeamCount =
+      initialStructure.teamCount ??
+      (fallbackPlayersPerTeam === 1
+        ? Math.max(2, initialStructure.playerCount ?? 2)
+        : 4)
+    setDivisions([
+      {
+        ...defaultDivision(0),
+        name: 'Main Division',
+        playersPerTeam: fallbackPlayersPerTeam,
+        teamCount: String(fallbackTeamCount),
+        poolCount: '1',
+      },
+    ])
   }, [initialStructure, isOpen])
 
   const summary = useMemo(() => {
-    if (mode === 'WITH_DIVISIONS') {
-      const totalPools = divisions.reduce((sum, division) => sum + division.poolCount, 0)
-      const totalTeams = divisions.reduce((sum, division) => sum + division.teamCount, 0)
-      return {
-        divisions: divisions.length,
-        pools: totalPools,
-        teams: totalTeams,
-        players: undefined,
-      }
-    }
-
+    const totalPools = divisions.reduce(
+      (sum, division) => sum + Math.max(0, parseIntegerOrDefault(division.poolCount, 0)),
+      0
+    )
+    const totalTeams = divisions.reduce(
+      (sum, division) => sum + Math.max(0, parseIntegerOrDefault(division.teamCount, 0)),
+      0
+    )
     return {
-      divisions: 0,
-      pools: 0,
-      teams: playersPerTeam === 1 ? 0 : teamCount,
-      players: playersPerTeam === 1 ? playerCount : undefined,
+      divisions: divisions.length,
+      pools: totalPools,
+      teams: totalTeams,
+      players: undefined,
     }
-  }, [mode, divisions, playersPerTeam, teamCount, playerCount])
+  }, [divisions])
 
   const isValid = useMemo(() => {
-    if (mode === 'WITH_DIVISIONS') {
-      return divisions.every((division) => {
-        return (
-          division.name.trim().length > 0 &&
-          division.poolCount >= 1 &&
-          division.teamCount >= 2 &&
-          [1, 2, 4].includes(division.playersPerTeam)
-        )
-      })
-    }
-
-    if (![1, 2, 4].includes(playersPerTeam)) return false
-    if (playersPerTeam === 1) return playerCount >= 1
-    return teamCount >= 2
-  }, [mode, divisions, playersPerTeam, playerCount, teamCount])
+    return divisions.every((division) => {
+      const poolCount = parseIntegerOrDefault(division.poolCount, 0)
+      const teamCount = parseIntegerOrDefault(division.teamCount, 0)
+      return (
+        division.name.trim().length > 0 &&
+        poolCount >= 1 &&
+        teamCount >= 2 &&
+        [1, 2, 4].includes(division.playersPerTeam)
+      )
+    })
+  }, [divisions])
 
   const handleAddDivision = () => {
     setDivisions((prev) => [...prev, defaultDivision(prev.length)])
@@ -303,8 +264,8 @@ export default function StructureSetupModal({
 
     const isDefault =
       division.name.trim() === `Division ${index + 1}` &&
-      division.poolCount === 1 &&
-      division.teamCount === 2 &&
+      division.poolCount === '1' &&
+      division.teamCount === '2' &&
       division.playersPerTeam === 2 &&
       !division.constraints.individualDupr.enabled &&
       !division.constraints.teamDupr.enabled &&
@@ -325,47 +286,36 @@ export default function StructureSetupModal({
 
   const handleSave = () => {
     if (!isValid) return
-
-    if (mode === 'WITH_DIVISIONS') {
-      onSave({
-        mode: 'WITH_DIVISIONS',
-        divisions: divisions.map((division) => ({
-          name: division.name.trim(),
-          poolCount: division.poolCount,
-          teamCount: division.teamCount,
-          playersPerTeam: division.playersPerTeam,
-          constraints: {
-            individualDupr: {
-              enabled: division.constraints.individualDupr.enabled,
-              min: parseOptionalNumber(division.constraints.individualDupr.min),
-              max: parseOptionalNumber(division.constraints.individualDupr.max),
-            },
-            teamDupr: {
-              enabled: division.constraints.teamDupr.enabled,
-              min: parseOptionalNumber(division.constraints.teamDupr.min),
-              max: parseOptionalNumber(division.constraints.teamDupr.max),
-            },
-            age: {
-              enabled: division.constraints.age.enabled,
-              min: parseOptionalNumber(division.constraints.age.min),
-              max: parseOptionalNumber(division.constraints.age.max),
-            },
-            gender: {
-              enabled: division.constraints.gender.enabled,
-              value: division.constraints.gender.value,
-            },
-            enforcement: division.constraints.enforcement,
-          },
-        })),
-      })
-      return
-    }
-
     onSave({
-      mode: 'NO_DIVISIONS',
-      playersPerTeam,
-      teamCount: playersPerTeam === 1 ? undefined : teamCount,
-      playerCount: playersPerTeam === 1 ? playerCount : undefined,
+      mode: 'WITH_DIVISIONS',
+      divisions: divisions.map((division) => ({
+        name: division.name.trim(),
+        poolCount: parseIntegerOrDefault(division.poolCount, 1),
+        teamCount: parseIntegerOrDefault(division.teamCount, 2),
+        playersPerTeam: division.playersPerTeam,
+        constraints: {
+          individualDupr: {
+            enabled: division.constraints.individualDupr.enabled,
+            min: parseOptionalNumber(division.constraints.individualDupr.min),
+            max: parseOptionalNumber(division.constraints.individualDupr.max),
+          },
+          teamDupr: {
+            enabled: division.constraints.teamDupr.enabled,
+            min: parseOptionalNumber(division.constraints.teamDupr.min),
+            max: parseOptionalNumber(division.constraints.teamDupr.max),
+          },
+          age: {
+            enabled: division.constraints.age.enabled,
+            min: parseOptionalNumber(division.constraints.age.min),
+            max: parseOptionalNumber(division.constraints.age.max),
+          },
+          gender: {
+            enabled: division.constraints.gender.enabled,
+            value: division.constraints.gender.value,
+          },
+          enforcement: division.constraints.enforcement,
+        },
+      })),
     })
   }
 
@@ -391,25 +341,7 @@ export default function StructureSetupModal({
         </div>
 
         <div className="flex flex-col gap-6">
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => setMode('WITH_DIVISIONS')}
-              className={`px-4 py-2 rounded-lg border ${mode === 'WITH_DIVISIONS' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              With divisions
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('NO_DIVISIONS')}
-              className={`px-4 py-2 rounded-lg border ${mode === 'NO_DIVISIONS' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              No divisions
-            </button>
-          </div>
-
-          {mode === 'WITH_DIVISIONS' ? (
-            <div className="space-y-6">
+          <div className="space-y-6">
               {divisions.map((division, index) => (
                 <div key={division.id} className="border border-slate-200 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -437,28 +369,32 @@ export default function StructureSetupModal({
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Pools</label>
-                      <Stepper
+                      <Input
+                        type="text"
+                        inputMode="numeric"
                         value={division.poolCount}
-                        min={1}
-                        onChange={(value) =>
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/[^\d-]/g, '')
                           handleDivisionChange(index, (current) => ({
                             ...current,
-                            poolCount: value,
+                            poolCount: digits,
                           }))
-                        }
+                        }}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Teams in division</label>
-                      <Stepper
+                      <Input
+                        type="text"
+                        inputMode="numeric"
                         value={division.teamCount}
-                        min={2}
-                        onChange={(value) =>
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/[^\d-]/g, '')
                           handleDivisionChange(index, (current) => ({
                             ...current,
-                            teamCount: value,
+                            teamCount: digits,
                           }))
-                        }
+                        }}
                       />
                     </div>
                     <div>
@@ -748,38 +684,7 @@ export default function StructureSetupModal({
                 <Plus className="w-4 h-4" />
                 Add division
               </button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Players per team</label>
-                <div className="flex gap-2">
-                  {[1, 2, 4].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setPlayersPerTeam(value as 1 | 2 | 4)}
-                      className={`px-3 py-2 rounded-lg border ${playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {playersPerTeam === 1 ? (
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Players in tournament</label>
-                  <Stepper value={playerCount} min={1} onChange={setPlayerCount} />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">Teams in tournament</label>
-                  <Stepper value={teamCount} min={2} onChange={setTeamCount} />
-                </div>
-              )}
-            </div>
-          )}
+          </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <p className="text-sm font-semibold text-slate-700 mb-2">Summary</p>
