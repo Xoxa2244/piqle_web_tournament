@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, Suspense } from 'react'
+import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
@@ -327,6 +327,19 @@ function HomePageContent() {
     if (lines.length <= maxLines) return text
     return lines.slice(0, maxLines).join('\n')
   }
+
+  const closeTournamentModal = useCallback(() => {
+    setSelectedTournament(null)
+    setCommentText('')
+    setDescriptionExpanded(false)
+
+    const params = new URLSearchParams(searchParams.toString())
+    if (params.has('open')) {
+      params.delete('open')
+      const nextQuery = params.toString()
+      router.replace(nextQuery ? `/?${nextQuery}` : '/', { scroll: false })
+    }
+  }, [router, searchParams])
 
   // Tournament status: past (ended), upcoming (not started), in_progress (ongoing)
   const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
@@ -859,11 +872,7 @@ function HomePageContent() {
         return (
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => {
-              setSelectedTournament(null)
-              setCommentText('')
-              setDescriptionExpanded(false)
-            }}
+            onClick={closeTournamentModal}
           >
             <div
               className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
@@ -980,11 +989,7 @@ function HomePageContent() {
                     )
                   })()}
                   <button
-                    onClick={() => {
-                      setSelectedTournament(null)
-                      setCommentText('')
-                      setDescriptionExpanded(false)
-                    }}
+                    onClick={closeTournamentModal}
                     className="text-gray-400 hover:text-gray-600 transition-colors p-1"
                   >
                     <X className="h-6 w-6" />
@@ -1088,14 +1093,14 @@ function HomePageContent() {
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => {
-                                  setSelectedTournament(null)
+                                  closeTournamentModal()
                                   setFilter('map')
                                   setMapFocusTournamentId(tournament.id)
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault()
-                                    setSelectedTournament(null)
+                                    closeTournamentModal()
                                     setFilter('map')
                                     setMapFocusTournamentId(tournament.id)
                                   }
