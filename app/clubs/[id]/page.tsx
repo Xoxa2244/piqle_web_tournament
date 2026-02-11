@@ -640,7 +640,9 @@ export default function ClubDetailPage() {
 
             {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
 
-            {club.isAdmin ? <ClubMembersAdminCard clubId={club.id} /> : null}
+            {club.isAdmin || club.isFollowing ? (
+              <ClubMembersAdminCard clubId={club.id} canModerate={club.isAdmin} />
+            ) : null}
 
             <ClubChatCard
               clubId={club.id}
@@ -2126,11 +2128,12 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
   )
 }
 
-function ClubMembersAdminCard({ clubId }: { clubId: string }) {
+function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canModerate: boolean }) {
   const { toast } = useToast()
   const utils = trpc.useUtils()
 
   const { data, isLoading, error } = trpc.club.listMembers.useQuery({ clubId }, { enabled: !!clubId })
+  const canManage = Boolean(canModerate || (data as any)?.canModerate)
 
   const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
     onSuccess: async () => {
@@ -2204,19 +2207,23 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
           <Users className="h-4 w-4" />
-          Members & bans (admins)
+          {canManage ? 'Members & bans (admins)' : 'Members'}
         </CardTitle>
         <div className="text-xs text-muted-foreground">
-          {joinRequests.length} request{joinRequests.length === 1 ? '' : 's'}
-          <span className="mx-1">•</span>
           {members.length} member{members.length === 1 ? '' : 's'}
-          <span className="mx-1">•</span>
-          {bans.length} ban{bans.length === 1 ? '' : 's'}
+          {canManage ? (
+            <>
+              <span className="mx-1">•</span>
+              {joinRequests.length} request{joinRequests.length === 1 ? '' : 's'}
+              <span className="mx-1">•</span>
+              {bans.length} ban{bans.length === 1 ? '' : 's'}
+            </>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <Input
-          placeholder="Search requests / members / bans…"
+          placeholder={canManage ? 'Search requests / members / bans…' : 'Search members…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -2224,82 +2231,84 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
         {isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
         {error ? <div className="text-sm text-destructive">{error.message}</div> : null}
 
-        <div className="rounded-md border bg-white p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium text-gray-900">Join requests</div>
-            <div className="text-xs text-muted-foreground">{joinRequests.length}</div>
-          </div>
+        {canManage ? (
+          <div className="rounded-md border bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-medium text-gray-900">Join requests</div>
+              <div className="text-xs text-muted-foreground">{joinRequests.length}</div>
+            </div>
 
-          {joinRequests.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No pending requests.</div>
-          ) : (
-            <div className="divide-y rounded-md border">
-              {joinRequests.slice(0, 200).map((r: any) => (
-                <div key={r.userId} className="p-2 flex items-center justify-between gap-2 bg-white">
-                  <div className="min-w-0 flex items-center gap-2">
-                    {r.user?.image ? (
-                      <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
-                        <Image src={r.user.image} alt="" fill className="object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
-                        {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+            {joinRequests.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No pending requests.</div>
+            ) : (
+              <div className="divide-y rounded-md border">
+                {joinRequests.slice(0, 200).map((r: any) => (
+                  <div key={r.userId} className="p-2 flex items-center justify-between gap-2 bg-white">
+                    <div className="min-w-0 flex items-center gap-2">
+                      {r.user?.image ? (
+                        <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                          <Image src={r.user.image} alt="" fill className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
+                          {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+                        </div>
                       </div>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2"
+                        disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                        onClick={async () => {
+                          if (!confirm('Approve this join request?')) return
+                          try {
+                            await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                            toast({ title: 'Approved', description: 'User joined the club.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                        onClick={async () => {
+                          if (!confirm('Reject this join request?')) return
+                          try {
+                            await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                            toast({ title: 'Rejected', description: 'Request rejected.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="gap-2"
-                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
-                      onClick={async () => {
-                        if (!confirm('Approve this join request?')) return
-                        try {
-                          await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                          toast({ title: 'Approved', description: 'User joined the club.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
-                      onClick={async () => {
-                        if (!confirm('Reject this join request?')) return
-                        try {
-                          await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                          toast({ title: 'Rejected', description: 'Request rejected.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            {joinRequests.length > 200 ? (
+              <div className="text-xs text-muted-foreground">Showing first 200 requests.</div>
+            ) : null}
+          </div>
+        ) : null}
 
-          {joinRequests.length > 200 ? (
-            <div className="text-xs text-muted-foreground">Showing first 200 requests.</div>
-          ) : null}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className={`grid grid-cols-1 ${canManage ? 'md:grid-cols-2' : ''} gap-3`}>
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-900">Members</div>
             {members.length === 0 ? (
@@ -2326,46 +2335,48 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
                         ) : null}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        disabled={kickMember.isPending || banUser.isPending}
-                        onClick={async () => {
-                          if (!confirm('Remove this member from the club?')) return
-                          try {
-                            await kickMember.mutateAsync({ clubId, userId: m.userId })
-                            toast({ title: 'Removed', description: 'Member removed from the club.' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
-                      >
-                        <UserMinus className="h-4 w-4" />
-                        Kick
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="gap-2"
-                        disabled={kickMember.isPending || banUser.isPending}
-                        onClick={async () => {
-                          const reason = prompt('Ban reason (optional):') || ''
-                          if (!confirm('Ban this user? They will not be able to re-join.')) return
-                          try {
-                            await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
-                            toast({ title: 'Banned', description: 'User banned.' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
-                      >
-                        <Ban className="h-4 w-4" />
-                        Ban
-                      </Button>
-                    </div>
+                    {canManage ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          disabled={kickMember.isPending || banUser.isPending}
+                          onClick={async () => {
+                            if (!confirm('Remove this member from the club?')) return
+                            try {
+                              await kickMember.mutateAsync({ clubId, userId: m.userId })
+                              toast({ title: 'Removed', description: 'Member removed from the club.' })
+                            } catch (err: any) {
+                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                            }
+                          }}
+                        >
+                          <UserMinus className="h-4 w-4" />
+                          Kick
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-2"
+                          disabled={kickMember.isPending || banUser.isPending}
+                          onClick={async () => {
+                            const reason = prompt('Ban reason (optional):') || ''
+                            if (!confirm('Ban this user? They will not be able to re-join.')) return
+                            try {
+                              await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
+                              toast({ title: 'Banned', description: 'User banned.' })
+                            } catch (err: any) {
+                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                            }
+                          }}
+                        >
+                          <Ban className="h-4 w-4" />
+                          Ban
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -2375,46 +2386,48 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-900">Bans</div>
-            {bans.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No bans.</div>
-            ) : (
-              <div className="rounded-md border divide-y bg-white">
-                {bans.slice(0, 200).map((b: any) => (
-                  <div key={b.userId} className="p-2 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
-                        {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
-                        {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
+          {canManage ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-900">Bans</div>
+              {bans.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No bans.</div>
+              ) : (
+                <div className="rounded-md border divide-y bg-white">
+                  {bans.slice(0, 200).map((b: any) => (
+                    <div key={b.userId} className="p-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
+                          {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
+                          {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
+                        </div>
+                        {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}
                       </div>
-                      {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={unbanUser.isPending}
+                        onClick={async () => {
+                          if (!confirm('Unban this user?')) return
+                          try {
+                            await unbanUser.mutateAsync({ clubId, userId: b.userId })
+                            toast({ title: 'Unbanned', description: 'User can join again.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Unban
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={unbanUser.isPending}
-                      onClick={async () => {
-                        if (!confirm('Unban this user?')) return
-                        try {
-                          await unbanUser.mutateAsync({ clubId, userId: b.userId })
-                          toast({ title: 'Unbanned', description: 'User can join again.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Unban
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {bans.length > 200 ? <div className="text-xs text-muted-foreground">Showing first 200 bans.</div> : null}
-          </div>
+                  ))}
+                </div>
+              )}
+              {bans.length > 200 ? <div className="text-xs text-muted-foreground">Showing first 200 bans.</div> : null}
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>

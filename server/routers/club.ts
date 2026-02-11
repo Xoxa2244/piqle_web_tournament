@@ -1072,12 +1072,21 @@ If you weren’t expecting this, you can ignore this email.`
     .query(async ({ ctx, input }) => {
       const currentUserId = ctx.session.user.id
 
-      const myAdminRole = await ctx.prisma.clubAdmin.findUnique({
-        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
-        select: { role: true },
-      })
-      if (!myAdminRole) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view members' })
+      const [myAdminRole, myFollow] = await Promise.all([
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+          select: { role: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+          select: { id: true },
+        }),
+      ])
+
+      const canModerate = Boolean(myAdminRole)
+      const canView = canModerate || Boolean(myFollow)
+      if (!canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to view members' })
       }
 
       const [followers, admins] = await Promise.all([
@@ -1100,11 +1109,70 @@ If you weren’t expecting this, you can ignore this email.`
         }),
         ctx.prisma.clubAdmin.findMany({
           where: { clubId: input.clubId },
-          select: { userId: true, role: true },
+          select: {
+            userId: true,
+            role: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                email: true, // only used to compute masked value
+              },
+            },
+          },
         }),
       ])
 
       const adminRoleByUserId = new Map(admins.map((a) => [a.userId, a.role] as const))
+      const memberByUserId = new Map<
+        string,
+        {
+          userId: string
+          joinedAt: Date
+          role: string | null
+          user: {
+            id: string
+            name: string | null
+            image: string | null
+            emailMasked: string | null
+          }
+        }
+      >()
+
+      for (const follower of followers) {
+        memberByUserId.set(follower.userId, {
+          userId: follower.userId,
+          joinedAt: follower.createdAt,
+          role: adminRoleByUserId.get(follower.userId) ?? null,
+          user: {
+            id: follower.user.id,
+            name: follower.user.name,
+            image: follower.user.image,
+            emailMasked: maskEmail(follower.user.email),
+          },
+        })
+      }
+
+      for (const admin of admins) {
+        if (memberByUserId.has(admin.userId)) continue
+        memberByUserId.set(admin.userId, {
+          userId: admin.userId,
+          joinedAt: admin.createdAt,
+          role: admin.role,
+          user: {
+            id: admin.user.id,
+            name: admin.user.name,
+            image: admin.user.image,
+            emailMasked: maskEmail(admin.user.email),
+          },
+        })
+      }
+
+      const members = Array.from(memberByUserId.values()).sort(
+        (a, b) => b.joinedAt.getTime() - a.joinedAt.getTime()
+      )
 
       let bans: Array<{
         userId: string
@@ -1115,23 +1183,25 @@ If you weren’t expecting this, you can ignore this email.`
         bannedByUser: { id: string; name: string | null; image: string | null }
       }> = []
 
-      try {
-        bans = await ctx.prisma.clubBan.findMany({
-          where: { clubId: input.clubId },
-          orderBy: { createdAt: 'desc' },
-          take: 500,
-          select: {
-            userId: true,
-            reason: true,
-            createdAt: true,
-            bannedByUserId: true,
-            user: { select: { id: true, name: true, image: true, email: true } },
-            bannedByUser: { select: { id: true, name: true, image: true } },
-          },
-        })
-      } catch (err: any) {
-        if (!isMissingDbRelation(err, 'club_bans')) throw err
-        bans = []
+      if (canModerate) {
+        try {
+          bans = await ctx.prisma.clubBan.findMany({
+            where: { clubId: input.clubId },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+            select: {
+              userId: true,
+              reason: true,
+              createdAt: true,
+              bannedByUserId: true,
+              user: { select: { id: true, name: true, image: true, email: true } },
+              bannedByUser: { select: { id: true, name: true, image: true } },
+            },
+          })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_bans')) throw err
+          bans = []
+        }
       }
 
       let joinRequests: Array<{
@@ -1140,35 +1210,28 @@ If you weren’t expecting this, you can ignore this email.`
         user: { id: string; name: string | null; image: string | null; email: string }
       }> = []
 
-      try {
-        joinRequests = await ctx.prisma.clubJoinRequest.findMany({
-          where: { clubId: input.clubId },
-          orderBy: { createdAt: 'desc' },
-          take: 500,
-          select: {
-            userId: true,
-            createdAt: true,
-            user: { select: { id: true, name: true, image: true, email: true } },
-          },
-        })
-      } catch (err: any) {
-        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
-        joinRequests = []
+      if (canModerate) {
+        try {
+          joinRequests = await ctx.prisma.clubJoinRequest.findMany({
+            where: { clubId: input.clubId },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+            select: {
+              userId: true,
+              createdAt: true,
+              user: { select: { id: true, name: true, image: true, email: true } },
+            },
+          })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+          joinRequests = []
+        }
       }
 
       return {
-        myRole: myAdminRole.role,
-        members: followers.map((f) => ({
-          userId: f.userId,
-          joinedAt: f.createdAt,
-          role: adminRoleByUserId.get(f.userId) ?? null,
-          user: {
-            id: f.user.id,
-            name: f.user.name,
-            image: f.user.image,
-            emailMasked: maskEmail(f.user.email),
-          },
-        })),
+        canModerate,
+        myRole: myAdminRole?.role ?? null,
+        members,
         bans: bans.map((b) => ({
           userId: b.userId,
           bannedAt: b.createdAt,
