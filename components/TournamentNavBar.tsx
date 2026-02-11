@@ -16,7 +16,8 @@ import {
   Calendar,
   Target,
   AlertTriangle,
-  Info
+  Info,
+  TrendingUp
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -31,7 +32,14 @@ interface TournamentNavBarProps {
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
   publicScoreboardUrl?: string
-  tournamentFormat?: 'SINGLE_ELIMINATION' | 'ROUND_ROBIN' | 'MLP' | 'INDY_LEAGUE' | 'LEAGUE_ROUND_ROBIN'
+  tournamentFormat?:
+    | 'SINGLE_ELIMINATION'
+    | 'ROUND_ROBIN'
+    | 'MLP'
+    | 'INDY_LEAGUE'
+    | 'LEAGUE_ROUND_ROBIN'
+    | 'ONE_DAY_LADDER'
+    | 'LADDER_LEAGUE'
 }
 
 function TournamentNavBarContent({
@@ -62,6 +70,8 @@ function TournamentNavBarContent({
   const isMatchDays = pathname.startsWith(`${base}/match-days`)
   const isCourts = pathname.startsWith(`${base}/courts`)
   const isAccess = pathname === `${base}/access`
+  const isLadder = tournamentFormat === 'ONE_DAY_LADDER' || tournamentFormat === 'LADDER_LEAGUE'
+  const isLadderPage = pathname.startsWith(`${base}/ladder`)
 
   return (
     <div className="bg-white/95 backdrop-blur-sm border-b border-slate-200 fixed top-16 left-0 right-0 z-[60] shadow-sm">
@@ -208,6 +218,19 @@ function TournamentNavBarContent({
                 <span>Score Input</span>
               </Button>
             </Link>
+
+            {isAdmin && isLadder && (
+              <Link href={`/admin/${tournamentId}/ladder${divisionQuery}`}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isLadderPage ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span>Ladder</span>
+                </Button>
+              </Link>
+            )}
             
             <Link href={`/admin/${tournamentId}/dashboard${divisionQuery}`}>
               <Button 
@@ -291,4 +314,3 @@ export default function TournamentNavBar(props: TournamentNavBarProps) {
     </Suspense>
   )
 }
-

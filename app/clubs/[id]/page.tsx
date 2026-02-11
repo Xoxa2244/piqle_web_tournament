@@ -12,9 +12,11 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { fromCents } from '@/lib/payment'
+import { fromCents, toCents } from '@/lib/payment'
+import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
+import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -89,29 +91,25 @@ export default function ClubDetailPage() {
 
   const toggleFollow = trpc.club.toggleFollow.useMutation()
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
-  const createBookingRequest = trpc.club.createBookingRequest.useMutation()
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
-
-  const [bookingForm, setBookingForm] = useState({
-    requesterName: '',
-    requesterEmail: '',
-    requesterPhone: '',
-    desiredStart: '',
-    durationMinutes: 60,
-    playersCount: 8,
-    message: '',
-  })
+  const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
+  const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
     body: '',
   })
 
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
+  const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
+
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
 
-  const canBook = Boolean(club?.courtReserveUrl)
+  const bookingUrl = (club?.courtReserveUrl ?? '').trim()
+  const canBook = Boolean(bookingUrl)
+  const bookingButtonLabel = 'Booking courts'
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -218,34 +216,6 @@ export default function ClubDetailPage() {
     }
   }
 
-  const handleBookingRequest = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await createBookingRequest.mutateAsync({
-        clubId,
-        requesterName: bookingForm.requesterName,
-        requesterEmail: bookingForm.requesterEmail,
-        requesterPhone: bookingForm.requesterPhone || undefined,
-        desiredStart: bookingForm.desiredStart ? new Date(bookingForm.desiredStart).toISOString() : undefined,
-        durationMinutes: bookingForm.durationMinutes || undefined,
-        playersCount: bookingForm.playersCount || undefined,
-        message: bookingForm.message || undefined,
-      })
-      toast({ title: 'Request sent', description: 'The club will respond soon.' })
-      setBookingForm({
-        requesterName: '',
-        requesterEmail: '',
-        requesterPhone: '',
-        desiredStart: '',
-        durationMinutes: 60,
-        playersCount: 8,
-        message: '',
-      })
-    } catch (err: any) {
-      toast({ title: 'Failed to send request', description: err?.message || 'Try again', variant: 'destructive' })
-    }
-  }
-
   const handleAnnouncementPost = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isLoggedIn) return
@@ -260,6 +230,49 @@ export default function ClubDetailPage() {
       await utils.club.get.invalidate({ id: clubId })
     } catch (err: any) {
       toast({ title: 'Failed to post', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
+  const startEditAnnouncement = (a: any) => {
+    setEditingAnnouncementId(a.id)
+    setEditingAnnouncementForm({ title: a.title || '', body: a.body || '' })
+  }
+
+  const cancelEditAnnouncement = () => {
+    setEditingAnnouncementId(null)
+    setEditingAnnouncementForm({ title: '', body: '' })
+  }
+
+  const handleSaveAnnouncement = async () => {
+    if (!isLoggedIn) return
+    if (!editingAnnouncementId) return
+    try {
+      await updateAnnouncement.mutateAsync({
+        clubId,
+        announcementId: editingAnnouncementId,
+        title: editingAnnouncementForm.title || undefined,
+        body: editingAnnouncementForm.body,
+      })
+      toast({ title: 'Updated', description: 'Announcement updated.' })
+      cancelEditAnnouncement()
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to update', description: err?.message || 'Try again', variant: 'destructive' })
+    }
+  }
+
+  const handleDeleteAnnouncement = async (announcementId: string) => {
+    if (!isLoggedIn) return
+    if (!confirm('Delete this announcement?')) return
+    try {
+      await deleteAnnouncement.mutateAsync({ clubId, announcementId })
+      toast({ title: 'Deleted', description: 'Announcement removed.' })
+      if (editingAnnouncementId === announcementId) {
+        cancelEditAnnouncement()
+      }
+      await utils.club.get.invalidate({ id: clubId })
+    } catch (err: any) {
+      toast({ title: 'Failed to delete', description: err?.message || 'Try again', variant: 'destructive' })
     }
   }
 
@@ -335,6 +348,11 @@ export default function ClubDetailPage() {
                   <Ban className="h-4 w-4" />
                   Banned
                 </Button>
+              ) : club.isAdmin ? (
+                <Button variant="secondary" className="gap-2" disabled title="You are an admin of this club">
+                  <Users className="h-4 w-4" />
+                  Admin
+                </Button>
               ) : club.isFollowing ? (
                 <Button
                   variant="destructive"
@@ -387,19 +405,27 @@ export default function ClubDetailPage() {
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => setInviteOpen((v) => !v)}
-              >
-                <Share2 className="h-4 w-4" />
-                Invite
-              </Button>
+              {club.isAdmin ? (
+                <Button asChild variant="outline" className="gap-2">
+                  <Link href={`/clubs/${clubId}/edit`}>
+                    <Pencil className="h-4 w-4" />
+                    Edit club
+                  </Link>
+                </Button>
+              ) : null}
+
+              {club.isFollowing || club.isAdmin ? (
+                <Button variant="outline" className="gap-2" onClick={() => setInviteOpen((v) => !v)}>
+                  <Share2 className="h-4 w-4" />
+                  Invite
+                </Button>
+              ) : null}
+
               {canBook ? (
-                <a href={club.courtReserveUrl!} target="_blank" rel="noreferrer">
+                <a href={bookingUrl} target="_blank" rel="noreferrer">
                   <Button variant="outline" className="gap-2">
                     <ExternalLink className="h-4 w-4" />
-                    Open CourtReserve
+                    {bookingButtonLabel}
                   </Button>
                 </a>
               ) : null}
@@ -409,7 +435,7 @@ export default function ClubDetailPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
-            {inviteOpen ? (
+            {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
                 clubId={club.id}
                 clubName={club.name}
@@ -543,18 +569,81 @@ export default function ClubDetailPage() {
                           <div className="font-medium text-gray-900 truncate">{a.title || 'Update'}</div>
                           <div className="text-xs text-muted-foreground">
                             {new Date(a.createdAt).toLocaleString()}
+                            {a.updatedAt && new Date(a.updatedAt).getTime() > new Date(a.createdAt).getTime()
+                              ? ` • edited ${new Date(a.updatedAt).toLocaleString()}`
+                              : ''}
                             {a.createdByUser?.name ? ` • ${a.createdByUser.name}` : ''}
                           </div>
                         </div>
+                        {club.isAdmin ? (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5"
+                              onClick={() => startEditAnnouncement(a)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="gap-1.5"
+                              disabled={deleteAnnouncement.isPending}
+                              onClick={() => handleDeleteAnnouncement(a.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{a.body}</div>
+                      {editingAnnouncementId === a.id && club.isAdmin ? (
+                        <div className="space-y-2 rounded-md border bg-gray-50 p-3">
+                          <Input
+                            placeholder="Title (optional)"
+                            value={editingAnnouncementForm.title}
+                            onChange={(e) =>
+                              setEditingAnnouncementForm((p) => ({ ...p, title: e.target.value }))
+                            }
+                          />
+                          <Textarea
+                            value={editingAnnouncementForm.body}
+                            onChange={(e) =>
+                              setEditingAnnouncementForm((p) => ({ ...p, body: e.target.value }))
+                            }
+                            rows={4}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={cancelEditAnnouncement}>
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleSaveAnnouncement}
+                              disabled={updateAnnouncement.isPending || !editingAnnouncementForm.body.trim()}
+                            >
+                              {updateAnnouncement.isPending ? 'Saving…' : 'Save'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap">{a.body}</div>
+                      )}
                     </div>
                   ))
                 )}
               </CardContent>
             </Card>
 
-            {club.isAdmin ? <ClubMembersAdminCard clubId={club.id} /> : null}
+            {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
+
+            {club.isAdmin || club.isFollowing ? (
+              <ClubMembersAdminCard clubId={club.id} canModerate={club.isAdmin} />
+            ) : null}
 
             <ClubChatCard
               clubId={club.id}
@@ -576,10 +665,10 @@ export default function ClubDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {canBook ? (
-                  <a href={club.courtReserveUrl!} target="_blank" rel="noreferrer" className="block">
+                  <a href={bookingUrl} target="_blank" rel="noreferrer" className="block">
                     <Button variant="outline" className="w-full gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      Fast booking on CourtReserve
+                      {bookingButtonLabel}
                     </Button>
                   </a>
                 ) : (
@@ -587,100 +676,6 @@ export default function ClubDetailPage() {
                     Online booking is not configured for this club yet.
                   </div>
                 )}
-
-                <div className="rounded-md border p-3 space-y-3">
-                  <div className="text-sm font-medium text-gray-900">Send a booking request</div>
-                  <div className="text-xs text-muted-foreground">
-                    This is a request, not a confirmed reservation.
-                  </div>
-                  <form onSubmit={handleBookingRequest} className="space-y-3">
-                    <Input
-                      placeholder="Your name"
-                      value={bookingForm.requesterName}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterName: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      placeholder="Email"
-                      type="email"
-                      value={bookingForm.requesterEmail}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterEmail: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      placeholder="Phone (optional)"
-                      value={bookingForm.requesterPhone}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, requesterPhone: e.target.value }))}
-                    />
-                    <Input
-                      type="datetime-local"
-                      value={bookingForm.desiredStart}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, desiredStart: e.target.value }))}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={15}
-                        max={480}
-                        step={15}
-                        value={bookingForm.durationMinutes}
-                        onChange={(e) => setBookingForm((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
-                        placeholder="Duration (min)"
-                      />
-                      <Input
-                        type="number"
-                        min={1}
-                        max={64}
-                        value={bookingForm.playersCount}
-                        onChange={(e) => setBookingForm((p) => ({ ...p, playersCount: Number(e.target.value) }))}
-                        placeholder="# players"
-                      />
-                    </div>
-                    <Textarea
-                      placeholder="Message (optional)"
-                      value={bookingForm.message}
-                      onChange={(e) => setBookingForm((p) => ({ ...p, message: e.target.value }))}
-                      rows={4}
-                    />
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={createBookingRequest.isPending}
-                    >
-                      {createBookingRequest.isPending ? 'Sending…' : 'Send request'}
-                    </Button>
-                  </form>
-                </div>
-
-                {club.isAdmin ? (
-                  <div className="rounded-md border p-3 space-y-3">
-                    <div className="text-sm font-medium text-gray-900">Recent requests (admins)</div>
-                    {(club as any).bookingRequests?.length ? (
-                      <div className="space-y-2">
-                        {(club as any).bookingRequests.map((req: any) => (
-                          <div key={req.id} className="rounded-md bg-gray-50 p-2 text-sm">
-                            <div className="font-medium text-gray-900">
-                              {req.requesterName}{' '}
-                              <span className="font-normal text-muted-foreground">
-                                ({req.requesterEmail})
-                              </span>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {req.desiredStart ? `Desired: ${new Date(req.desiredStart).toLocaleString()}` : 'Desired: —'}
-                              {req.durationMinutes ? ` • ${req.durationMinutes} min` : ''}
-                              {req.playersCount ? ` • ${req.playersCount} players` : ''}
-                            </div>
-                            {req.message ? (
-                              <div className="mt-1 whitespace-pre-wrap text-gray-700">{req.message}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No booking requests yet.</div>
-                    )}
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </div>
@@ -768,11 +763,26 @@ function ClubEventsCalendar({
   )
   const [calendarMode, setCalendarMode] = useState<'month' | 'week'>(() => 'month')
   const [weekStart, setWeekStart] = useState(() => startOfWeek(initialBase))
+  const detailsRef = useRef<HTMLDivElement | null>(null)
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
 
   const isTodayKey = toLocalYmd(now)
   const selectedEvents = selectedKey ? (eventsByDay.get(selectedKey) ?? []) : []
+
+  const openDay = useCallback(
+    (key: string, date: Date, opts?: { scrollToDetails?: boolean }) => {
+      setSelectedKey(key)
+      setWeekStart(startOfWeek(date))
+      if (opts?.scrollToDetails) {
+        // Let the details section render before scrolling.
+        setTimeout(() => {
+          detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 30)
+      }
+    },
+    []
+  )
 
   const parseYmd = (key: string) => {
     const [y, m, d] = key.split('-').map((x) => Number(x))
@@ -791,6 +801,10 @@ function ClubEventsCalendar({
         return 'Indy league'
       case 'LEAGUE_ROUND_ROBIN':
         return 'League RR'
+      case 'ONE_DAY_LADDER':
+        return 'One-day ladder'
+      case 'LADDER_LEAGUE':
+        return 'Ladder league'
       default:
         return 'Tournament'
     }
@@ -808,6 +822,10 @@ function ClubEventsCalendar({
         return 'Indy'
       case 'LEAGUE_ROUND_ROBIN':
         return 'LRR'
+      case 'ONE_DAY_LADDER':
+        return 'LAD'
+      case 'LADDER_LEAGUE':
+        return 'LL'
       default:
         return null
     }
@@ -909,35 +927,33 @@ function ClubEventsCalendar({
               const key = toLocalYmd(date)
               const inMonth = date.getMonth() === month.getMonth()
               const isToday = key === isTodayKey
-              const isSelected = selectedKey === key
-              const events = eventsByDay.get(key) ?? []
-              const eventCount = events.length
-              const maxShown = 2
+	              const isSelected = selectedKey === key
+	              const events = eventsByDay.get(key) ?? []
+	              const eventCount = events.length
+	              const maxShown = 1
 
-              return (
-                <div
-                  key={key}
-                  onClick={() => {
-                    setSelectedKey(key)
-                    setWeekStart(startOfWeek(date))
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      setSelectedKey(key)
-                      setWeekStart(startOfWeek(date))
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  className={cn(
-                    'h-16 sm:h-20 rounded-md border px-2 py-1 text-left transition-colors',
-                    inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
-                    eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
-                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
-                    isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
-                  )}
-                >
+	              return (
+	                <div
+	                  key={key}
+	                  onClick={() => {
+	                    openDay(key, date, { scrollToDetails: eventCount > 0 })
+	                  }}
+	                  onKeyDown={(e) => {
+	                    if (e.key === 'Enter' || e.key === ' ') {
+	                      e.preventDefault()
+	                      openDay(key, date, { scrollToDetails: eventCount > 0 })
+	                    }
+	                  }}
+	                  role="button"
+	                  tabIndex={0}
+	                  className={cn(
+	                    'h-16 sm:h-20 rounded-md border px-2 py-1 text-left transition-colors overflow-hidden',
+	                    inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400',
+	                    eventCount > 0 ? 'hover:bg-gray-50' : 'hover:bg-gray-50/50',
+	                    isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200',
+	                    isToday && !isSelected ? 'ring-2 ring-blue-200' : ''
+	                  )}
+	                >
                   <div className="flex items-start justify-between gap-2">
                     <div className={cn('text-xs font-medium', inMonth ? 'text-gray-900' : 'text-gray-400')}>
                       {date.getDate()}
@@ -973,14 +989,23 @@ function ClubEventsCalendar({
                             {label}
                           </div>
                         )
-                      })}
-                      {eventCount > maxShown ? (
-                        <div className="text-[10px] text-muted-foreground">+{eventCount - maxShown} more</div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              )
+	                      })}
+	                      {eventCount > maxShown ? (
+	                        <button
+	                          type="button"
+	                          className="text-[10px] text-muted-foreground hover:underline"
+	                          onClick={(e) => {
+	                            e.stopPropagation()
+	                            openDay(key, date, { scrollToDetails: true })
+	                          }}
+	                        >
+	                          +{eventCount - maxShown} more
+	                        </button>
+	                      ) : null}
+	                    </div>
+	                  ) : null}
+	                </div>
+	              )
             })}
           </div>
         </>
@@ -1025,11 +1050,11 @@ function ClubEventsCalendar({
                     isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
                   )}
                 >
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => setSelectedKey(key)}
-                  >
+	                  <button
+	                    type="button"
+	                    className="w-full text-left"
+	                    onClick={() => openDay(key, date, { scrollToDetails: events.length > 0 })}
+	                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs font-semibold text-gray-900">
                         {DAY_LABELS[date.getDay()]} {date.getDate()}
@@ -1091,12 +1116,12 @@ function ClubEventsCalendar({
             })}
           </div>
         </>
-      )}
+	      )}
 
-      <div className="rounded-md border p-3 space-y-3">
-        <div className="text-sm font-medium text-gray-900">
-          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
-        </div>
+	      <div ref={detailsRef} className="rounded-md border p-3 space-y-3">
+	        <div className="text-sm font-medium text-gray-900">
+	          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
+	        </div>
         {!selectedKey ? (
           <div className="text-sm text-muted-foreground">
             Pick a date to see what is happening at this club.
@@ -1454,9 +1479,10 @@ function ClubChatCard({
   const { toast } = useToast()
   const messageLimit = 100
 
+  const canView = isLoggedIn && !isBanned && (isJoined || isAdmin)
   const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery(
     { clubId, limit: messageLimit },
-    { enabled: !!clubId }
+    { enabled: !!clubId && canView }
   )
 
   const sendMessage = trpc.clubChat.send.useMutation({
@@ -1474,7 +1500,7 @@ function ClubChatCard({
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const canPost = isLoggedIn && !isBanned && (isJoined || isAdmin)
+  const canPost = canView
 
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -1513,65 +1539,69 @@ function ClubChatCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isLoading ? (
+        {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
-        {error ? (
+        {error && canView ? (
           <div className="text-sm text-destructive">{error.message}</div>
         ) : null}
 
-        <div
-          ref={listRef}
-          className="max-h-[360px] overflow-y-auto rounded-md border bg-white"
-        >
-          {!isLoading && (!messages || messages.length === 0) ? (
-            <div className="p-3 text-sm text-muted-foreground">
-              No messages yet. Start the conversation.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {(messages ?? []).map((m: any) => {
-                const isMine = currentUserId && m.userId === currentUserId
-                const canDelete = Boolean(isAdmin || isMine)
+        {canView ? (
+          <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-md border bg-white">
+            {!isLoading && (!messages || messages.length === 0) ? (
+              <div className="p-3 text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+            ) : (
+              <div className="divide-y">
+                {(messages ?? []).map((m: any) => {
+                  const isMine = currentUserId && m.userId === currentUserId
+                  const canDelete = Boolean(isAdmin || isMine)
 
-                return (
-                  <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {m.user?.name || 'User'}
+                  return (
+                    <div key={m.id} className="p-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                          </div>
+                          {isMine ? <Badge variant="secondary">You</Badge> : null}
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                        <div
+                          className={cn(
+                            'mt-1 text-sm whitespace-pre-wrap break-words',
+                            m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700'
+                          )}
+                        >
+                          {m.isDeleted ? 'Message removed' : m.text}
                         </div>
-                        {isMine ? <Badge variant="secondary">You</Badge> : null}
                       </div>
-                      <div className={cn('mt-1 text-sm whitespace-pre-wrap break-words', m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700')}>
-                        {m.isDeleted ? 'Message removed' : m.text}
-                      </div>
+
+                      {canDelete && !m.isDeleted ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          disabled={deleteMessage.isPending}
+                          onClick={async () => {
+                            if (!confirm('Delete this message?')) return
+                            await deleteMessage.mutateAsync({ messageId: m.id })
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </div>
-
-                    {canDelete && !m.isDeleted ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        disabled={deleteMessage.isPending}
-                        onClick={async () => {
-                          if (!confirm('Delete this message?')) return
-                          await deleteMessage.mutateAsync({ messageId: m.id })
-                        }}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            Join this club to view chat history and post messages.
+          </div>
+        )}
 
         {!isLoggedIn ? (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
@@ -1585,11 +1615,11 @@ function ClubChatCard({
           joinPolicy === 'APPROVAL' ? (
             isJoinPending ? (
               <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
-                Your join request is pending admin approval.
+                Your join request is pending admin approval. Chat will open after approval.
               </div>
             ) : (
               <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-                <div className="min-w-0">Request to join this club to post messages.</div>
+                <div className="min-w-0">Request to join this club to view and post messages.</div>
                 <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                   Request
                 </Button>
@@ -1597,7 +1627,7 @@ function ClubChatCard({
             )
           ) : (
             <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
-              <div className="min-w-0">Join this club to post messages.</div>
+              <div className="min-w-0">Join this club to view and post messages.</div>
               <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                 Join
               </Button>
@@ -1634,11 +1664,492 @@ function ClubChatCard({
   )
 }
 
-function ClubMembersAdminCard({ clubId }: { clubId: string }) {
+function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const { toast } = useToast()
+  const utils = trpc.useUtils()
+
+  const { data: templates, isLoading, error } = trpc.clubTemplate.list.useQuery({ clubId }, { enabled: !!clubId })
+
+  const createDraft = trpc.clubTemplate.createDraftFromTemplate.useMutation()
+  const deleteTemplate = trpc.clubTemplate.delete.useMutation()
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [selected, setSelected] = useState<{ id: string; name: string } | null>(null)
+  const [draftForm, setDraftForm] = useState({
+    title: '',
+    startDate: '',
+    endDate: '',
+    registrationStartDate: '',
+    registrationEndDate: '',
+    entryFee: '',
+    isRecurring: false,
+    recurrenceFrequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+    recurrenceCount: 4,
+    recurrenceWeekdays: [] as number[],
+  })
+
+  useEffect(() => {
+    if (ENABLE_RECURRING_DRAFTS) return
+    setDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
+  }, [])
+
+  const openCreate = (t: { id: string; name: string }) => {
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const wd = parseYmdToUtc(today)?.getUTCDay() ?? 0
+    setSelected({ id: t.id, name: t.name })
+    setDraftForm({
+      title: '',
+      startDate: today,
+      endDate: today,
+      registrationStartDate: '',
+      registrationEndDate: '',
+      entryFee: '',
+      isRecurring: false,
+      recurrenceFrequency: 'WEEKLY',
+      recurrenceCount: 4,
+      recurrenceWeekdays: [wd],
+    })
+    setCreateOpen(true)
+  }
+
+  const submitCreate = async () => {
+    if (!selected) return
+    if (!draftForm.startDate || !draftForm.endDate) {
+      toast({ title: 'Missing dates', description: 'Start and end dates are required.', variant: 'destructive' })
+      return
+    }
+
+    if (ENABLE_RECURRING_DRAFTS && draftForm.isRecurring) {
+      const count = Number(draftForm.recurrenceCount)
+      if (!Number.isFinite(count) || count < 1 || count > 12) {
+        toast({ title: 'Invalid recurrence', description: 'Occurrences must be between 1 and 12.', variant: 'destructive' })
+        return
+      }
+
+      if (
+        (draftForm.recurrenceFrequency === 'WEEKLY' || draftForm.recurrenceFrequency === 'BIWEEKLY') &&
+        (draftForm.recurrenceWeekdays?.length ?? 0) < 1
+      ) {
+        toast({ title: 'Invalid recurrence', description: 'Pick at least one weekday.', variant: 'destructive' })
+        return
+      }
+    }
+
+    const fee = Number(draftForm.entryFee)
+    const entryFeeCents = Number.isFinite(fee) && fee > 0 ? toCents(fee) : undefined
+
+    try {
+      const recurrence =
+        ENABLE_RECURRING_DRAFTS && draftForm.isRecurring && draftForm.recurrenceCount > 1
+          ? {
+              frequency: draftForm.recurrenceFrequency,
+              count: draftForm.recurrenceCount,
+              weekdays:
+                draftForm.recurrenceFrequency === 'WEEKLY' || draftForm.recurrenceFrequency === 'BIWEEKLY'
+                  ? draftForm.recurrenceWeekdays
+                  : undefined,
+            }
+          : undefined
+
+      const res = await createDraft.mutateAsync({
+        templateId: selected.id,
+        title: draftForm.title.trim() ? draftForm.title.trim() : undefined,
+        startDate: draftForm.startDate,
+        endDate: draftForm.endDate,
+        registrationStartDate: draftForm.registrationStartDate || undefined,
+        registrationEndDate: draftForm.registrationEndDate || undefined,
+        entryFeeCents,
+        recurrence,
+      })
+
+      await utils.clubTemplate.list.invalidate({ clubId })
+      setCreateOpen(false)
+      const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
+      if (Array.isArray(ids) && ids.length > 1) {
+        router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
+      } else {
+        router.push(`/admin/${res.tournamentId}`)
+      }
+    } catch (err: any) {
+      toast({ title: 'Failed', description: err?.message || 'Could not create draft.', variant: 'destructive' })
+    }
+  }
+
+  const recurrencePreview = useMemo<
+    { items: string[] } | { error: string } | null
+  >(() => {
+    if (!ENABLE_RECURRING_DRAFTS || !draftForm.isRecurring || draftForm.recurrenceCount <= 1) return null
+
+    const start = parseYmdToUtc(draftForm.startDate)
+    const end = parseYmdToUtc(draftForm.endDate)
+    if (!start || !end) return null
+    const durationMs = end.getTime() - start.getTime()
+    if (durationMs < 0) return { error: 'End date must be on or after start date.' }
+
+    const config = {
+      frequency: draftForm.recurrenceFrequency,
+      count: draftForm.recurrenceCount,
+      weekdays:
+        draftForm.recurrenceFrequency === 'WEEKLY' || draftForm.recurrenceFrequency === 'BIWEEKLY'
+          ? draftForm.recurrenceWeekdays
+          : undefined,
+    } as const
+
+    const generated = generateRecurringStartDates(start, config)
+    if ('error' in generated) return { error: generated.error }
+
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    const items = generated.startDates.map((s) => {
+      const e = new Date(s.getTime() + durationMs)
+      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+    })
+
+    return { items }
+  }, [
+    draftForm.isRecurring,
+    draftForm.recurrenceCount,
+    draftForm.recurrenceFrequency,
+    draftForm.recurrenceWeekdays,
+    draftForm.startDate,
+    draftForm.endDate,
+  ])
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Layers className="h-4 w-4" />
+          Tournament templates
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="text-xs text-muted-foreground">
+          Templates are visible to all club admins. Creating from a template makes a <span className="font-medium">draft</span> (not public) until you enable Public board.
+        </div>
+
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading templates…</div>
+        ) : error ? (
+          <div className="text-sm text-red-700">
+            {error.message || 'Failed to load templates.'}
+          </div>
+        ) : (templates?.length ?? 0) === 0 ? (
+          <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
+            No templates yet. Open any club tournament and click <span className="font-medium">Save as template</span>.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(templates ?? []).map((t: any) => (
+              <div key={t.id} className="rounded-md border p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 truncate">{t.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t.format ? `${t.format.replace(/_/g, ' ')} • ` : ''}
+                    {typeof t.divisionsCount === 'number' ? `${t.divisionsCount} division${t.divisionsCount === 1 ? '' : 's'} • ` : ''}
+                    Updated {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : ''}
+                  </div>
+                  {t.description ? <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{t.description}</div> : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button type="button" onClick={() => openCreate(t)} disabled={createDraft.isPending}>
+                    Create draft
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-red-700 border-red-200 hover:bg-red-50"
+                    disabled={deleteTemplate.isPending}
+                    onClick={async () => {
+                      if (!confirm('Delete this template?')) return
+                      try {
+                        await deleteTemplate.mutateAsync({ templateId: t.id })
+                        await utils.clubTemplate.list.invalidate({ clubId })
+                        toast({ title: 'Deleted', description: 'Template removed.' })
+                      } catch (err: any) {
+                        toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {createOpen && selected ? (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+            onClick={() => setCreateOpen(false)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl bg-white border border-gray-200 shadow-xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold text-gray-900 truncate">Create draft</div>
+                  <div className="text-xs text-muted-foreground truncate">From template: {selected.name}</div>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setCreateOpen(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">Title (optional)</div>
+                  <Input
+                    value={draftForm.title}
+                    onChange={(e) => setDraftForm((p) => ({ ...p, title: e.target.value }))}
+                    placeholder="Leave empty to use the template's default title"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Start date *</div>
+                    <Input
+                      type="date"
+                      value={draftForm.startDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, startDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">End date *</div>
+                    <Input
+                      type="date"
+                      value={draftForm.endDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, endDate: e.target.value }))}
+                      min={draftForm.startDate || undefined}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Registration start (optional)</div>
+                    <Input
+                      type="date"
+                      value={draftForm.registrationStartDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
+                      max={draftForm.startDate || undefined}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">Registration end (optional)</div>
+                    <Input
+                      type="date"
+                      value={draftForm.registrationEndDate}
+                      onChange={(e) => setDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
+                      min={draftForm.registrationStartDate || undefined}
+                      max={draftForm.startDate || undefined}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">Entry fee (optional, USD)</div>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={draftForm.entryFee}
+                    onChange={(e) => setDraftForm((p) => ({ ...p, entryFee: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div
+                  className={
+                    ENABLE_RECURRING_DRAFTS
+                      ? 'rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3'
+                      : 'hidden'
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={draftForm.isRecurring}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setDraftForm((p) => {
+                            const next = { ...p, isRecurring: checked }
+                            if (checked && (p.recurrenceWeekdays?.length ?? 0) < 1) {
+                              const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
+                              next.recurrenceWeekdays = [wd]
+                            }
+                            return next
+                          })
+                        }}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      Create series
+                    </label>
+                  </div>
+
+                  {draftForm.isRecurring ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Frequency</div>
+                        <select
+                          value={draftForm.recurrenceFrequency}
+                          onChange={(e) => {
+                            const value = e.target.value as any
+                            setDraftForm((p) => {
+                              const next = { ...p, recurrenceFrequency: value }
+                              const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
+                              if (isWeeklyLike && (p.recurrenceWeekdays?.length ?? 0) < 1) {
+                                const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
+                                next.recurrenceWeekdays = [wd]
+                              }
+                              return next
+                            })
+                          }}
+                          className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                        >
+                          <option value="DAILY">Daily</option>
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="BIWEEKLY">Every 2 weeks</option>
+                          <option value="MONTHLY">Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">Occurrences</div>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={draftForm.recurrenceCount}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            const safe = Number.isFinite(n) ? Math.max(1, Math.min(12, Math.trunc(n))) : 1
+                            setDraftForm((p) => ({ ...p, recurrenceCount: safe }))
+                          }}
+                        />
+                        <div className="mt-1 text-xs text-muted-foreground">Max 12. Includes the first draft.</div>
+                      </div>
+
+                      {(draftForm.recurrenceFrequency === 'WEEKLY' ||
+                        draftForm.recurrenceFrequency === 'BIWEEKLY') ? (
+                        <div className="sm:col-span-2">
+                          <div className="text-sm font-medium text-gray-700 mb-2">Weekdays</div>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { v: 0, l: 'Sun' },
+                              { v: 1, l: 'Mon' },
+                              { v: 2, l: 'Tue' },
+                              { v: 3, l: 'Wed' },
+                              { v: 4, l: 'Thu' },
+                              { v: 5, l: 'Fri' },
+                              { v: 6, l: 'Sat' },
+                            ].map((d) => {
+                              const selected = (draftForm.recurrenceWeekdays ?? []).includes(d.v)
+                              return (
+                                <button
+                                  key={d.v}
+                                  type="button"
+                                  onClick={() => {
+                                    setDraftForm((p) => {
+                                      const current = p.recurrenceWeekdays ?? []
+                                      const has = current.includes(d.v)
+                                      const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
+                                      if (nextDays.length < 1) return p
+                                      return { ...p, recurrenceWeekdays: nextDays.sort((a, b) => a - b) }
+                                    })
+                                  }}
+                                  className={`px-3 py-2 rounded-lg border text-sm ${
+                                    selected
+                                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {d.l}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">Example: select Tue + Fri.</div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      Create one draft now. You can always create more later from the same template.
+                    </div>
+                  )}
+
+                  {draftForm.isRecurring ? (
+                    <div className="text-xs text-gray-600">
+                      This will create <span className="font-medium">{draftForm.recurrenceCount}</span> draft tournaments (not public).
+                    </div>
+                  ) : null}
+
+                  {ENABLE_RECURRING_DRAFTS &&
+                  draftForm.isRecurring &&
+                  draftForm.recurrenceCount > 1 ? (
+                    <div className="rounded-md border border-gray-200 bg-white p-3">
+                      <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
+                      {recurrencePreview && 'error' in recurrencePreview ? (
+                        <div className="text-xs text-red-700">{recurrencePreview.error}</div>
+                      ) : recurrencePreview && 'items' in recurrencePreview && recurrencePreview.items.length ? (
+                        <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
+                          {recurrencePreview.items.map((label, idx) => (
+                            <li key={idx} className="flex gap-2">
+                              <span className="w-5 text-gray-400">{idx + 1}.</span>
+                              <span className="flex-1">{label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">Pick dates to see a preview.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={submitCreate} disabled={createDraft.isPending}>
+                  {createDraft.isPending
+                    ? 'Creating…'
+                    : ENABLE_RECURRING_DRAFTS &&
+                        draftForm.isRecurring &&
+                        draftForm.recurrenceCount > 1
+                      ? `Create ${draftForm.recurrenceCount} drafts`
+                      : 'Create draft'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canModerate: boolean }) {
   const { toast } = useToast()
   const utils = trpc.useUtils()
 
   const { data, isLoading, error } = trpc.club.listMembers.useQuery({ clubId }, { enabled: !!clubId })
+  const canManage = Boolean(canModerate || (data as any)?.canModerate)
 
   const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
     onSuccess: async () => {
@@ -1712,19 +2223,23 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
           <Users className="h-4 w-4" />
-          Members & bans (admins)
+          {canManage ? 'Members & bans (admins)' : 'Members'}
         </CardTitle>
         <div className="text-xs text-muted-foreground">
-          {joinRequests.length} request{joinRequests.length === 1 ? '' : 's'}
-          <span className="mx-1">•</span>
           {members.length} member{members.length === 1 ? '' : 's'}
-          <span className="mx-1">•</span>
-          {bans.length} ban{bans.length === 1 ? '' : 's'}
+          {canManage ? (
+            <>
+              <span className="mx-1">•</span>
+              {joinRequests.length} request{joinRequests.length === 1 ? '' : 's'}
+              <span className="mx-1">•</span>
+              {bans.length} ban{bans.length === 1 ? '' : 's'}
+            </>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <Input
-          placeholder="Search requests / members / bans…"
+          placeholder={canManage ? 'Search requests / members / bans…' : 'Search members…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -1732,82 +2247,84 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
         {isLoading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
         {error ? <div className="text-sm text-destructive">{error.message}</div> : null}
 
-        <div className="rounded-md border bg-white p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-medium text-gray-900">Join requests</div>
-            <div className="text-xs text-muted-foreground">{joinRequests.length}</div>
-          </div>
+        {canManage ? (
+          <div className="rounded-md border bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-medium text-gray-900">Join requests</div>
+              <div className="text-xs text-muted-foreground">{joinRequests.length}</div>
+            </div>
 
-          {joinRequests.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No pending requests.</div>
-          ) : (
-            <div className="divide-y rounded-md border">
-              {joinRequests.slice(0, 200).map((r: any) => (
-                <div key={r.userId} className="p-2 flex items-center justify-between gap-2 bg-white">
-                  <div className="min-w-0 flex items-center gap-2">
-                    {r.user?.image ? (
-                      <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
-                        <Image src={r.user.image} alt="" fill className="object-cover" />
-                      </div>
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
-                        {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+            {joinRequests.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No pending requests.</div>
+            ) : (
+              <div className="divide-y rounded-md border">
+                {joinRequests.slice(0, 200).map((r: any) => (
+                  <div key={r.userId} className="p-2 flex items-center justify-between gap-2 bg-white">
+                    <div className="min-w-0 flex items-center gap-2">
+                      {r.user?.image ? (
+                        <div className="relative w-7 h-7 rounded-full overflow-hidden border border-gray-200">
+                          <Image src={r.user.image} alt="" fill className="object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
+                          {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+                        </div>
                       </div>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="gap-2"
+                        disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                        onClick={async () => {
+                          if (!confirm('Approve this join request?')) return
+                          try {
+                            await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                            toast({ title: 'Approved', description: 'User joined the club.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
+                        onClick={async () => {
+                          if (!confirm('Reject this join request?')) return
+                          try {
+                            await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
+                            toast({ title: 'Rejected', description: 'Request rejected.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="gap-2"
-                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
-                      onClick={async () => {
-                        if (!confirm('Approve this join request?')) return
-                        try {
-                          await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                          toast({ title: 'Approved', description: 'User joined the club.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
-                      onClick={async () => {
-                        if (!confirm('Reject this join request?')) return
-                        try {
-                          await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                          toast({ title: 'Rejected', description: 'Request rejected.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Reject
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            {joinRequests.length > 200 ? (
+              <div className="text-xs text-muted-foreground">Showing first 200 requests.</div>
+            ) : null}
+          </div>
+        ) : null}
 
-          {joinRequests.length > 200 ? (
-            <div className="text-xs text-muted-foreground">Showing first 200 requests.</div>
-          ) : null}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className={`grid grid-cols-1 ${canManage ? 'md:grid-cols-2' : ''} gap-3`}>
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-900">Members</div>
             {members.length === 0 ? (
@@ -1834,46 +2351,48 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
                         ) : null}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        disabled={kickMember.isPending || banUser.isPending}
-                        onClick={async () => {
-                          if (!confirm('Remove this member from the club?')) return
-                          try {
-                            await kickMember.mutateAsync({ clubId, userId: m.userId })
-                            toast({ title: 'Removed', description: 'Member removed from the club.' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
-                      >
-                        <UserMinus className="h-4 w-4" />
-                        Kick
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="gap-2"
-                        disabled={kickMember.isPending || banUser.isPending}
-                        onClick={async () => {
-                          const reason = prompt('Ban reason (optional):') || ''
-                          if (!confirm('Ban this user? They will not be able to re-join.')) return
-                          try {
-                            await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
-                            toast({ title: 'Banned', description: 'User banned.' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
-                      >
-                        <Ban className="h-4 w-4" />
-                        Ban
-                      </Button>
-                    </div>
+                    {canManage ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          disabled={kickMember.isPending || banUser.isPending}
+                          onClick={async () => {
+                            if (!confirm('Remove this member from the club?')) return
+                            try {
+                              await kickMember.mutateAsync({ clubId, userId: m.userId })
+                              toast({ title: 'Removed', description: 'Member removed from the club.' })
+                            } catch (err: any) {
+                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                            }
+                          }}
+                        >
+                          <UserMinus className="h-4 w-4" />
+                          Kick
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-2"
+                          disabled={kickMember.isPending || banUser.isPending}
+                          onClick={async () => {
+                            const reason = prompt('Ban reason (optional):') || ''
+                            if (!confirm('Ban this user? They will not be able to re-join.')) return
+                            try {
+                              await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
+                              toast({ title: 'Banned', description: 'User banned.' })
+                            } catch (err: any) {
+                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                            }
+                          }}
+                        >
+                          <Ban className="h-4 w-4" />
+                          Ban
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1883,46 +2402,48 @@ function ClubMembersAdminCard({ clubId }: { clubId: string }) {
             ) : null}
           </div>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-900">Bans</div>
-            {bans.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No bans.</div>
-            ) : (
-              <div className="rounded-md border divide-y bg-white">
-                {bans.slice(0, 200).map((b: any) => (
-                  <div key={b.userId} className="p-2 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
-                        {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
-                        {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
+          {canManage ? (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-900">Bans</div>
+              {bans.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No bans.</div>
+              ) : (
+                <div className="rounded-md border divide-y bg-white">
+                  {bans.slice(0, 200).map((b: any) => (
+                    <div key={b.userId} className="p-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
+                          {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
+                          {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
+                        </div>
+                        {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}
                       </div>
-                      {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={unbanUser.isPending}
+                        onClick={async () => {
+                          if (!confirm('Unban this user?')) return
+                          try {
+                            await unbanUser.mutateAsync({ clubId, userId: b.userId })
+                            toast({ title: 'Unbanned', description: 'User can join again.' })
+                          } catch (err: any) {
+                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+                          }
+                        }}
+                      >
+                        Unban
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={unbanUser.isPending}
-                      onClick={async () => {
-                        if (!confirm('Unban this user?')) return
-                        try {
-                          await unbanUser.mutateAsync({ clubId, userId: b.userId })
-                          toast({ title: 'Unbanned', description: 'User can join again.' })
-                        } catch (err: any) {
-                          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                        }
-                      }}
-                    >
-                      Unban
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {bans.length > 200 ? <div className="text-xs text-muted-foreground">Showing first 200 bans.</div> : null}
-          </div>
+                  ))}
+                </div>
+              )}
+              {bans.length > 200 ? <div className="text-xs text-muted-foreground">Showing first 200 bans.</div> : null}
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>

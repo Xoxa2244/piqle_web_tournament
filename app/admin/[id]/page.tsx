@@ -122,6 +122,8 @@ export default function TournamentDetailPage() {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [templateForm, setTemplateForm] = useState({ name: '', description: '' })
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -278,6 +280,17 @@ export default function TournamentDetailPage() {
       alert('Error updating tournament: ' + error.message)
     },
   })
+
+  const saveAsClubTemplate = trpc.clubTemplate.saveFromTournament.useMutation({
+    onSuccess: () => {
+      setShowSaveTemplate(false)
+      setTemplateForm({ name: '', description: '' })
+      alert('Saved as club template')
+    },
+    onError: (error) => {
+      alert('Failed to save template: ' + error.message)
+    },
+  })
   
   const createDivision = trpc.division.create.useMutation({
     onSuccess: () => {
@@ -345,6 +358,33 @@ export default function TournamentDetailPage() {
     })
     setImagePreview(tournament.image || null)
     setShowEditTournament(true)
+  }
+
+  const openSaveTemplateModal = () => {
+    if (!tournament?.clubId) return
+    setTemplateForm({ name: tournament.title || '', description: '' })
+    setShowSaveTemplate(true)
+  }
+
+  const handleSaveTemplate = async () => {
+    if (!tournament?.id) return
+    if (!tournament?.clubId) {
+      alert('This tournament is not linked to a club.')
+      return
+    }
+    if (!templateForm.name.trim()) {
+      alert('Please enter a template name')
+      return
+    }
+    try {
+      await saveAsClubTemplate.mutateAsync({
+        tournamentId: tournament.id,
+        name: templateForm.name.trim(),
+        description: templateForm.description.trim() ? templateForm.description.trim() : undefined,
+      })
+    } catch {
+      // Error is surfaced via mutation onError.
+    }
   }
 
   const handleTournamentSubmit = () => {
@@ -566,13 +606,39 @@ export default function TournamentDetailPage() {
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
                     <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
+                {isAdmin ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={handleEditTournamentClick}
+                    >
+                      <Settings className="h-4 w-4" />
+                      Edit
+                    </Button>
+                    {tournament.clubId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={openSaveTemplateModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Save as template
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Tournament status — выше описания */}
@@ -1228,6 +1294,73 @@ export default function TournamentDetailPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Save as Club Template Modal */}
+      {showSaveTemplate && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[115] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowSaveTemplate(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 border border-gray-200 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center p-8 pb-6">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
+                <Layers className="w-6 h-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-bold text-gray-900 truncate">Save as template</h2>
+                <p className="text-sm text-gray-500 truncate">Visible to all club admins</p>
+              </div>
+            </div>
+
+            <div className="px-8 pb-6 space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Template name *</label>
+                <input
+                  type="text"
+                  value={templateForm.name}
+                  onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  placeholder="e.g., Weekly RR 3.0–3.5"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Description (optional)</label>
+                <textarea
+                  value={templateForm.description}
+                  onChange={(e) => setTemplateForm((p) => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm resize-none"
+                  placeholder="What this preset is for, who it’s for, etc."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 px-8 pb-8">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowSaveTemplate(false)}
+                disabled={saveAsClubTemplate.isPending}
+                className="px-6 py-3 text-base rounded-xl border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveTemplate}
+                disabled={saveAsClubTemplate.isPending || !templateForm.name.trim()}
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
+              >
+                {saveAsClubTemplate.isPending ? 'Saving…' : 'Save template'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

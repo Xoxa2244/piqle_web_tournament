@@ -110,6 +110,10 @@ const clubCreateInput = z.object({
   bookingRequestEmail: z.string().email().optional(),
 })
 
+const clubUpdateInput = clubCreateInput.extend({
+  id: z.string(),
+})
+
 export const clubRouter = createTRPCRouter({
   list: publicProcedure
     .input(
@@ -128,6 +132,20 @@ export const clubRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const now = new Date()
       const userId = ctx.session?.user?.id ?? DUMMY_USER_ID
+
+      let bannedClubIds = new Set<string>()
+      if (userId !== DUMMY_USER_ID) {
+        try {
+          const bans = await ctx.prisma.clubBan.findMany({
+            where: { userId },
+            select: { clubId: true },
+          })
+          bannedClubIds = new Set(bans.map((b) => b.clubId))
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_bans')) throw err
+          bannedClubIds = new Set<string>()
+        }
+      }
 
       const where: any = {}
       if (input?.query?.trim()) {
@@ -149,7 +167,8 @@ export const clubRouter = createTRPCRouter({
         where.courtReserveUrl = { not: null }
       }
       if (input?.hasUpcomingEvents) {
-        where.tournaments = { some: { endDate: { gte: now } } }
+        // Only count public/published events as "upcoming" for discovery.
+        where.tournaments = { some: { endDate: { gte: now }, isPublicBoardEnabled: true } }
       }
 
       const clubs = await ctx.prisma.club.findMany({
@@ -177,6 +196,11 @@ export const clubRouter = createTRPCRouter({
             select: { id: true },
             take: 1,
           },
+          admins: {
+            where: { userId },
+            select: { id: true },
+            take: 1,
+          },
           joinRequests: {
             where: { userId },
             select: { id: true },
@@ -184,7 +208,7 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now } },
+            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
             orderBy: { startDate: 'asc' },
             take: 1,
             select: {
@@ -198,7 +222,10 @@ export const clubRouter = createTRPCRouter({
         },
       })
 
-      return clubs.map((club) => ({
+      const visibleClubs =
+        bannedClubIds.size > 0 ? clubs.filter((club) => !bannedClubIds.has(club.id)) : clubs
+
+      return visibleClubs.map((club) => ({
         id: club.id,
         name: club.name,
         kind: club.kind,
@@ -212,6 +239,7 @@ export const clubRouter = createTRPCRouter({
         followersCount: club._count.followers,
         tournamentsCount: club._count.tournaments,
         isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
+        isAdmin: club.admins.length > 0 && userId !== DUMMY_USER_ID,
         isJoinPending: (club.joinRequests?.length ?? 0) > 0 && userId !== DUMMY_USER_ID,
         nextTournament: club.tournaments[0] ?? null,
       }))
@@ -238,6 +266,7 @@ export const clubRouter = createTRPCRouter({
           country: true,
           isVerified: true,
           courtReserveUrl: true,
+          bookingRequestEmail: true,
           createdAt: true,
           _count: { select: { followers: true } },
           followers: {
@@ -252,7 +281,7 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now } },
+            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
             orderBy: { startDate: 'asc' },
             take: 20,
             select: {
@@ -273,6 +302,7 @@ export const clubRouter = createTRPCRouter({
               title: true,
               body: true,
               createdAt: true,
+              updatedAt: true,
               createdByUser: {
                 select: {
                   id: true,
@@ -301,6 +331,11 @@ export const clubRouter = createTRPCRouter({
         } catch (err: any) {
           if (!isMissingDbRelation(err, 'club_bans')) throw err
         }
+      }
+
+      if (isBanned) {
+        // Hide existence for banned users.
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
       let isJoinPending = false
@@ -459,15 +494,31 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
-      const existing = await ctx.prisma.clubFollower.findUnique({
-        where: {
-          clubId_userId: {
-            clubId: input.clubId,
-            userId,
+      const [existing, adminRole] = await Promise.all([
+        ctx.prisma.clubFollower.findUnique({
+          where: {
+            clubId_userId: {
+              clubId: input.clubId,
+              userId,
+            },
           },
-        },
-        select: { id: true },
-      })
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: {
+            clubId_userId: {
+              clubId: input.clubId,
+              userId,
+            },
+          },
+          select: { id: true },
+        }),
+      ])
+
+      // Club admins are implicit members; don't allow join/leave toggle for them.
+      if (adminRole) {
+        return { isFollowing: true, isJoinPending: false, status: 'admin' as const }
+      }
 
       if (existing) {
         await ctx.prisma.clubFollower.delete({ where: { id: existing.id } })
@@ -605,6 +656,48 @@ export const clubRouter = createTRPCRouter({
     }
   }),
 
+  update: protectedProcedure.input(clubUpdateInput).mutation(async ({ ctx, input }) => {
+    const userId = ctx.session.user.id
+
+    const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+      where: { clubId_userId: { clubId: input.id, userId } },
+      select: { id: true },
+    })
+    if (!isAdmin) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can edit this club' })
+    }
+
+    try {
+      const club = await ctx.prisma.club.update({
+        where: { id: input.id },
+        data: {
+          name: input.name.trim(),
+          kind: input.kind,
+          joinPolicy: input.joinPolicy,
+          description: input.description?.trim() || null,
+          logoUrl: input.logoUrl?.trim() || null,
+          address: input.address?.trim() || null,
+          city: input.city?.trim() || null,
+          state: input.state?.trim() || null,
+          country: input.country?.trim() || null,
+          courtReserveUrl: input.courtReserveUrl?.trim() || null,
+          bookingRequestEmail: input.bookingRequestEmail?.trim() || null,
+        },
+        select: { id: true },
+      })
+
+      return club
+    } catch (err: any) {
+      if (isMissingDbColumn(err, 'join_policy')) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'clubs.join_policy column is missing. Apply DB migration first.',
+        })
+      }
+      throw err
+    }
+  }),
+
   createAnnouncement: protectedProcedure
     .input(
       z.object({
@@ -649,6 +742,79 @@ export const clubRouter = createTRPCRouter({
       })
 
       return announcement
+    }),
+
+  updateAnnouncement: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+        announcementId: z.string(),
+        title: z.string().max(120).optional(),
+        body: z.string().min(1).max(4000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can edit announcements' })
+      }
+
+      const existing = await ctx.prisma.clubAnnouncement.findUnique({
+        where: { id: input.announcementId },
+        select: { id: true, clubId: true },
+      })
+      if (!existing || existing.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Announcement not found' })
+      }
+
+      const updated = await ctx.prisma.clubAnnouncement.update({
+        where: { id: input.announcementId },
+        data: {
+          title: input.title?.trim() || null,
+          body: input.body.trim(),
+        },
+        include: {
+          createdByUser: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
+        },
+      })
+
+      return updated
+    }),
+
+  deleteAnnouncement: protectedProcedure
+    .input(z.object({ clubId: z.string(), announcementId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can delete announcements' })
+      }
+
+      const existing = await ctx.prisma.clubAnnouncement.findUnique({
+        where: { id: input.announcementId },
+        select: { id: true, clubId: true },
+      })
+      if (!existing || existing.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Announcement not found' })
+      }
+
+      await ctx.prisma.clubAnnouncement.delete({ where: { id: input.announcementId } })
+      return { success: true }
     }),
 
   createBookingRequest: publicProcedure
@@ -906,12 +1072,21 @@ If you weren’t expecting this, you can ignore this email.`
     .query(async ({ ctx, input }) => {
       const currentUserId = ctx.session.user.id
 
-      const myAdminRole = await ctx.prisma.clubAdmin.findUnique({
-        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
-        select: { role: true },
-      })
-      if (!myAdminRole) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view members' })
+      const [myAdminRole, myFollow] = await Promise.all([
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+          select: { role: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+          select: { id: true },
+        }),
+      ])
+
+      const canModerate = Boolean(myAdminRole)
+      const canView = canModerate || Boolean(myFollow)
+      if (!canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to view members' })
       }
 
       const [followers, admins] = await Promise.all([
@@ -934,11 +1109,70 @@ If you weren’t expecting this, you can ignore this email.`
         }),
         ctx.prisma.clubAdmin.findMany({
           where: { clubId: input.clubId },
-          select: { userId: true, role: true },
+          select: {
+            userId: true,
+            role: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                email: true, // only used to compute masked value
+              },
+            },
+          },
         }),
       ])
 
       const adminRoleByUserId = new Map(admins.map((a) => [a.userId, a.role] as const))
+      const memberByUserId = new Map<
+        string,
+        {
+          userId: string
+          joinedAt: Date
+          role: string | null
+          user: {
+            id: string
+            name: string | null
+            image: string | null
+            emailMasked: string | null
+          }
+        }
+      >()
+
+      for (const follower of followers) {
+        memberByUserId.set(follower.userId, {
+          userId: follower.userId,
+          joinedAt: follower.createdAt,
+          role: adminRoleByUserId.get(follower.userId) ?? null,
+          user: {
+            id: follower.user.id,
+            name: follower.user.name,
+            image: follower.user.image,
+            emailMasked: maskEmail(follower.user.email),
+          },
+        })
+      }
+
+      for (const admin of admins) {
+        if (memberByUserId.has(admin.userId)) continue
+        memberByUserId.set(admin.userId, {
+          userId: admin.userId,
+          joinedAt: admin.createdAt,
+          role: admin.role,
+          user: {
+            id: admin.user.id,
+            name: admin.user.name,
+            image: admin.user.image,
+            emailMasked: maskEmail(admin.user.email),
+          },
+        })
+      }
+
+      const members = Array.from(memberByUserId.values()).sort(
+        (a, b) => b.joinedAt.getTime() - a.joinedAt.getTime()
+      )
 
       let bans: Array<{
         userId: string
@@ -949,23 +1183,25 @@ If you weren’t expecting this, you can ignore this email.`
         bannedByUser: { id: string; name: string | null; image: string | null }
       }> = []
 
-      try {
-        bans = await ctx.prisma.clubBan.findMany({
-          where: { clubId: input.clubId },
-          orderBy: { createdAt: 'desc' },
-          take: 500,
-          select: {
-            userId: true,
-            reason: true,
-            createdAt: true,
-            bannedByUserId: true,
-            user: { select: { id: true, name: true, image: true, email: true } },
-            bannedByUser: { select: { id: true, name: true, image: true } },
-          },
-        })
-      } catch (err: any) {
-        if (!isMissingDbRelation(err, 'club_bans')) throw err
-        bans = []
+      if (canModerate) {
+        try {
+          bans = await ctx.prisma.clubBan.findMany({
+            where: { clubId: input.clubId },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+            select: {
+              userId: true,
+              reason: true,
+              createdAt: true,
+              bannedByUserId: true,
+              user: { select: { id: true, name: true, image: true, email: true } },
+              bannedByUser: { select: { id: true, name: true, image: true } },
+            },
+          })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_bans')) throw err
+          bans = []
+        }
       }
 
       let joinRequests: Array<{
@@ -974,35 +1210,28 @@ If you weren’t expecting this, you can ignore this email.`
         user: { id: string; name: string | null; image: string | null; email: string }
       }> = []
 
-      try {
-        joinRequests = await ctx.prisma.clubJoinRequest.findMany({
-          where: { clubId: input.clubId },
-          orderBy: { createdAt: 'desc' },
-          take: 500,
-          select: {
-            userId: true,
-            createdAt: true,
-            user: { select: { id: true, name: true, image: true, email: true } },
-          },
-        })
-      } catch (err: any) {
-        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
-        joinRequests = []
+      if (canModerate) {
+        try {
+          joinRequests = await ctx.prisma.clubJoinRequest.findMany({
+            where: { clubId: input.clubId },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+            select: {
+              userId: true,
+              createdAt: true,
+              user: { select: { id: true, name: true, image: true, email: true } },
+            },
+          })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+          joinRequests = []
+        }
       }
 
       return {
-        myRole: myAdminRole.role,
-        members: followers.map((f) => ({
-          userId: f.userId,
-          joinedAt: f.createdAt,
-          role: adminRoleByUserId.get(f.userId) ?? null,
-          user: {
-            id: f.user.id,
-            name: f.user.name,
-            image: f.user.image,
-            emailMasked: maskEmail(f.user.email),
-          },
-        })),
+        canModerate,
+        myRole: myAdminRole?.role ?? null,
+        members,
         bans: bans.map((b) => ({
           userId: b.userId,
           bannedAt: b.createdAt,

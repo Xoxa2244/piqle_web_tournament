@@ -97,6 +97,8 @@ export default function TournamentRegistrationPage() {
   const entryFeeCents = seatMap?.entryFeeCents ?? 0
   const isPaidTournament = entryFeeCents > 0
   const payoutsActive = Boolean(seatMap?.payoutsActive)
+  const isLadderFormat =
+    (seatMap as any)?.format === 'ONE_DAY_LADDER' || (seatMap as any)?.format === 'LADDER_LEAGUE'
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
@@ -216,6 +218,13 @@ export default function TournamentRegistrationPage() {
                 </p>
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
                   Cancel Registration
+                </Button>
+              </div>
+            )}
+            {isLadderFormat && (
+              <div className="pt-2">
+                <Button variant="outline" onClick={() => router.push(`/tournaments/${tournamentId}/ladder`)}>
+                  View Ladder
                 </Button>
               </div>
             )}

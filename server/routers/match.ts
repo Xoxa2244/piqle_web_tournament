@@ -74,9 +74,11 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      const isLeagueRoundRobin = division.tournament.format === 'LEAGUE_ROUND_ROBIN'
-      if (isLeagueRoundRobin && !input.matchDayId) {
-        throw new Error('League Round Robin requires selecting a match day to generate Round Robin')
+      const requiresMatchDay =
+        division.tournament.format === 'LEAGUE_ROUND_ROBIN' ||
+        division.tournament.format === 'LADDER_LEAGUE'
+      if (requiresMatchDay && !input.matchDayId) {
+        throw new Error('This tournament format requires selecting a match day to generate Round Robin')
       }
 
       // Check if RR already exists (for this division, and for this day if League Round Robin)
@@ -89,7 +91,7 @@ export const matchRouter = createTRPCRouter({
       })
 
       if (existingMatches.length > 0) {
-        throw new Error(isLeagueRoundRobin ? 'Round Robin already generated for this day' : 'Round Robin already generated for this division')
+        throw new Error(requiresMatchDay ? 'Round Robin already generated for this day' : 'Round Robin already generated for this division')
       }
 
       // Generate Round Robin schedule - separate by pools if they exist
@@ -241,9 +243,11 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Need at least 2 teams to generate Round Robin')
       }
 
-      const isLeagueRoundRobin = division.tournament.format === 'LEAGUE_ROUND_ROBIN'
-      if (isLeagueRoundRobin && !input.matchDayId) {
-        throw new Error('League Round Robin requires selecting a match day to regenerate Round Robin')
+      const requiresMatchDay =
+        division.tournament.format === 'LEAGUE_ROUND_ROBIN' ||
+        division.tournament.format === 'LADDER_LEAGUE'
+      if (requiresMatchDay && !input.matchDayId) {
+        throw new Error('This tournament format requires selecting a match day to regenerate Round Robin')
       }
 
       // Delete existing RR matches (and their games) for this division, and for this day if League Round Robin

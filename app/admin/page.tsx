@@ -3,7 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Image from 'next/image'
@@ -73,11 +73,39 @@ export default function AdminPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
+  const [createdDraftIds, setCreatedDraftIds] = useState<string[]>([])
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
     setBaseUrl(window.location.origin)
   }, [])
+
+  // Show a "created drafts" modal when redirected from template recurrence creation.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const raw = params.get('createdDraftIds')
+    if (!raw) return
+
+    const ids = raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 50)
+
+    if (!ids.length) return
+    setCreatedDraftIds(ids)
+
+    params.delete('createdDraftIds')
+    const qs = params.toString()
+    const nextUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname
+    window.history.replaceState({}, '', nextUrl)
+  }, [])
+
+  const createdDraftItems = useMemo(() => {
+    const byId = new Map<string, any>()
+    ;(tournaments as any[] | undefined)?.forEach((t) => byId.set(t.id, t))
+    return createdDraftIds.map((id) => byId.get(id) ?? { id })
+  }, [createdDraftIds, tournaments])
 
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
     setDeleteModal({ id: tournamentId, title: tournamentTitle })
@@ -119,6 +147,65 @@ export default function AdminPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
       </div>
+
+      {/* Created Drafts Modal (from recurring template creation) */}
+      {createdDraftIds.length ? (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+          onClick={() => setCreatedDraftIds([])}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Drafts created</h2>
+                <p className="text-sm text-gray-600">
+                  Created {createdDraftIds.length} draft tournament{createdDraftIds.length === 1 ? '' : 's'} from a template.
+                </p>
+              </div>
+              {createdDraftIds[0] ? (
+                <Link
+                  href={`/admin/${createdDraftIds[0]}`}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 rounded-lg transition-colors"
+                >
+                  Open first
+                </Link>
+              ) : null}
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto border border-gray-200 rounded-xl divide-y">
+              {createdDraftItems.map((t: any) => (
+                <div key={t.id} className="p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{t.title ?? t.id}</div>
+                    {t.startDate ? (
+                      <div className="text-xs text-gray-500">
+                        {new Date(t.startDate).toLocaleDateString()} – {new Date(t.endDate ?? t.startDate).toLocaleDateString()}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-500 font-mono truncate">{t.id}</div>
+                    )}
+                  </div>
+                  <Link
+                    href={`/admin/${t.id}`}
+                    className="shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
+                  >
+                    Open
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setCreatedDraftIds([])}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {tournaments && tournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">

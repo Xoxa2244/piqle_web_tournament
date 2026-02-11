@@ -72,12 +72,12 @@ export default function ClubsPage() {
 
   const followingClubs = useMemo(() => {
     if (!isLoggedIn) return []
-    return (clubs ?? []).filter((c: any) => c.isFollowing || c.isJoinPending)
+    return (clubs ?? []).filter((c: any) => c.isFollowing || c.isJoinPending || c.isAdmin)
   }, [clubs, isLoggedIn])
 
   const discoverClubs = useMemo(() => {
     if (!isLoggedIn) return clubs ?? []
-    return (clubs ?? []).filter((c: any) => !c.isFollowing && !c.isJoinPending)
+    return (clubs ?? []).filter((c: any) => !c.isFollowing && !c.isJoinPending && !c.isAdmin)
   }, [clubs, isLoggedIn])
 
   const getInitials = (name: string) => {
@@ -176,21 +176,27 @@ export default function ClubsPage() {
               View
             </Button>
           </Link>
-          <Button
-            variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
-            className="flex-1"
-            onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
-            disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
-            title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
-          >
-            {club.isFollowing
-              ? 'Joined'
-              : club.isJoinPending
-                ? 'Cancel'
-                : club.joinPolicy === 'APPROVAL'
-                  ? 'Request'
-                  : 'Join'}
-          </Button>
+          {club.isAdmin ? (
+            <Button variant="secondary" className="flex-1" disabled>
+              Admin
+            </Button>
+          ) : (
+            <Button
+              variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
+              className="flex-1"
+              onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
+              disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
+              title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
+            >
+              {club.isFollowing
+                ? 'Joined'
+                : club.isJoinPending
+                  ? 'Cancel'
+                  : club.joinPolicy === 'APPROVAL'
+                    ? 'Request'
+                    : 'Join'}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -266,6 +272,9 @@ export default function ClubsPage() {
               <Checkbox checked={verifiedOnly} onCheckedChange={(v) => setVerifiedOnly(Boolean(v))} />
               Verified only
             </label>
+            <span className="text-xs text-muted-foreground">
+              Verified = approved by Piqle team.
+            </span>
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
