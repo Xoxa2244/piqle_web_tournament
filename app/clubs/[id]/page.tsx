@@ -642,7 +642,11 @@ export default function ClubDetailPage() {
             {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
 
             {club.isAdmin || club.isFollowing ? (
-              <ClubMembersAdminCard clubId={club.id} canModerate={club.isAdmin} />
+              <ClubMembersAdminCard
+                clubId={club.id}
+                canModerate={club.isAdmin}
+                currentUserId={session?.user?.id}
+              />
             ) : null}
 
             <ClubChatCard
@@ -2144,7 +2148,15 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
   )
 }
 
-function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canModerate: boolean }) {
+function ClubMembersAdminCard({
+  clubId,
+  canModerate,
+  currentUserId,
+}: {
+  clubId: string
+  canModerate: boolean
+  currentUserId?: string
+}) {
   const { toast } = useToast()
   const utils = trpc.useUtils()
 
@@ -2331,7 +2343,9 @@ function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canMode
               <div className="text-sm text-muted-foreground">No members.</div>
             ) : (
               <div className="rounded-md border divide-y bg-white">
-                {members.slice(0, 200).map((m: any) => (
+                {members.slice(0, 200).map((m: any) => {
+                  const isSelf = Boolean(currentUserId && m.userId === currentUserId)
+                  return (
                   <div key={m.userId} className="p-2 flex items-center justify-between gap-2">
                     <div className="min-w-0 flex items-center gap-2">
                       {m.user?.image ? (
@@ -2344,6 +2358,7 @@ function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canMode
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
+                          {isSelf ? <Badge variant="secondary">You</Badge> : null}
                           {m.role ? <Badge variant="outline">{m.role}</Badge> : null}
                         </div>
                         {m.user?.emailMasked ? (
@@ -2351,7 +2366,7 @@ function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canMode
                         ) : null}
                       </div>
                     </div>
-                    {canManage ? (
+                    {canManage && !isSelf ? (
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -2394,7 +2409,8 @@ function ClubMembersAdminCard({ clubId, canModerate }: { clubId: string; canMode
                       </div>
                     ) : null}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             {members.length > 200 ? (
