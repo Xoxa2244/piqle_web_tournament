@@ -1634,7 +1634,7 @@ function NewTournamentPageInner() {
                   >
                     <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                     <option value="ROUND_ROBIN">Round Robin</option>
-                    <option value="LEAGUE_ROUND_ROBIN">League Round Robin</option>
+                    <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
                     <option value="ONE_DAY_LADDER">One-day Ladder</option>
                     <option value="LADDER_LEAGUE">Ladder League</option>
                     <option value="MLP">MiLP style</option>

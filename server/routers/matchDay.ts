@@ -26,7 +26,7 @@ export const matchDayRouter = createTRPCRouter({
       ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Match days can only be created for Indy League, League Round Robin, or Ladder League tournaments',
+          message: 'Match days can only be created for Indy League, Round Robin League, or Ladder League tournaments',
         })
       }
 
@@ -116,7 +116,7 @@ export const matchDayRouter = createTRPCRouter({
       ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'This endpoint is only for Indy League, League Round Robin, or Ladder League tournaments',
+          message: 'This endpoint is only for Indy League, Round Robin League, or Ladder League tournaments',
         })
       }
 
