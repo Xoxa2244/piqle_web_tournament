@@ -1,22 +1,7 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import profanity from 'leo-profanity'
-
-// Load dictionaries once at module init.
-profanity.loadDictionary('en')
-profanity.add(profanity.getDictionary('ru'))
-profanity.add(profanity.getDictionary('es'))
-
-const extraBlocked = (process.env.CHAT_BLOCKED_WORDS || '')
-  .split(',')
-  .map((w) => w.trim())
-  .filter(Boolean)
-if (extraBlocked.length) {
-  profanity.add(extraBlocked)
-}
-
-const normalizeText = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ')
+import { normalizeTextForSpam, sanitizeChatText } from '../utils/chatModeration'
 
 const isMissingDbRelation = (err: any, relationName: string) => {
   const msg = String(err?.message ?? '').toLowerCase()
@@ -176,7 +161,7 @@ export const clubChatRouter = createTRPCRouter({
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
         }
 
-        if (normalizeText(lastMessage.text) === normalizeText(trimmed)) {
+        if (normalizeTextForSpam(lastMessage.text) === normalizeTextForSpam(trimmed)) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Duplicate message.' })
         }
       }
@@ -191,12 +176,9 @@ export const clubChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: `Too many links (max ${maxLinksPerMessage}).` })
       }
 
-      let sanitized = trimmed
-      let wasFiltered = false
-      if (profanity.check(sanitized)) {
-        sanitized = profanity.clean(sanitized)
-        wasFiltered = sanitized !== trimmed
-      }
+      const moderation = sanitizeChatText(trimmed)
+      const sanitized = moderation.text
+      const wasFiltered = moderation.wasFiltered
 
       const message = await ctx.prisma.clubChatMessage.create({
         data: {
