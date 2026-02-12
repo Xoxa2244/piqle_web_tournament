@@ -129,10 +129,27 @@ function HomePageContent() {
     { enabled: tournamentIds.length > 0 }
   )
 
+  const { data: registrationStatuses } = trpc.registration.getMyStatuses.useQuery(
+    { tournamentIds },
+    { enabled: !!session && tournamentIds.length > 0 }
+  )
+
   const { data: commentCounts } = trpc.comment.getTournamentCommentCounts.useQuery(
     { tournamentIds },
     { enabled: tournamentIds.length > 0 }
   )
+  
+  const cancelRegistration = trpc.registration.cancelRegistration.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
+
+  const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
+    onSuccess: () => {
+      utils.registration.getMyStatuses.invalidate({ tournamentIds })
+    },
+  })
   
   const toggleRating = trpc.rating.toggleRating.useMutation({
     onMutate: async ({ tournamentId, rating }) => {
@@ -257,6 +274,13 @@ function HomePageContent() {
       case 'upcoming': return 'bg-blue-50 text-blue-700'
       case 'in_progress': return 'bg-green-50 text-green-700'
     }
+  }
+
+  const isRegistrationOpen = (tournament: { registrationStartDate?: Date | string | null; registrationEndDate?: Date | string | null; startDate: Date | string }): boolean => {
+    const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
+    const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
+    const now = new Date()
+    return now >= start && now <= end
   }
 
   // Filter tournaments based on selected filter, search query, and status checkboxes
