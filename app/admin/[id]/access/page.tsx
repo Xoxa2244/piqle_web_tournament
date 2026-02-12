@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -642,7 +643,7 @@ export default function AccessManagementPage() {
                               </div>
                             )}
                             <div className="text-xs text-gray-400 mt-1">
-                              Requested {new Date(request.createdAt).toLocaleString()}
+                              Requested {formatUsDateTimeShort(request.createdAt)}
                             </div>
                           </div>
                         </div>

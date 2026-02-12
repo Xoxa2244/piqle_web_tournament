@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   Filter,
   Eye,
-  EyeOff
+  EyeOff,
+  Mail
 } from 'lucide-react'
 import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
@@ -29,6 +30,15 @@ interface Player {
   firstName: string
   lastName: string
   email: string | null
+  user: {
+    id: string
+    name: string | null
+    email: string | null
+    gender: 'M' | 'F' | 'X' | null
+    duprId: string | null
+    duprRatingSingles: string | null
+    duprRatingDoubles: string | null
+  } | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
   gender: 'M' | 'F' | 'X' | null
@@ -84,6 +94,7 @@ export default function PlayersPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
+  const playersList = (players as unknown as Player[]) ?? []
 
   // Delete player mutation
   const deletePlayerMutation = trpc.player.delete.useMutation({
@@ -115,6 +126,15 @@ export default function PlayersPage() {
     },
   })
 
+  const inviteByEmailMutation = trpc.player.inviteByEmail.useMutation({
+    onSuccess: () => {
+      alert('Invitation sent.')
+    },
+    onError: (e) => {
+      alert(e.message)
+    },
+  })
+
   // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
   
@@ -123,17 +143,20 @@ export default function PlayersPage() {
 
   // Filter players based on all criteria
   const filteredPlayers = useMemo(() => {
-    if (!players) return []
+    if (!playersList.length) return []
     
-    let filtered = players
+    let filtered = playersList
 
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(player => 
         `${player.firstName} ${player.lastName}`.toLowerCase().includes(query) ||
+        player.user?.name?.toLowerCase().includes(query) ||
         player.email?.toLowerCase().includes(query) ||
+        player.user?.email?.toLowerCase().includes(query) ||
         player.dupr?.toLowerCase().includes(query) ||
+        player.user?.duprId?.toLowerCase().includes(query) ||
         player.teamPlayers.some(tp => 
           tp.team.name.toLowerCase().includes(query) ||
           tp.team.division.name.toLowerCase().includes(query)
@@ -167,7 +190,7 @@ export default function PlayersPage() {
     }
 
     return filtered
-  }, [players, searchQuery, showOnlyWaitlist, divisionFilter, teamFilter, paymentFilter])
+  }, [playersList, searchQuery, showOnlyWaitlist, divisionFilter, teamFilter, paymentFilter])
 
   const handleAddPlayer = () => {
     setShowAddPlayerModal(true)
@@ -197,8 +220,28 @@ export default function PlayersPage() {
   }
 
   const getDuprRating = (player: Player) => {
+    const userRating = player.user?.duprRatingDoubles ?? player.user?.duprRatingSingles
+    if (userRating != null) return formatDuprRating(String(userRating)) || '—'
     if (player.duprRating === null) return '—'
     return formatDuprRating(player.duprRating) || '—'
+  }
+
+  const getDisplayDuprId = (player: Player) => {
+    return player.user?.duprId || player.dupr || '—'
+  }
+
+  const getDisplayGender = (player: Player) => {
+    return player.user?.gender ?? player.gender
+  }
+
+  const getDisplayName = (player: Player) => {
+    const userName = player.user?.name?.trim()
+    if (userName) return userName
+    return `${player.firstName} ${player.lastName}`.trim()
+  }
+
+  const getDisplayEmail = (player: Player) => {
+    return player.user?.email || player.email || '—'
   }
 
   if (!tournament) {
@@ -210,8 +253,8 @@ export default function PlayersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto p-6">
+    <div className="min-h-screen w-full bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Player Management</h1>
@@ -333,13 +376,14 @@ export default function PlayersPage() {
                   <th className="text-left p-3 font-medium">Team</th>
                   <th className="text-left p-3 font-medium">Payment Status</th>
                   <th className="text-left p-3 font-medium">List Status</th>
+                  <th className="text-left p-3 font-medium">Account</th>
                   <th className="text-left p-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-8 text-gray-500">
+                    <td colSpan={11} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -351,21 +395,21 @@ export default function PlayersPage() {
                     <tr key={player.id} className="border-b hover:bg-gray-50">
                       <td className="p-3">
                         <div className="font-medium">
-                          {player.firstName} {player.lastName}
+                          {getDisplayName(player)}
                         </div>
                       </td>
                       <td className="p-3 text-sm text-gray-600">
-                        {player.gender ? (
-                          <Badge variant={player.gender === 'M' ? 'default' : player.gender === 'F' ? 'secondary' : 'outline'}>
-                            {player.gender === 'M' ? 'Male' : player.gender === 'F' ? 'Female' : 'Other'}
+                        {getDisplayGender(player) ? (
+                          <Badge variant={getDisplayGender(player) === 'M' ? 'default' : getDisplayGender(player) === 'F' ? 'secondary' : 'outline'}>
+                            {getDisplayGender(player) === 'M' ? 'Male' : getDisplayGender(player) === 'F' ? 'Female' : 'Other'}
                           </Badge>
                         ) : '—'}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
-                        {player.email || '—'}
+                        {getDisplayEmail(player)}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
-                        {player.dupr || '—'}
+                        {getDisplayDuprId(player)}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {getDuprRating(player)}
@@ -387,8 +431,32 @@ export default function PlayersPage() {
                         </Badge>
                       </td>
                       <td className="p-3">
+                        {player.user?.id ? (
+                          <Badge variant="default">Registered</Badge>
+                        ) : player.email ? (
+                          <Badge variant="secondary">Not registered</Badge>
+                        ) : (
+                          <Badge variant="outline">No email</Badge>
+                        )}
+                      </td>
+                      <td className="p-3">
                         {isAdmin && (
                           <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={inviteByEmailMutation.isPending || !player.email || Boolean(player.user?.id)}
+                              onClick={() => inviteByEmailMutation.mutate({ playerId: player.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
+                              title={
+                                !player.email
+                                  ? 'No email on player'
+                                  : player.user?.id
+                                    ? 'Already registered'
+                                    : 'Invite by email'
+                              }
+                            >
+                              <Mail className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"

@@ -4,6 +4,7 @@ import { useMemo, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -190,12 +191,12 @@ export default function TournamentRegistrationPage() {
               Registration window:{' '}
               <span className="font-medium text-gray-900">
                 {seatMap.registrationStartDate
-                  ? new Date(seatMap.registrationStartDate).toLocaleString()
-                  : new Date(seatMap.startDate).toLocaleString()}
+                  ? formatUsDateTimeShort(seatMap.registrationStartDate)
+                  : formatUsDateTimeShort(seatMap.startDate)}
                 {' — '}
                 {seatMap.registrationEndDate
-                  ? new Date(seatMap.registrationEndDate).toLocaleString()
-                  : new Date(seatMap.startDate).toLocaleString()}
+                  ? formatUsDateTimeShort(seatMap.registrationEndDate)
+                  : formatUsDateTimeShort(seatMap.startDate)}
               </span>
             </div>
             <Badge variant={registrationOpen ? 'default' : 'secondary'}>

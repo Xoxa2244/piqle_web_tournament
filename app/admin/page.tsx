@@ -2,10 +2,13 @@
 
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import Image from 'next/image'
 import { Eye, User as UserIcon, Calendar, Users, Trophy, Trash2 } from 'lucide-react'
 import ShareButton from '@/components/ShareButton'
@@ -39,6 +42,27 @@ function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progres
   }
 }
 
+function getTournamentTypeLabel(format?: string | null) {
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return 'Single elim'
+    case 'ROUND_ROBIN':
+      return 'Round robin'
+    case 'MLP':
+      return 'MLP'
+    case 'INDY_LEAGUE':
+      return 'Indy league'
+    case 'LEAGUE_ROUND_ROBIN':
+      return 'League RR'
+    case 'ONE_DAY_LADDER':
+      return 'One-day ladder'
+    case 'LADDER_LEAGUE':
+      return 'Ladder league'
+    default:
+      return 'Tournament'
+  }
+}
+
 // Same as main page: uses tournament-placeholder.png with fallback icon
 function TournamentImagePlaceholder() {
   const [showFallback, setShowFallback] = useState(true)
@@ -61,6 +85,7 @@ function TournamentImagePlaceholder() {
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
   const deleteTournament = trpc.tournament.delete.useMutation({
     onSuccess: () => {
@@ -74,6 +99,10 @@ export default function AdminPage() {
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
   const [createdDraftIds, setCreatedDraftIds] = useState<string[]>([])
+  const [ownershipFilter, setOwnershipFilter] = useState<'my' | 'shared'>('my')
+  const [filterUpcoming, setFilterUpcoming] = useState(true)
+  const [filterInProgress, setFilterInProgress] = useState(true)
+  const [filterPast, setFilterPast] = useState(false)
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -106,6 +135,23 @@ export default function AdminPage() {
     ;(tournaments as any[] | undefined)?.forEach((t) => byId.set(t.id, t))
     return createdDraftIds.map((id) => byId.get(id) ?? { id })
   }, [createdDraftIds, tournaments])
+
+  const filteredTournaments = useMemo(() => {
+    if (!tournaments) return []
+    let filtered = tournaments as any[]
+    filtered = filtered.filter((t) => (ownershipFilter === 'my' ? t.isOwner : !t.isOwner))
+    if (filterUpcoming || filterInProgress || filterPast) {
+      filtered = filtered.filter((t) => {
+        const status = getTournamentStatus(t)
+        const matches = []
+        if (filterUpcoming) matches.push(status === 'upcoming')
+        if (filterInProgress) matches.push(status === 'in_progress')
+        if (filterPast) matches.push(status === 'past')
+        return matches.some(Boolean)
+      })
+    }
+    return filtered
+  }, [tournaments, ownershipFilter, filterUpcoming, filterInProgress, filterPast])
 
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
     setDeleteModal({ id: tournamentId, title: tournamentTitle })
@@ -148,6 +194,56 @@ export default function AdminPage() {
         <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
       </div>
 
+      <div className="bg-white border-b mb-6">
+        <div className="flex flex-wrap items-center gap-4 pb-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setOwnershipFilter('my')}
+              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                ownershipFilter === 'my'
+                  ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              My tournaments
+            </button>
+            <button
+              onClick={() => setOwnershipFilter('shared')}
+              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                ownershipFilter === 'shared'
+                  ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Shared with me
+            </button>
+          </div>
+          <div className="flex items-center gap-4 ml-auto">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+              <Checkbox
+                checked={filterUpcoming}
+                onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
+              />
+              <span>Upcoming</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+              <Checkbox
+                checked={filterInProgress}
+                onCheckedChange={(checked) => setFilterInProgress(checked === true)}
+              />
+              <span>In progress</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+              <Checkbox
+                checked={filterPast}
+                onCheckedChange={(checked) => setFilterPast(checked === true)}
+              />
+              <span>Past</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       {/* Created Drafts Modal (from recurring template creation) */}
       {createdDraftIds.length ? (
         <div
@@ -182,7 +278,7 @@ export default function AdminPage() {
                     <div className="font-medium text-gray-900 truncate">{t.title ?? t.id}</div>
                     {t.startDate ? (
                       <div className="text-xs text-gray-500">
-                        {new Date(t.startDate).toLocaleDateString()} – {new Date(t.endDate ?? t.startDate).toLocaleDateString()}
+                        {formatUsDateShort(t.startDate)} – {formatUsDateShort(t.endDate ?? t.startDate)}
                       </div>
                     ) : (
                       <div className="text-xs text-gray-500 font-mono truncate">{t.id}</div>
@@ -207,12 +303,12 @@ export default function AdminPage() {
         </div>
       ) : null}
 
-      {tournaments && tournaments.length > 0 ? (
+      {filteredTournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">
-          {(tournaments as any[]).map((tournament: any) => (
+          {filteredTournaments.map((tournament: any) => (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
               {/* Top right: Share + Delete (icon only) */}
-              <div className="absolute top-4 right-4 flex items-center gap-1">
+              <div className="absolute top-4 right-4 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {baseUrl && (
                   <ShareButton
                     url={`${baseUrl}/scoreboard/${tournament.id}`}
@@ -257,10 +353,13 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Status badge */}
-                <div className="mt-2">
+                {/* Status + type badges */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
                     {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                  <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                    {getTournamentTypeLabel(tournament.format)}
                   </span>
                 </div>
 
@@ -272,7 +371,8 @@ export default function AdminPage() {
                     />
                     {tournament.description && tournament.description.split('\n').length > 3 && (
                       <button
-                        onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setSelectedDescription({title: tournament.title, description: tournament.description!}) }}
                         className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                       >
                         <Eye className="h-3 w-3 mr-1" />
@@ -286,7 +386,7 @@ export default function AdminPage() {
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                    <span>{new Date(tournament.startDate).toLocaleDateString()} – {new Date(tournament.endDate).toLocaleDateString()}</span>
+                    <span>{formatUsDateShort(tournament.startDate)} – {formatUsDateShort(tournament.endDate)}</span>
                   </div>
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
@@ -302,7 +402,7 @@ export default function AdminPage() {
               </div>
 
               {/* Footer: Tournament Director and buttons — always at bottom, on separate lines */}
-              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
+              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3" onClick={(e) => e.stopPropagation()}>
                 {tournament.user && (
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-gray-500">Tournament Director:</span>
@@ -337,17 +437,17 @@ export default function AdminPage() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
                   <Link
                     href={`/admin/${tournament.id}`}
-                    className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                    className="block w-full text-center bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                   >
                     Manage
                   </Link>
                   {tournament.isPublicBoardEnabled && (
                     <Link
                       href={`/t/${tournament.publicSlug}`}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
+                      className="block w-full text-center bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
                     >
                       View Board
                     </Link>
@@ -356,6 +456,11 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : tournaments && tournaments.length > 0 ? (
+        <div className="text-center py-12">
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No tournaments match your filters</h3>
+          <p className="text-gray-600">Adjust the filters to see more results.</p>
         </div>
       ) : (
         <div className="text-center py-12">

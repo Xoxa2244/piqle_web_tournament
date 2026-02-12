@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
+import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { cn } from '@/lib/utils'
@@ -61,12 +62,8 @@ const addWeeks = (date: Date, delta: number) => addDays(date, delta * 7)
 const formatMonthYear = (date: Date) => `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`
 const formatWeekRange = (weekStart: Date) => {
   const end = addDays(weekStart, 6)
-  const sameMonth = weekStart.getMonth() === end.getMonth() && weekStart.getFullYear() === end.getFullYear()
-  const startLabel = weekStart.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  const endLabel = end.toLocaleDateString(
-    [],
-    sameMonth ? { day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }
-  )
+  const startLabel = formatUsDateShort(weekStart)
+  const endLabel = formatUsDateShort(end)
   return `${startLabel}–${endLabel}`
 }
 
@@ -302,7 +299,7 @@ export default function ClubDetailPage() {
 
   return (
     <>
-      <div className="space-y-6 px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="space-y-3">
           <Link href="/clubs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-gray-900">
             <ArrowLeft className="h-4 w-4" />
@@ -383,7 +380,7 @@ export default function ClubDetailPage() {
                 ) : (
                   <Button
                     variant="default"
-                    className="gap-2"
+                    className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={handleToggleFollow}
                     disabled={toggleFollow.isPending}
                     title={!isLoggedIn ? 'Sign in to request access' : undefined}
@@ -395,7 +392,7 @@ export default function ClubDetailPage() {
               ) : (
                 <Button
                   variant="default"
-                  className="gap-2"
+                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                   onClick={handleToggleFollow}
                   disabled={toggleFollow.isPending}
                   title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
@@ -445,6 +442,23 @@ export default function ClubDetailPage() {
               />
             ) : null}
 
+            <Tabs defaultValue="upcoming" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsTrigger value="upcoming" className="gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Upcoming events
+                </TabsTrigger>
+                <TabsTrigger value="announcements" className="gap-2">
+                  <Megaphone className="h-4 w-4" />
+                  Announcements
+                </TabsTrigger>
+                <TabsTrigger value="chat" className="gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Club chat
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="upcoming" className="space-y-4 mt-0">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -490,7 +504,7 @@ export default function ClubDetailPage() {
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
-                              {new Date(tournament.startDate).toLocaleString()}
+                              {formatUsDateTimeShort(tournament.startDate)}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
@@ -529,6 +543,18 @@ export default function ClubDetailPage() {
               </CardContent>
             </Card>
 
+            {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
+
+            {club.isAdmin || club.isFollowing ? (
+              <ClubMembersAdminCard
+                clubId={club.id}
+                canModerate={club.isAdmin}
+                currentUserId={session?.user?.id}
+              />
+            ) : null}
+              </TabsContent>
+
+              <TabsContent value="announcements" className="mt-0">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -568,9 +594,9 @@ export default function ClubDetailPage() {
                         <div className="min-w-0">
                           <div className="font-medium text-gray-900 truncate">{a.title || 'Update'}</div>
                           <div className="text-xs text-muted-foreground">
-                            {new Date(a.createdAt).toLocaleString()}
+                            {formatUsDateTimeShort(a.createdAt)}
                             {a.updatedAt && new Date(a.updatedAt).getTime() > new Date(a.createdAt).getTime()
-                              ? ` • edited ${new Date(a.updatedAt).toLocaleString()}`
+                              ? ` • edited ${formatUsDateTimeShort(a.updatedAt)}`
                               : ''}
                             {a.createdByUser?.name ? ` • ${a.createdByUser.name}` : ''}
                           </div>
@@ -638,17 +664,9 @@ export default function ClubDetailPage() {
                 )}
               </CardContent>
             </Card>
+              </TabsContent>
 
-            {club.isAdmin ? <ClubTournamentTemplatesCard clubId={club.id} /> : null}
-
-            {club.isAdmin || club.isFollowing ? (
-              <ClubMembersAdminCard
-                clubId={club.id}
-                canModerate={club.isAdmin}
-                currentUserId={session?.user?.id}
-              />
-            ) : null}
-
+              <TabsContent value="chat" className="mt-0">
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -660,6 +678,8 @@ export default function ClubDetailPage() {
               currentUserId={session?.user?.id}
               onJoinToggle={handleToggleFollow}
             />
+              </TabsContent>
+            </Tabs>
           </div>
 
           <div className="space-y-4">
@@ -1124,7 +1144,7 @@ function ClubEventsCalendar({
 
 	      <div ref={detailsRef} className="rounded-md border p-3 space-y-3">
 	        <div className="text-sm font-medium text-gray-900">
-	          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
+          {selectedKey ? `Events on ${formatUsDateShort(parseYmd(selectedKey))}` : 'Select a day'}
 	        </div>
         {!selectedKey ? (
           <div className="text-sm text-muted-foreground">
@@ -1566,7 +1586,7 @@ function ClubChatCard({
                         <div className="flex items-center gap-2">
                           <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
                           <div className="text-xs text-muted-foreground">
-                            {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                            {m.createdAt ? formatUsDateTimeShort(m.createdAt) : ''}
                           </div>
                           {isMine ? <Badge variant="secondary">You</Badge> : null}
                         </div>
@@ -1624,7 +1644,7 @@ function ClubChatCard({
             ) : (
               <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
                 <div className="min-w-0">Request to join this club to view and post messages.</div>
-                <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
+                <Button type="button" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                   Request
                 </Button>
               </div>
@@ -1632,7 +1652,7 @@ function ClubChatCard({
           ) : (
             <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
               <div className="min-w-0">Join this club to view and post messages.</div>
-              <Button type="button" onClick={onJoinToggle} disabled={sendMessage.isPending}>
+              <Button type="button" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={onJoinToggle} disabled={sendMessage.isPending}>
                 Join
               </Button>
             </div>
@@ -1804,16 +1824,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
     const generated = generateRecurringStartDates(start, config)
     if ('error' in generated) return { error: generated.error }
 
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-
     const items = generated.startDates.map((s) => {
       const e = new Date(s.getTime() + durationMs)
-      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+      return durationMs === 0 ? formatUsDateShort(s) : `${formatUsDateShort(s)} – ${formatUsDateShort(e)}`
     })
 
     return { items }
@@ -1858,7 +1871,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                   <div className="text-xs text-muted-foreground">
                     {t.format ? `${t.format.replace(/_/g, ' ')} • ` : ''}
                     {typeof t.divisionsCount === 'number' ? `${t.divisionsCount} division${t.divisionsCount === 1 ? '' : 's'} • ` : ''}
-                    Updated {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : ''}
+                    Updated {t.updatedAt ? formatUsDateTimeShort(t.updatedAt) : ''}
                   </div>
                   {t.description ? <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{t.description}</div> : null}
                 </div>
@@ -2284,7 +2297,7 @@ function ClubMembersAdminCard({
                         <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
                         <div className="text-xs text-muted-foreground truncate">
                           {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
-                          {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+                          {r.requestedAt ? `Requested ${formatUsDateTimeShort(r.requestedAt)}` : ''}
                         </div>
                       </div>
                     </div>
@@ -2431,7 +2444,7 @@ function ClubMembersAdminCard({
                         <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
                         <div className="text-xs text-muted-foreground">
                           {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
-                          {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
+                          {b.bannedAt ? `Banned ${formatUsDateTimeShort(b.bannedAt)}` : ''}
                           {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
                         </div>
                         {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}

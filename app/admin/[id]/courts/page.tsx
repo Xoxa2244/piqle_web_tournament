@@ -61,7 +61,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
         <Card>
           <CardContent className="pt-6">
             <p className="text-gray-600">
-              This page is only available for Indy League and League Round Robin tournaments.
+              This page is only available for Indy League and Round Robin League tournaments.
             </p>
           </CardContent>
         </Card>

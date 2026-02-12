@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Calendar } from 'lucide-react'
 
@@ -50,12 +51,7 @@ export default function DaySelector({
   }, [mode, tournamentId, onModeChange])
 
   const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
+    return formatUsDateShort(date)
   }
 
   if (!matchDays || matchDays.length === 0) {
@@ -91,12 +87,14 @@ export default function DaySelector({
       {mode === 'DAY_ONLY' && (
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-gray-500" />
+          {!selectedDayId && (
+            <span className="text-sm text-gray-500">Select a date</span>
+          )}
           <select
             value={selectedDayId || ''}
             onChange={(e) => onDayChange(e.target.value || null)}
             className="pl-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
           >
-            <option value="">Select a day...</option>
             {matchDays.map((day) => (
               <option key={day.id} value={day.id}>
                 {formatDate(day.date)}

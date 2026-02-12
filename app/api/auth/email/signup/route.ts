@@ -4,6 +4,21 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { hashOtp, normalizeEmail } from '@/lib/emailOtp'
 
+async function linkPlayersToUserByEmail(userId: string, email: string) {
+  const players = await prisma.player.findMany({
+    where: {
+      userId: null,
+      email: { equals: email, mode: 'insensitive' },
+    },
+    select: { id: true },
+  })
+  if (!players.length) return
+  await prisma.player.updateMany({
+    where: { id: { in: players.map((p) => p.id) } },
+    data: { userId },
+  })
+}
+
 const signupSchema = z.object({
   email: z.string().email(),
   code: z.string().min(1),
@@ -79,6 +94,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = await bcrypt.hash(payload.password, 10)
     const name = `${payload.firstName.trim()} ${payload.lastName.trim()}`
 
+    let userId = existingUser?.id
     if (existingUser) {
       await prisma.user.update({
         where: { id: existingUser.id },
@@ -89,7 +105,7 @@ export async function POST(req: NextRequest) {
         },
       })
     } else {
-      await prisma.user.create({
+      const createdUser = await prisma.user.create({
         data: {
           email,
           name,
@@ -97,9 +113,14 @@ export async function POST(req: NextRequest) {
           emailVerified: new Date(),
         },
       })
+      userId = createdUser.id
     }
 
     await prisma.emailOtp.delete({ where: { email } })
+
+    if (userId) {
+      await linkPlayersToUserByEmail(userId, email)
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

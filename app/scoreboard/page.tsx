@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -272,7 +273,7 @@ export default function PublicTournamentsPage() {
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                          {formatUsDateShort(tournament.startDate)} - {formatUsDateShort(tournament.endDate)}
                         </span>
                       </div>
                       

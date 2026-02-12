@@ -13,6 +13,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
 import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import TournamentModal from '@/components/TournamentModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,9 +27,9 @@ export default function ClubsPage() {
   const [kind, setKind] = useState<'' | 'VENUE' | 'COMMUNITY'>('')
   const [city, setCity] = useState('')
   const [stateCode, setStateCode] = useState('')
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
 
   const listInput = useMemo(() => {
     const trimmed = query.trim()
@@ -36,11 +38,10 @@ export default function ClubsPage() {
       ...(kind ? { kind } : {}),
       ...(city.trim() ? { city: city.trim() } : {}),
       ...(stateCode.trim() ? { state: stateCode.trim() } : {}),
-      ...(verifiedOnly ? { verifiedOnly: true } : {}),
       ...(hasBooking ? { hasBooking: true } : {}),
       ...(hasUpcomingEvents ? { hasUpcomingEvents: true } : {}),
     }
-  }, [query, kind, city, stateCode, verifiedOnly, hasBooking, hasUpcomingEvents])
+  }, [query, kind, city, stateCode, hasBooking, hasUpcomingEvents])
 
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
 
@@ -102,7 +103,11 @@ export default function ClubsPage() {
   }
 
   const renderClubCard = (club: any) => (
-    <Card key={club.id} className="flex flex-col">
+    <Card
+      key={club.id}
+      className="flex flex-col cursor-pointer"
+      onClick={() => router.push(`/clubs/${club.id}`)}
+    >
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -134,7 +139,13 @@ export default function ClubsPage() {
         </div>
       </CardHeader>
       <CardContent className="flex-1 space-y-4">
-        <div className="text-sm">
+        <div
+          className={`text-sm rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors ${club.nextTournament ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (club.nextTournament) setSelectedTournamentId(club.nextTournament.id)
+          }}
+        >
           <div className="text-muted-foreground">Next event</div>
           {club.nextTournament ? (
             <div className="mt-1">
@@ -142,7 +153,7 @@ export default function ClubsPage() {
                 {club.nextTournament.title}
               </div>
               <div className="text-muted-foreground">
-                {new Date(club.nextTournament.startDate).toLocaleString()}
+                {formatUsDateTimeShort(club.nextTournament.startDate)}
               </div>
               <div className="mt-2 flex items-center gap-2">
                 {typeof club.nextTournament.entryFeeCents === 'number' && club.nextTournament.entryFeeCents > 0 ? (
@@ -152,17 +163,16 @@ export default function ClubsPage() {
                 ) : (
                   <Badge variant="outline">Free</Badge>
                 )}
-                <Link
-                  href={`/tournaments/${club.nextTournament.id}/register`}
-                  className="ml-auto"
+                <Button
+                  size="sm"
+                  className="ml-auto bg-gray-900 hover:bg-gray-800 text-white"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedTournamentId(club.nextTournament!.id)
+                  }}
                 >
-                  <Button size="sm">
-                    {typeof club.nextTournament.entryFeeCents === 'number' &&
-                    club.nextTournament.entryFeeCents > 0
-                      ? 'Pay & Join'
-                      : 'Join'}
-                  </Button>
-                </Link>
+                  View Event
+                </Button>
               </div>
             </div>
           ) : (
@@ -170,8 +180,8 @@ export default function ClubsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link href={`/clubs/${club.id}`} className="flex-1">
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Link href={`/clubs/${club.id}`} className="flex-1" onClick={(e) => e.stopPropagation()}>
             <Button variant="outline" className="w-full">
               View
             </Button>
@@ -183,7 +193,7 @@ export default function ClubsPage() {
           ) : (
             <Button
               variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
-              className="flex-1"
+              className={`flex-1 ${!club.isFollowing && !club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
               onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
@@ -193,8 +203,8 @@ export default function ClubsPage() {
                 : club.isJoinPending
                   ? 'Cancel'
                   : club.joinPolicy === 'APPROVAL'
-                    ? 'Request'
-                    : 'Join'}
+                    ? 'Request to the club'
+                    : 'Join the club'}
             </Button>
           )}
         </div>
@@ -203,7 +213,7 @@ export default function ClubsPage() {
   )
 
   return (
-    <div className="space-y-6 px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Clubs</h1>
@@ -241,7 +251,10 @@ export default function ClubsPage() {
               <select
                 value={kind}
                 onChange={(e) => setKind(e.target.value as any)}
-                className="w-full h-10 px-3 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-10 pl-3 pr-[calc(12px+1rem)] border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center]"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                }}
               >
                 <option value="">All</option>
                 <option value="VENUE">Venue club</option>
@@ -269,13 +282,6 @@ export default function ClubsPage() {
 
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2 cursor-pointer select-none">
-              <Checkbox checked={verifiedOnly} onCheckedChange={(v) => setVerifiedOnly(Boolean(v))} />
-              Verified only
-            </label>
-            <span className="text-xs text-muted-foreground">
-              Verified = approved by Piqle team.
-            </span>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
             </label>
@@ -284,7 +290,7 @@ export default function ClubsPage() {
               Has upcoming events
             </label>
 
-            {query.trim() || kind || city.trim() || stateCode.trim() || verifiedOnly || hasBooking || hasUpcomingEvents ? (
+            {query.trim() || kind || city.trim() || stateCode.trim() || hasBooking || hasUpcomingEvents ? (
               <Button
                 type="button"
                 variant="outline"
@@ -295,7 +301,6 @@ export default function ClubsPage() {
                   setKind('')
                   setCity('')
                   setStateCode('')
-                  setVerifiedOnly(false)
                   setHasBooking(false)
                   setHasUpcomingEvents(false)
                 }}
@@ -338,6 +343,11 @@ export default function ClubsPage() {
           </div>
         </div>
       ) : null}
+
+      <TournamentModal
+        tournamentId={selectedTournamentId}
+        onClose={() => setSelectedTournamentId(null)}
+      />
     </div>
   )
 }

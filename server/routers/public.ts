@@ -69,6 +69,44 @@ export const publicRouter = createTRPCRouter({
     return tournamentsWithKarma.map(({ tournamentRatings, ...tournament }) => tournament)
   }),
 
+  getBoardById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.id, isPublicBoardEnabled: true },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          venueName: true,
+          venueAddress: true,
+          startDate: true,
+          endDate: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+          entryFee: true,
+          publicSlug: true,
+          image: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              email: true,
+            },
+          },
+          divisions: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      })
+      if (!tournament) return null
+      return tournament
+    }),
+
   getBoard: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {

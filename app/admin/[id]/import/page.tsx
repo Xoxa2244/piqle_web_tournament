@@ -214,12 +214,12 @@ export default function ImportPage() {
             </div>
 
             <div className="text-sm text-gray-600">
-              <p className="font-medium mb-2">Required columns in CSV:</p>
+              <p className="font-medium mb-2">Required columns in CSV (asterisks are allowed):</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>First Name, Last Name, Gender (M/F), Age</li>
-                <li>DUPR ID, DUPR rating, Division, Type (1v1/2v2/4v4)</li>
-                <li>Age Constraint, DUPR Constraint</li>
-                <li>Pool (optional), Team</li>
+                <li>First Name*, Last Name*, Gender* (M/F), Age*</li>
+                <li>DUPR ID, DUPR rating, Division*, Type* (1v1/2v2/4v4)</li>
+                <li>Team* (Pool, Age Constraint, DUPR Constraint are optional)</li>
+                <li>Email is optional and will be saved on the player</li>
               </ul>
             </div>
           </CardContent>

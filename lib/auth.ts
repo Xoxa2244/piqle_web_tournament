@@ -7,6 +7,23 @@ import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
 import bcrypt from 'bcryptjs'
 
+async function linkPlayersToUserByEmail(userId: string, email?: string | null) {
+  if (!email) return
+  const normalized = normalizeEmail(email)
+  const players = await prisma.player.findMany({
+    where: {
+      userId: null,
+      email: { equals: normalized, mode: 'insensitive' },
+    },
+    select: { id: true },
+  })
+  if (!players.length) return
+  await prisma.player.updateMany({
+    where: { id: { in: players.map((p) => p.id) } },
+    data: { userId },
+  })
+}
+
 // Ensure NEXTAUTH_SECRET is set
 if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
@@ -172,8 +189,10 @@ export const authOptions: NextAuthOptions = {
       }
       return token
     },
-    async signIn({ user, account, profile }) {
-      // Allow all sign-ins - PrismaAdapter will handle user creation
+    async signIn({ user }) {
+      if (user?.id) {
+        await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
+      }
       return true
     },
     async redirect({ url, baseUrl }) {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -185,7 +186,7 @@ export default function OrganizerDashboardPage() {
                       <div>
                         <div className="text-lg font-semibold text-gray-900">{tournament.title}</div>
                         <div className="text-sm text-gray-500">
-                          {new Date(tournament.startDate).toLocaleDateString()}
+                          {formatUsDateShort(tournament.startDate)}
                         </div>
                       </div>
                       <div className="text-right text-sm text-gray-700">
@@ -310,7 +311,7 @@ export default function OrganizerDashboardPage() {
                       return (
                         <tr key={payment.id} className="border-t border-gray-100">
                           <td className="py-2">
-                            {new Date(payment.createdAt).toLocaleDateString()}
+                            {formatUsDateShort(payment.createdAt)}
                           </td>
                           <td className="py-2">{payment.tournamentTitle}</td>
                           <td className="py-2">

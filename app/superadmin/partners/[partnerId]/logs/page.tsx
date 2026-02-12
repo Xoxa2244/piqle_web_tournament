@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -109,7 +110,7 @@ export default function PartnerLogsPage() {
                       </div>
                       <div className="text-sm text-gray-600 space-y-1">
                         <p>
-                          {new Date(log.createdAt).toLocaleString()}
+                          {formatUsDateTimeShort(log.createdAt)}
                         </p>
                         {log.partner && (
                           <p>
