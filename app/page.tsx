@@ -293,7 +293,12 @@ function HomePageContent() {
     // Tab: My tournaments vs All tournaments
     if (filter === 'my') {
       filtered = session?.user?.id
-        ? filtered.filter(tournament => (tournament as any).user?.id === session.user.id)
+        ? filtered.filter((tournament) => {
+            const isOwner = (tournament as any).user?.id === session.user.id
+            const registrationStatus = registrationStatuses?.[tournament.id]?.status ?? 'none'
+            const isParticipant = registrationStatus !== 'none'
+            return isOwner || isParticipant
+          })
         : []
     }
     
@@ -317,7 +322,7 @@ function HomePageContent() {
     }
     
     return filtered
-  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, filterPast, session?.user?.id])
+  }, [tournaments, filter, searchQuery, filterUpcoming, filterInProgress, filterPast, session?.user?.id, registrationStatuses])
 
   // Sort tournaments by date
   const sortedTournaments = useMemo(() => {

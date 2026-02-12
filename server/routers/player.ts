@@ -196,6 +196,10 @@ export const playerRouter = createTRPCRouter({
               id: true,
               name: true,
               email: true,
+              gender: true,
+              duprId: true,
+              duprRatingSingles: true,
+              duprRatingDoubles: true,
             },
           },
           teamPlayers: {
