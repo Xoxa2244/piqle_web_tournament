@@ -27,7 +27,6 @@ export default function ClubsPage() {
   const [kind, setKind] = useState<'' | 'VENUE' | 'COMMUNITY'>('')
   const [city, setCity] = useState('')
   const [stateCode, setStateCode] = useState('')
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
@@ -39,11 +38,10 @@ export default function ClubsPage() {
       ...(kind ? { kind } : {}),
       ...(city.trim() ? { city: city.trim() } : {}),
       ...(stateCode.trim() ? { state: stateCode.trim() } : {}),
-      ...(verifiedOnly ? { verifiedOnly: true } : {}),
       ...(hasBooking ? { hasBooking: true } : {}),
       ...(hasUpcomingEvents ? { hasUpcomingEvents: true } : {}),
     }
-  }, [query, kind, city, stateCode, verifiedOnly, hasBooking, hasUpcomingEvents])
+  }, [query, kind, city, stateCode, hasBooking, hasUpcomingEvents])
 
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
 
@@ -284,13 +282,6 @@ export default function ClubsPage() {
 
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2 cursor-pointer select-none">
-              <Checkbox checked={verifiedOnly} onCheckedChange={(v) => setVerifiedOnly(Boolean(v))} />
-              Verified only
-            </label>
-            <span className="text-xs text-muted-foreground">
-              Verified = approved by Piqle team.
-            </span>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
             </label>
@@ -299,7 +290,7 @@ export default function ClubsPage() {
               Has upcoming events
             </label>
 
-            {query.trim() || kind || city.trim() || stateCode.trim() || verifiedOnly || hasBooking || hasUpcomingEvents ? (
+            {query.trim() || kind || city.trim() || stateCode.trim() || hasBooking || hasUpcomingEvents ? (
               <Button
                 type="button"
                 variant="outline"
@@ -310,7 +301,6 @@ export default function ClubsPage() {
                   setKind('')
                   setCity('')
                   setStateCode('')
-                  setVerifiedOnly(false)
                   setHasBooking(false)
                   setHasUpcomingEvents(false)
                 }}
