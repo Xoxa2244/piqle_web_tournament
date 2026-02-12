@@ -37,6 +37,7 @@ import BracketModal from '@/components/BracketModal'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
+import { formatUsDateShort } from '@/lib/dateFormat'
 
 // Helper function to check roster changes (moved outside component to avoid React hooks issues)
 const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
@@ -380,8 +381,7 @@ function DivisionStageManagementContent() {
 
   // Format date helper
   const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
+    return formatUsDateShort(date)
   }
 
   // Load division data
@@ -1761,7 +1761,7 @@ function DivisionStageManagementContent() {
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
                     <option key={day.id} value={day.id}>
-                      {new Date(day.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                      {formatUsDateShort(day.date)}
                     </option>
                   ))}
                 </select>

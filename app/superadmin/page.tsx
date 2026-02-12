@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -228,8 +229,8 @@ export default function SuperAdminPage() {
                   )}
 
                   <div className="space-y-2 text-sm text-gray-500 mb-4">
-                    <div>Start: {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
-                    <div>End: {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
+                    <div>Start: {formatUsDateShort(tournament.startDate)}</div>
+                    <div>End: {formatUsDateShort(tournament.endDate)}</div>
                     <div>Divisions: {tournament._count.divisions}</div>
                     <div>Owner: {tournament.user.name || tournament.user.email}</div>
                     {tournament.entryFee && (

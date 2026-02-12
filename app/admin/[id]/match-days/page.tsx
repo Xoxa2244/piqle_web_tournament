@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -263,12 +264,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   }
 
   const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', {
-      month: 'numeric',
-      day: 'numeric',
-      year: 'numeric',
-    })
+    return formatUsDateShort(date)
   }
 
   const getStatusBadge = (status: string) => {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Calendar } from 'lucide-react'
 
@@ -50,12 +51,7 @@ export default function DaySelector({
   }, [mode, tournamentId, onModeChange])
 
   const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', {
-      month: 'numeric',
-      day: 'numeric',
-      year: 'numeric',
-    })
+    return formatUsDateShort(date)
   }
 
   if (!matchDays || matchDays.length === 0) {

@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { formatUsDateShort } from '@/lib/dateFormat'
 
 function getAppBaseUrl(baseUrlFromClient?: string | null): string {
   if (baseUrlFromClient && baseUrlFromClient.startsWith('http')) return baseUrlFromClient.replace(/\/$/, '')
@@ -274,8 +275,7 @@ async function fetchTournamentForEmail(prisma: PrismaClient, tournamentId: strin
 
 function formatEmailDate(d: Date | null | undefined): string {
   if (d == null) return '—'
-  const x = new Date(d)
-  return x.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
+  return formatUsDateShort(d)
 }
 
 // PNG icons from public/email-icons/ (same as tournament card)

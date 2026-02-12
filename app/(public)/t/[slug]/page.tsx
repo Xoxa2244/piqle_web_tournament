@@ -3,6 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { useParams } from 'next/navigation'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 
 export default function PublicScoreboardPage() {
   const params = useParams()
@@ -42,8 +43,8 @@ export default function PublicScoreboardPage() {
           )}
           
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
-            <div>Start: {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
-            <div>End: {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
+            <div>Start: {formatUsDateShort(tournament.startDate)}</div>
+            <div>End: {formatUsDateShort(tournament.endDate)}</div>
             {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
             {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
           </div>

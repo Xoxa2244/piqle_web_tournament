@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { loadGoogleMaps } from "@/lib/googleMapsLoader"
+import { formatUsDateShort } from "@/lib/dateFormat"
 import type { LatLng, Tournament } from "@/types/tournament"
 import { Button } from "@/components/ui/button"
 import { Locate, MapPin } from "lucide-react"
@@ -81,17 +82,9 @@ const buildInfoWindowContent = (
     tournament.image && tournament.image.trim()
       ? tournament.image
       : '/tournament-placeholder.png'
-  const startStr = new Date(tournament.startDate).toLocaleDateString('en-US', {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  const startStr = formatUsDateShort(tournament.startDate)
   const endStr = tournament.endDate
-    ? new Date(tournament.endDate).toLocaleDateString('en-US', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    ? formatUsDateShort(tournament.endDate)
     : startStr
   const datesStr = startStr === endStr ? startStr : `${startStr} – ${endStr}`
   const entryFeeStr =

@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { fromCents, toCents } from '@/lib/payment'
@@ -276,7 +277,7 @@ export default function SuperAdminTournamentPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">Start Date</p>
                   <p className="text-sm font-bold text-slate-900">
-                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                    {formatUsDateShort(tournament.startDate)}
                   </p>
                 </div>
                 <Calendar className="w-8 h-8 text-green-600" />
@@ -289,7 +290,7 @@ export default function SuperAdminTournamentPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">End Date</p>
                   <p className="text-sm font-bold text-slate-900">
-                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                    {formatUsDateShort(tournament.endDate)}
                   </p>
                 </div>
                 <Calendar className="w-8 h-8 text-red-600" />

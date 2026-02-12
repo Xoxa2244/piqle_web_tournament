@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -665,10 +666,10 @@ export default function PartnersPage() {
                           {app.lastUsedAt && (
                             <p className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              Last used: {new Date(app.lastUsedAt).toLocaleString()}
+                              Last used: {formatUsDateTimeShort(app.lastUsedAt)}
                             </p>
                           )}
-                          <p>Created: {new Date(app.createdAt).toLocaleString()}</p>
+                          <p>Created: {formatUsDateTimeShort(app.createdAt)}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">

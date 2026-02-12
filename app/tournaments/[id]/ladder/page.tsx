@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -161,7 +162,7 @@ export default function TournamentLadderPage() {
                 >
                   {orderedMatchDays.map((d: any) => (
                     <option key={d.id} value={d.id}>
-                      {new Date(d.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} ({d.status})
+                      {formatUsDateShort(d.date)} ({d.status})
                     </option>
                   ))}
                 </select>
@@ -255,7 +256,7 @@ export default function TournamentLadderPage() {
                 <span>Ladder League</span>
                 {league.matchDay ? (
                   <Badge variant="secondary">
-                    Week: {new Date(league.matchDay.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                    Week: {formatUsDateShort(league.matchDay.date)}
                   </Badge>
                 ) : (
                   <Badge variant="secondary">No weeks yet</Badge>

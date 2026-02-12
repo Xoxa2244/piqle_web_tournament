@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
+import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { cn } from '@/lib/utils'
@@ -61,8 +62,8 @@ const addWeeks = (date: Date, delta: number) => addDays(date, delta * 7)
 const formatMonthYear = (date: Date) => `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`
 const formatWeekRange = (weekStart: Date) => {
   const end = addDays(weekStart, 6)
-  const startLabel = weekStart.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
-  const endLabel = end.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
+  const startLabel = formatUsDateShort(weekStart)
+  const endLabel = formatUsDateShort(end)
   return `${startLabel}–${endLabel}`
 }
 
@@ -486,7 +487,7 @@ export default function ClubDetailPage() {
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
-                              {new Date(tournament.startDate).toLocaleString()}
+                              {formatUsDateTimeShort(tournament.startDate)}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
@@ -564,9 +565,9 @@ export default function ClubDetailPage() {
                         <div className="min-w-0">
                           <div className="font-medium text-gray-900 truncate">{a.title || 'Update'}</div>
                           <div className="text-xs text-muted-foreground">
-                            {new Date(a.createdAt).toLocaleString()}
+                            {formatUsDateTimeShort(a.createdAt)}
                             {a.updatedAt && new Date(a.updatedAt).getTime() > new Date(a.createdAt).getTime()
-                              ? ` • edited ${new Date(a.updatedAt).toLocaleString()}`
+                              ? ` • edited ${formatUsDateTimeShort(a.updatedAt)}`
                               : ''}
                             {a.createdByUser?.name ? ` • ${a.createdByUser.name}` : ''}
                           </div>
@@ -1120,7 +1121,7 @@ function ClubEventsCalendar({
 
 	      <div ref={detailsRef} className="rounded-md border p-3 space-y-3">
 	        <div className="text-sm font-medium text-gray-900">
-          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}` : 'Select a day'}
+          {selectedKey ? `Events on ${formatUsDateShort(parseYmd(selectedKey))}` : 'Select a day'}
 	        </div>
         {!selectedKey ? (
           <div className="text-sm text-muted-foreground">
@@ -1562,7 +1563,7 @@ function ClubChatCard({
                         <div className="flex items-center gap-2">
                           <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
                           <div className="text-xs text-muted-foreground">
-                            {m.createdAt ? new Date(m.createdAt).toLocaleString() : ''}
+                            {m.createdAt ? formatUsDateTimeShort(m.createdAt) : ''}
                           </div>
                           {isMine ? <Badge variant="secondary">You</Badge> : null}
                         </div>
@@ -1800,16 +1801,9 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
     const generated = generateRecurringStartDates(start, config)
     if ('error' in generated) return { error: generated.error }
 
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-
     const items = generated.startDates.map((s) => {
       const e = new Date(s.getTime() + durationMs)
-      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+      return durationMs === 0 ? formatUsDateShort(s) : `${formatUsDateShort(s)} – ${formatUsDateShort(e)}`
     })
 
     return { items }
@@ -1854,7 +1848,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                   <div className="text-xs text-muted-foreground">
                     {t.format ? `${t.format.replace(/_/g, ' ')} • ` : ''}
                     {typeof t.divisionsCount === 'number' ? `${t.divisionsCount} division${t.divisionsCount === 1 ? '' : 's'} • ` : ''}
-                    Updated {t.updatedAt ? new Date(t.updatedAt).toLocaleString() : ''}
+                    Updated {t.updatedAt ? formatUsDateTimeShort(t.updatedAt) : ''}
                   </div>
                   {t.description ? <div className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{t.description}</div> : null}
                 </div>
@@ -2280,7 +2274,7 @@ function ClubMembersAdminCard({
                         <div className="text-sm font-medium text-gray-900 truncate">{r.user?.name || 'User'}</div>
                         <div className="text-xs text-muted-foreground truncate">
                           {r.user?.emailMasked ? `${r.user.emailMasked} • ` : ''}
-                          {r.requestedAt ? `Requested ${new Date(r.requestedAt).toLocaleString()}` : ''}
+                          {r.requestedAt ? `Requested ${formatUsDateTimeShort(r.requestedAt)}` : ''}
                         </div>
                       </div>
                     </div>
@@ -2427,7 +2421,7 @@ function ClubMembersAdminCard({
                         <div className="text-sm font-medium text-gray-900 truncate">{b.user?.name || 'User'}</div>
                         <div className="text-xs text-muted-foreground">
                           {b.user?.emailMasked ? `${b.user.emailMasked} • ` : ''}
-                          {b.bannedAt ? `Banned ${new Date(b.bannedAt).toLocaleString()}` : ''}
+                          {b.bannedAt ? `Banned ${formatUsDateTimeShort(b.bannedAt)}` : ''}
                           {b.bannedBy?.name ? ` • by ${b.bannedBy.name}` : ''}
                         </div>
                         {b.reason ? <div className="mt-1 text-xs text-gray-700 truncate">Reason: {b.reason}</div> : null}

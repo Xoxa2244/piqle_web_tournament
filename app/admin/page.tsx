@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
@@ -275,7 +276,7 @@ export default function AdminPage() {
                     <div className="font-medium text-gray-900 truncate">{t.title ?? t.id}</div>
                     {t.startDate ? (
                       <div className="text-xs text-gray-500">
-                        {new Date(t.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} – {new Date(t.endDate ?? t.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                        {formatUsDateShort(t.startDate)} – {formatUsDateShort(t.endDate ?? t.startDate)}
                       </div>
                     ) : (
                       <div className="text-xs text-gray-500 font-mono truncate">{t.id}</div>
@@ -382,7 +383,7 @@ export default function AdminPage() {
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                    <span>{new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} – {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</span>
+                    <span>{formatUsDateShort(tournament.startDate)} – {formatUsDateShort(tournament.endDate)}</span>
                   </div>
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />

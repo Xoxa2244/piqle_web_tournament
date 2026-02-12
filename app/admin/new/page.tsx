@@ -11,6 +11,7 @@ import Image from 'next/image'
 import { ChevronLeft, ChevronRight, Layers, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
+import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 
@@ -947,16 +948,9 @@ function NewTournamentPageInner() {
     const generated = generateRecurringStartDates(start, config)
     if ('error' in generated) return { error: generated.error }
 
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-
     const items = generated.startDates.map((s) => {
       const e = new Date(s.getTime() + durationMs)
-      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+      return durationMs === 0 ? formatUsDateShort(s) : `${formatUsDateShort(s)} – ${formatUsDateShort(e)}`
     })
 
     return { items }
@@ -993,16 +987,9 @@ function NewTournamentPageInner() {
     const generated = generateRecurringStartDates(start, config)
     if ('error' in generated) return { error: generated.error }
 
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-
     const items = generated.startDates.map((s) => {
       const e = new Date(s.getTime() + durationMs)
-      return durationMs === 0 ? fmt.format(s) : `${fmt.format(s)} – ${fmt.format(e)}`
+      return durationMs === 0 ? formatUsDateShort(s) : `${formatUsDateShort(s)} – ${formatUsDateShort(e)}`
     })
 
     return { items }
@@ -1650,7 +1637,7 @@ function NewTournamentPageInner() {
                     <option value="LEAGUE_ROUND_ROBIN">League Round Robin</option>
                     <option value="ONE_DAY_LADDER">One-day Ladder</option>
                     <option value="LADDER_LEAGUE">Ladder League</option>
-                    <option value="MLP">MiLP Tournament</option>
+                    <option value="MLP">MiLP style</option>
                     <option value="INDY_LEAGUE">Indy League</option>
                   </select>
                   <p className="mt-1 text-sm text-gray-500">

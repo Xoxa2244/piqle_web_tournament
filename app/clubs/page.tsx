@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
 import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,7 +143,7 @@ export default function ClubsPage() {
                 {club.nextTournament.title}
               </div>
               <div className="text-muted-foreground">
-                {new Date(club.nextTournament.startDate).toLocaleString()}
+                {formatUsDateTimeShort(club.nextTournament.startDate)}
               </div>
               <div className="mt-2 flex items-center gap-2">
                 {typeof club.nextTournament.entryFeeCents === 'number' && club.nextTournament.entryFeeCents > 0 ? (
