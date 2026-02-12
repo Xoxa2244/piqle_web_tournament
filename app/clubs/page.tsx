@@ -104,7 +104,11 @@ export default function ClubsPage() {
   }
 
   const renderClubCard = (club: any) => (
-    <Card key={club.id} className="flex flex-col">
+    <Card
+      key={club.id}
+      className="flex flex-col cursor-pointer"
+      onClick={() => router.push(`/clubs/${club.id}`)}
+    >
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -136,7 +140,13 @@ export default function ClubsPage() {
         </div>
       </CardHeader>
       <CardContent className="flex-1 space-y-4">
-        <div className="text-sm rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <div
+          className={`text-sm rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors ${club.nextTournament ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (club.nextTournament) setSelectedTournamentId(club.nextTournament.id)
+          }}
+        >
           <div className="text-muted-foreground">Next event</div>
           {club.nextTournament ? (
             <div className="mt-1">
@@ -156,11 +166,13 @@ export default function ClubsPage() {
                 )}
                 <Button
                   size="sm"
-                  variant="secondary"
-                  className="ml-auto"
-                  onClick={() => setSelectedTournamentId(club.nextTournament!.id)}
+                  className="ml-auto bg-gray-900 hover:bg-gray-800 text-white"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedTournamentId(club.nextTournament!.id)
+                  }}
                 >
-                  View
+                  View Event
                 </Button>
               </div>
             </div>
@@ -169,8 +181,8 @@ export default function ClubsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link href={`/clubs/${club.id}`} className="flex-1">
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Link href={`/clubs/${club.id}`} className="flex-1" onClick={(e) => e.stopPropagation()}>
             <Button variant="outline" className="w-full">
               View
             </Button>
