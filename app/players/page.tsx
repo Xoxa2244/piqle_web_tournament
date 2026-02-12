@@ -177,72 +177,72 @@ export default function PlayersPage() {
           const gender = genderLabel(player.gender)
 
           return (
-            <Card key={player.id}>
-              <CardHeader className="space-y-2">
-                <div className="flex items-start gap-3">
-                  {player.image ? (
-                    <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-gray-50">
-                      <Image src={player.image} alt="" fill className="object-cover" />
+            <Link key={player.id} href={`/profile/${player.id}`} className="block">
+              <Card className="h-full transition-colors hover:bg-gray-50 cursor-pointer">
+                <CardHeader className="space-y-2">
+                  <div className="flex items-start gap-3">
+                    {player.image ? (
+                      <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-gray-50">
+                        <Image src={player.image} alt="" fill className="object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gray-100 border border-gray-200" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-lg font-semibold text-gray-900 truncate">{player.name || 'Piqle user'}</div>
+                      <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        <span className="truncate">{player.city || 'City not set'}</span>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-gray-100 border border-gray-200" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold text-gray-900 truncate">{player.name || 'Piqle user'}</div>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      <span className="truncate">{player.city || 'City not set'}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {gender ? <Badge variant="outline">{gender}</Badge> : null}
+                    {player.hasDupr ? <Badge>DUPR</Badge> : <Badge variant="secondary">No DUPR</Badge>}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md border bg-gray-50 p-2">
+                      <div className="text-muted-foreground">Singles</div>
+                      <div className="text-sm font-medium text-gray-900">{singles ?? '—'}</div>
+                    </div>
+                    <div className="rounded-md border bg-gray-50 p-2">
+                      <div className="text-muted-foreground">Doubles</div>
+                      <div className="text-sm font-medium text-gray-900">{doubles ?? '—'}</div>
                     </div>
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {gender ? <Badge variant="outline">{gender}</Badge> : null}
-                  {player.hasDupr ? <Badge>DUPR</Badge> : <Badge variant="secondary">No DUPR</Badge>}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-md border bg-gray-50 p-2">
-                    <div className="text-muted-foreground">Singles</div>
-                    <div className="text-sm font-medium text-gray-900">{singles ?? '—'}</div>
-                  </div>
-                  <div className="rounded-md border bg-gray-50 p-2">
-                    <div className="text-muted-foreground">Doubles</div>
-                    <div className="text-sm font-medium text-gray-900">{doubles ?? '—'}</div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-md border p-2 text-center">
-                    <div className="flex items-center justify-center text-muted-foreground">
-                      <Users className="h-3.5 w-3.5" />
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md border p-2 text-center">
+                      <div className="flex items-center justify-center text-muted-foreground">
+                        <Users className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="font-medium text-gray-900">{player.clubsJoinedCount}</div>
+                      <div className="text-muted-foreground">clubs</div>
                     </div>
-                    <div className="font-medium text-gray-900">{player.clubsJoinedCount}</div>
-                    <div className="text-muted-foreground">clubs</div>
-                  </div>
-                  <div className="rounded-md border p-2 text-center">
-                    <div className="flex items-center justify-center text-muted-foreground">
-                      <Trophy className="h-3.5 w-3.5" />
+                    <div className="rounded-md border p-2 text-center">
+                      <div className="flex items-center justify-center text-muted-foreground">
+                        <Trophy className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="font-medium text-gray-900">{player.tournamentsPlayedCount}</div>
+                      <div className="text-muted-foreground">played</div>
                     </div>
-                    <div className="font-medium text-gray-900">{player.tournamentsPlayedCount}</div>
-                    <div className="text-muted-foreground">played</div>
-                  </div>
-                  <div className="rounded-md border p-2 text-center">
-                    <div className="flex items-center justify-center text-muted-foreground">
-                      <Medal className="h-3.5 w-3.5" />
+                    <div className="rounded-md border p-2 text-center">
+                      <div className="flex items-center justify-center text-muted-foreground">
+                        <Medal className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="font-medium text-gray-900">{player.tournamentsCreatedCount}</div>
+                      <div className="text-muted-foreground">created</div>
                     </div>
-                    <div className="font-medium text-gray-900">{player.tournamentsCreatedCount}</div>
-                    <div className="text-muted-foreground">created</div>
                   </div>
-                </div>
 
-                <Link href={`/profile/${player.id}`} className="block">
-                  <Button variant="outline" className="w-full">
+                  <span className="flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium ring-offset-background">
                     View profile
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
           )
         })}
       </div>
