@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
 import { User as UserIcon, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
 import { useState, useEffect } from 'react'
 
 export default function UserProfilePage() {
@@ -53,13 +52,14 @@ export default function UserProfilePage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto px-4">
         {/* Back Button */}
-        <Link
-          href="/admin"
+        <button
+          type="button"
+          onClick={() => router.back()}
           className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4 transition-colors"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           <span>Back</span>
-        </Link>
+        </button>
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">

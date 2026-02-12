@@ -4,6 +4,7 @@ import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -84,6 +85,7 @@ function TournamentImagePlaceholder() {
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
   const deleteTournament = trpc.tournament.delete.useMutation({
     onSuccess: () => {
@@ -306,7 +308,7 @@ export default function AdminPage() {
           {filteredTournaments.map((tournament: any) => (
             <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
               {/* Top right: Share + Delete (icon only) */}
-              <div className="absolute top-4 right-4 flex items-center gap-1">
+              <div className="absolute top-4 right-4 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {baseUrl && (
                   <ShareButton
                     url={`${baseUrl}/scoreboard/${tournament.id}`}
@@ -369,7 +371,8 @@ export default function AdminPage() {
                     />
                     {tournament.description && tournament.description.split('\n').length > 3 && (
                       <button
-                        onClick={() => setSelectedDescription({title: tournament.title, description: tournament.description!})}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setSelectedDescription({title: tournament.title, description: tournament.description!}) }}
                         className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
                       >
                         <Eye className="h-3 w-3 mr-1" />
@@ -399,7 +402,7 @@ export default function AdminPage() {
               </div>
 
               {/* Footer: Tournament Director and buttons — always at bottom, on separate lines */}
-              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3">
+              <div className="mt-auto pt-4 border-t border-gray-200 space-y-3" onClick={(e) => e.stopPropagation()}>
                 {tournament.user && (
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-gray-500">Tournament Director:</span>
@@ -434,17 +437,17 @@ export default function AdminPage() {
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
                   <Link
                     href={`/admin/${tournament.id}`}
-                    className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                    className="block w-full text-center bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                   >
                     Manage
                   </Link>
                   {tournament.isPublicBoardEnabled && (
                     <Link
                       href={`/t/${tournament.publicSlug}`}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
+                      className="block w-full text-center bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
                     >
                       View Board
                     </Link>
