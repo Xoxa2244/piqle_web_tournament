@@ -83,7 +83,7 @@ export default function PlayersPage() {
   }
 
   return (
-    <div className="space-y-6 px-6 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Players</h1>
         <p className="text-sm text-muted-foreground">
