@@ -84,7 +84,9 @@ export const importRouter = createTRPCRouter({
       // Parse CSV data
       const csvText = Buffer.from(input.csvData, 'base64').toString('utf-8')
       const lines = csvText.split('\n').filter(line => line.trim())
-      const headers = lines[0].split(',').map(h => h.trim())
+      const headers = lines[0]
+        .split(',')
+        .map(h => h.trim().replace(/\*+$/, '').trim())
       
       // Validate headers
       const requiredHeaders = ['First Name', 'Last Name', 'Gender', 'Age', 'DUPR ID', 'DUPR rating', 'Division', 'Type', 'Team']
@@ -252,6 +254,7 @@ export const importRouter = createTRPCRouter({
                 tournamentId: input.tournamentId,
                 firstName: participant['First Name'],
                 lastName: participant['Last Name'],
+                email: participant['Email']?.trim() || null,
                 gender: participant['Gender'] === 'M' ? 'M' : participant['Gender'] === 'F' ? 'F' : undefined,
                 birthDate,
                 dupr: participant['DUPR ID']?.trim() || null,
