@@ -265,10 +265,9 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
+      month: 'numeric',
       day: 'numeric',
+      year: 'numeric',
     })
   }
 

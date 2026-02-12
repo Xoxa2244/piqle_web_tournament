@@ -161,7 +161,7 @@ export default function TournamentLadderPage() {
                 >
                   {orderedMatchDays.map((d: any) => (
                     <option key={d.id} value={d.id}>
-                      {new Date(d.date).toLocaleDateString()} ({d.status})
+                      {new Date(d.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} ({d.status})
                     </option>
                   ))}
                 </select>
@@ -255,7 +255,7 @@ export default function TournamentLadderPage() {
                 <span>Ladder League</span>
                 {league.matchDay ? (
                   <Badge variant="secondary">
-                    Week: {new Date(league.matchDay.date).toLocaleDateString()}
+                    Week: {new Date(league.matchDay.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                   </Badge>
                 ) : (
                   <Badge variant="secondary">No weeks yet</Badge>

@@ -42,8 +42,8 @@ export default function PublicScoreboardPage() {
           )}
           
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
-            <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
-            <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
+            <div>Start: {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
+            <div>End: {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
             {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
             {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
           </div>

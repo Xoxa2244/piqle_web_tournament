@@ -81,14 +81,14 @@ const buildInfoWindowContent = (
     tournament.image && tournament.image.trim()
       ? tournament.image
       : '/tournament-placeholder.png'
-  const startStr = new Date(tournament.startDate).toLocaleDateString(undefined, {
-    month: 'short',
+  const startStr = new Date(tournament.startDate).toLocaleDateString('en-US', {
+    month: 'numeric',
     day: 'numeric',
     year: 'numeric',
   })
   const endStr = tournament.endDate
-    ? new Date(tournament.endDate).toLocaleDateString(undefined, {
-        month: 'short',
+    ? new Date(tournament.endDate).toLocaleDateString('en-US', {
+        month: 'numeric',
         day: 'numeric',
         year: 'numeric',
       })

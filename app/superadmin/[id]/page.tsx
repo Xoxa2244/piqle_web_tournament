@@ -276,7 +276,7 @@ export default function SuperAdminTournamentPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">Start Date</p>
                   <p className="text-sm font-bold text-slate-900">
-                    {new Date(tournament.startDate).toLocaleDateString()}
+                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                   </p>
                 </div>
                 <Calendar className="w-8 h-8 text-green-600" />
@@ -289,7 +289,7 @@ export default function SuperAdminTournamentPage() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">End Date</p>
                   <p className="text-sm font-bold text-slate-900">
-                    {new Date(tournament.endDate).toLocaleDateString()}
+                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                   </p>
                 </div>
                 <Calendar className="w-8 h-8 text-red-600" />

@@ -654,7 +654,7 @@ function HomePageContent() {
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                          {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} - {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                         </span>
                       </div>
                       
@@ -663,11 +663,11 @@ function HomePageContent() {
                           <ClipboardList className="h-4 w-4 mr-2" />
                           <span>
                             Registration: {(tournament as any).registrationStartDate
-                              ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                              ? new Date((tournament as any).registrationStartDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
                               : '—'}
                             {' – '}
                             {(tournament as any).registrationEndDate
-                              ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                              ? new Date((tournament as any).registrationEndDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
                               : '—'}
                           </span>
                         </div>
@@ -1071,7 +1071,7 @@ function HomePageContent() {
                             <div className="flex items-center text-sm text-gray-600">
                               <Calendar className="h-4 w-4 mr-2" />
                               <span>
-                                {new Date(tournament.startDate).toLocaleDateString()} - {new Date(tournament.endDate).toLocaleDateString()}
+                                {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} - {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                               </span>
                             </div>
                             {((tournament as any).registrationStartDate || (tournament as any).registrationEndDate) && (
@@ -1079,11 +1079,11 @@ function HomePageContent() {
                                 <ClipboardList className="h-4 w-4 mr-2" />
                                 <span>
                                   Registration: {(tournament as any).registrationStartDate
-                                    ? new Date((tournament as any).registrationStartDate).toLocaleDateString()
+                                    ? new Date((tournament as any).registrationStartDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
                                     : '—'}
                                   {' – '}
                                   {(tournament as any).registrationEndDate
-                                    ? new Date((tournament as any).registrationEndDate).toLocaleDateString()
+                                    ? new Date((tournament as any).registrationEndDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
                                     : '—'}
                                 </span>
                               </div>
@@ -1183,7 +1183,7 @@ function HomePageContent() {
                                           {comment.user.name || comment.user.email}
                                         </span>
                                         <span className="text-xs text-gray-500">
-                                          {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString()}
+                                          {new Date(comment.createdAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} {new Date(comment.createdAt).toLocaleTimeString()}
                                         </span>
                                       </div>
                                       <div className="relative">

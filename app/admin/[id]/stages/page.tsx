@@ -381,7 +381,7 @@ function DivisionStageManagementContent() {
   // Format date helper
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
   }
 
   // Load division data
@@ -1761,7 +1761,7 @@ function DivisionStageManagementContent() {
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
                     <option key={day.id} value={day.id}>
-                      {new Date(day.date).toLocaleDateString()}
+                      {new Date(day.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                     </option>
                   ))}
                 </select>

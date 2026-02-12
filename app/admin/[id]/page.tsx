@@ -679,9 +679,9 @@ export default function TournamentDetailPage() {
                 <div className="flex items-center gap-2 text-base text-gray-700">
                   <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>
-                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                     {' – '}
-                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                   </span>
                 </div>
 

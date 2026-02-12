@@ -145,10 +145,9 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
+      month: 'numeric',
       day: 'numeric',
+      year: 'numeric',
     })
   }
 

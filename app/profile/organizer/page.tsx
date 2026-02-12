@@ -185,7 +185,7 @@ export default function OrganizerDashboardPage() {
                       <div>
                         <div className="text-lg font-semibold text-gray-900">{tournament.title}</div>
                         <div className="text-sm text-gray-500">
-                          {new Date(tournament.startDate).toLocaleDateString()}
+                          {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                         </div>
                       </div>
                       <div className="text-right text-sm text-gray-700">
@@ -310,7 +310,7 @@ export default function OrganizerDashboardPage() {
                       return (
                         <tr key={payment.id} className="border-t border-gray-100">
                           <td className="py-2">
-                            {new Date(payment.createdAt).toLocaleDateString()}
+                            {new Date(payment.createdAt).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                           </td>
                           <td className="py-2">{payment.tournamentTitle}</td>
                           <td className="py-2">

@@ -556,7 +556,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                 <span>Ladder League</span>
                 {leagueStatus?.matchDay ? (
                   <Badge variant="secondary">
-                    Week: {new Date(leagueStatus.matchDay.date).toLocaleDateString()}
+                    Week: {new Date(leagueStatus.matchDay.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
                   </Badge>
                 ) : (
                   <Badge variant="secondary">No weeks yet</Badge>
@@ -596,7 +596,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                   >
                     {orderedMatchDays.map((d: any) => (
                       <option key={d.id} value={d.id}>
-                        {new Date(d.date).toLocaleDateString()} ({d.status})
+                        {new Date(d.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })} ({d.status})
                       </option>
                     ))}
                   </select>

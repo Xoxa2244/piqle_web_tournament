@@ -61,12 +61,8 @@ const addWeeks = (date: Date, delta: number) => addDays(date, delta * 7)
 const formatMonthYear = (date: Date) => `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`
 const formatWeekRange = (weekStart: Date) => {
   const end = addDays(weekStart, 6)
-  const sameMonth = weekStart.getMonth() === end.getMonth() && weekStart.getFullYear() === end.getFullYear()
-  const startLabel = weekStart.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  const endLabel = end.toLocaleDateString(
-    [],
-    sameMonth ? { day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }
-  )
+  const startLabel = weekStart.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
+  const endLabel = end.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
   return `${startLabel}–${endLabel}`
 }
 
@@ -1124,7 +1120,7 @@ function ClubEventsCalendar({
 
 	      <div ref={detailsRef} className="rounded-md border p-3 space-y-3">
 	        <div className="text-sm font-medium text-gray-900">
-	          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString()}` : 'Select a day'}
+          {selectedKey ? `Events on ${parseYmd(selectedKey).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}` : 'Select a day'}
 	        </div>
         {!selectedKey ? (
           <div className="text-sm text-muted-foreground">

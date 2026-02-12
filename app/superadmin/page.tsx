@@ -228,8 +228,8 @@ export default function SuperAdminPage() {
                   )}
 
                   <div className="space-y-2 text-sm text-gray-500 mb-4">
-                    <div>Start: {new Date(tournament.startDate).toLocaleDateString()}</div>
-                    <div>End: {new Date(tournament.endDate).toLocaleDateString()}</div>
+                    <div>Start: {new Date(tournament.startDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
+                    <div>End: {new Date(tournament.endDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}</div>
                     <div>Divisions: {tournament._count.divisions}</div>
                     <div>Owner: {tournament.user.name || tournament.user.email}</div>
                     {tournament.entryFee && (
