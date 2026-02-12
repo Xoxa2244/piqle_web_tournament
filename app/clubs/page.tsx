@@ -10,11 +10,42 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
+import { MapPin, Search, Plus, ExternalLink, X, Calendar, Users, Trophy } from 'lucide-react'
 import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
+import { formatDescription } from '@/lib/formatDescription'
 
 export const dynamic = 'force-dynamic'
+
+function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+  if (endWithGrace < nextDay) return 'past'
+  if (start > now) return 'upcoming'
+  return 'in_progress'
+}
+
+function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'Past'
+    case 'upcoming': return 'Upcoming'
+    case 'in_progress': return 'In progress'
+  }
+}
+
+function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
+  switch (status) {
+    case 'past': return 'bg-gray-100 text-gray-700'
+    case 'upcoming': return 'bg-blue-50 text-blue-700'
+    case 'in_progress': return 'bg-green-50 text-green-700'
+  }
+}
 
 export default function ClubsPage() {
   const router = useRouter()
@@ -28,6 +59,8 @@ export default function ClubsPage() {
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   const listInput = useMemo(() => {
     const trimmed = query.trim()
@@ -43,6 +76,10 @@ export default function ClubsPage() {
   }, [query, kind, city, stateCode, verifiedOnly, hasBooking, hasUpcomingEvents])
 
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
+  const { data: modalTournament } = trpc.public.getBoardById.useQuery(
+    { id: selectedTournamentId! },
+    { enabled: !!selectedTournamentId }
+  )
 
   const toggleFollow = trpc.club.toggleFollow.useMutation()
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
@@ -134,7 +171,7 @@ export default function ClubsPage() {
         </div>
       </CardHeader>
       <CardContent className="flex-1 space-y-4">
-        <div className="text-sm">
+        <div className="text-sm rounded-lg border border-gray-200 bg-gray-50 p-3">
           <div className="text-muted-foreground">Next event</div>
           {club.nextTournament ? (
             <div className="mt-1">
@@ -152,17 +189,17 @@ export default function ClubsPage() {
                 ) : (
                   <Badge variant="outline">Free</Badge>
                 )}
-                <Link
-                  href={`/tournaments/${club.nextTournament.id}/register`}
+                <Button
+                  size="sm"
+                  variant="secondary"
                   className="ml-auto"
+                  onClick={() => {
+                  setDescriptionExpanded(false)
+                  setSelectedTournamentId(club.nextTournament!.id)
+                }}
                 >
-                  <Button size="sm">
-                    {typeof club.nextTournament.entryFeeCents === 'number' &&
-                    club.nextTournament.entryFeeCents > 0
-                      ? 'Pay & Join'
-                      : 'Join'}
-                  </Button>
-                </Link>
+                  View
+                </Button>
               </div>
             </div>
           ) : (
@@ -183,7 +220,7 @@ export default function ClubsPage() {
           ) : (
             <Button
               variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
-              className="flex-1"
+              className={`flex-1 ${!club.isFollowing && !club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
               onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
@@ -193,8 +230,8 @@ export default function ClubsPage() {
                 : club.isJoinPending
                   ? 'Cancel'
                   : club.joinPolicy === 'APPROVAL'
-                    ? 'Request'
-                    : 'Join'}
+                    ? 'Request to the club'
+                    : 'Join the club'}
             </Button>
           )}
         </div>
@@ -341,6 +378,139 @@ export default function ClubsPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Tournament modal (same as main page) */}
+      {selectedTournamentId && modalTournament && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedTournamentId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {modalTournament.image ? (
+                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                    <Image
+                      src={modalTournament.image}
+                      alt={modalTournament.title}
+                      width={80}
+                      height={80}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center">
+                    <Trophy className="w-8 h-8 text-gray-400" />
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">{modalTournament.title}</h2>
+                  <p className="text-gray-600 mt-1">Tournament Details</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href={`/tournaments/${modalTournament.id}/register`}>
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Join Tournament
+                  </Button>
+                </Link>
+                <button
+                  onClick={() => setSelectedTournamentId(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-4">
+                <div>
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(modalTournament))}`}
+                  >
+                    {getTournamentStatusLabel(getTournamentStatus(modalTournament))}
+                  </span>
+                </div>
+                {modalTournament.description && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                    <div
+                      className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
+                      dangerouslySetInnerHTML={{ __html: formatDescription(modalTournament.description) }}
+                    />
+                    {(modalTournament.description.split('\n').length > 3 || modalTournament.description.length > 150) && (
+                      <button
+                        onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        {descriptionExpanded ? 'Show less' : 'Show more'}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Information</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Calendar className="h-4 w-4 mr-2" />
+                      <span>
+                        {new Date(modalTournament.startDate).toLocaleDateString()} – {new Date(modalTournament.endDate).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {(modalTournament.registrationStartDate || modalTournament.registrationEndDate) && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <span>
+                          Registration: {modalTournament.registrationStartDate
+                            ? new Date(modalTournament.registrationStartDate).toLocaleDateString()
+                            : '—'}
+                          {' – '}
+                          {modalTournament.registrationEndDate
+                            ? new Date(modalTournament.registrationEndDate).toLocaleDateString()
+                            : '—'}
+                        </span>
+                      </div>
+                    )}
+                    {modalTournament.venueName && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <MapPin className="h-4 w-4 mr-2" />
+                        <span>{modalTournament.venueName}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Users className="h-4 w-4 mr-2" />
+                      <span>{modalTournament.divisions?.length ?? 0} division{(modalTournament.divisions?.length ?? 0) !== 1 ? 's' : ''}</span>
+                    </div>
+                    {modalTournament.entryFee != null && Number(modalTournament.entryFee) > 0 && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Trophy className="h-4 w-4 mr-2" />
+                        <span>Entry Fee: ${Number(modalTournament.entryFee).toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {modalTournament.divisions && modalTournament.divisions.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {modalTournament.divisions.map((d: { id: string; name: string }) => (
+                        <Badge key={d.id} variant="secondary">
+                          {d.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
