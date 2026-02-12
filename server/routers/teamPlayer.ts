@@ -626,18 +626,23 @@ export const teamPlayerRouter = createTRPCRouter({
       // Same team - reorder within team
       if (input.fromTeamId === input.toTeamId) {
         if (toTeamPlayer) {
-          // Swap within same team by swapping slot indexes
+          // Swap within same team: use temp slot (null) to avoid unique constraint on (teamId, slotIndex)
           const fromSlotIndex = fromTeamPlayer.slotIndex
           const toSlotIndex = toTeamPlayer.slotIndex
-          await ctx.prisma.teamPlayer.update({
-            where: { id: fromTeamPlayer.id },
-            data: { slotIndex: toSlotIndex },
-          })
-
-          await ctx.prisma.teamPlayer.update({
-            where: { id: toTeamPlayer.id },
-            data: { slotIndex: fromSlotIndex },
-          })
+          await ctx.prisma.$transaction([
+            ctx.prisma.teamPlayer.update({
+              where: { id: fromTeamPlayer.id },
+              data: { slotIndex: null },
+            }),
+            ctx.prisma.teamPlayer.update({
+              where: { id: toTeamPlayer.id },
+              data: { slotIndex: fromSlotIndex },
+            }),
+            ctx.prisma.teamPlayer.update({
+              where: { id: fromTeamPlayer.id },
+              data: { slotIndex: toSlotIndex },
+            }),
+          ])
 
           console.log('[movePlayerBetweenSlots] Swapped players within same team')
 
@@ -672,16 +677,21 @@ export const teamPlayerRouter = createTRPCRouter({
 
       // Different teams - swap or move
       if (toTeamPlayer) {
-        // Swap between different teams
-        await ctx.prisma.teamPlayer.update({
-          where: { id: fromTeamPlayer.id },
-          data: { teamId: toTeam.id, slotIndex: input.toSlotIndex },
-        })
-
-        await ctx.prisma.teamPlayer.update({
-          where: { id: toTeamPlayer.id },
-          data: { teamId: fromTeam.id, slotIndex: input.fromSlotIndex },
-        })
+        // Swap between different teams: use temp slot (null) to avoid unique constraint on (teamId, slotIndex)
+        await ctx.prisma.$transaction([
+          ctx.prisma.teamPlayer.update({
+            where: { id: fromTeamPlayer.id },
+            data: { teamId: toTeam.id, slotIndex: null },
+          }),
+          ctx.prisma.teamPlayer.update({
+            where: { id: toTeamPlayer.id },
+            data: { teamId: fromTeam.id, slotIndex: input.fromSlotIndex },
+          }),
+          ctx.prisma.teamPlayer.update({
+            where: { id: fromTeamPlayer.id },
+            data: { slotIndex: input.toSlotIndex },
+          }),
+        ])
 
         console.log('[movePlayerBetweenSlots] Swapped players between different teams')
 

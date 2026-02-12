@@ -16,6 +16,8 @@ interface DuprUploadLogModalProps {
   onClose: () => void
   logEntries: UploadLogEntry[]
   isUploading?: boolean
+  onRetry?: (matchId: string) => void
+  retryingMatchIds?: string[]
 }
 
 export default function DuprUploadLogModal({
@@ -23,6 +25,8 @@ export default function DuprUploadLogModal({
   onClose,
   logEntries,
   isUploading = false,
+  onRetry,
+  retryingMatchIds = [],
 }: DuprUploadLogModalProps) {
   if (!isOpen) return null
 
@@ -96,6 +100,9 @@ export default function DuprUploadLogModal({
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-b">
                     Comment
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider border-b">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -122,6 +129,20 @@ export default function DuprUploadLogModal({
                         <span className="text-red-600">{entry.error}</span>
                       ) : entry.status === 'SUCCESS' ? (
                         <span className="text-green-600">Successfully uploaded</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {entry.status === 'FAILED' && onRetry ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onRetry(entry.matchId)}
+                          disabled={retryingMatchIds.includes(entry.matchId)}
+                        >
+                          {retryingMatchIds.includes(entry.matchId) ? 'Retrying...' : 'Retry'}
+                        </Button>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}

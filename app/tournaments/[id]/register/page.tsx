@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
@@ -59,20 +59,46 @@ export default function TournamentRegistrationPage() {
   const cancelRegistrationMutation = trpc.registration.cancelRegistration.useMutation()
   const joinWaitlistMutation = trpc.registration.joinWaitlist.useMutation()
   const leaveWaitlistMutation = trpc.registration.leaveWaitlist.useMutation()
+  const acceptInvitationMutation = trpc.tournamentInvitation.accept.useMutation()
+  const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
   const utils = trpc.useUtils()
 
   useEffect(() => {
     if (authStatus === 'unauthenticated' && tournamentId) {
-      const callbackUrl = `/tournaments/${tournamentId}/register`
+      const queryString = typeof window !== 'undefined' ? window.location.search : ''
+      const callbackUrl = `/tournaments/${tournamentId}/register${queryString}`
       router.replace(`/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`)
     }
   }, [authStatus, router, tournamentId])
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !tournamentId || inviteAcceptHandled) return
+    const params = new URLSearchParams(window.location.search)
+    const inviteAction = params.get('inviteAction')
+    const invitationId = params.get('invitationId')
+    if (inviteAction !== 'accept' || !invitationId) return
+
+    setInviteAcceptHandled(true)
+    const processInviteAccept = async () => {
+      try {
+        await acceptInvitationMutation.mutateAsync({ invitationId })
+      } catch (error: any) {
+        alert(error.message || 'Failed to process invitation')
+      } finally {
+        router.replace(`/tournaments/${tournamentId}/register`)
+      }
+    }
+
+    processInviteAccept()
+  }, [authStatus, tournamentId, inviteAcceptHandled, acceptInvitationMutation, router])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
   const entryFeeCents = seatMap?.entryFeeCents ?? 0
   const isPaidTournament = entryFeeCents > 0
   const payoutsActive = Boolean(seatMap?.payoutsActive)
+  const isLadderFormat =
+    (seatMap as any)?.format === 'ONE_DAY_LADDER' || (seatMap as any)?.format === 'LADDER_LEAGUE'
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
@@ -181,9 +207,24 @@ export default function TournamentRegistrationPage() {
               </div>
             )}
             {myStatus?.status === 'active' && (
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
+                <p className="text-sm font-medium text-green-700">
+                  You are already registered in this tournament.
+                  {myStatus.divisionName && myStatus.teamName && (
+                    <span className="block font-normal text-gray-600 mt-1">
+                      {myStatus.divisionName} · {myStatus.teamName}
+                    </span>
+                  )}
+                </p>
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
                   Cancel Registration
+                </Button>
+              </div>
+            )}
+            {isLadderFormat && (
+              <div className="pt-2">
+                <Button variant="outline" onClick={() => router.push(`/tournaments/${tournamentId}/ladder`)}>
+                  View Ladder
                 </Button>
               </div>
             )}
@@ -298,6 +339,7 @@ function DivisionSeatMap({
 
   const isActiveInDivision = myStatus?.status === 'active' && myStatus?.divisionId === division.id
   const isWaitlistedInDivision = myStatus?.status === 'waitlisted' && myStatus?.divisionId === division.id
+  const isAlreadyActive = myStatus?.status === 'active'
 
   return (
     <Card>
@@ -322,6 +364,7 @@ function DivisionSeatMap({
                     isPaidTournament={isPaidTournament}
                     payoutsActive={payoutsActive}
                     currentUserId={currentUserId}
+                    isAlreadyActive={isAlreadyActive}
                   />
                 ))}
               </div>
@@ -341,6 +384,7 @@ function DivisionSeatMap({
                 isPaidTournament={isPaidTournament}
                 payoutsActive={payoutsActive}
                 currentUserId={currentUserId}
+                isAlreadyActive={isAlreadyActive}
               />
             ))}
           </div>
@@ -362,6 +406,7 @@ function DivisionSeatMap({
                   isPaidTournament={isPaidTournament}
                   payoutsActive={payoutsActive}
                   currentUserId={currentUserId}
+                  isAlreadyActive={isAlreadyActive}
                 />
               ))}
             </div>
@@ -392,7 +437,7 @@ function DivisionSeatMap({
 
         {!hasAvailableSlots && !isWaitlistedInDivision && (
           <div className="border-t pt-4">
-            <div className="text-sm text-gray-600 mb-2">No available slots in this division.</div>
+            <div className="text-sm text-gray-600 mb-2">There are no available spots at the moment.</div>
             <Button onClick={onJoinWaitlist} disabled={!isRegistrationOpen}>
               Join Waitlist
             </Button>
@@ -419,6 +464,7 @@ function TeamCard({
   isPaidTournament,
   payoutsActive,
   currentUserId,
+  isAlreadyActive,
 }: {
   team: any
   slots: any[]
@@ -429,6 +475,7 @@ function TeamCard({
   isPaidTournament: boolean
   payoutsActive: boolean
   currentUserId?: string
+  isAlreadyActive: boolean
 }) {
   return (
     <div className="border rounded-lg p-3 bg-white">
@@ -447,11 +494,21 @@ function TeamCard({
             )
           }
 
+          const disableJoin = !isRegistrationOpen || isAlreadyActive
+          if (isAlreadyActive) {
+            return (
+              <div
+                key={index}
+                className="w-full min-h-[32px] border border-dashed rounded px-2 py-1 text-sm text-gray-400 opacity-50"
+              />
+            )
+          }
+
           return (
             <button
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
-              disabled={!isRegistrationOpen}
+              disabled={disableJoin}
               onClick={() =>
                 isPaidTournament
                   ? onPayJoin(team.id, index)

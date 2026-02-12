@@ -28,7 +28,9 @@ import {
   UserCheck,
   UserX,
   Trophy,
-  Clock
+  Clock,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -120,6 +122,8 @@ export default function TournamentDetailPage() {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [templateForm, setTemplateForm] = useState({ name: '', description: '' })
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -241,6 +245,8 @@ export default function TournamentDetailPage() {
       ? toCents(parsedEntryFeeForForm)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCentsForForm)
+  const requiresPayoutsSetup =
+    entryFeeCentsForForm > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
   
   // Get pending access requests (only for owner)
   const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
@@ -260,11 +266,7 @@ export default function TournamentDetailPage() {
     },
   })
 
-  // Tournament winners (1st, 2nd, 3rd per division)
-  const { data: winnersByDivision } = trpc.tournament.getWinners.useQuery(
-    { tournamentId },
-    { enabled: !!tournamentId }
-  )
+  // Winners come from tournament.get (winnersByDivision) — no separate getWinners query
 
   const updateTournament = trpc.tournament.update.useMutation({
     onSuccess: () => {
@@ -276,6 +278,17 @@ export default function TournamentDetailPage() {
     onError: (error) => {
       console.error('Error updating tournament:', error)
       alert('Error updating tournament: ' + error.message)
+    },
+  })
+
+  const saveAsClubTemplate = trpc.clubTemplate.saveFromTournament.useMutation({
+    onSuccess: () => {
+      setShowSaveTemplate(false)
+      setTemplateForm({ name: '', description: '' })
+      alert('Saved as club template')
+    },
+    onError: (error) => {
+      alert('Failed to save template: ' + error.message)
     },
   })
   
@@ -347,9 +360,40 @@ export default function TournamentDetailPage() {
     setShowEditTournament(true)
   }
 
+  const openSaveTemplateModal = () => {
+    if (!tournament?.clubId) return
+    setTemplateForm({ name: tournament.title || '', description: '' })
+    setShowSaveTemplate(true)
+  }
+
+  const handleSaveTemplate = async () => {
+    if (!tournament?.id) return
+    if (!tournament?.clubId) {
+      alert('This tournament is not linked to a club.')
+      return
+    }
+    if (!templateForm.name.trim()) {
+      alert('Please enter a template name')
+      return
+    }
+    try {
+      await saveAsClubTemplate.mutateAsync({
+        tournamentId: tournament.id,
+        name: templateForm.name.trim(),
+        description: templateForm.description.trim() ? templateForm.description.trim() : undefined,
+      })
+    } catch {
+      // Error is surfaced via mutation onError.
+    }
+  }
+
   const handleTournamentSubmit = () => {
     if (!tournamentForm.title || !tournamentForm.startDate || !tournamentForm.endDate) {
       alert('Please fill in required fields')
+      return
+    }
+    if (requiresPayoutsSetup) {
+      alert('Connect payouts with Stripe before setting a paid entry fee.')
       return
     }
 
@@ -562,13 +606,39 @@ export default function TournamentDetailPage() {
           {/* Tournament Information - Left Column (60%) */}
           <div className="lg:col-span-2">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3">
                     <Calendar className="w-5 h-5 text-white" />
                   </div>
                   Tournament Information
                 </CardTitle>
+                {isAdmin ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={handleEditTournamentClick}
+                    >
+                      <Settings className="h-4 w-4" />
+                      Edit
+                    </Button>
+                    {tournament.clubId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={openSaveTemplateModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Save as template
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Tournament status — выше описания */}
@@ -639,30 +709,22 @@ export default function TournamentDetailPage() {
                   </span>
                 </div>
 
-                {/* Winners — per-division with switcher */}
+                {/* Winners — per-division with dropdown switcher (same as Score Input) */}
                 <div className="pt-4 border-t border-gray-200">
-                  <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
-                    <Trophy className="h-5 w-5 text-amber-500" />
-                    Winners
-                  </p>
                   {(() => {
-                    const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string }>
+                    const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string; teams?: unknown[] }>
                     const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
                     const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const winnersByDivision = (tournament as { winnersByDivision?: Array<{ divisionId: string; divisionName: string; first: { teamId: string; teamName: string } | null; second: { teamId: string; teamName: string } | null; third: { teamId: string; teamName: string } | null }> })?.winnersByDivision
                     const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
                     const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
 
-                    if (divisions.length === 0) {
-                      return (
-                        <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
-                          <p className="text-base font-medium text-gray-600">No divisions yet</p>
-                          <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
-                        </div>
-                      )
-                    }
-
                     return (
                       <div>
+                        <p className="text-lg font-semibold text-black flex items-center gap-2 mb-3">
+                          <Trophy className="h-5 w-5 text-amber-500" />
+                          Winners
+                        </p>
                         <div className="mb-3">
                           <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
                           <select
@@ -678,7 +740,12 @@ export default function TournamentDetailPage() {
                             ))}
                           </select>
                         </div>
-                        {!hasWinners ? (
+                        {divisions.length === 0 ? (
+                          <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
+                            <p className="text-base font-medium text-gray-600">No divisions yet</p>
+                            <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
+                          </div>
+                        ) : !hasWinners ? (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
                             <Trophy className="h-10 w-10 text-gray-300 mx-auto mb-2" />
                             <p className="text-base font-medium text-gray-600">No winners yet</p>
@@ -690,7 +757,6 @@ export default function TournamentDetailPage() {
                           </div>
                         ) : (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
-                            <p className="text-sm font-semibold text-gray-700 mb-3">{winnersForDivision?.divisionName ?? selectedDivision?.name}</p>
                             <div className="space-y-2 text-base text-gray-800">
                               {winnersForDivision?.first && (
                                 <div className="flex items-center gap-2">
@@ -1210,10 +1276,89 @@ export default function TournamentDetailPage() {
               </Button>
               <Button
                 onClick={handleTournamentSubmit}
-                disabled={updateTournament.isPending}
+                disabled={updateTournament.isPending || requiresPayoutsSetup}
                 className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
+              </Button>
+            </div>
+            {requiresPayoutsSetup && (
+              <div className="px-8 pb-8">
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div className="mb-2">
+                    Paid entry fees require payouts to be connected via Stripe.
+                  </div>
+                  <Button type="button" variant="outline" onClick={handleConnectStripe}>
+                    Connect payouts with Stripe
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Save as Club Template Modal */}
+      {showSaveTemplate && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[115] p-4 animate-in fade-in duration-300"
+          onClick={() => setShowSaveTemplate(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 border border-gray-200 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center p-8 pb-6">
+              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mr-3">
+                <Layers className="w-6 h-6 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-bold text-gray-900 truncate">Save as template</h2>
+                <p className="text-sm text-gray-500 truncate">Visible to all club admins</p>
+              </div>
+            </div>
+
+            <div className="px-8 pb-6 space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Template name *</label>
+                <input
+                  type="text"
+                  value={templateForm.name}
+                  onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                  placeholder="e.g., Weekly RR 3.0–3.5"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Description (optional)</label>
+                <textarea
+                  value={templateForm.description}
+                  onChange={(e) => setTemplateForm((p) => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm resize-none"
+                  placeholder="What this preset is for, who it’s for, etc."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 px-8 pb-8">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowSaveTemplate(false)}
+                disabled={saveAsClubTemplate.isPending}
+                className="px-6 py-3 text-base rounded-xl border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveTemplate}
+                disabled={saveAsClubTemplate.isPending || !templateForm.name.trim()}
+                className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
+              >
+                {saveAsClubTemplate.isPending ? 'Saving…' : 'Save template'}
               </Button>
             </div>
           </div>

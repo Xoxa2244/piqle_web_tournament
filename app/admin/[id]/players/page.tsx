@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -55,6 +55,9 @@ export default function PlayersPage() {
   
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddPlayerModal, setShowAddPlayerModal] = useState(false)
+  const [showInvitePlayerModal, setShowInvitePlayerModal] = useState(false)
+  const [inviteSearchInput, setInviteSearchInput] = useState('')
+  const [inviteSearchDebounced, setInviteSearchDebounced] = useState('')
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [showOnlyWaitlist, setShowOnlyWaitlist] = useState(false)
@@ -91,6 +94,25 @@ export default function PlayersPage() {
       console.error('Failed to delete player:', error)
       alert('Error deleting player')
     }
+  })
+
+  // Eligible platform users for invite (no email), with invitation status
+  const { data: eligibleUsers, refetch: refetchEligibleUsers } = trpc.tournamentInvitation.listEligibleUsers.useQuery(
+    { tournamentId, search: inviteSearchDebounced || undefined },
+    { enabled: !!tournamentId && showInvitePlayerModal }
+  )
+  useEffect(() => {
+    if (!showInvitePlayerModal) return
+    const t = setTimeout(() => setInviteSearchDebounced(inviteSearchInput), 300)
+    return () => clearTimeout(t)
+  }, [inviteSearchInput, showInvitePlayerModal])
+  const invitePlayerMutation = trpc.tournamentInvitation.create.useMutation({
+    onSuccess: () => {
+      refetchEligibleUsers()
+    },
+    onError: (e) => {
+      alert(e.message)
+    },
   })
 
   // Get divisions and teams from tournament
@@ -274,10 +296,16 @@ export default function PlayersPage() {
             </div>
 
             {isAdmin && (
-              <Button onClick={handleAddPlayer} size="sm">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add Player
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button onClick={handleAddPlayer} size="sm">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Create Player
+                </Button>
+                <Button onClick={() => { setShowInvitePlayerModal(true); setInviteSearchInput(''); setInviteSearchDebounced('') }} variant="outline" size="sm">
+                  <Users className="h-4 w-4 mr-2" />
+                  Invite Player
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>
@@ -397,6 +425,97 @@ export default function PlayersPage() {
           refetchPlayers()
         }}
       />
+
+      {/* Invite Player Modal: fixed size, on top, darkened backdrop */}
+      {showInvitePlayerModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowInvitePlayerModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[28rem] h-[42rem] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold">Invite Player</h2>
+              <p className="text-sm text-gray-500 mt-1">Choose a registered user to invite. They will receive an email to accept or decline.</p>
+              <div className="relative mt-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search by name..."
+                  value={inviteSearchInput}
+                  onChange={(e) => setInviteSearchInput(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {eligibleUsers === undefined ? (
+                <div className="p-6 text-center text-gray-500">Loading...</div>
+              ) : eligibleUsers.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  {inviteSearchDebounced ? 'No users found for this name.' : 'No users to show. Try searching by name.'}
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {eligibleUsers.map((u) => {
+                    const status = u.invitationStatus
+                    const isPending = status === 'PENDING'
+                    const isDeclined = status === 'DECLINED'
+                    const canInvite = !isPending
+                    const duprStr = u.duprRatingDoubles != null
+                      ? formatDuprRating(String(u.duprRatingDoubles))
+                      : u.duprRatingSingles != null
+                        ? formatDuprRating(String(u.duprRatingSingles))
+                        : null
+                    return (
+                      <li key={u.id} className="flex items-center gap-3 p-3 hover:bg-gray-50">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-gray-600 font-medium">
+                          {u.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={u.image} alt="" width={40} height={40} className="w-10 h-10 object-cover" />
+                          ) : (
+                            <span>{(u.name || '?').charAt(0).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{u.name || 'Unnamed'}</div>
+                          <div className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+                            {u.city && <span>{u.city}</span>}
+                            {u.gender && <span>{u.gender === 'M' ? 'M' : u.gender === 'F' ? 'F' : '—'}</span>}
+                            {duprStr && <span>DUPR {duprStr}</span>}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {isPending ? (
+                            <Button size="sm" variant="secondary" disabled>Pending</Button>
+                          ) : isDeclined ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={invitePlayerMutation.isPending}
+                              onClick={() => invitePlayerMutation.mutate({ tournamentId, invitedUserId: u.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
+                            >
+                              Invite again
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled={invitePlayerMutation.isPending}
+                              onClick={() => invitePlayerMutation.mutate({ tournamentId, invitedUserId: u.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
+                            >
+                              Invite
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="p-4 border-t flex-shrink-0">
+              <Button variant="outline" className="w-full" onClick={() => { setShowInvitePlayerModal(false); setInviteSearchInput(''); setInviteSearchDebounced('') }}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedPlayer && (
         <EditPlayerModal

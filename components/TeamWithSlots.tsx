@@ -64,6 +64,7 @@ interface TeamWithSlotsProps {
   onRemovePlayer: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayer: (fromTeamId: string, toTeamId: string, fromSlot: number, toSlot: number) => void
   isDragDisabled?: boolean
+  dropTargetId?: string | null
 }
 
 export default function TeamWithSlots({
@@ -79,7 +80,8 @@ export default function TeamWithSlots({
   onAddPlayer,
   onRemovePlayer,
   onMovePlayer,
-  isDragDisabled = false
+  isDragDisabled = false,
+  dropTargetId = null
 }: TeamWithSlotsProps) {
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
@@ -322,6 +324,7 @@ export default function TeamWithSlots({
                   onRemovePlayer={handleRemovePlayer}
                   onMovePlayer={onMovePlayer}
                   isDragDisabled={isDragDisabled}
+                  isDropTarget={dropTargetId === `player-${team.id}-slot-${index}`}
                 />
               ))
             )}

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -85,9 +85,10 @@ function AvatarImage({
   )
 }
 
-export default function HomePage() {
+function HomePageContent() {
   const { data: session } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [selectedDescription, setSelectedDescription] = useState<{title: string, description: string} | null>(null)
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
@@ -119,7 +120,17 @@ export default function HomePage() {
       setModalTab('information')
     }
   }, [selectedTournament])
-  
+
+  // Open tournament modal when landing with ?open=<tournamentId> (e.g. from invitation email "View details")
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId || !tournaments?.length) return
+    const exists = tournaments.some(t => t.id === openId)
+    if (exists) {
+      setSelectedTournament(openId)
+    }
+  }, [searchParams, tournaments])
+
   // Get ratings for all tournaments
   const tournamentIds = useMemo(() => {
     return tournaments?.map(t => t.id) || []
@@ -145,6 +156,11 @@ export default function HomePage() {
   const { data: comments, refetch: refetchComments } = trpc.comment.getTournamentComments.useQuery(
     { tournamentId: selectedTournament || '' },
     { enabled: !!selectedTournament }
+  )
+
+  const { data: myTournamentInvitation } = trpc.tournamentInvitation.getMineByTournament.useQuery(
+    { tournamentId: selectedTournament || '' },
+    { enabled: !!session && !!selectedTournament }
   )
   
   const toggleRating = trpc.rating.toggleRating.useMutation({
@@ -270,12 +286,60 @@ export default function HomePage() {
     },
   })
 
+  const acceptTournamentInvitation = trpc.tournamentInvitation.accept.useMutation({
+    onSuccess: (data) => {
+      utils.tournamentInvitation.getMineByTournament.invalidate({ tournamentId: data.tournamentId })
+      utils.notification.list.invalidate({ limit: 20 })
+      router.push(`/tournaments/${data.tournamentId}/register`)
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const declineTournamentInvitation = trpc.tournamentInvitation.decline.useMutation({
+    onSuccess: () => {
+      if (selectedTournament) {
+        utils.tournamentInvitation.getMineByTournament.invalidate({ tournamentId: selectedTournament })
+      }
+      utils.notification.list.invalidate({ limit: 20 })
+      toast({
+        title: 'Invitation declined',
+        description: 'You declined this tournament invitation.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const truncateText = (text: string | null, maxLines: number = 3) => {
     if (!text) return ''
     const lines = text.split('\n')
     if (lines.length <= maxLines) return text
     return lines.slice(0, maxLines).join('\n')
   }
+
+  const closeTournamentModal = useCallback(() => {
+    setSelectedTournament(null)
+    setCommentText('')
+    setDescriptionExpanded(false)
+
+    const params = new URLSearchParams(searchParams.toString())
+    if (params.has('open')) {
+      params.delete('open')
+      const nextQuery = params.toString()
+      router.replace(nextQuery ? `/?${nextQuery}` : '/', { scroll: false })
+    }
+  }, [router, searchParams])
 
   // Tournament status: past (ended), upcoming (not started), in_progress (ongoing)
   const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
@@ -549,7 +613,7 @@ export default function HomePage() {
                 {baseUrl && (
                   <div className="absolute top-4 right-4 z-10">
                     <ShareButton
-                      url={`${baseUrl}/scoreboard/${tournament.id}`}
+                      url={`${baseUrl}/?open=${tournament.id}`}
                       title={tournament.title}
                       iconOnly
                       size="sm"
@@ -808,11 +872,7 @@ export default function HomePage() {
         return (
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => {
-              setSelectedTournament(null)
-              setCommentText('')
-              setDescriptionExpanded(false)
-            }}
+            onClick={closeTournamentModal}
           >
             <div
               className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col"
@@ -856,6 +916,39 @@ export default function HomePage() {
                     </>
                   )}
                   {(() => {
+                    const pendingInvitation =
+                      myTournamentInvitation?.status === 'PENDING' && myTournamentInvitation?.tournamentId === tournament.id
+                        ? myTournamentInvitation
+                        : null
+
+                    if (pendingInvitation) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600 mr-1">You were invited to this tournament</span>
+                          <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={acceptTournamentInvitation.isPending || declineTournamentInvitation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              acceptTournamentInvitation.mutate({ invitationId: pendingInvitation.id })
+                            }}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={acceptTournamentInvitation.isPending || declineTournamentInvitation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              declineTournamentInvitation.mutate({ invitationId: pendingInvitation.id })
+                            }}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )
+                    }
+
                     const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                     const registrationOpen = isRegistrationOpen(tournament)
                     const label =
@@ -896,11 +989,7 @@ export default function HomePage() {
                     )
                   })()}
                   <button
-                    onClick={() => {
-                      setSelectedTournament(null)
-                      setCommentText('')
-                      setDescriptionExpanded(false)
-                    }}
+                    onClick={closeTournamentModal}
                     className="text-gray-400 hover:text-gray-600 transition-colors p-1"
                   >
                     <X className="h-6 w-6" />
@@ -1004,14 +1093,14 @@ export default function HomePage() {
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => {
-                                  setSelectedTournament(null)
+                                  closeTournamentModal()
                                   setFilter('map')
                                   setMapFocusTournamentId(tournament.id)
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault()
-                                    setSelectedTournament(null)
+                                    closeTournamentModal()
                                     setFilter('map')
                                     setMapFocusTournamentId(tournament.id)
                                   }
@@ -1074,7 +1163,9 @@ export default function HomePage() {
                     <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                       <div className="flex-1 overflow-y-auto p-6 space-y-4">
                         {comments && comments.length > 0 ? (
-                          comments.map((comment) => {
+                          [...comments]
+                            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                            .map((comment) => {
                             const isOwnComment = session?.user?.id === comment.user.id
                             return (
                               <div key={comment.id} className="border-b border-gray-100 pb-4 last:border-0 relative">
@@ -1261,5 +1352,22 @@ export default function HomePage() {
         )
       })()}
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <HomePageContent />
+    </Suspense>
   )
 }

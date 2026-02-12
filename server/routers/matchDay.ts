@@ -13,16 +13,20 @@ export const matchDayRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
 
-      // Check if tournament is IndyLeague or League Round Robin
+      // Check if tournament supports match days
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.tournamentId },
         select: { format: true },
       })
 
-      if (tournament?.format !== 'INDY_LEAGUE' && tournament?.format !== 'LEAGUE_ROUND_ROBIN') {
+      if (
+        tournament?.format !== 'INDY_LEAGUE' &&
+        tournament?.format !== 'LEAGUE_ROUND_ROBIN' &&
+        tournament?.format !== 'LADDER_LEAGUE'
+      ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Match days can only be created for Indy League or League Round Robin tournaments',
+          message: 'Match days can only be created for Indy League, League Round Robin, or Ladder League tournaments',
         })
       }
 
@@ -105,10 +109,14 @@ export const matchDayRouter = createTRPCRouter({
         })
       }
 
-      if (tournament.format !== 'INDY_LEAGUE' && tournament.format !== 'LEAGUE_ROUND_ROBIN') {
+      if (
+        tournament.format !== 'INDY_LEAGUE' &&
+        tournament.format !== 'LEAGUE_ROUND_ROBIN' &&
+        tournament.format !== 'LADDER_LEAGUE'
+      ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'This endpoint is only for Indy League or League Round Robin tournaments',
+          message: 'This endpoint is only for Indy League, League Round Robin, or Ladder League tournaments',
         })
       }
 
@@ -331,4 +339,3 @@ export const matchDayRouter = createTRPCRouter({
       return { success: true }
     }),
 })
-
