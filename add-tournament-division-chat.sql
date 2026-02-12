@@ -6,7 +6,7 @@
 
 CREATE TABLE IF NOT EXISTS "tournament_chat_messages" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "tournament_id" UUID NOT NULL,
+  "tournament_id" TEXT NOT NULL,
   "user_id" TEXT NOT NULL,
   "text" TEXT NOT NULL,
   "deleted_at" TIMESTAMP,
@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS "tournament_chat_messages_tournament_id_user_id_creat
 
 CREATE TABLE IF NOT EXISTS "division_chat_messages" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "division_id" UUID NOT NULL,
+  "division_id" TEXT NOT NULL,
   "user_id" TEXT NOT NULL,
   "text" TEXT NOT NULL,
   "deleted_at" TIMESTAMP,
