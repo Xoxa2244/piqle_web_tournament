@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { normalizeEmail } from '@/lib/emailOtp'
 
 export const importRouter = createTRPCRouter({
   resetTournament: tdProcedure
@@ -249,12 +250,14 @@ export const importRouter = createTRPCRouter({
               }
             }
             
+            const rawEmail = participant['Email']?.trim()
+            const normalizedEmail = rawEmail ? normalizeEmail(rawEmail) : null
             const player = await ctx.prisma.player.create({
               data: {
                 tournamentId: input.tournamentId,
                 firstName: participant['First Name'],
                 lastName: participant['Last Name'],
-                email: participant['Email']?.trim() || null,
+                email: normalizedEmail,
                 gender: participant['Gender'] === 'M' ? 'M' : participant['Gender'] === 'F' ? 'F' : undefined,
                 birthDate,
                 dupr: participant['DUPR ID']?.trim() || null,
