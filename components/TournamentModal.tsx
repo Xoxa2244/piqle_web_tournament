@@ -28,11 +28,24 @@ import { useToast } from '@/components/ui/use-toast'
 import ComplaintModal from '@/components/ComplaintModal'
 
 function TournamentImagePlaceholder({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
+  const [showFallback, setShowFallback] = useState(true)
   const sizeClass = size === 'lg' ? 'w-20 h-20' : 'w-11 h-11'
   const iconSize = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5'
   return (
-    <div className={`${sizeClass} flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center`}>
-      <Trophy className={`${iconSize} text-gray-400`} />
+    <div className={`${sizeClass} flex-shrink-0 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden relative`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/tournament-placeholder.png"
+        alt=""
+        className="w-full h-full object-cover"
+        onLoad={() => setShowFallback(false)}
+        onError={() => setShowFallback(true)}
+      />
+      {showFallback && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <Trophy className={`${iconSize} text-gray-400`} />
+        </div>
+      )}
     </div>
   )
 }
