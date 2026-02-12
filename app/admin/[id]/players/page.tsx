@@ -17,7 +17,8 @@ import {
   ArrowLeft,
   Filter,
   Eye,
-  EyeOff
+  EyeOff,
+  Mail
 } from 'lucide-react'
 import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
@@ -29,6 +30,11 @@ interface Player {
   firstName: string
   lastName: string
   email: string | null
+  user: {
+    id: string
+    name: string | null
+    email: string | null
+  } | null
   dupr: string | null
   duprRating: string | null  // Decimal from Prisma serializes as string
   gender: 'M' | 'F' | 'X' | null
@@ -84,6 +90,7 @@ export default function PlayersPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
+  const playersList = (players as unknown as Player[]) ?? []
 
   // Delete player mutation
   const deletePlayerMutation = trpc.player.delete.useMutation({
@@ -115,6 +122,15 @@ export default function PlayersPage() {
     },
   })
 
+  const inviteByEmailMutation = trpc.player.inviteByEmail.useMutation({
+    onSuccess: () => {
+      alert('Invitation sent.')
+    },
+    onError: (e) => {
+      alert(e.message)
+    },
+  })
+
   // Get divisions and teams from tournament
   const divisions = tournament?.divisions || []
   
@@ -123,9 +139,9 @@ export default function PlayersPage() {
 
   // Filter players based on all criteria
   const filteredPlayers = useMemo(() => {
-    if (!players) return []
+    if (!playersList.length) return []
     
-    let filtered = players
+    let filtered = playersList
 
     // Search filter
     if (searchQuery.trim()) {
@@ -167,7 +183,7 @@ export default function PlayersPage() {
     }
 
     return filtered
-  }, [players, searchQuery, showOnlyWaitlist, divisionFilter, teamFilter, paymentFilter])
+  }, [playersList, searchQuery, showOnlyWaitlist, divisionFilter, teamFilter, paymentFilter])
 
   const handleAddPlayer = () => {
     setShowAddPlayerModal(true)
@@ -199,6 +215,16 @@ export default function PlayersPage() {
   const getDuprRating = (player: Player) => {
     if (player.duprRating === null) return '—'
     return formatDuprRating(player.duprRating) || '—'
+  }
+
+  const getDisplayName = (player: Player) => {
+    const userName = player.user?.name?.trim()
+    if (userName) return userName
+    return `${player.firstName} ${player.lastName}`.trim()
+  }
+
+  const getDisplayEmail = (player: Player) => {
+    return player.user?.email || player.email || '—'
   }
 
   if (!tournament) {
@@ -333,13 +359,14 @@ export default function PlayersPage() {
                   <th className="text-left p-3 font-medium">Team</th>
                   <th className="text-left p-3 font-medium">Payment Status</th>
                   <th className="text-left p-3 font-medium">List Status</th>
+                  <th className="text-left p-3 font-medium">Account</th>
                   <th className="text-left p-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-8 text-gray-500">
+                    <td colSpan={11} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || showOnlyWaitlist 
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -351,7 +378,7 @@ export default function PlayersPage() {
                     <tr key={player.id} className="border-b hover:bg-gray-50">
                       <td className="p-3">
                         <div className="font-medium">
-                          {player.firstName} {player.lastName}
+                          {getDisplayName(player)}
                         </div>
                       </td>
                       <td className="p-3 text-sm text-gray-600">
@@ -362,7 +389,7 @@ export default function PlayersPage() {
                         ) : '—'}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
-                        {player.email || '—'}
+                        {getDisplayEmail(player)}
                       </td>
                       <td className="p-3 text-sm text-gray-600">
                         {player.dupr || '—'}
@@ -387,8 +414,28 @@ export default function PlayersPage() {
                         </Badge>
                       </td>
                       <td className="p-3">
+                        {player.user?.id ? (
+                          <Badge variant="default">Registered</Badge>
+                        ) : player.email ? (
+                          <Badge variant="secondary">Not registered</Badge>
+                        ) : (
+                          <Badge variant="outline">No email</Badge>
+                        )}
+                      </td>
+                      <td className="p-3">
                         {isAdmin && (
                           <div className="flex items-center space-x-2">
+                            {!player.user?.id && player.email && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={inviteByEmailMutation.isPending}
+                                onClick={() => inviteByEmailMutation.mutate({ playerId: player.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
+                                title="Invite by email"
+                              >
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

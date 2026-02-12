@@ -1,5 +1,16 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { normalizeEmail } from '@/lib/emailOtp'
+import { assertTournamentAdmin } from '../utils/access'
+import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+
+function getAppBaseUrl(baseUrlFromClient?: string | null): string {
+  if (baseUrlFromClient && baseUrlFromClient.startsWith('http')) return baseUrlFromClient.replace(/\/$/, '')
+  const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+  if (env) return env.startsWith('http') ? env : `https://${env}`
+  return 'http://localhost:3000'
+}
 
 export const playerRouter = createTRPCRouter({
   create: tdProcedure
@@ -34,6 +45,7 @@ export const playerRouter = createTRPCRouter({
       const player = await ctx.prisma.player.create({
         data: {
           ...playerData,
+          email: playerData.email ? normalizeEmail(playerData.email) : undefined,
           tournamentId,
         },
       })
@@ -61,6 +73,13 @@ export const playerRouter = createTRPCRouter({
           tournamentId: input.tournamentId,
         },
         include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           teamPlayers: {
             include: {
               team: {
@@ -70,7 +89,7 @@ export const playerRouter = createTRPCRouter({
               },
             },
           },
-        },
+        } as any,
         orderBy: { createdAt: 'desc' },
       })
     }),
@@ -166,7 +185,10 @@ export const playerRouter = createTRPCRouter({
 
       const updatedPlayer = await ctx.prisma.player.update({
         where: { id },
-        data,
+        data: {
+          ...data,
+          email: data.email ? normalizeEmail(data.email) : data.email,
+        },
       })
 
       // Log the update for each tournament the player is in
@@ -330,5 +352,69 @@ export const playerRouter = createTRPCRouter({
       return ctx.prisma.teamPlayer.delete({
         where: { id: input.teamPlayerId },
       })
+    }),
+
+  inviteByEmail: tdProcedure
+    .input(z.object({
+      playerId: z.string(),
+      baseUrl: z.string().url().optional().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const player = (await ctx.prisma.player.findUnique({
+        where: { id: input.playerId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          userId: true,
+          tournamentId: true,
+          tournament: {
+            select: { id: true, title: true },
+          },
+        } as any,
+      })) as any
+
+      if (!player) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Player not found.' })
+      }
+
+      if (!player.tournamentId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Player is not linked to a tournament.' })
+      }
+
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, player.tournamentId)
+
+      if (!player.email) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Player does not have an email.' })
+      }
+
+      if (player.userId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Player is already registered.' })
+      }
+
+      const baseUrl = getAppBaseUrl(input.baseUrl)
+      const email = normalizeEmail(player.email)
+      const signupLink = `${baseUrl}/auth/signin?mode=signup&email=${encodeURIComponent(email)}`
+      const tournamentTitle = player.tournament?.title ?? 'Tournament'
+      const playerName = `${player.firstName ?? ''} ${player.lastName ?? ''}`.trim() || 'there'
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <p>Hi ${playerName},</p>
+          <p>You were added as a participant in <strong>${tournamentTitle}</strong> on Piqle.</p>
+          <p>Create your account using this email (${email}) to claim your profile and manage your registrations.</p>
+          <p style="margin: 24px 0;">
+            <a href="${signupLink}" style="background:#2563eb;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+              Create your account
+            </a>
+          </p>
+          <p>If you already have an account, just sign in with this email.</p>
+        </div>
+      `
+
+      await sendHtmlEmail(email, `You're invited to ${tournamentTitle} on Piqle`, html)
+
+      return { ok: true }
     }),
 })

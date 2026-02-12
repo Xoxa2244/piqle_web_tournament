@@ -2,11 +2,12 @@
 
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
 
 export default function SignInPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -18,6 +19,18 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+
+  useEffect(() => {
+    const modeParam = searchParams.get('mode')
+    const emailParam = searchParams.get('email')
+    if (modeParam === 'signup') {
+      setMode('signup')
+      setStep('email')
+    }
+    if (emailParam && !email) {
+      setEmail(emailParam)
+    }
+  }, [searchParams, email])
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl: '/admin' })
