@@ -35,6 +35,8 @@ model User {
   clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
   clubChatMessages         ClubChatMessage[]
+  tournamentChatMessages   TournamentChatMessage[]
+  divisionChatMessages     DivisionChatMessage[]
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests         ClubJoinRequest[]
@@ -150,6 +152,7 @@ model Tournament {
   waitlistEntries         WaitlistEntry[]
   payments                Payment[]
   tournamentInvitations   TournamentInvitation[]
+  chatMessages            TournamentChatMessage[]
   club                    Club?                     @relation(fields: [clubId], references: [id], onDelete: SetNull)
 
   @@index([clubId])
@@ -303,6 +306,42 @@ model ClubChatMessage {
   @@map("club_chat_messages")
 }
 
+model TournamentChatMessage {
+  id              String    @id @default(uuid())
+  tournamentId    String    @map("tournament_id")
+  userId          String    @map("user_id")
+  text            String
+  deletedAt       DateTime? @map("deleted_at")
+  deletedByUserId String?   @map("deleted_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
+  @@index([userId])
+  @@map("tournament_chat_messages")
+}
+
+model DivisionChatMessage {
+  id              String    @id @default(uuid())
+  divisionId      String    @map("division_id")
+  userId          String    @map("user_id")
+  text            String
+  deletedAt       DateTime? @map("deleted_at")
+  deletedByUserId String?   @map("deleted_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([divisionId, createdAt])
+  @@index([userId])
+  @@map("division_chat_messages")
+}
+
 model ClubInvite {
   id            String   @id @default(uuid())
   clubId        String   @map("club_id")
@@ -414,6 +453,7 @@ model Division {
   waitlistEntries       WaitlistEntry[]
   tournamentAccesses    TournamentAccess[]
   indyMatchups          IndyMatchup[]
+  chatMessages          DivisionChatMessage[]
 
   @@map("divisions")
 }

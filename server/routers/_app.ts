@@ -28,6 +28,7 @@ import { clubChatRouter } from './clubChat'
 import { ladderRouter } from './ladder'
 import { clubTemplateRouter } from './clubTemplate'
 import { notificationRouter } from './notification'
+import { tournamentChatRouter } from './tournamentChat'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -59,6 +60,7 @@ export const appRouter = createTRPCRouter({
   clubTemplate: clubTemplateRouter,
   ladder: ladderRouter,
   notification: notificationRouter,
+  tournamentChat: tournamentChatRouter,
 })
 
 export type AppRouter = typeof appRouter
