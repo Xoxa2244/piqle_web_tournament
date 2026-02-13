@@ -546,7 +546,7 @@ function HomePageContent() {
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {formatUsDateShort(tournament.startDate, { timeZone: (tournament as any).timezone })} - {formatUsDateShort(tournament.endDate, { timeZone: (tournament as any).timezone })}
+                          {formatUsDateTimeShort(tournament.startDate, { timeZone: (tournament as any).timezone })} - {formatUsDateTimeShort(tournament.endDate, { timeZone: (tournament as any).timezone })}
                         </span>
                       </div>
                       

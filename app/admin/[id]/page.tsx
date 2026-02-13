@@ -10,7 +10,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { 
   Users, 
@@ -869,9 +869,9 @@ export default function TournamentDetailPage() {
                 <div className="flex items-center gap-2 text-base text-gray-700">
                   <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>
-                    {formatUsDateShort(tournament.startDate)}
+                    {formatUsDateTimeShort(tournament.startDate, { timeZone: tournament.timezone })}
                     {' – '}
-                    {formatUsDateShort(tournament.endDate)}
+                    {formatUsDateTimeShort(tournament.endDate, { timeZone: tournament.timezone })}
                   </span>
                 </div>
 

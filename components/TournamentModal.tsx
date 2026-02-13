@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -503,8 +504,8 @@ export default function TournamentModal({
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {new Date(tournament.startDate).toLocaleDateString()} -{' '}
-                          {new Date(tournament.endDate).toLocaleDateString()}
+                          {formatUsDateTimeShort(tournament.startDate, { timeZone: (tournament as any).timezone })} -{' '}
+                          {formatUsDateTimeShort(tournament.endDate, { timeZone: (tournament as any).timezone })}
                         </span>
                       </div>
                       {((tournament as { registrationStartDate?: string | null }).registrationStartDate ||

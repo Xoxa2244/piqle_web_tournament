@@ -2,7 +2,7 @@
 
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
@@ -386,7 +386,9 @@ export default function AdminPage() {
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                    <span>{formatUsDateShort(tournament.startDate)} – {formatUsDateShort(tournament.endDate)}</span>
+                    <span>
+                      {formatUsDateTimeShort(tournament.startDate, { timeZone: tournament.timezone })} – {formatUsDateTimeShort(tournament.endDate, { timeZone: tournament.timezone })}
+                    </span>
                   </div>
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
