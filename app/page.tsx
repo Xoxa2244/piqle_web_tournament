@@ -3,14 +3,14 @@
 import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
-import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Calendar, MapPin, Users, Trophy, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
+import { Calendar, Clock3, MapPin, Users, Trophy, ThumbsUp, ThumbsDown, Search, User as UserIcon, MessageCircle, X, Send, MoreVertical, Trash2, AlertTriangle, ClipboardList } from 'lucide-react'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
@@ -546,7 +546,7 @@ function HomePageContent() {
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {formatUsDateShort(tournament.startDate)} - {formatUsDateShort(tournament.endDate)}
+                          {formatUsDateShort(tournament.startDate, { timeZone: (tournament as any).timezone })} - {formatUsDateShort(tournament.endDate, { timeZone: (tournament as any).timezone })}
                         </span>
                       </div>
                       
@@ -555,15 +555,22 @@ function HomePageContent() {
                           <ClipboardList className="h-4 w-4 mr-2" />
                           <span>
                             Registration: {(tournament as any).registrationStartDate
-                              ? formatUsDateShort((tournament as any).registrationStartDate)
+                              ? formatUsDateTimeShort((tournament as any).registrationStartDate, { timeZone: (tournament as any).timezone })
                               : '—'}
                             {' – '}
                             {(tournament as any).registrationEndDate
-                              ? formatUsDateShort((tournament as any).registrationEndDate)
+                              ? formatUsDateTimeShort((tournament as any).registrationEndDate, { timeZone: (tournament as any).timezone })
                               : '—'}
                           </span>
                         </div>
                       )}
+
+                      {(tournament as any).timezone ? (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Clock3 className="h-4 w-4 mr-2" />
+                          <span>{getTimezoneLabel((tournament as any).timezone)}</span>
+                        </div>
+                      ) : null}
                       
                       {tournament.venueName && (
                         <div

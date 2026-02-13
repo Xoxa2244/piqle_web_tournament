@@ -132,6 +132,16 @@ const validateTournamentDates = (input: {
   registrationStartDate?: Date
   registrationEndDate?: Date
 }) => {
+  const registrationCutoff = new Date(input.startDate)
+  const isMidnightUtc =
+    registrationCutoff.getUTCHours() === 0 &&
+    registrationCutoff.getUTCMinutes() === 0 &&
+    registrationCutoff.getUTCSeconds() === 0 &&
+    registrationCutoff.getUTCMilliseconds() === 0
+  if (isMidnightUtc) {
+    registrationCutoff.setUTCHours(23, 59, 59, 999)
+  }
+
   if (input.endDate < input.startDate) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -150,7 +160,7 @@ const validateTournamentDates = (input: {
     }
 
     if (input.registrationStartDate) {
-      if (input.registrationStartDate > input.startDate) {
+      if (input.registrationStartDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration start date cannot be later than tournament start date',
@@ -159,7 +169,7 @@ const validateTournamentDates = (input: {
     }
 
     if (input.registrationEndDate) {
-      if (input.registrationEndDate > input.startDate) {
+      if (input.registrationEndDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration end date cannot be later than tournament start date',

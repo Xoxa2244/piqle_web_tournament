@@ -7,7 +7,8 @@ export type RecurrenceConfig = {
 }
 
 export const parseYmdToUtc = (ymd: string): Date | null => {
-  const parts = String(ymd || '').split('-').map((v) => Number(v))
+  const normalized = String(ymd || '').split('T')[0]
+  const parts = normalized.split('-').map((v) => Number(v))
   if (parts.length !== 3) return null
   const [y, m, d] = parts
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null
@@ -85,4 +86,3 @@ export const generateRecurringStartDates = (
 
   return { startDates }
 }
-

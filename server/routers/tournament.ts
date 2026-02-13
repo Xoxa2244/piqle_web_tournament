@@ -274,6 +274,21 @@ const formatYmdUtc = (date: Date) => {
   return `${y}-${m}-${d}`
 }
 
+const getRegistrationCutoff = (startDate: Date) => {
+  const cutoff = new Date(startDate)
+  // Date-only inputs (YYYY-MM-DD) are parsed as 00:00:00 UTC.
+  // For those tournaments, allow registration until end of that day.
+  const isMidnightUtc =
+    cutoff.getUTCHours() === 0 &&
+    cutoff.getUTCMinutes() === 0 &&
+    cutoff.getUTCSeconds() === 0 &&
+    cutoff.getUTCMilliseconds() === 0
+  if (isMidnightUtc) {
+    cutoff.setUTCHours(23, 59, 59, 999)
+  }
+  return cutoff
+}
+
 const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) => {
   if (input.endDate < input.startDate) {
     throw new TRPCError({
@@ -283,6 +298,8 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
   }
 
   if (input.registrationStartDate || input.registrationEndDate) {
+    const registrationCutoff = getRegistrationCutoff(input.startDate)
+
     if (input.registrationStartDate && input.registrationEndDate) {
       if (input.registrationEndDate < input.registrationStartDate) {
         throw new TRPCError({
@@ -293,7 +310,7 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
     }
     
     if (input.registrationStartDate) {
-      if (input.registrationStartDate > input.startDate) {
+      if (input.registrationStartDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration start date cannot be later than tournament start date',
@@ -302,7 +319,7 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
     }
     
     if (input.registrationEndDate) {
-      if (input.registrationEndDate > input.startDate) {
+      if (input.registrationEndDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration end date cannot be later than tournament start date',
@@ -937,6 +954,7 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)).optional(),
       registrationStartDate: z.string().transform((str) => new Date(str)).optional().nullable(),
       registrationEndDate: z.string().transform((str) => new Date(str)).optional().nullable(),
+      timezone: z.string().optional().nullable(),
       entryFeeCents: z.number().int().min(0).optional(),
       currency: z.literal('usd').optional(),
       isPublicBoardEnabled: z.boolean().optional(),
@@ -988,6 +1006,7 @@ export const tournamentRouter = createTRPCRouter({
 
       // Validate registration dates if provided
       if (registrationStartDate !== null || registrationEndDate !== null) {
+        const registrationCutoff = getRegistrationCutoff(startDate)
         if (registrationStartDate && registrationEndDate) {
           // Registration end date cannot be earlier than registration start date
           if (registrationEndDate < registrationStartDate) {
@@ -1000,7 +1019,7 @@ export const tournamentRouter = createTRPCRouter({
         
         if (registrationStartDate) {
           // Registration start date cannot be later than tournament start date
-          if (registrationStartDate > startDate) {
+          if (registrationStartDate > registrationCutoff) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'Registration start date cannot be later than tournament start date',
@@ -1010,7 +1029,7 @@ export const tournamentRouter = createTRPCRouter({
         
         if (registrationEndDate) {
           // Registration end date cannot be later than tournament start date
-          if (registrationEndDate > startDate) {
+          if (registrationEndDate > registrationCutoff) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'Registration end date cannot be later than tournament start date',

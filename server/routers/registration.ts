@@ -101,6 +101,7 @@ export const registrationRouter = createTRPCRouter({
         id: tournament.id,
         title: tournament.title,
         format: tournament.format,
+        timezone: tournament.timezone,
         startDate: tournament.startDate,
         registrationStartDate: tournament.registrationStartDate,
         registrationEndDate: tournament.registrationEndDate,

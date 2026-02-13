@@ -11,6 +11,7 @@ import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
+import { toDateInputInTimeZone, toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { 
   Users, 
   Calendar, 
@@ -114,6 +115,11 @@ function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progres
   }
 }
 
+const getRegistrationMaxDateTime = (startDate: string) => {
+  const day = String(startDate || '').split('T')[0]
+  return day ? `${day}T23:59` : undefined
+}
+
 export default function TournamentDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -138,6 +144,7 @@ export default function TournamentDetailPage() {
     endDate: '',
     registrationStartDate: '',
     registrationEndDate: '',
+    timezone: '',
     entryFee: '',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
@@ -176,10 +183,17 @@ export default function TournamentDetailPage() {
         title: tournament.title,
         description: tournament.description || '',
         venueName: tournament.venueName || '',
-        startDate: new Date(tournament.startDate).toISOString().split('T')[0],
-        endDate: new Date(tournament.endDate).toISOString().split('T')[0],
-        registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
-        registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+        startDate: toDateInputInTimeZone(tournament.startDate, tournament.timezone),
+        endDate: toDateInputInTimeZone(tournament.endDate, tournament.timezone),
+        registrationStartDate: toDateTimeInputInTimeZone(
+          tournament.registrationStartDate,
+          tournament.timezone
+        ),
+        registrationEndDate: toDateTimeInputInTimeZone(
+          tournament.registrationEndDate,
+          tournament.timezone
+        ),
+        timezone: tournament.timezone || '',
         entryFee:
           typeof tournament.entryFeeCents === 'number'
             ? fromCents(tournament.entryFeeCents).toFixed(2)
@@ -345,10 +359,17 @@ export default function TournamentDetailPage() {
       title: tournament.title,
       description: tournament.description || '',
       venueName: tournament.venueName || '',
-      startDate: new Date(tournament.startDate).toISOString().split('T')[0],
-      endDate: new Date(tournament.endDate).toISOString().split('T')[0],
-      registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
-      registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+      startDate: toDateInputInTimeZone(tournament.startDate, tournament.timezone),
+      endDate: toDateInputInTimeZone(tournament.endDate, tournament.timezone),
+      registrationStartDate: toDateTimeInputInTimeZone(
+        tournament.registrationStartDate,
+        tournament.timezone
+      ),
+      registrationEndDate: toDateTimeInputInTimeZone(
+        tournament.registrationEndDate,
+        tournament.timezone
+      ),
+      timezone: tournament.timezone || '',
       entryFee:
         typeof tournament.entryFeeCents === 'number'
           ? fromCents(tournament.entryFeeCents).toFixed(2)
@@ -410,6 +431,8 @@ export default function TournamentDetailPage() {
 
     // Validate registration dates if provided
     if (tournamentForm.registrationStartDate || tournamentForm.registrationEndDate) {
+      const registrationCutoffRaw = getRegistrationMaxDateTime(tournamentForm.startDate)
+      const registrationCutoff = registrationCutoffRaw ? new Date(registrationCutoffRaw) : startDate
       if (tournamentForm.registrationStartDate && tournamentForm.registrationEndDate) {
         const regStartDate = new Date(tournamentForm.registrationStartDate)
         const regEndDate = new Date(tournamentForm.registrationEndDate)
@@ -424,7 +447,7 @@ export default function TournamentDetailPage() {
       if (tournamentForm.registrationStartDate) {
         const regStartDate = new Date(tournamentForm.registrationStartDate)
         // Registration start date cannot be later than tournament start date
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoff) {
           alert('Registration start date cannot be later than tournament start date')
           return
         }
@@ -433,7 +456,7 @@ export default function TournamentDetailPage() {
       if (tournamentForm.registrationEndDate) {
         const regEndDate = new Date(tournamentForm.registrationEndDate)
         // Registration end date cannot be later than tournament start date
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoff) {
           alert('Registration end date cannot be later than tournament start date')
           return
         }
@@ -445,16 +468,30 @@ export default function TournamentDetailPage() {
       Number.isFinite(parsedEntryFee) && parsedEntryFee > 0
         ? toCents(parsedEntryFee)
         : 0
+    const normalizedTimezone = tournamentForm.timezone || null
+    const payloadStartDate =
+      toUtcIsoFromLocalInput(tournamentForm.startDate, normalizedTimezone) || tournamentForm.startDate
+    const payloadEndDate =
+      toUtcIsoFromLocalInput(tournamentForm.endDate, normalizedTimezone) || tournamentForm.endDate
+    const payloadRegistrationStartDate = tournamentForm.registrationStartDate
+      ? toUtcIsoFromLocalInput(tournamentForm.registrationStartDate, normalizedTimezone) ||
+        tournamentForm.registrationStartDate
+      : null
+    const payloadRegistrationEndDate = tournamentForm.registrationEndDate
+      ? toUtcIsoFromLocalInput(tournamentForm.registrationEndDate, normalizedTimezone) ||
+        tournamentForm.registrationEndDate
+      : null
 
     updateTournament.mutate({
       id: tournamentId,
       title: tournamentForm.title,
       description: tournamentForm.description || undefined,
       venueName: tournamentForm.venueName || undefined,
-      startDate: tournamentForm.startDate,
-      endDate: tournamentForm.endDate,
-      registrationStartDate: tournamentForm.registrationStartDate || null,
-      registrationEndDate: tournamentForm.registrationEndDate || null,
+      startDate: payloadStartDate,
+      endDate: payloadEndDate,
+      registrationStartDate: payloadRegistrationStartDate,
+      registrationEndDate: payloadRegistrationEndDate,
+      timezone: normalizedTimezone,
       entryFeeCents,
       currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
@@ -1087,32 +1124,49 @@ export default function TournamentDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Registration Start Date
+                    Registration Start
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     name="registrationStartDate"
                     value={tournamentForm.registrationStartDate}
                     onChange={handleTournamentChange}
-                    max={tournamentForm.startDate || undefined}
+                    max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Registration End Date
+                    Registration End
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     name="registrationEndDate"
                     value={tournamentForm.registrationEndDate}
                     onChange={handleTournamentChange}
                     min={tournamentForm.registrationStartDate || undefined}
-                    max={tournamentForm.startDate || undefined}
+                    max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Timezone
+                </label>
+                <input
+                  type="text"
+                  name="timezone"
+                  value={tournamentForm.timezone}
+                  onChange={handleTournamentChange}
+                  placeholder="e.g., America/New_York"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">Times for players are shown in this timezone.</p>
               </div>
 
               <div>

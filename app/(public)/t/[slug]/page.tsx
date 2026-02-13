@@ -3,7 +3,7 @@
 import { trpc } from '@/lib/trpc'
 import { useParams } from 'next/navigation'
 import { formatDescription } from '@/lib/formatDescription'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, getTimezoneLabel } from '@/lib/dateFormat'
 
 export default function PublicScoreboardPage() {
   const params = useParams()
@@ -43,8 +43,9 @@ export default function PublicScoreboardPage() {
           )}
           
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
-            <div>Start: {formatUsDateShort(tournament.startDate)}</div>
-            <div>End: {formatUsDateShort(tournament.endDate)}</div>
+            <div>Start: {formatUsDateShort(tournament.startDate, { timeZone: (tournament as any).timezone })}</div>
+            <div>End: {formatUsDateShort(tournament.endDate, { timeZone: (tournament as any).timezone })}</div>
+            {(tournament as any).timezone ? <div>Time zone: {getTimezoneLabel((tournament as any).timezone)}</div> : null}
             {tournament.venueName && <div>Venue: {tournament.venueName}</div>}
             {tournament.entryFee && <div>Entry Fee: ${tournament.entryFee}</div>}
           </div>

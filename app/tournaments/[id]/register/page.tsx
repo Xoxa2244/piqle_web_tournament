@@ -4,7 +4,7 @@ import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
-import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -205,17 +205,24 @@ export default function TournamentRegistrationPage() {
               )}
             </div>
             <div>
+              Tournament starts:{' '}
+              <span className="font-medium text-gray-900">
+                {formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
+              </span>
+            </div>
+            <div>
               Registration window:{' '}
               <span className="font-medium text-gray-900">
                 {seatMap.registrationStartDate
-                  ? formatUsDateTimeShort(seatMap.registrationStartDate)
-                  : formatUsDateTimeShort(seatMap.startDate)}
+                  ? formatUsDateTimeShort(seatMap.registrationStartDate, { timeZone: seatMap.timezone })
+                  : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
                 {' — '}
                 {seatMap.registrationEndDate
-                  ? formatUsDateTimeShort(seatMap.registrationEndDate)
-                  : formatUsDateTimeShort(seatMap.startDate)}
+                  ? formatUsDateTimeShort(seatMap.registrationEndDate, { timeZone: seatMap.timezone })
+                  : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
               </span>
             </div>
+            <Badge variant="outline">Time zone: {getTimezoneLabel(seatMap.timezone)}</Badge>
             <Badge variant={registrationOpen ? 'default' : 'secondary'}>
               {registrationOpen ? 'Registration Open' : 'Registration Closed'}
             </Badge>

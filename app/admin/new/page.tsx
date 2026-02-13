@@ -14,6 +14,7 @@ import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
+import { toUtcIsoFromLocalInput } from '@/lib/timezone'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -66,6 +67,64 @@ const buildRecommendedStructure = (format: TournamentFormat): TournamentStructur
     default:
       return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
   }
+}
+
+const getBrowserTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  } catch {
+    return ''
+  }
+}
+
+const resolveTimeZoneFromLatLng = async (lat: number, lng: number, googleApi?: any) => {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  const mapsApi = googleApi?.maps || (window as any)?.google?.maps
+  if (mapsApi?.TimeZoneService && mapsApi?.LatLng) {
+    try {
+      const service = new mapsApi.TimeZoneService()
+      const timezoneId = await new Promise<string | null>((resolve) => {
+        service.getTimeZoneForLocation(
+          { location: new mapsApi.LatLng(lat, lng), timestamp: new Date() },
+          (result: any, status: any) => {
+            if (status === 'OK' && result?.timeZoneId) {
+              resolve(String(result.timeZoneId))
+              return
+            }
+            resolve(null)
+          }
+        )
+      })
+      if (timezoneId) return timezoneId
+    } catch {
+      // fall through to HTTP fallback
+    }
+  }
+
+  if (!apiKey) return null
+  try {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const url = new URL('https://maps.googleapis.com/maps/api/timezone/json')
+    url.searchParams.set('location', `${lat},${lng}`)
+    url.searchParams.set('timestamp', String(timestamp))
+    url.searchParams.set('key', apiKey)
+    const response = await fetch(url.toString())
+    if (!response.ok) return null
+    const data = await response.json()
+    if (data?.status === 'OK' && typeof data?.timeZoneId === 'string') {
+      return data.timeZoneId as string
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+const getRegistrationMaxDateTime = (startDate: string) => {
+  const day = String(startDate || '').split('T')[0]
+  return day ? `${day}T23:59` : undefined
 }
 
 // Helper function to resize image on client side
@@ -157,7 +216,7 @@ function NewTournamentPageInner() {
     allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as TournamentFormat,
     seasonLabel: '',
-    timezone: '',
+    timezone: getBrowserTimeZone(),
     image: '',
   })
   const [stepIndex, setStepIndex] = useState(0)
@@ -336,6 +395,8 @@ function NewTournamentPageInner() {
     }
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
+      const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
+      const registrationCutoffDate = registrationCutoff ? new Date(registrationCutoff) : startDate
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = new Date(formData.registrationStartDate)
         const regEndDate = new Date(formData.registrationEndDate)
@@ -347,7 +408,7 @@ function NewTournamentPageInner() {
 
       if (formData.registrationStartDate) {
         const regStartDate = new Date(formData.registrationStartDate)
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
@@ -355,7 +416,7 @@ function NewTournamentPageInner() {
 
       if (formData.registrationEndDate) {
         const regEndDate = new Date(formData.registrationEndDate)
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -395,6 +456,8 @@ function NewTournamentPageInner() {
     }
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
+      const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
+      const registrationCutoffDate = registrationCutoff ? new Date(registrationCutoff) : startDate
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = new Date(formData.registrationStartDate)
         const regEndDate = new Date(formData.registrationEndDate)
@@ -406,7 +469,7 @@ function NewTournamentPageInner() {
 
       if (formData.registrationStartDate) {
         const regStartDate = new Date(formData.registrationStartDate)
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
@@ -414,7 +477,7 @@ function NewTournamentPageInner() {
 
       if (formData.registrationEndDate) {
         const regEndDate = new Date(formData.registrationEndDate)
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -575,24 +638,34 @@ function NewTournamentPageInner() {
 
       addressListenerRef.current =
         addressAutocompleteRef.current.addListener('place_changed', () => {
-          const place = addressAutocompleteRef.current?.getPlace()
-          // `formatted_address` can be missing depending on the selection type / API response.
-          // Fall back to the input value (which Google updates) and don't show an error since it's optional.
-          const rawInput = (venueAddressInputRef.current?.value ?? '').trim()
-          const formatted =
-            (place?.formatted_address ? place.formatted_address.trim() : '') ||
-            rawInput ||
-            null
+          void (async () => {
+            const place = addressAutocompleteRef.current?.getPlace()
+            // `formatted_address` can be missing depending on the selection type / API response.
+            // Fall back to the input value (which Google updates) and don't show an error since it's optional.
+            const rawInput = (venueAddressInputRef.current?.value ?? '').trim()
+            const formatted =
+              (place?.formatted_address ? place.formatted_address.trim() : '') ||
+              rawInput ||
+              null
 
-          setAddressError(null)
-          lastAddressSelectionRef.current = {
-            placeId: place?.place_id ?? null,
-            formatted,
-          }
-          setFormData((prev) => ({
-            ...prev,
-            venueAddress: formatted ?? '',
-          }))
+            const lat = place?.geometry?.location?.lat?.()
+            const lng = place?.geometry?.location?.lng?.()
+            const resolvedTimezone =
+              Number.isFinite(lat) && Number.isFinite(lng)
+                ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
+                : null
+
+            setAddressError(null)
+            lastAddressSelectionRef.current = {
+              placeId: place?.place_id ?? null,
+              formatted,
+            }
+            setFormData((prev) => ({
+              ...prev,
+              venueAddress: formatted ?? '',
+              timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
+            }))
+          })()
         })
     } catch (error) {
       setAddressError(
@@ -680,15 +753,25 @@ function NewTournamentPageInner() {
           const result = results[0]
           if (!result?.formatted_address) return
 
-          setAddressError(null)
-          lastAddressSelectionRef.current = {
-            placeId: result.place_id ?? null,
-            formatted: result.formatted_address ?? null,
-          }
-          setFormData((prev) => ({
-            ...prev,
-            venueAddress: result.formatted_address,
-          }))
+          const lat = result?.geometry?.location?.lat?.()
+          const lng = result?.geometry?.location?.lng?.()
+          void (async () => {
+            const resolvedTimezone =
+              Number.isFinite(lat) && Number.isFinite(lng)
+                ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
+                : null
+
+            setAddressError(null)
+            lastAddressSelectionRef.current = {
+              placeId: result.place_id ?? null,
+              formatted: result.formatted_address ?? null,
+            }
+            setFormData((prev) => ({
+              ...prev,
+              venueAddress: result.formatted_address,
+              timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
+            }))
+          })()
         }
       )
     } catch (error) {
@@ -760,16 +843,25 @@ function NewTournamentPageInner() {
       }
     }
 
+    const normalizedTimezone = formData.timezone || undefined
     const payload = {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
       venueAddress: formData.venueAddress || undefined,
       clubId: formData.clubId || undefined,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      registrationStartDate: formData.registrationStartDate || undefined,
-      registrationEndDate: formData.registrationEndDate || undefined,
+      startDate:
+        toUtcIsoFromLocalInput(formData.startDate, normalizedTimezone) || formData.startDate,
+      endDate:
+        toUtcIsoFromLocalInput(formData.endDate, normalizedTimezone) || formData.endDate,
+      registrationStartDate: formData.registrationStartDate
+        ? toUtcIsoFromLocalInput(formData.registrationStartDate, normalizedTimezone) ||
+          formData.registrationStartDate
+        : undefined,
+      registrationEndDate: formData.registrationEndDate
+        ? toUtcIsoFromLocalInput(formData.registrationEndDate, normalizedTimezone) ||
+          formData.registrationEndDate
+        : undefined,
       entryFeeCents: entryFeeCents || 0,
       currency: 'usd' as const,
       isPublicBoardEnabled: isSeries ? false : formData.isPublicBoardEnabled,
@@ -780,10 +872,7 @@ function NewTournamentPageInner() {
         formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
           ? (formData.seasonLabel || undefined)
           : undefined,
-      timezone:
-        formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
-          ? (formData.timezone || undefined)
-          : undefined,
+      timezone: normalizedTimezone,
     }
 
     if (isSeries) {
@@ -878,6 +967,8 @@ function NewTournamentPageInner() {
     }
 
     if (templateDraftForm.registrationStartDate || templateDraftForm.registrationEndDate) {
+      const registrationCutoffRaw = getRegistrationMaxDateTime(templateDraftForm.startDate)
+      const registrationCutoff = registrationCutoffRaw ? new Date(registrationCutoffRaw) : startDate
       if (templateDraftForm.registrationStartDate && templateDraftForm.registrationEndDate) {
         const regStartDate = new Date(templateDraftForm.registrationStartDate)
         const regEndDate = new Date(templateDraftForm.registrationEndDate)
@@ -889,7 +980,7 @@ function NewTournamentPageInner() {
 
       if (templateDraftForm.registrationStartDate) {
         const regStartDate = new Date(templateDraftForm.registrationStartDate)
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoff) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
@@ -897,7 +988,7 @@ function NewTournamentPageInner() {
 
       if (templateDraftForm.registrationEndDate) {
         const regEndDate = new Date(templateDraftForm.registrationEndDate)
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoff) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -1032,13 +1123,28 @@ function NewTournamentPageInner() {
             }
           : undefined
 
+      const templateTimezone =
+        (selectedTemplate as any)?.config?.tournament?.timezone ||
+        formData.timezone ||
+        getBrowserTimeZone()
+
       const res = await createDraftFromTemplate.mutateAsync({
         templateId: selectedTemplateId,
         title: templateDraftForm.title.trim() ? templateDraftForm.title.trim() : undefined,
-        startDate: templateDraftForm.startDate,
-        endDate: templateDraftForm.endDate,
-        registrationStartDate: templateDraftForm.registrationStartDate || undefined,
-        registrationEndDate: templateDraftForm.registrationEndDate || undefined,
+        startDate:
+          toUtcIsoFromLocalInput(templateDraftForm.startDate, templateTimezone) ||
+          templateDraftForm.startDate,
+        endDate:
+          toUtcIsoFromLocalInput(templateDraftForm.endDate, templateTimezone) ||
+          templateDraftForm.endDate,
+        registrationStartDate: templateDraftForm.registrationStartDate
+          ? toUtcIsoFromLocalInput(templateDraftForm.registrationStartDate, templateTimezone) ||
+            templateDraftForm.registrationStartDate
+          : undefined,
+        registrationEndDate: templateDraftForm.registrationEndDate
+          ? toUtcIsoFromLocalInput(templateDraftForm.registrationEndDate, templateTimezone) ||
+            templateDraftForm.registrationEndDate
+          : undefined,
         entryFeeCents,
         recurrence,
       })
@@ -1434,34 +1540,54 @@ function NewTournamentPageInner() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="registrationStartDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Registration Start Date (optional)
+                      Registration Start (optional)
                     </label>
                     <input
-                      type="date"
+                      type="datetime-local"
                       id="registrationStartDate"
                       name="registrationStartDate"
                       value={formData.registrationStartDate}
                       onChange={handleChange}
-                      max={formData.startDate || undefined}
+                      max={getRegistrationMaxDateTime(formData.startDate)}
                       className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
 
                   <div>
                     <label htmlFor="registrationEndDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Registration End Date (optional)
+                      Registration End (optional)
                     </label>
                     <input
-                      type="date"
+                      type="datetime-local"
                       id="registrationEndDate"
                       name="registrationEndDate"
                       value={formData.registrationEndDate}
                       onChange={handleChange}
                       min={formData.registrationStartDate || undefined}
-                      max={formData.startDate || undefined}
+                      max={getRegistrationMaxDateTime(formData.startDate)}
                       className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
+                </div>
+
+                <div>
+                  <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
+                    Timezone
+                  </label>
+                  <input
+                    type="text"
+                    id="timezone"
+                    name="timezone"
+                    value={formData.timezone}
+                    onChange={handleChange}
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    placeholder="e.g., America/New_York"
+                  />
+                  <p className="mt-1 text-sm text-gray-500">
+                    Auto-filled from venue location. You can adjust manually.
+                  </p>
                 </div>
 
                 {ENABLE_RECURRING_DRAFTS ? (
@@ -1674,21 +1800,6 @@ function NewTournamentPageInner() {
                       />
                     </div>
 
-                    <div>
-                      <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
-                        Timezone (optional)
-                      </label>
-                      <input
-                        type="text"
-                        id="timezone"
-                        name="timezone"
-                        value={formData.timezone}
-                        onChange={handleChange}
-                        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                        placeholder="e.g., America/New_York"
-                      />
-                      <p className="mt-1 text-sm text-gray-500">IANA timezone identifier</p>
-                    </div>
                   </>
                 ) : null}
 
@@ -2153,23 +2264,25 @@ function NewTournamentPageInner() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration Start (optional)</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={templateDraftForm.registrationStartDate}
                     onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
-                    max={templateDraftForm.startDate || undefined}
+                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration End (optional)</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={templateDraftForm.registrationEndDate}
                     onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
                     min={templateDraftForm.registrationStartDate || undefined}
-                    max={templateDraftForm.startDate || undefined}
+                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
               </div>
 
