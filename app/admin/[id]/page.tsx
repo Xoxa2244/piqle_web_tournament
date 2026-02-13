@@ -1104,7 +1104,7 @@ export default function TournamentDetailPage() {
                     value={tournamentForm.startDate}
                     onChange={handleTournamentChange}
                     step={TOURNAMENT_TIME_STEP_SECONDS}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
 
@@ -1119,7 +1119,7 @@ export default function TournamentDetailPage() {
                     onChange={handleTournamentChange}
                     step={TOURNAMENT_TIME_STEP_SECONDS}
                     min={tournamentForm.startDate || undefined}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
               </div>
@@ -1136,7 +1136,7 @@ export default function TournamentDetailPage() {
                     onChange={handleTournamentChange}
                     step={TOURNAMENT_TIME_STEP_SECONDS}
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
@@ -1153,7 +1153,7 @@ export default function TournamentDetailPage() {
                     step={TOURNAMENT_TIME_STEP_SECONDS}
                     min={tournamentForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
