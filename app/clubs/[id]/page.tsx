@@ -73,6 +73,37 @@ const formatWeekRange = (weekStart: Date) => {
   return `${startLabel}–${endLabel}`
 }
 
+const formatEventDateTimeRange = (
+  startDate: Date | string,
+  endDate?: Date | string,
+  timeZone?: string | null
+) => {
+  const end = endDate ?? startDate
+  return `${formatUsDateTimeShort(startDate, { timeZone })} - ${formatUsDateTimeShort(end, {
+    timeZone,
+  })}`
+}
+
+const formatEventTimeRange = (
+  startDate: Date | string,
+  endDate?: Date | string,
+  timeZone?: string | null
+) => {
+  const start = new Date(startDate)
+  const end = new Date(endDate ?? startDate)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ''
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: String(timeZone || '').trim() || undefined,
+    })
+    return `${formatter.format(start)} - ${formatter.format(end)}`
+  } catch {
+    return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+  }
+}
+
 const buildMonthGrid = (month: Date) => {
   const first = startOfMonth(month)
   const startOffset = first.getDay() // 0=Sun
@@ -510,7 +541,11 @@ export default function ClubDetailPage() {
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
-                              {formatUsDateTimeShort(tournament.startDate)}
+                              {formatEventDateTimeRange(
+                                tournament.startDate,
+                                tournament.endDate,
+                                tournament.timezone
+                              )}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
@@ -776,6 +811,7 @@ function ClubEventsCalendar({
     title: string
     startDate: Date | string
     endDate?: Date | string
+    timezone?: string | null
     entryFeeCents?: number | null
     publicSlug?: string | null
     format?: string | null
@@ -861,10 +897,8 @@ function ClubEventsCalendar({
     }
   }
 
-  const formatTime = (startDate: Date | string) => {
-    const d = new Date(startDate)
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  }
+  const formatTime = (startDate: Date | string, endDate?: Date | string, timeZone?: string | null) =>
+    formatEventTimeRange(startDate, endDate, timeZone)
 
   const weekDays: Date[] = []
   for (let i = 0; i < 7; i++) {
@@ -1001,7 +1035,13 @@ function ClubEventsCalendar({
                         const occupancy =
                           ev?.totals && ev.totals.totalSlots ? `${ev.totals.filledSlots}/${ev.totals.totalSlots}` : null
                         const shortType = formatTournamentTypeShort(ev?.format)
-                        const meta = [formatTime(ev.startDate), shortType, occupancy].filter(Boolean).join(' · ')
+                        const meta = [
+                          formatTime(ev.startDate, ev.endDate, ev.timezone),
+                          shortType,
+                          occupancy,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
                         const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
 
                         return ev?.id ? (
@@ -1107,7 +1147,7 @@ function ClubEventsCalendar({
                         const occupancy =
                           t?.totals && t.totals.totalSlots ? `${t.totals.filledSlots}/${t.totals.totalSlots}` : null
                         const typeLabel = formatTournamentType(t.format)
-                        const timeLabel = formatTime(t.startDate)
+                        const timeLabel = formatTime(t.startDate, t.endDate, t.timezone)
                         const showGender = t.genderLabel && t.genderLabel !== 'Any'
 
                         return (
@@ -1168,7 +1208,11 @@ function ClubEventsCalendar({
                   ? `${tournament.totals.filledSlots}/${tournament.totals.totalSlots}`
                   : null
               const typeLabel = formatTournamentType(tournament.format)
-              const timeLabel = formatTime(tournament.startDate)
+              const timeLabel = formatTime(
+                tournament.startDate,
+                tournament.endDate,
+                tournament.timezone
+              )
               return (
                 <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
                   <div className="min-w-0">

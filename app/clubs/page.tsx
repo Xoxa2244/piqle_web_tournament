@@ -153,7 +153,10 @@ export default function ClubsPage() {
                 {club.nextTournament.title}
               </div>
               <div className="text-muted-foreground">
-                {formatUsDateTimeShort(club.nextTournament.startDate)}
+                {formatUsDateTimeShort(club.nextTournament.startDate, { timeZone: club.nextTournament.timezone })} -{' '}
+                {formatUsDateTimeShort(club.nextTournament.endDate ?? club.nextTournament.startDate, {
+                  timeZone: club.nextTournament.timezone,
+                })}
               </div>
               <div className="mt-2 flex items-center gap-2">
                 {typeof club.nextTournament.entryFeeCents === 'number' && club.nextTournament.entryFeeCents > 0 ? (
