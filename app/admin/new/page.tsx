@@ -14,7 +14,7 @@ import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
-import { toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { guessTimeZoneFromLocation, toUtcIsoFromLocalInput } from '@/lib/timezone'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -353,11 +353,26 @@ function NewTournamentPageInner() {
   const saveTemplateFromTournament = trpc.clubTemplate.saveFromTournament.useMutation()
 
   const syncTimezoneFromAddress = useCallback(
-    async (rawAddress: string, options?: { normalizeAddress?: boolean }) => {
+    async (
+      rawAddress: string,
+      options?: { normalizeAddress?: boolean; state?: string | null; country?: string | null }
+    ) => {
       const address = rawAddress.trim()
       if (!address) return
 
       const requestSeq = ++addressTimezoneSyncSeqRef.current
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address,
+        state: options?.state,
+        country: options?.country,
+      })
+      if (fallbackTimezone) {
+        setFormData((prev) => ({
+          ...prev,
+          timezone: fallbackTimezone,
+        }))
+      }
+
       try {
         const googleApi =
           googleRef.current ??
@@ -420,15 +435,25 @@ function NewTournamentPageInner() {
     const selectedIsAdmin = Boolean((selected as any).isAdmin)
     setFormData((prev) => {
       if (prev.clubId) return prev
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address: selected.address,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
       return {
         ...prev,
         clubId: selectedIsAdmin ? selected.id : '',
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
+        timezone: fallbackTimezone || prev.timezone,
       }
     })
     if (selected.address?.trim()) {
-      void syncTimezoneFromAddress(selected.address, { normalizeAddress: true })
+      void syncTimezoneFromAddress(selected.address, {
+        normalizeAddress: true,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
     }
   }, [clubs, searchParams, syncTimezoneFromAddress])
 
@@ -1185,15 +1210,25 @@ function NewTournamentPageInner() {
       const next = { ...prev, clubId: selectedId }
       if (!selectedId) return next
       if (!selected) return next
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address: selected.address,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
       return {
         ...next,
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
+        timezone: fallbackTimezone || next.timezone,
       }
     })
 
     if (selected?.address?.trim()) {
-      void syncTimezoneFromAddress(selected.address, { normalizeAddress: true })
+      void syncTimezoneFromAddress(selected.address, {
+        normalizeAddress: true,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
       return
     }
     if (!selectedId) {
