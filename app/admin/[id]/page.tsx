@@ -119,7 +119,144 @@ const getRegistrationMaxDateTime = (startDate: string) => {
   const day = String(startDate || '').split('T')[0]
   return day ? `${day}T23:59` : undefined
 }
-const TOURNAMENT_TIME_STEP_SECONDS = 15 * 60
+const TOURNAMENT_TIME_STEP_MINUTES = 15
+
+const pad2 = (num: number) => String(num).padStart(2, '0')
+const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
+  const hours24 = Math.floor(idx / 4)
+  const minutes = (idx % 4) * TOURNAMENT_TIME_STEP_MINUTES
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 || 12
+  return {
+    value: `${pad2(hours24)}:${pad2(minutes)}`,
+    label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
+  }
+})
+
+const getDatePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const [datePart] = raw.split('T')
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return ''
+  return datePart
+}
+
+const getTimePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const timeRaw = raw.split('T')[1] || ''
+  const hhmm = timeRaw.slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return ''
+  return hhmm
+}
+
+const normalizeQuarterHourTime = (value?: string | null) => {
+  const raw = String(value || '').trim().slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(raw)) return ''
+  const [hhRaw, mmRaw] = raw.split(':')
+  const hh = Number(hhRaw)
+  const mm = Number(mmRaw)
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return ''
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return ''
+
+  const total = hh * 60 + mm
+  const snapped = Math.round(total / TOURNAMENT_TIME_STEP_MINUTES) * TOURNAMENT_TIME_STEP_MINUTES
+  const clamped = Math.max(0, Math.min(23 * 60 + 45, snapped))
+  return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`
+}
+
+const getTodayYmdLocal = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+const normalizeTournamentDateTime = (value: string) => {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  if (!datePart) return String(value || '').trim()
+  const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
+  return `${datePart}T${timePart}`
+}
+
+type QuarterHourDateTimeInputProps = {
+  id?: string
+  name?: string
+  value: string
+  onChange: (value: string) => void
+  min?: string
+  max?: string
+  disabled?: boolean
+  className?: string
+}
+
+function QuarterHourDateTimeInput({
+  id,
+  name,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+  className,
+}: QuarterHourDateTimeInputProps) {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  const normalizedTime = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value))
+  const minDate = getDatePartFromDateTimeLocal(min)
+  const maxDate = getDatePartFromDateTimeLocal(max)
+
+  useEffect(() => {
+    const normalized = normalizeTournamentDateTime(value)
+    if (normalized && normalized !== value) {
+      onChange(normalized)
+    }
+  }, [onChange, value])
+
+  const handleDateChange = (nextDate: string) => {
+    if (!nextDate) {
+      onChange('')
+      return
+    }
+    const nextTime = normalizedTime || '00:00'
+    onChange(`${nextDate}T${nextTime}`)
+  }
+
+  const handleTimeChange = (nextTime: string) => {
+    const normalized = normalizeQuarterHourTime(nextTime) || '00:00'
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${normalized}`)
+  }
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(250px,1fr)_200px] gap-2">
+      <input
+        type="date"
+        id={id}
+        name={name ? `${name}Date` : undefined}
+        value={datePart}
+        min={minDate || undefined}
+        max={maxDate || undefined}
+        onChange={(e) => handleDateChange(e.target.value)}
+        disabled={disabled}
+        className={className || "w-full min-w-0 pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"}
+      />
+      <select
+        name={name ? `${name}Time` : undefined}
+        value={datePart ? (normalizedTime || '00:00') : ''}
+        onChange={(e) => handleTimeChange(e.target.value)}
+        disabled={disabled}
+        className={className || "w-full min-w-0 pl-4 pr-10 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"}
+      >
+        <option value="" disabled>
+          Select time
+        </option>
+        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -605,6 +742,20 @@ export default function TournamentDetailPage() {
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
   }
+
+  const setTournamentDateTimeField = useCallback(
+    (
+      name: 'startDate' | 'endDate' | 'registrationStartDate' | 'registrationEndDate',
+      value: string
+    ) => {
+      const normalized = normalizeTournamentDateTime(value)
+      setTournamentForm((prev) => ({
+        ...prev,
+        [name]: normalized,
+      }))
+    },
+    []
+  )
 
   if (isLoading) {
     return (
@@ -1098,13 +1249,11 @@ export default function TournamentDetailPage() {
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Start Date & Time *
                   </label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
+                    id="editStartDate"
                     name="startDate"
                     value={tournamentForm.startDate}
-                    onChange={handleTournamentChange}
-                    step={TOURNAMENT_TIME_STEP_SECONDS}
-                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    onChange={(nextValue) => setTournamentDateTimeField('startDate', nextValue)}
                   />
                 </div>
 
@@ -1112,14 +1261,12 @@ export default function TournamentDetailPage() {
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     End Date & Time *
                   </label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
+                    id="editEndDate"
                     name="endDate"
                     value={tournamentForm.endDate}
-                    onChange={handleTournamentChange}
-                    step={TOURNAMENT_TIME_STEP_SECONDS}
+                    onChange={(nextValue) => setTournamentDateTimeField('endDate', nextValue)}
                     min={tournamentForm.startDate || undefined}
-                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
               </div>
@@ -1129,14 +1276,14 @@ export default function TournamentDetailPage() {
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Registration Start
                   </label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
+                    id="editRegistrationStartDate"
                     name="registrationStartDate"
                     value={tournamentForm.registrationStartDate}
-                    onChange={handleTournamentChange}
-                    step={TOURNAMENT_TIME_STEP_SECONDS}
+                    onChange={(nextValue) =>
+                      setTournamentDateTimeField('registrationStartDate', nextValue)
+                    }
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
-                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
@@ -1145,15 +1292,15 @@ export default function TournamentDetailPage() {
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     Registration End
                   </label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
+                    id="editRegistrationEndDate"
                     name="registrationEndDate"
                     value={tournamentForm.registrationEndDate}
-                    onChange={handleTournamentChange}
-                    step={TOURNAMENT_TIME_STEP_SECONDS}
+                    onChange={(nextValue) =>
+                      setTournamentDateTimeField('registrationEndDate', nextValue)
+                    }
                     min={tournamentForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
-                    className="w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
