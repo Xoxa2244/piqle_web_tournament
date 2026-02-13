@@ -17,7 +17,25 @@ export const loadGoogleMaps = async ({
     throw new Error("Missing Google Maps API key.")
   }
 
+  const ensureLibraries = async () => {
+    const mapsApi = (window as any).google?.maps
+    if (!mapsApi) return
+
+    const missingPlaces = libraries.includes("places") && !(mapsApi as any).places
+    if (!missingPlaces) return
+
+    const importLibrary = (mapsApi as any).importLibrary
+    if (typeof importLibrary === "function") {
+      await Promise.all(
+        libraries.map((lib) =>
+          importLibrary.call(mapsApi, lib).catch(() => null)
+        )
+      )
+    }
+  }
+
   if ((window as any).google?.maps) {
+    await ensureLibraries()
     return (window as any).google
   }
 
@@ -33,17 +51,27 @@ export const loadGoogleMaps = async ({
       script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`
       script.async = true
       script.defer = true
-      script.onerror = () => reject(new Error("Failed to load Google Maps."))
+      script.onerror = () => {
+        googleMapsScriptPromise = null
+        reject(new Error("Failed to load Google Maps."))
+      }
       script.onload = () => resolve()
       document.head.appendChild(script)
     })
   }
 
-  await googleMapsScriptPromise
+  try {
+    await googleMapsScriptPromise
+  } catch (error) {
+    googleMapsScriptPromise = null
+    throw error
+  }
 
   if (!(window as any).google?.maps) {
     throw new Error("Google Maps loaded, but API is unavailable.")
   }
+
+  await ensureLibraries()
 
   return (window as any).google
 }

@@ -710,15 +710,16 @@ function NewTournamentPageInner() {
 
       googleRef.current = googleApi
 
-      if (addressAutocompleteRef.current) return
+      if (!googleApi?.maps?.places?.Autocomplete) {
+        throw new Error('Google Places is unavailable. Check API key restrictions and Places API.')
+      }
 
-      addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(
-        venueAddressInputRef.current,
-        {
-          fields: ['formatted_address', 'geometry', 'place_id'],
-          types: ['geocode'],
-        }
-      )
+      // Recreate autocomplete to ensure it's bound to the currently mounted input.
+      addressListenerRef.current?.remove?.()
+      addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(venueAddressInputRef.current, {
+        fields: ['formatted_address', 'geometry', 'place_id'],
+        types: ['geocode'],
+      })
 
       addressListenerRef.current =
         addressAutocompleteRef.current.addListener('place_changed', () => {
