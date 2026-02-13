@@ -126,6 +126,7 @@ const getRegistrationMaxDateTime = (startDate: string) => {
   const day = String(startDate || '').split('T')[0]
   return day ? `${day}T23:59` : undefined
 }
+const REGISTRATION_TIME_STEP_SECONDS = 15 * 60
 
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -760,11 +761,12 @@ function NewTournamentPageInner() {
   }, [])
 
   useEffect(() => {
-    setupAddressAutocomplete()
+    if (stepIndex !== 0) return
+    void setupAddressAutocomplete()
     return () => {
       addressListenerRef.current?.remove?.()
     }
-  }, [setupAddressAutocomplete])
+  }, [setupAddressAutocomplete, stepIndex])
 
   useEffect(() => {
     let isMounted = true
@@ -1612,6 +1614,7 @@ function NewTournamentPageInner() {
                       name="registrationStartDate"
                       value={formData.registrationStartDate}
                       onChange={handleChange}
+                      step={REGISTRATION_TIME_STEP_SECONDS}
                       max={getRegistrationMaxDateTime(formData.startDate)}
                       className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     />
@@ -1628,6 +1631,7 @@ function NewTournamentPageInner() {
                       name="registrationEndDate"
                       value={formData.registrationEndDate}
                       onChange={handleChange}
+                      step={REGISTRATION_TIME_STEP_SECONDS}
                       min={formData.registrationStartDate || undefined}
                       max={getRegistrationMaxDateTime(formData.startDate)}
                       className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
@@ -2331,6 +2335,7 @@ function NewTournamentPageInner() {
                     type="datetime-local"
                     value={templateDraftForm.registrationStartDate}
                     onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
+                    step={REGISTRATION_TIME_STEP_SECONDS}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   />
@@ -2342,6 +2347,7 @@ function NewTournamentPageInner() {
                     type="datetime-local"
                     value={templateDraftForm.registrationEndDate}
                     onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
+                    step={REGISTRATION_TIME_STEP_SECONDS}
                     min={templateDraftForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
