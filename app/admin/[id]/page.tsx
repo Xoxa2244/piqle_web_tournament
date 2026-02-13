@@ -226,7 +226,7 @@ function QuarterHourDateTimeInput({
   }
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(250px,1fr)_200px] gap-2">
+    <div className="flex flex-col gap-2">
       <input
         type="date"
         id={id}
