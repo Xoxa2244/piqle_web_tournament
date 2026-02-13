@@ -1390,6 +1390,21 @@ function NewTournamentPageInner() {
     }
   }
 
+  const handleTournamentDateTimeFieldChange = (
+    name: 'startDate' | 'endDate',
+    value: string
+  ) => {
+    const normalized = normalizeRegistrationDateTime(value)
+    setFormData((prev) => ({
+      ...prev,
+      [name]: normalized,
+    }))
+    setRequiredErrors((prev) => ({
+      ...prev,
+      [name]: !normalized,
+    }))
+  }
+
   const handleCancel = useCallback(() => {
     router.back()
   }, [router])
@@ -1696,17 +1711,13 @@ function NewTournamentPageInner() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Start Date *
+                      Start Date & Time *
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="startDate"
                       name="startDate"
                       value={formData.startDate}
-                      onChange={handleChange}
-                      className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
-                        requiredErrors.startDate ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                      }`}
+                      onChange={(nextValue) => handleTournamentDateTimeFieldChange('startDate', nextValue)}
                     />
                     {requiredErrors.startDate ? (
                       <p className="mt-1 text-sm text-red-600">Start date is required.</p>
@@ -1715,18 +1726,14 @@ function NewTournamentPageInner() {
 
                   <div>
                     <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      End Date *
+                      End Date & Time *
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="endDate"
                       name="endDate"
                       value={formData.endDate}
-                      onChange={handleChange}
+                      onChange={(nextValue) => handleTournamentDateTimeFieldChange('endDate', nextValue)}
                       min={formData.startDate || undefined}
-                      className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
-                        requiredErrors.endDate ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                      }`}
                     />
                     {requiredErrors.endDate ? (
                       <p className="mt-1 text-sm text-red-600">End date is required.</p>

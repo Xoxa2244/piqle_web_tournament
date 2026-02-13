@@ -11,7 +11,7 @@ import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
-import { toDateInputInTimeZone, toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { 
   Users, 
   Calendar, 
@@ -119,6 +119,7 @@ const getRegistrationMaxDateTime = (startDate: string) => {
   const day = String(startDate || '').split('T')[0]
   return day ? `${day}T23:59` : undefined
 }
+const TOURNAMENT_TIME_STEP_SECONDS = 15 * 60
 
 export default function TournamentDetailPage() {
   const params = useParams()
@@ -183,8 +184,8 @@ export default function TournamentDetailPage() {
         title: tournament.title,
         description: tournament.description || '',
         venueName: tournament.venueName || '',
-        startDate: toDateInputInTimeZone(tournament.startDate, tournament.timezone),
-        endDate: toDateInputInTimeZone(tournament.endDate, tournament.timezone),
+        startDate: toDateTimeInputInTimeZone(tournament.startDate, tournament.timezone),
+        endDate: toDateTimeInputInTimeZone(tournament.endDate, tournament.timezone),
         registrationStartDate: toDateTimeInputInTimeZone(
           tournament.registrationStartDate,
           tournament.timezone
@@ -359,8 +360,8 @@ export default function TournamentDetailPage() {
       title: tournament.title,
       description: tournament.description || '',
       venueName: tournament.venueName || '',
-      startDate: toDateInputInTimeZone(tournament.startDate, tournament.timezone),
-      endDate: toDateInputInTimeZone(tournament.endDate, tournament.timezone),
+      startDate: toDateTimeInputInTimeZone(tournament.startDate, tournament.timezone),
+      endDate: toDateTimeInputInTimeZone(tournament.endDate, tournament.timezone),
       registrationStartDate: toDateTimeInputInTimeZone(
         tournament.registrationStartDate,
         tournament.timezone
@@ -1095,26 +1096,28 @@ export default function TournamentDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Start Date *
+                    Start Date & Time *
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     name="startDate"
                     value={tournamentForm.startDate}
                     onChange={handleTournamentChange}
+                    step={TOURNAMENT_TIME_STEP_SECONDS}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    End Date *
+                    End Date & Time *
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     name="endDate"
                     value={tournamentForm.endDate}
                     onChange={handleTournamentChange}
+                    step={TOURNAMENT_TIME_STEP_SECONDS}
                     min={tournamentForm.startDate || undefined}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
@@ -1131,6 +1134,7 @@ export default function TournamentDetailPage() {
                     name="registrationStartDate"
                     value={tournamentForm.registrationStartDate}
                     onChange={handleTournamentChange}
+                    step={TOURNAMENT_TIME_STEP_SECONDS}
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
@@ -1146,6 +1150,7 @@ export default function TournamentDetailPage() {
                     name="registrationEndDate"
                     value={tournamentForm.registrationEndDate}
                     onChange={handleTournamentChange}
+                    step={TOURNAMENT_TIME_STEP_SECONDS}
                     min={tournamentForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                     className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
