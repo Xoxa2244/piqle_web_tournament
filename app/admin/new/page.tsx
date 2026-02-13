@@ -227,7 +227,7 @@ function QuarterHourDateTimeInput({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_170px] gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
       <input
         type="date"
         id={id}
@@ -237,14 +237,14 @@ function QuarterHourDateTimeInput({
         max={maxDate || undefined}
         onChange={(e) => handleDateChange(e.target.value)}
         disabled={disabled}
-        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+        className="w-full min-w-0 sm:col-span-2 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-2"
       />
       <select
         name={name ? `${name}Time` : undefined}
         value={datePart ? (normalizedTime || '00:00') : ''}
         onChange={(e) => handleTimeChange(e.target.value)}
         disabled={disabled || !datePart}
-        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+        className="w-full min-w-0 sm:col-span-1 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
       >
         <option value="" disabled>
           Time
