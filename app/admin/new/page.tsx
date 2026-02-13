@@ -127,6 +127,30 @@ const getRegistrationMaxDateTime = (startDate: string) => {
   return day ? `${day}T23:59` : undefined
 }
 const REGISTRATION_TIME_STEP_SECONDS = 15 * 60
+const REGISTRATION_TIME_STEP_MINUTES = 15
+
+const toDateTimeLocalInput = (date: Date) => {
+  const yyyy = String(date.getFullYear()).padStart(4, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+}
+
+const snapDateTimeLocalToStep = (value: string, stepMinutes: number) => {
+  const raw = String(value || '').trim()
+  if (!raw) return raw
+  const local = new Date(raw)
+  if (Number.isNaN(local.getTime())) return raw
+
+  const stepMs = stepMinutes * 60 * 1000
+  const snapped = new Date(Math.round(local.getTime() / stepMs) * stepMs)
+  return toDateTimeLocalInput(snapped)
+}
+
+const normalizeRegistrationDateTime = (value: string) =>
+  snapDateTimeLocalToStep(value, REGISTRATION_TIME_STEP_MINUTES)
 
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -1244,9 +1268,13 @@ function NewTournamentPageInner() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
+    const normalizedValue =
+      name === 'registrationStartDate' || name === 'registrationEndDate'
+        ? normalizeRegistrationDateTime(value)
+        : value
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : normalizedValue
     }))
     if (name === 'format') {
       setStructureDraft(buildRecommendedStructure(value as TournamentFormat))
@@ -1257,6 +1285,25 @@ function NewTournamentPageInner() {
         [name]: !value,
       }))
     }
+  }
+
+  const handleRegistrationDateTimeBlur = (name: 'registrationStartDate' | 'registrationEndDate') => {
+    setFormData((prev) => {
+      const nextValue = normalizeRegistrationDateTime(String(prev[name] || ''))
+      if (nextValue === prev[name]) return prev
+      return {
+        ...prev,
+        [name]: nextValue,
+      }
+    })
+  }
+
+  const handleTemplateRegistrationDateTimeChange = (
+    name: 'registrationStartDate' | 'registrationEndDate',
+    value: string
+  ) => {
+    const normalized = normalizeRegistrationDateTime(value)
+    setTemplateDraftForm((prev) => ({ ...prev, [name]: normalized }))
   }
 
   const handleCancel = useCallback(() => {
@@ -1614,6 +1661,7 @@ function NewTournamentPageInner() {
                       name="registrationStartDate"
                       value={formData.registrationStartDate}
                       onChange={handleChange}
+                      onBlur={() => handleRegistrationDateTimeBlur('registrationStartDate')}
                       step={REGISTRATION_TIME_STEP_SECONDS}
                       max={getRegistrationMaxDateTime(formData.startDate)}
                       className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
@@ -1631,6 +1679,7 @@ function NewTournamentPageInner() {
                       name="registrationEndDate"
                       value={formData.registrationEndDate}
                       onChange={handleChange}
+                      onBlur={() => handleRegistrationDateTimeBlur('registrationEndDate')}
                       step={REGISTRATION_TIME_STEP_SECONDS}
                       min={formData.registrationStartDate || undefined}
                       max={getRegistrationMaxDateTime(formData.startDate)}
@@ -2334,7 +2383,9 @@ function NewTournamentPageInner() {
                   <input
                     type="datetime-local"
                     value={templateDraftForm.registrationStartDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
+                    onChange={(e) =>
+                      handleTemplateRegistrationDateTimeChange('registrationStartDate', e.target.value)
+                    }
                     step={REGISTRATION_TIME_STEP_SECONDS}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
@@ -2346,7 +2397,9 @@ function NewTournamentPageInner() {
                   <input
                     type="datetime-local"
                     value={templateDraftForm.registrationEndDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
+                    onChange={(e) =>
+                      handleTemplateRegistrationDateTimeChange('registrationEndDate', e.target.value)
+                    }
                     step={REGISTRATION_TIME_STEP_SECONDS}
                     min={templateDraftForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
