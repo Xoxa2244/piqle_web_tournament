@@ -126,31 +126,138 @@ const getRegistrationMaxDateTime = (startDate: string) => {
   const day = String(startDate || '').split('T')[0]
   return day ? `${day}T23:59` : undefined
 }
-const REGISTRATION_TIME_STEP_SECONDS = 15 * 60
 const REGISTRATION_TIME_STEP_MINUTES = 15
 
-const toDateTimeLocalInput = (date: Date) => {
-  const yyyy = String(date.getFullYear()).padStart(4, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  const hh = String(date.getHours()).padStart(2, '0')
-  const min = String(date.getMinutes()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
-}
+const pad2 = (num: number) => String(num).padStart(2, '0')
 
-const snapDateTimeLocalToStep = (value: string, stepMinutes: number) => {
+const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
+  const hours24 = Math.floor(idx / 4)
+  const minutes = (idx % 4) * REGISTRATION_TIME_STEP_MINUTES
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 || 12
+  return {
+    value: `${pad2(hours24)}:${pad2(minutes)}`,
+    label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
+  }
+})
+
+const getDatePartFromDateTimeLocal = (value?: string | null) => {
   const raw = String(value || '').trim()
-  if (!raw) return raw
-  const local = new Date(raw)
-  if (Number.isNaN(local.getTime())) return raw
-
-  const stepMs = stepMinutes * 60 * 1000
-  const snapped = new Date(Math.round(local.getTime() / stepMs) * stepMs)
-  return toDateTimeLocalInput(snapped)
+  if (!raw) return ''
+  const [datePart] = raw.split('T')
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return ''
+  return datePart
 }
 
-const normalizeRegistrationDateTime = (value: string) =>
-  snapDateTimeLocalToStep(value, REGISTRATION_TIME_STEP_MINUTES)
+const getTimePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const timeRaw = raw.split('T')[1] || ''
+  const hhmm = timeRaw.slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return ''
+  return hhmm
+}
+
+const normalizeQuarterHourTime = (value?: string | null) => {
+  const raw = String(value || '').trim().slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(raw)) return ''
+  const [hhRaw, mmRaw] = raw.split(':')
+  const hh = Number(hhRaw)
+  const mm = Number(mmRaw)
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return ''
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return ''
+
+  const total = hh * 60 + mm
+  const snapped = Math.round(total / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const clamped = Math.max(0, Math.min(23 * 60 + 45, snapped))
+  return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`
+}
+
+const normalizeRegistrationDateTime = (value: string) => {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  if (!datePart) return String(value || '').trim()
+  const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
+  return `${datePart}T${timePart}`
+}
+
+type QuarterHourDateTimeInputProps = {
+  id?: string
+  name?: string
+  value: string
+  onChange: (value: string) => void
+  min?: string
+  max?: string
+  disabled?: boolean
+}
+
+function QuarterHourDateTimeInput({
+  id,
+  name,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+}: QuarterHourDateTimeInputProps) {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  const normalizedTime = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value))
+  const minDate = getDatePartFromDateTimeLocal(min)
+  const maxDate = getDatePartFromDateTimeLocal(max)
+
+  useEffect(() => {
+    const normalized = normalizeRegistrationDateTime(value)
+    if (normalized && normalized !== value) {
+      onChange(normalized)
+    }
+  }, [onChange, value])
+
+  const handleDateChange = (nextDate: string) => {
+    if (!nextDate) {
+      onChange('')
+      return
+    }
+    const nextTime = normalizedTime || '00:00'
+    onChange(`${nextDate}T${nextTime}`)
+  }
+
+  const handleTimeChange = (nextTime: string) => {
+    if (!datePart) return
+    const normalized = normalizeQuarterHourTime(nextTime) || '00:00'
+    onChange(`${datePart}T${normalized}`)
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_170px] gap-2">
+      <input
+        type="date"
+        id={id}
+        name={name ? `${name}Date` : undefined}
+        value={datePart}
+        min={minDate || undefined}
+        max={maxDate || undefined}
+        onChange={(e) => handleDateChange(e.target.value)}
+        disabled={disabled}
+        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+      />
+      <select
+        name={name ? `${name}Time` : undefined}
+        value={datePart ? (normalizedTime || '00:00') : ''}
+        onChange={(e) => handleTimeChange(e.target.value)}
+        disabled={disabled || !datePart}
+        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+      >
+        <option value="" disabled>
+          Time
+        </option>
+        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
 
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
@@ -1268,13 +1375,9 @@ function NewTournamentPageInner() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
-    const normalizedValue =
-      name === 'registrationStartDate' || name === 'registrationEndDate'
-        ? normalizeRegistrationDateTime(value)
-        : value
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : normalizedValue
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
     if (name === 'format') {
       setStructureDraft(buildRecommendedStructure(value as TournamentFormat))
@@ -1285,25 +1388,6 @@ function NewTournamentPageInner() {
         [name]: !value,
       }))
     }
-  }
-
-  const handleRegistrationDateTimeBlur = (name: 'registrationStartDate' | 'registrationEndDate') => {
-    setFormData((prev) => {
-      const nextValue = normalizeRegistrationDateTime(String(prev[name] || ''))
-      if (nextValue === prev[name]) return prev
-      return {
-        ...prev,
-        [name]: nextValue,
-      }
-    })
-  }
-
-  const handleTemplateRegistrationDateTimeChange = (
-    name: 'registrationStartDate' | 'registrationEndDate',
-    value: string
-  ) => {
-    const normalized = normalizeRegistrationDateTime(value)
-    setTemplateDraftForm((prev) => ({ ...prev, [name]: normalized }))
   }
 
   const handleCancel = useCallback(() => {
@@ -1655,16 +1739,14 @@ function NewTournamentPageInner() {
                     <label htmlFor="registrationStartDate" className="block text-sm font-medium text-gray-700 mb-2">
                       Registration Start (optional)
                     </label>
-                    <input
-                      type="datetime-local"
+                    <QuarterHourDateTimeInput
                       id="registrationStartDate"
                       name="registrationStartDate"
                       value={formData.registrationStartDate}
-                      onChange={handleChange}
-                      onBlur={() => handleRegistrationDateTimeBlur('registrationStartDate')}
-                      step={REGISTRATION_TIME_STEP_SECONDS}
+                      onChange={(nextValue) =>
+                        setFormData((prev) => ({ ...prev, registrationStartDate: normalizeRegistrationDateTime(nextValue) }))
+                      }
                       max={getRegistrationMaxDateTime(formData.startDate)}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     />
                     <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
@@ -1673,17 +1755,15 @@ function NewTournamentPageInner() {
                     <label htmlFor="registrationEndDate" className="block text-sm font-medium text-gray-700 mb-2">
                       Registration End (optional)
                     </label>
-                    <input
-                      type="datetime-local"
+                    <QuarterHourDateTimeInput
                       id="registrationEndDate"
                       name="registrationEndDate"
                       value={formData.registrationEndDate}
-                      onChange={handleChange}
-                      onBlur={() => handleRegistrationDateTimeBlur('registrationEndDate')}
-                      step={REGISTRATION_TIME_STEP_SECONDS}
+                      onChange={(nextValue) =>
+                        setFormData((prev) => ({ ...prev, registrationEndDate: normalizeRegistrationDateTime(nextValue) }))
+                      }
                       min={formData.registrationStartDate || undefined}
                       max={getRegistrationMaxDateTime(formData.startDate)}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                     />
                     <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
@@ -2380,30 +2460,30 @@ function NewTournamentPageInner() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration Start (optional)</label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
                     value={templateDraftForm.registrationStartDate}
-                    onChange={(e) =>
-                      handleTemplateRegistrationDateTimeChange('registrationStartDate', e.target.value)
+                    onChange={(nextValue) =>
+                      setTemplateDraftForm((prev) => ({
+                        ...prev,
+                        registrationStartDate: normalizeRegistrationDateTime(nextValue),
+                      }))
                     }
-                    step={REGISTRATION_TIME_STEP_SECONDS}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration End (optional)</label>
-                  <input
-                    type="datetime-local"
+                  <QuarterHourDateTimeInput
                     value={templateDraftForm.registrationEndDate}
-                    onChange={(e) =>
-                      handleTemplateRegistrationDateTimeChange('registrationEndDate', e.target.value)
+                    onChange={(nextValue) =>
+                      setTemplateDraftForm((prev) => ({
+                        ...prev,
+                        registrationEndDate: normalizeRegistrationDateTime(nextValue),
+                      }))
                     }
-                    step={REGISTRATION_TIME_STEP_SECONDS}
                     min={templateDraftForm.registrationStartDate || undefined}
                     max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
                   />
                   <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
