@@ -2,52 +2,85 @@ import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '../trpc'
 import { getTeamDisplayName } from '../utils/teamDisplay'
 
+const hasMissingTournamentOptionalColumns = (error: unknown) => {
+  const message = String((error as any)?.message ?? '').toLowerCase()
+  if (!message) return false
+  return (
+    message.includes('timezone') ||
+    message.includes('registration_start_date') ||
+    message.includes('registration_end_date')
+  )
+}
+
 export const publicRouter = createTRPCRouter({
   listBoards: publicProcedure.query(async ({ ctx }) => {
-    const tournaments = await ctx.prisma.tournament.findMany({
-      where: {
-        isPublicBoardEnabled: true,
-      },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        venueName: true,
-        venueAddress: true,
-        timezone: true,
-        startDate: true,
-        endDate: true,
-        registrationStartDate: true,
-        registrationEndDate: true,
-        entryFee: true,
-        publicSlug: true,
-        image: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            email: true,
-          },
-        },
-        divisions: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        tournamentRatings: {
-          select: {
-            rating: true,
-          },
+    const baseSelect = {
+      id: true,
+      title: true,
+      description: true,
+      venueName: true,
+      venueAddress: true,
+      startDate: true,
+      endDate: true,
+      entryFee: true,
+      publicSlug: true,
+      image: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          email: true,
         },
       },
-    })
+      divisions: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      tournamentRatings: {
+        select: {
+          rating: true,
+        },
+      },
+    } as const
+
+    let tournaments: any[]
+    try {
+      tournaments = await ctx.prisma.tournament.findMany({
+        where: {
+          isPublicBoardEnabled: true,
+        },
+        select: {
+          ...baseSelect,
+          timezone: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+        },
+      })
+    } catch (error) {
+      if (!hasMissingTournamentOptionalColumns(error)) {
+        throw error
+      }
+      const fallback = await ctx.prisma.tournament.findMany({
+        where: {
+          isPublicBoardEnabled: true,
+        },
+        select: baseSelect,
+      })
+      tournaments = fallback.map((item) => ({
+        ...item,
+        timezone: null,
+        registrationStartDate: null,
+        registrationEndDate: null,
+      }))
+    }
 
     // Calculate karma for each tournament and sort by karma (descending)
     const tournamentsWithKarma = tournaments.map((tournament) => {
-      const likes = tournament.tournamentRatings.filter((r) => r.rating === 'LIKE').length
-      const dislikes = tournament.tournamentRatings.filter((r) => r.rating === 'DISLIKE').length
+      const likes = tournament.tournamentRatings.filter((r: any) => r.rating === 'LIKE').length
+      const dislikes = tournament.tournamentRatings.filter((r: any) => r.rating === 'DISLIKE').length
       const karma = likes - dislikes
 
       return {
@@ -73,38 +106,61 @@ export const publicRouter = createTRPCRouter({
   getBoardById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      const tournament = await ctx.prisma.tournament.findUnique({
-        where: { id: input.id, isPublicBoardEnabled: true },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          venueName: true,
-          venueAddress: true,
-          timezone: true,
-          startDate: true,
-          endDate: true,
-          registrationStartDate: true,
-          registrationEndDate: true,
-          entryFee: true,
-          publicSlug: true,
-          image: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              email: true,
-            },
-          },
-          divisions: {
-            select: {
-              id: true,
-              name: true,
-            },
+      const baseSelect = {
+        id: true,
+        title: true,
+        description: true,
+        venueName: true,
+        venueAddress: true,
+        startDate: true,
+        endDate: true,
+        entryFee: true,
+        publicSlug: true,
+        image: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            email: true,
           },
         },
-      })
+        divisions: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      } as const
+
+      let tournament: any
+      try {
+        tournament = await ctx.prisma.tournament.findUnique({
+          where: { id: input.id, isPublicBoardEnabled: true },
+          select: {
+            ...baseSelect,
+            timezone: true,
+            registrationStartDate: true,
+            registrationEndDate: true,
+          },
+        })
+      } catch (error) {
+        if (!hasMissingTournamentOptionalColumns(error)) {
+          throw error
+        }
+        const fallback = await ctx.prisma.tournament.findUnique({
+          where: { id: input.id, isPublicBoardEnabled: true },
+          select: baseSelect,
+        })
+        tournament = fallback
+          ? {
+              ...fallback,
+              timezone: null,
+              registrationStartDate: null,
+              registrationEndDate: null,
+            }
+          : null
+      }
       if (!tournament) return null
       return tournament
     }),
