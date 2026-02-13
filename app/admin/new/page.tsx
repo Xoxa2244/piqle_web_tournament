@@ -263,6 +263,7 @@ function NewTournamentPageInner() {
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
+  const addressTimezoneSyncSeqRef = useRef(0)
   const lastAddressSelectionRef = useRef<{ placeId: string | null; formatted: string | null }>({
     placeId: null,
     formatted: null,
@@ -351,6 +352,61 @@ function NewTournamentPageInner() {
   const createDraftFromTemplate = trpc.clubTemplate.createDraftFromTemplate.useMutation()
   const saveTemplateFromTournament = trpc.clubTemplate.saveFromTournament.useMutation()
 
+  const syncTimezoneFromAddress = useCallback(
+    async (rawAddress: string, options?: { normalizeAddress?: boolean }) => {
+      const address = rawAddress.trim()
+      if (!address) return
+
+      const requestSeq = ++addressTimezoneSyncSeqRef.current
+      try {
+        const googleApi =
+          googleRef.current ??
+          (await loadGoogleMaps({
+            apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+            libraries: ['places'],
+          }))
+
+        googleRef.current = googleApi
+        const geocoder = new googleApi.maps.Geocoder()
+        geocoder.geocode(
+          { address },
+          (results: any, status: any) => {
+            if (status !== 'OK' || !results?.length) return
+            const result = results[0]
+            if (!result?.formatted_address) return
+
+            const lat = result?.geometry?.location?.lat?.()
+            const lng = result?.geometry?.location?.lng?.()
+            void (async () => {
+              const resolvedTimezone =
+                Number.isFinite(lat) && Number.isFinite(lng)
+                  ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
+                  : null
+
+              if (requestSeq !== addressTimezoneSyncSeqRef.current) return
+
+              setAddressError(null)
+              lastAddressSelectionRef.current = {
+                placeId: result.place_id ?? null,
+                formatted: result.formatted_address ?? null,
+              }
+              setFormData((prev) => ({
+                ...prev,
+                venueAddress: options?.normalizeAddress
+                  ? (result.formatted_address ?? prev.venueAddress)
+                  : prev.venueAddress,
+                timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
+              }))
+            })()
+          }
+        )
+      } catch {
+        // Best-effort only.
+      }
+    },
+    []
+  )
+
   useEffect(() => {
     if (prefillAppliedRef.current) return
     const clubIdFromQuery = searchParams.get('clubId')
@@ -371,7 +427,10 @@ function NewTournamentPageInner() {
         venueAddress: selected.address || prev.venueAddress,
       }
     })
-  }, [clubs, searchParams])
+    if (selected.address?.trim()) {
+      void syncTimezoneFromAddress(selected.address, { normalizeAddress: true })
+    }
+  }, [clubs, searchParams, syncTimezoneFromAddress])
 
   const validateBaseForm = () => {
     const nextErrors = {
@@ -734,49 +793,7 @@ function NewTournamentPageInner() {
       return
     }
 
-    try {
-      const googleApi =
-        googleRef.current ??
-        (await loadGoogleMaps({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
-          libraries: ['places'],
-        }))
-
-      googleRef.current = googleApi
-      const geocoder = new googleApi.maps.Geocoder()
-      geocoder.geocode(
-        { address: raw },
-        (results: any, status: any) => {
-          // Venue address is optional; don't block the flow if validation fails.
-          if (status !== 'OK' || !results?.length) return
-
-          const result = results[0]
-          if (!result?.formatted_address) return
-
-          const lat = result?.geometry?.location?.lat?.()
-          const lng = result?.geometry?.location?.lng?.()
-          void (async () => {
-            const resolvedTimezone =
-              Number.isFinite(lat) && Number.isFinite(lng)
-                ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
-                : null
-
-            setAddressError(null)
-            lastAddressSelectionRef.current = {
-              placeId: result.place_id ?? null,
-              formatted: result.formatted_address ?? null,
-            }
-            setFormData((prev) => ({
-              ...prev,
-              venueAddress: result.formatted_address,
-              timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
-            }))
-          })()
-        }
-      )
-    } catch (error) {
-      // Best-effort only; keep address as-is.
-    }
+    void syncTimezoneFromAddress(raw, { normalizeAddress: true })
   }
 
   const parsedEntryFee = Number(formData.entryFee)
@@ -1162,11 +1179,11 @@ function NewTournamentPageInner() {
 
   const handleClubSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value
+    const selected = clubs?.find((c) => c.id === selectedId)
     setSelectedTemplateId('')
     setFormData((prev) => {
       const next = { ...prev, clubId: selectedId }
       if (!selectedId) return next
-      const selected = clubs?.find((c) => c.id === selectedId)
       if (!selected) return next
       return {
         ...next,
@@ -1174,6 +1191,17 @@ function NewTournamentPageInner() {
         venueAddress: selected.address || prev.venueAddress,
       }
     })
+
+    if (selected?.address?.trim()) {
+      void syncTimezoneFromAddress(selected.address, { normalizeAddress: true })
+      return
+    }
+    if (!selectedId) {
+      const currentAddress = (formData.venueAddress || '').trim()
+      if (currentAddress) {
+        void syncTimezoneFromAddress(currentAddress, { normalizeAddress: true })
+      }
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
