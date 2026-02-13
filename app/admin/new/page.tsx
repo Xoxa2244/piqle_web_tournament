@@ -179,6 +179,10 @@ const normalizeRegistrationDateTime = (value: string) => {
   const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
   return `${datePart}T${timePart}`
 }
+const getTodayYmdLocal = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
 
 type QuarterHourDateTimeInputProps = {
   id?: string
@@ -221,13 +225,13 @@ function QuarterHourDateTimeInput({
   }
 
   const handleTimeChange = (nextTime: string) => {
-    if (!datePart) return
     const normalized = normalizeQuarterHourTime(nextTime) || '00:00'
-    onChange(`${datePart}T${normalized}`)
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${normalized}`)
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+    <div className="flex flex-col sm:flex-row gap-2">
       <input
         type="date"
         id={id}
@@ -237,17 +241,17 @@ function QuarterHourDateTimeInput({
         max={maxDate || undefined}
         onChange={(e) => handleDateChange(e.target.value)}
         disabled={disabled}
-        className="w-full min-w-0 sm:col-span-2 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-2"
+        className="w-full min-w-0 sm:flex-1 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-2"
       />
       <select
         name={name ? `${name}Time` : undefined}
         value={datePart ? (normalizedTime || '00:00') : ''}
         onChange={(e) => handleTimeChange(e.target.value)}
-        disabled={disabled || !datePart}
-        className="w-full min-w-0 sm:col-span-1 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
+        disabled={disabled}
+        className="w-full min-w-0 sm:w-[220px] sm:flex-none pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
       >
         <option value="" disabled>
-          Time
+          Select time
         </option>
         {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
