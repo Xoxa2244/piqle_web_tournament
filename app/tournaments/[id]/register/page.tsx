@@ -120,20 +120,35 @@ export default function TournamentRegistrationPage() {
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
-      await claimSlotMutation.mutateAsync({ teamId, slotIndex })
+      const result = await claimSlotMutation.mutateAsync({ teamId, slotIndex })
       await Promise.all([
         utils.registration.getMyStatus.invalidate({ tournamentId }),
         utils.registration.getSeatMap.invalidate({ tournamentId }),
       ])
-      alert('You are registered!')
+      if (isPaidTournament) {
+        const dueText =
+          result?.paymentDueAt
+            ? formatUsDateTimeShort(result.paymentDueAt, { timeZone: seatMap?.timezone })
+            : null
+        alert(
+          dueText
+            ? `You are registered. Complete payment by ${dueText}.`
+            : 'You are registered. Complete payment to keep your spot.'
+        )
+      } else {
+        alert('You are registered!')
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to claim slot')
     }
   }
 
-  const handlePayJoin = async (teamId: string, slotIndex: number) => {
+  const handlePayNow = async () => {
     try {
-      const spotId = `${teamId}:${slotIndex}`
+      if (myStatus?.status !== 'active' || !myStatus.teamId || typeof myStatus.slotIndex !== 'number') {
+        throw new Error('Join a slot first')
+      }
+      const spotId = `${myStatus.teamId}:${myStatus.slotIndex}`
       const response = await fetch(
         `/api/tournaments/${tournamentId}/spots/${spotId}/create-checkout-session`,
         { method: 'POST' }
@@ -241,6 +256,30 @@ export default function TournamentRegistrationPage() {
                     </span>
                   )}
                 </p>
+                {isPaidTournament ? (
+                  myStatus.isPaid ? (
+                    <Badge variant="secondary" className="w-fit">Payment complete</Badge>
+                  ) : (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-2">
+                      <div className="text-sm font-medium">
+                        Payment pending
+                      </div>
+                      <div className="text-xs">
+                        {seatMap.paymentTiming === 'PAY_IN_15_MIN'
+                          ? 'Pay within 15 minutes after joining.'
+                          : 'Pay before registration deadline.'}
+                        {myStatus.paymentDueAt ? (
+                          <span className="block">
+                            Due: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <Button onClick={handlePayNow}>
+                        Pay now — ${fromCents(entryFeeCents).toFixed(2)}
+                      </Button>
+                    </div>
+                  )
+                ) : null}
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
                   Cancel Registration
                 </Button>
@@ -270,10 +309,8 @@ export default function TournamentRegistrationPage() {
               isRegistrationOpen={registrationOpen}
               myStatus={myStatus}
               onClaimSlot={handleClaimSlot}
-              onPayJoin={handlePayJoin}
               entryFeeCents={entryFeeCents}
               isPaidTournament={isPaidTournament}
-              payoutsActive={payoutsActive}
               onJoinWaitlist={async () => {
                 try {
                   await joinWaitlistMutation.mutateAsync({ divisionId: division.id })
@@ -312,10 +349,8 @@ function DivisionSeatMap({
   isRegistrationOpen,
   myStatus,
   onClaimSlot,
-  onPayJoin,
   entryFeeCents,
   isPaidTournament,
-  payoutsActive,
   onJoinWaitlist,
   onLeaveWaitlist,
   currentUserId,
@@ -325,10 +360,8 @@ function DivisionSeatMap({
   isRegistrationOpen: boolean
   myStatus: any
   onClaimSlot: (teamId: string, slotIndex: number) => void
-  onPayJoin: (teamId: string, slotIndex: number) => void
   entryFeeCents: number
   isPaidTournament: boolean
-  payoutsActive: boolean
   onJoinWaitlist: () => void
   onLeaveWaitlist: () => void
   currentUserId?: string
@@ -393,10 +426,8 @@ function DivisionSeatMap({
                     slots={slotsByTeam[team.id]}
                     isRegistrationOpen={isRegistrationOpen}
                     onClaimSlot={onClaimSlot}
-                    onPayJoin={onPayJoin}
                     entryFeeCents={entryFeeCents}
                     isPaidTournament={isPaidTournament}
-                    payoutsActive={payoutsActive}
                     currentUserId={currentUserId}
                     isAlreadyActive={isAlreadyActive}
                   />
@@ -413,10 +444,8 @@ function DivisionSeatMap({
                 slots={slotsByTeam[team.id]}
                 isRegistrationOpen={isRegistrationOpen}
                 onClaimSlot={onClaimSlot}
-                onPayJoin={onPayJoin}
                 entryFeeCents={entryFeeCents}
                 isPaidTournament={isPaidTournament}
-                payoutsActive={payoutsActive}
                 currentUserId={currentUserId}
                 isAlreadyActive={isAlreadyActive}
               />
@@ -435,10 +464,8 @@ function DivisionSeatMap({
                   slots={slotsByTeam[team.id]}
                   isRegistrationOpen={isRegistrationOpen}
                   onClaimSlot={onClaimSlot}
-                  onPayJoin={onPayJoin}
                   entryFeeCents={entryFeeCents}
                   isPaidTournament={isPaidTournament}
-                  payoutsActive={payoutsActive}
                   currentUserId={currentUserId}
                   isAlreadyActive={isAlreadyActive}
                 />
@@ -480,7 +507,9 @@ function DivisionSeatMap({
 
         {hasAvailableSlots && !isActiveInDivision && (
           <div className="text-sm text-gray-500">
-            {isPaidTournament ? 'Select a slot to pay and join this division.' : 'Select a slot to join this division.'}
+            {isPaidTournament
+              ? 'Select a slot to join. Payment is completed after joining.'
+              : 'Select a slot to join this division.'}
           </div>
         )}
 
@@ -502,10 +531,8 @@ function TeamCard({
   slots,
   isRegistrationOpen,
   onClaimSlot,
-  onPayJoin,
   entryFeeCents,
   isPaidTournament,
-  payoutsActive,
   currentUserId,
   isAlreadyActive,
 }: {
@@ -513,10 +540,8 @@ function TeamCard({
   slots: any[]
   isRegistrationOpen: boolean
   onClaimSlot: (teamId: string, slotIndex: number) => void
-  onPayJoin: (teamId: string, slotIndex: number) => void
   entryFeeCents: number
   isPaidTournament: boolean
-  payoutsActive: boolean
   currentUserId?: string
   isAlreadyActive: boolean
 }) {
@@ -552,14 +577,10 @@ function TeamCard({
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
               disabled={disableJoin}
-              onClick={() =>
-                isPaidTournament
-                  ? onPayJoin(team.id, index)
-                  : onClaimSlot(team.id, index)
-              }
+              onClick={() => onClaimSlot(team.id, index)}
             >
               {isPaidTournament
-                ? `Pay & Join — $${fromCents(entryFeeCents).toFixed(2)}`
+                ? `Join — then pay $${fromCents(entryFeeCents).toFixed(2)}`
                 : `Join — slot #${index + 1}`}
             </button>
           )

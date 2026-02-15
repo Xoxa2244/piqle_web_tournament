@@ -284,6 +284,7 @@ export default function TournamentDetailPage() {
     registrationEndDate: '',
     timezone: '',
     entryFee: '',
+    paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
     image: '',
@@ -336,6 +337,9 @@ export default function TournamentDetailPage() {
           typeof tournament.entryFeeCents === 'number'
             ? fromCents(tournament.entryFeeCents).toFixed(2)
             : '',
+        paymentTiming: ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN') as
+          | 'PAY_IN_15_MIN'
+          | 'PAY_BY_DEADLINE',
         isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
         allowDuprSubmission: tournament.allowDuprSubmission ?? false,
         image: tournament.image || '',
@@ -512,6 +516,9 @@ export default function TournamentDetailPage() {
         typeof tournament.entryFeeCents === 'number'
           ? fromCents(tournament.entryFeeCents).toFixed(2)
           : '',
+      paymentTiming: ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN') as
+        | 'PAY_IN_15_MIN'
+        | 'PAY_BY_DEADLINE',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
       image: tournament.image || '',
@@ -631,6 +638,7 @@ export default function TournamentDetailPage() {
       registrationEndDate: payloadRegistrationEndDate,
       timezone: normalizedTimezone,
       entryFeeCents,
+      paymentTiming: tournamentForm.paymentTiming,
       currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
@@ -735,7 +743,9 @@ export default function TournamentDetailPage() {
     }
   }
 
-  const handleTournamentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleTournamentChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value, type } = e.target
     setTournamentForm(prev => ({
       ...prev,
@@ -1368,6 +1378,21 @@ export default function TournamentDetailPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Payment Timing
+                </label>
+                <select
+                  name="paymentTiming"
+                  value={tournamentForm.paymentTiming}
+                  onChange={handleTournamentChange}
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
+                >
+                  <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                  <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                </select>
               </div>
 
               {/* Tournament Image */}

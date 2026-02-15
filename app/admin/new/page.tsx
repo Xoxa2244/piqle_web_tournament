@@ -348,6 +348,7 @@ function NewTournamentPageInner() {
     registrationStartDate: '',
     registrationEndDate: '',
     entryFee: '',
+    paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as TournamentFormat,
@@ -1043,6 +1044,7 @@ function NewTournamentPageInner() {
           formData.registrationEndDate
         : undefined,
       entryFeeCents: entryFeeCents || 0,
+      paymentTiming: formData.paymentTiming,
       currency: 'usd' as const,
       isPublicBoardEnabled: isSeries ? false : formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
@@ -2202,6 +2204,25 @@ function NewTournamentPageInner() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+
+                <div>
+                  <label htmlFor="paymentTiming" className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Timing
+                  </label>
+                  <select
+                    id="paymentTiming"
+                    name="paymentTiming"
+                    value={formData.paymentTiming}
+                    onChange={handleChange}
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                  >
+                    <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                    <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Players join first. If unpaid by the selected deadline, registration is canceled automatically.
+                  </p>
                 </div>
 
                 <div>

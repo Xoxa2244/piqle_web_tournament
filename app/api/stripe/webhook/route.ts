@@ -35,23 +35,13 @@ export async function POST(request: Request) {
   ) => {
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
-      include: {
-        player: {
-          include: {
-            teamPlayers: {
-              include: {
-                team: {
-                  include: { division: true },
-                },
-              },
-            },
-          },
-        },
-      },
     })
     if (!payment) return
 
     if (status !== 'PAID') {
+      if (payment.status === 'PAID') {
+        return
+      }
       await prisma.payment.update({
         where: { id: paymentId },
         data: {
@@ -66,52 +56,7 @@ export async function POST(request: Request) {
       return
     }
 
-    const slotIndex = payment.slotIndex
-    const teamId = payment.teamId
-
     await prisma.$transaction(async (tx) => {
-      if (teamId && typeof slotIndex === 'number') {
-        const existingSlot = await tx.teamPlayer.findFirst({
-          where: { teamId, slotIndex },
-        })
-
-        if (existingSlot) {
-          await tx.payment.update({
-            where: { id: paymentId },
-            data: {
-              status: 'FAILED',
-              stripePaymentIntentId:
-                paymentIntentId ?? payment.stripePaymentIntentId,
-            },
-          })
-          return
-        }
-
-        const alreadyRegistered = payment.player.teamPlayers.some(
-          (teamPlayer) => teamPlayer.team.division.tournamentId === payment.tournamentId
-        )
-
-        if (alreadyRegistered) {
-          await tx.payment.update({
-            where: { id: paymentId },
-            data: {
-              status: 'FAILED',
-              stripePaymentIntentId:
-                paymentIntentId ?? payment.stripePaymentIntentId,
-            },
-          })
-          return
-        }
-
-        await tx.teamPlayer.create({
-          data: {
-            teamId,
-            playerId: payment.playerId,
-            slotIndex,
-          },
-        })
-      }
-
       await tx.payment.update({
         where: { id: paymentId },
         data: {

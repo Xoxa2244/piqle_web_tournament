@@ -559,7 +559,7 @@ export default function ClubDetailPage() {
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
                                 {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
-                                  ? `Pay & Join${typeof tournament.entryFeeCents === 'number' ? ` — $${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''}`
+                                  ? `Join & Pay${typeof tournament.entryFeeCents === 'number' ? ` — $${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''}`
                                   : 'Join'}
                               </Button>
                             </Link>
@@ -1246,7 +1246,7 @@ function ClubEventsCalendar({
                   <div className="flex items-center gap-2">
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
-                        {isPaid ? 'Pay & Join' : 'Join'}
+                        {isPaid ? 'Join & Pay' : 'Join'}
                       </Button>
                     </Link>
                     {tournament.publicSlug ? (

@@ -120,6 +120,7 @@ const templateConfigV1Schema = z.object({
     format: tournamentFormatSchema,
     allowDuprSubmission: z.boolean().optional(),
     currency: z.string().optional(),
+    paymentTiming: z.enum(['PAY_IN_15_MIN', 'PAY_BY_DEADLINE']).optional(),
     timezone: z.string().nullable().optional(),
     seasonLabel: z.string().nullable().optional(),
   }),
@@ -447,6 +448,7 @@ export const clubTemplateRouter = createTRPCRouter({
               entryFee: entryFeeDecimal,
               entryFeeCents,
               currency: (config.tournament.currency ?? 'usd') as string,
+              paymentTiming: (config.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as any,
               isPublicBoardEnabled: false, // always draft
               allowDuprSubmission: Boolean(config.tournament.allowDuprSubmission),
               format: config.tournament.format,
@@ -722,6 +724,7 @@ export const clubTemplateRouter = createTRPCRouter({
           format: tournament.format,
           allowDuprSubmission: Boolean(tournament.allowDuprSubmission),
           currency: tournament.currency ?? 'usd',
+          paymentTiming: (tournament as any).paymentTiming ?? 'PAY_IN_15_MIN',
           timezone: tournament.timezone ?? null,
           seasonLabel: tournament.seasonLabel ?? null,
         },
