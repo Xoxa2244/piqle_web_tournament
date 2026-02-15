@@ -112,6 +112,12 @@ export default function AppHeader() {
                   Clubs
                 </Link>
                 <Link
+                  href="/chats"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Chats
+                </Link>
+                <Link
                   href="/players"
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
@@ -392,6 +398,13 @@ export default function AppHeader() {
                       onClick={() => setBurgerOpen(false)}
                     >
                       Clubs
+                    </Link>
+                    <Link
+                      href="/chats"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      Chats
                     </Link>
                     <Link
                       href="/players"

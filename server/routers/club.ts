@@ -247,6 +247,58 @@ export const clubRouter = createTRPCRouter({
       }))
     }),
 
+  listMyChatClubs: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id
+
+    const clubs = await ctx.prisma.club.findMany({
+      where: {
+        OR: [
+          { followers: { some: { userId } } },
+          { admins: { some: { userId } } },
+        ],
+        bans: {
+          none: {
+            userId,
+          },
+        },
+      },
+      orderBy: [{ isVerified: 'desc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        joinPolicy: true,
+        logoUrl: true,
+        city: true,
+        state: true,
+        isVerified: true,
+        followers: {
+          where: { userId },
+          select: { id: true },
+          take: 1,
+        },
+        admins: {
+          where: { userId },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    })
+
+    return clubs.map((club) => ({
+      id: club.id,
+      name: club.name,
+      kind: club.kind,
+      joinPolicy: club.joinPolicy ?? 'OPEN',
+      logoUrl: club.logoUrl,
+      city: club.city,
+      state: club.state,
+      isVerified: club.isVerified,
+      isFollowing: club.followers.length > 0,
+      isAdmin: club.admins.length > 0,
+    }))
+  }),
+
   get: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {

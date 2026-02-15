@@ -272,6 +272,132 @@ export const tournamentChatRouter = createTRPCRouter({
       }
     }),
 
+  listMyEventChats: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session.user.id
+
+    const [owned, adminAccess, clubAdminTournaments, participantDivisions, waitlistEntries] =
+      await Promise.all([
+        ctx.prisma.tournament.findMany({
+          where: { userId },
+          select: { id: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: { userId, accessLevel: 'ADMIN' },
+          select: { tournamentId: true },
+          distinct: ['tournamentId'],
+        }),
+        ctx.prisma.tournament.findMany({
+          where: {
+            club: {
+              admins: {
+                some: { userId },
+              },
+            },
+          },
+          select: { id: true },
+        }),
+        ctx.prisma.division.findMany({
+          where: {
+            teams: {
+              some: {
+                teamPlayers: {
+                  some: {
+                    player: { userId },
+                  },
+                },
+              },
+            },
+          },
+          select: { tournamentId: true },
+          distinct: ['tournamentId'],
+        }),
+        ctx.prisma.waitlistEntry.findMany({
+          where: {
+            status: 'ACTIVE',
+            player: { userId },
+          },
+          select: { tournamentId: true },
+          distinct: ['tournamentId'],
+        }),
+      ])
+
+    const candidateTournamentIds = Array.from(
+      new Set([
+        ...owned.map((t) => t.id),
+        ...adminAccess.map((t) => t.tournamentId),
+        ...clubAdminTournaments.map((t) => t.id),
+        ...participantDivisions.map((d) => d.tournamentId),
+        ...waitlistEntries.map((w) => w.tournamentId),
+      ])
+    )
+
+    if (!candidateTournamentIds.length) {
+      return []
+    }
+
+    const tournaments = await ctx.prisma.tournament.findMany({
+      where: { id: { in: candidateTournamentIds } },
+      select: {
+        id: true,
+        title: true,
+        startDate: true,
+        endDate: true,
+        timezone: true,
+        club: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        divisions: {
+          select: {
+            id: true,
+            name: true,
+          },
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: [{ startDate: 'asc' }, { title: 'asc' }],
+    })
+
+    const events = await Promise.all(
+      tournaments.map(async (tournament) => {
+        const membership = await getTournamentMembership(ctx.prisma, userId, tournament.id)
+        if (!membership.canView) return null
+
+        const divisions = await Promise.all(
+          tournament.divisions.map(async (division) => {
+            const divisionMembership = await getDivisionMembership(ctx.prisma, userId, division.id)
+            if (!divisionMembership.canView) return null
+
+            return {
+              id: division.id,
+              name: division.name,
+              permission: divisionMembership,
+            }
+          })
+        )
+
+        const visibleDivisions = divisions.filter(
+          (division): division is NonNullable<typeof division> => Boolean(division)
+        )
+
+        return {
+          id: tournament.id,
+          title: tournament.title,
+          startDate: tournament.startDate,
+          endDate: tournament.endDate,
+          timezone: tournament.timezone,
+          club: tournament.club,
+          permission: membership,
+          divisions: visibleDivisions,
+        }
+      })
+    )
+
+    return events.filter((event): event is NonNullable<typeof event> => Boolean(event))
+  }),
+
   listTournament: protectedProcedure
     .input(
       z.object({
