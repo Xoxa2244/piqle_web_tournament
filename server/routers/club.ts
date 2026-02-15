@@ -285,6 +285,52 @@ export const clubRouter = createTRPCRouter({
       },
     })
 
+    const clubIds = clubs.map((club) => club.id)
+    let hasReadStates = true
+    const readStateByClubId = new Map<string, Date>()
+
+    if (clubIds.length > 0) {
+      try {
+        const readStates = await ctx.prisma.clubChatReadState.findMany({
+          where: {
+            userId,
+            clubId: { in: clubIds },
+          },
+          select: {
+            clubId: true,
+            lastReadAt: true,
+          },
+        })
+        for (const state of readStates) {
+          readStateByClubId.set(state.clubId, state.lastReadAt)
+        }
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_chat_read_states')) {
+          hasReadStates = false
+        } else {
+          throw err
+        }
+      }
+    }
+
+    const unreadCountByClubId = new Map<string, number>()
+    if (hasReadStates && clubIds.length > 0) {
+      await Promise.all(
+        clubIds.map(async (clubId) => {
+          const lastReadAt = readStateByClubId.get(clubId)
+          const unreadCount = await ctx.prisma.clubChatMessage.count({
+            where: {
+              clubId,
+              deletedAt: null,
+              userId: { not: userId },
+              ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+            },
+          })
+          unreadCountByClubId.set(clubId, unreadCount)
+        })
+      )
+    }
+
     return clubs.map((club) => ({
       id: club.id,
       name: club.name,
@@ -296,6 +342,7 @@ export const clubRouter = createTRPCRouter({
       isVerified: club.isVerified,
       isFollowing: club.followers.length > 0,
       isAdmin: club.admins.length > 0,
+      unreadCount: hasReadStates ? unreadCountByClubId.get(club.id) ?? 0 : 0,
     }))
   }),
 

@@ -33,6 +33,11 @@ const mapMessage = (m: {
   user: m.user,
 })
 
+const isMissingDbRelation = (err: any, relationName: string) => {
+  const msg = String(err?.message ?? '').toLowerCase()
+  return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
+}
+
 async function getTournamentMembership(
   prisma: any,
   userId: string,
@@ -335,6 +340,30 @@ export const tournamentChatRouter = createTRPCRouter({
       return []
     }
 
+    let hasReadStates = true
+    const tournamentReadStateById = new Map<string, Date>()
+    try {
+      const readStates = await ctx.prisma.tournamentChatReadState.findMany({
+        where: {
+          userId,
+          tournamentId: { in: candidateTournamentIds },
+        },
+        select: {
+          tournamentId: true,
+          lastReadAt: true,
+        },
+      })
+      for (const state of readStates) {
+        tournamentReadStateById.set(state.tournamentId, state.lastReadAt)
+      }
+    } catch (err: any) {
+      if (isMissingDbRelation(err, 'tournament_chat_read_states')) {
+        hasReadStates = false
+      } else {
+        throw err
+      }
+    }
+
     const tournaments = await ctx.prisma.tournament.findMany({
       where: { id: { in: candidateTournamentIds } },
       select: {
@@ -360,20 +389,73 @@ export const tournamentChatRouter = createTRPCRouter({
       orderBy: [{ startDate: 'asc' }, { title: 'asc' }],
     })
 
+    const allDivisionIds = tournaments.flatMap((tournament) => tournament.divisions.map((division) => division.id))
+    const divisionReadStateById = new Map<string, Date>()
+    if (hasReadStates && allDivisionIds.length > 0) {
+      try {
+        const divisionReadStates = await ctx.prisma.divisionChatReadState.findMany({
+          where: {
+            userId,
+            divisionId: { in: allDivisionIds },
+          },
+          select: {
+            divisionId: true,
+            lastReadAt: true,
+          },
+        })
+        for (const state of divisionReadStates) {
+          divisionReadStateById.set(state.divisionId, state.lastReadAt)
+        }
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'division_chat_read_states')) {
+          hasReadStates = false
+        } else {
+          throw err
+        }
+      }
+    }
+
     const events = await Promise.all(
       tournaments.map(async (tournament) => {
         const membership = await getTournamentMembership(ctx.prisma, userId, tournament.id)
         if (!membership.canView) return null
+
+        const tournamentUnreadCount = hasReadStates
+          ? await ctx.prisma.tournamentChatMessage.count({
+              where: {
+                tournamentId: tournament.id,
+                deletedAt: null,
+                userId: { not: userId },
+                ...(tournamentReadStateById.get(tournament.id)
+                  ? { createdAt: { gt: tournamentReadStateById.get(tournament.id)! } }
+                  : {}),
+              },
+            })
+          : 0
 
         const divisions = await Promise.all(
           tournament.divisions.map(async (division) => {
             const divisionMembership = await getDivisionMembership(ctx.prisma, userId, division.id)
             if (!divisionMembership.canView) return null
 
+            const divisionUnreadCount = hasReadStates
+              ? await ctx.prisma.divisionChatMessage.count({
+                  where: {
+                    divisionId: division.id,
+                    deletedAt: null,
+                    userId: { not: userId },
+                    ...(divisionReadStateById.get(division.id)
+                      ? { createdAt: { gt: divisionReadStateById.get(division.id)! } }
+                      : {}),
+                  },
+                })
+              : 0
+
             return {
               id: division.id,
               name: division.name,
               permission: divisionMembership,
+              unreadCount: divisionUnreadCount,
             }
           })
         )
@@ -390,6 +472,7 @@ export const tournamentChatRouter = createTRPCRouter({
           timezone: tournament.timezone,
           club: tournament.club,
           permission: membership,
+          unreadCount: tournamentUnreadCount,
           divisions: visibleDivisions,
         }
       })
@@ -397,6 +480,92 @@ export const tournamentChatRouter = createTRPCRouter({
 
     return events.filter((event): event is NonNullable<typeof event> => Boolean(event))
   }),
+
+  markTournamentRead: protectedProcedure
+    .input(
+      z.object({
+        tournamentId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const membership = await getTournamentMembership(ctx.prisma, userId, input.tournamentId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      try {
+        await ctx.prisma.tournamentChatReadState.upsert({
+          where: {
+            tournamentId_userId: {
+              tournamentId: input.tournamentId,
+              userId,
+            },
+          },
+          create: {
+            tournamentId: input.tournamentId,
+            userId,
+            lastReadAt: new Date(),
+          },
+          update: {
+            lastReadAt: new Date(),
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'tournament_chat_read_states')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'tournament_chat_read_states table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
+    }),
+
+  markDivisionRead: protectedProcedure
+    .input(
+      z.object({
+        divisionId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const membership = await getDivisionMembership(ctx.prisma, userId, input.divisionId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      try {
+        await ctx.prisma.divisionChatReadState.upsert({
+          where: {
+            divisionId_userId: {
+              divisionId: input.divisionId,
+              userId,
+            },
+          },
+          create: {
+            divisionId: input.divisionId,
+            userId,
+            lastReadAt: new Date(),
+          },
+          update: {
+            lastReadAt: new Date(),
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'division_chat_read_states')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'division_chat_read_states table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
+    }),
 
   listTournament: protectedProcedure
     .input(

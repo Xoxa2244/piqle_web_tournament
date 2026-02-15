@@ -1562,12 +1562,20 @@ function ClubChatCard({
   const sendMessage = trpc.clubChat.send.useMutation({
     onSuccess: async () => {
       await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+      await utils.club.listMyChatClubs.invalidate()
     },
   })
 
   const deleteMessage = trpc.clubChat.delete.useMutation({
     onSuccess: async () => {
       await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+      await utils.club.listMyChatClubs.invalidate()
+    },
+  })
+
+  const markRead = trpc.clubChat.markRead.useMutation({
+    onSuccess: async () => {
+      await utils.club.listMyChatClubs.invalidate()
     },
   })
 
@@ -1585,6 +1593,12 @@ function ClubChatCard({
   useEffect(() => {
     scrollToBottom()
   }, [messages?.length, scrollToBottom])
+
+  useEffect(() => {
+    if (!canView) return
+    markRead.mutate({ clubId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubId, canView, messages?.length])
 
   const handleSend = useCallback(async () => {
     const text = draft.trim()

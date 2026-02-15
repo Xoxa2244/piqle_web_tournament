@@ -621,7 +621,10 @@ function TournamentChatCard({
       if (res?.wasFiltered) {
         alert('Some words were filtered.')
       }
-      await utils.tournamentChat.listTournament.invalidate({ tournamentId, limit })
+      await Promise.all([
+        utils.tournamentChat.listTournament.invalidate({ tournamentId, limit }),
+        utils.tournamentChat.listMyEventChats.invalidate(),
+      ])
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
       }, 30)
@@ -630,7 +633,15 @@ function TournamentChatCard({
 
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
     onSuccess: async () => {
-      await utils.tournamentChat.listTournament.invalidate({ tournamentId, limit })
+      await Promise.all([
+        utils.tournamentChat.listTournament.invalidate({ tournamentId, limit }),
+        utils.tournamentChat.listMyEventChats.invalidate(),
+      ])
+    },
+  })
+  const markRead = trpc.tournamentChat.markTournamentRead.useMutation({
+    onSuccess: async () => {
+      await utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
 
@@ -642,6 +653,12 @@ function TournamentChatCard({
   useEffect(() => {
     scrollToBottom()
   }, [messages?.length, scrollToBottom])
+
+  useEffect(() => {
+    if (!canView) return
+    markRead.mutate({ tournamentId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, canView, messages?.length])
 
   const handleSend = async () => {
     const text = draft.trim()
@@ -799,7 +816,10 @@ function DivisionChatCard({
       if (res?.wasFiltered) {
         alert('Some words were filtered.')
       }
-      await utils.tournamentChat.listDivision.invalidate({ divisionId, limit })
+      await Promise.all([
+        utils.tournamentChat.listDivision.invalidate({ divisionId, limit }),
+        utils.tournamentChat.listMyEventChats.invalidate(),
+      ])
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
       }, 30)
@@ -808,7 +828,15 @@ function DivisionChatCard({
 
   const deleteMessage = trpc.tournamentChat.deleteDivision.useMutation({
     onSuccess: async () => {
-      await utils.tournamentChat.listDivision.invalidate({ divisionId, limit })
+      await Promise.all([
+        utils.tournamentChat.listDivision.invalidate({ divisionId, limit }),
+        utils.tournamentChat.listMyEventChats.invalidate(),
+      ])
+    },
+  })
+  const markRead = trpc.tournamentChat.markDivisionRead.useMutation({
+    onSuccess: async () => {
+      await utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
 
@@ -821,6 +849,12 @@ function DivisionChatCard({
     if (!open) return
     scrollToBottom()
   }, [messages?.length, open, scrollToBottom])
+
+  useEffect(() => {
+    if (!open || !canView) return
+    markRead.mutate({ divisionId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionId, open, canView, messages?.length])
 
   const handleSend = async () => {
     const text = draft.trim()

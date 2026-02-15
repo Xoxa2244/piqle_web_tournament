@@ -35,8 +35,11 @@ model User {
   clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
   clubChatMessages         ClubChatMessage[]
+  clubChatReadStates       ClubChatReadState[]
   tournamentChatMessages   TournamentChatMessage[]
+  tournamentChatReadStates TournamentChatReadState[]
   divisionChatMessages     DivisionChatMessage[]
+  divisionChatReadStates   DivisionChatReadState[]
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests         ClubJoinRequest[]
@@ -153,6 +156,7 @@ model Tournament {
   payments                Payment[]
   tournamentInvitations   TournamentInvitation[]
   chatMessages            TournamentChatMessage[]
+  chatReadStates          TournamentChatReadState[]
   club                    Club?                     @relation(fields: [clubId], references: [id], onDelete: SetNull)
 
   @@index([clubId])
@@ -199,6 +203,7 @@ model Club {
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
   chatMessages       ClubChatMessage[]
+  chatReadStates     ClubChatReadState[]
   invites            ClubInvite[]
   bans               ClubBan[]
 
@@ -342,6 +347,54 @@ model DivisionChatMessage {
   @@map("division_chat_messages")
 }
 
+model ClubChatReadState {
+  id         String   @id @default(uuid())
+  clubId     String   @map("club_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId, updatedAt])
+  @@map("club_chat_read_states")
+}
+
+model TournamentChatReadState {
+  id           String   @id @default(uuid())
+  tournamentId String   @map("tournament_id")
+  userId       String   @map("user_id")
+  lastReadAt   DateTime @default(now()) @map("last_read_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([userId, updatedAt])
+  @@map("tournament_chat_read_states")
+}
+
+model DivisionChatReadState {
+  id         String   @id @default(uuid())
+  divisionId String   @map("division_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([divisionId, userId])
+  @@index([userId, updatedAt])
+  @@map("division_chat_read_states")
+}
+
 model ClubInvite {
   id            String   @id @default(uuid())
   clubId        String   @map("club_id")
@@ -454,6 +507,7 @@ model Division {
   tournamentAccesses    TournamentAccess[]
   indyMatchups          IndyMatchup[]
   chatMessages          DivisionChatMessage[]
+  chatReadStates        DivisionChatReadState[]
 
   @@map("divisions")
 }

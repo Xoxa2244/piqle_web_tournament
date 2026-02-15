@@ -51,6 +51,7 @@ type ClubChatListItem = {
   isVerified: boolean
   isFollowing: boolean
   isAdmin: boolean
+  unreadCount: number
 }
 
 function ClubAvatar({ club }: { club: ClubChatListItem }) {
@@ -223,7 +224,14 @@ export default function ChatsPage() {
                         <div className="flex items-center gap-3">
                           <ClubAvatar club={club as ClubChatListItem} />
                           <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-gray-900">{club.name}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="truncate text-sm font-medium text-gray-900">{club.name}</div>
+                              {club.unreadCount > 0 ? (
+                                <Badge className="bg-red-600 hover:bg-red-600">
+                                  {club.unreadCount > 99 ? '99+' : club.unreadCount}
+                                </Badge>
+                              ) : null}
+                            </div>
                             <div className="text-xs text-muted-foreground">
                               {club.city || club.state
                                 ? `${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}`
@@ -294,6 +302,13 @@ export default function ChatsPage() {
                           )}
                         >
                           <div className="truncate text-sm font-medium">{event.title}</div>
+                          {event.unreadCount > 0 ? (
+                            <div className="mt-1">
+                              <Badge className="bg-red-600 hover:bg-red-600">
+                                {event.unreadCount > 99 ? '99+' : event.unreadCount} unread
+                              </Badge>
+                            </div>
+                          ) : null}
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatUsDateTimeShort(event.startDate, { timeZone: event.timezone })} ·{' '}
                             {getTimezoneLabel(event.timezone)}
@@ -326,7 +341,14 @@ export default function ChatsPage() {
                                       : 'text-gray-700 hover:bg-gray-50'
                                   )}
                                 >
-                                  {division.name}
+                                  <span className="inline-flex items-center gap-1">
+                                    <span>{division.name}</span>
+                                    {division.unreadCount > 0 ? (
+                                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                        {division.unreadCount > 99 ? '99+' : division.unreadCount}
+                                      </span>
+                                    ) : null}
+                                  </span>
                                 </button>
                               )
                             })}
@@ -402,11 +424,22 @@ function ClubChatPanel({
       await utils.clubChat.list.invalidate({ clubId, limit })
     },
   })
+  const markRead = trpc.clubChat.markRead.useMutation({
+    onSuccess: async () => {
+      await utils.club.listMyChatClubs.invalidate()
+    },
+  })
 
   useEffect(() => {
     if (!listRef.current) return
     listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages?.length])
+
+  useEffect(() => {
+    if (!clubId) return
+    markRead.mutate({ clubId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubId, messages?.length])
 
   const handleSend = async () => {
     const text = draft.trim()
@@ -550,11 +583,22 @@ function TournamentChatPanel({
       await utils.tournamentChat.listTournament.invalidate({ tournamentId, limit })
     },
   })
+  const markRead = trpc.tournamentChat.markTournamentRead.useMutation({
+    onSuccess: async () => {
+      await utils.tournamentChat.listMyEventChats.invalidate()
+    },
+  })
 
   useEffect(() => {
     if (!listRef.current) return
     listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages?.length])
+
+  useEffect(() => {
+    if (!canView) return
+    markRead.mutate({ tournamentId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, canView, messages?.length])
 
   const handleSend = async () => {
     const text = draft.trim()
@@ -715,11 +759,22 @@ function DivisionChatPanel({
       await utils.tournamentChat.listDivision.invalidate({ divisionId, limit })
     },
   })
+  const markRead = trpc.tournamentChat.markDivisionRead.useMutation({
+    onSuccess: async () => {
+      await utils.tournamentChat.listMyEventChats.invalidate()
+    },
+  })
 
   useEffect(() => {
     if (!listRef.current) return
     listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages?.length])
+
+  useEffect(() => {
+    if (!canView) return
+    markRead.mutate({ divisionId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [divisionId, canView, messages?.length])
 
   const handleSend = async () => {
     const text = draft.trim()
