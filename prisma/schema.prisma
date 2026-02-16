@@ -58,6 +58,10 @@ model User {
   organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
   stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
   tournamentInvitationsReceived TournamentInvitation[] @relation("InvitedUser")
+  stripeCustomerId         String?                   @map("stripe_customer_id")
+  stripeDefaultPaymentMethodId String?               @map("stripe_default_payment_method_id")
+  stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
+  stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
 
   @@map("users")
 }

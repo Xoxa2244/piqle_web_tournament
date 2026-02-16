@@ -3,6 +3,10 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { getTeamSlotCount, normalizeTeamSlots } from '../utils/teamSlots'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
+import {
+  releaseExpiredUnpaidRegistrations as releaseExpiredUnpaidRegistrationsCore,
+  isDuePaymentsSchemaError,
+} from '../utils/paymentDue'
 
 const getRegistrationWindow = (tournament: {
   registrationStartDate: Date | null
@@ -49,59 +53,9 @@ const getPaymentDueAt = (
 
 const releaseExpiredUnpaidRegistrations = async (prisma: any, tournamentId: string) => {
   try {
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: tournamentId },
-      select: {
-        id: true,
-        entryFeeCents: true,
-        paymentTiming: true,
-      },
-    })
-
-    if (!tournament) return
-    if ((tournament.entryFeeCents ?? 0) <= 0) return
-
-    const now = new Date()
-    const expiredPayments = await prisma.payment.findMany({
-      where: {
-        tournamentId,
-        status: 'PENDING',
-        dueAt: { not: null, lt: now },
-      },
-      select: {
-        id: true,
-        playerId: true,
-      },
-    })
-
-    if (!expiredPayments.length) return
-
-    const expiredPlayerIds = Array.from(new Set(expiredPayments.map((p: any) => p.playerId)))
-    const expiredPaymentIds = expiredPayments.map((p: any) => p.id)
-
-    await prisma.teamPlayer.deleteMany({
-      where: {
-        playerId: { in: expiredPlayerIds },
-        team: {
-          division: {
-            tournamentId,
-          },
-        },
-      },
-    })
-
-    await prisma.payment.updateMany({
-      where: {
-        id: { in: expiredPaymentIds },
-        status: 'PENDING',
-      },
-      data: {
-        status: 'CANCELED',
-      },
-    })
+    await releaseExpiredUnpaidRegistrationsCore(prisma, tournamentId)
   } catch (error: any) {
-    const message = String(error?.message ?? '').toLowerCase()
-    if (message.includes('due_at') || message.includes('payment_timing')) {
+    if (isDuePaymentsSchemaError(error)) {
       return
     }
     throw error
@@ -215,6 +169,39 @@ export const registrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
       }
 
+      let savedCardInfo: {
+        hasSavedCard: boolean
+        savedCardBrand: string | null
+        savedCardLast4: string | null
+      } = {
+        hasSavedCard: false,
+        savedCardBrand: null,
+        savedCardLast4: null,
+      }
+
+      try {
+        const userCard = await ctx.prisma.user.findUnique({
+          where: { id: ctx.session.user.id },
+          select: {
+            stripeCustomerId: true,
+            stripeDefaultPaymentMethodId: true,
+            stripeDefaultCardBrand: true,
+            stripeDefaultCardLast4: true,
+          },
+        })
+        if (userCard?.stripeCustomerId && userCard.stripeDefaultPaymentMethodId) {
+          savedCardInfo = {
+            hasSavedCard: true,
+            savedCardBrand: userCard.stripeDefaultCardBrand ?? null,
+            savedCardLast4: userCard.stripeDefaultCardLast4 ?? null,
+          }
+        }
+      } catch (error: any) {
+        if (!isDuePaymentsSchemaError(error)) {
+          throw error
+        }
+      }
+
       const player = await ctx.prisma.player.findUnique({
         where: {
           userId_tournamentId: {
@@ -286,6 +273,7 @@ export const registrationRouter = createTRPCRouter({
           paymentStatus,
           paymentDueAt,
           paymentTiming: tournament.paymentTiming ?? 'PAY_IN_15_MIN',
+          ...savedCardInfo,
         }
       }
 

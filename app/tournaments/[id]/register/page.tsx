@@ -72,6 +72,7 @@ export default function TournamentRegistrationPage() {
     { enabled: !!tournamentId && authStatus === 'authenticated' }
   )
   const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
+  const [saveCardLoading, setSaveCardLoading] = useState(false)
   const utils = trpc.useUtils()
 
   useEffect(() => {
@@ -102,6 +103,22 @@ export default function TournamentRegistrationPage() {
 
     processInviteAccept()
   }, [authStatus, tournamentId, inviteAcceptHandled, acceptInvitationMutation, router])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('card') === 'saved') {
+      alert('Card saved. If still unpaid, we will auto-charge it at the payment deadline.')
+      params.delete('card')
+      const next = params.toString()
+      const nextUrl = `${window.location.pathname}${next ? `?${next}` : ''}`
+      window.history.replaceState({}, '', nextUrl)
+      void Promise.all([
+        utils.registration.getMyStatus.invalidate({ tournamentId }),
+        utils.registration.getSeatMap.invalidate({ tournamentId }),
+      ])
+    }
+  }, [tournamentId, utils])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
@@ -165,6 +182,32 @@ export default function TournamentRegistrationPage() {
       throw new Error('Checkout session URL missing')
     } catch (error: any) {
       alert(error.message || 'Failed to start payment')
+    }
+  }
+
+  const handleSaveCardForAutoPay = async () => {
+    try {
+      setSaveCardLoading(true)
+      const response = await fetch('/api/stripe/create-save-card-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tournamentId }),
+      })
+      const raw = await response.text()
+      const payload = raw ? JSON.parse(raw) : null
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to start card setup')
+      }
+      if (!payload?.url) {
+        throw new Error('Setup session URL missing')
+      }
+      window.location.href = payload.url
+    } catch (error: any) {
+      alert(error.message || 'Failed to save card')
+    } finally {
+      setSaveCardLoading(false)
     }
   }
 
@@ -274,6 +317,33 @@ export default function TournamentRegistrationPage() {
                           </span>
                         ) : null}
                       </div>
+                      {seatMap.paymentTiming === 'PAY_BY_DEADLINE' && (
+                        <div className="rounded-md border border-amber-300 bg-white/70 p-2 text-xs text-amber-900 space-y-2">
+                          <div className="font-medium">Auto-pay at deadline</div>
+                          {myStatus.hasSavedCard ? (
+                            <div>
+                              Saved card:{' '}
+                              <span className="font-medium">
+                                {(myStatus.savedCardBrand || 'Card').toUpperCase()}
+                                {myStatus.savedCardLast4 ? ` •••• ${myStatus.savedCardLast4}` : ''}
+                              </span>
+                            </div>
+                          ) : (
+                            <div>No saved card yet.</div>
+                          )}
+                          <Button
+                            variant="outline"
+                            onClick={handleSaveCardForAutoPay}
+                            disabled={saveCardLoading}
+                          >
+                            {saveCardLoading
+                              ? 'Redirecting...'
+                              : myStatus.hasSavedCard
+                              ? 'Update saved card'
+                              : 'Save card for auto-pay'}
+                          </Button>
+                        </div>
+                      )}
                       <Button onClick={handlePayNow}>
                         Pay now — ${fromCents(entryFeeCents).toFixed(2)}
                       </Button>

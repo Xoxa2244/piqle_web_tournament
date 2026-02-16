@@ -8,6 +8,15 @@ import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 const CURRENCY = 'usd'
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000
+const isSavedCardSchemaError = (error: any) => {
+  const message = String(error?.message ?? '').toLowerCase()
+  return (
+    message.includes('stripe_customer_id') ||
+    message.includes('stripe_default_payment_method_id') ||
+    message.includes('stripe_default_card_brand') ||
+    message.includes('stripe_default_card_last4')
+  )
+}
 
 type PaymentTiming = 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
 
@@ -144,6 +153,44 @@ export async function POST(
 
     const { platformFeeCents, stripeFeeCents } = calculateOrganizerNetCents(entryFeeCents)
 
+    let stripeCustomerId: string | null = null
+    try {
+      const stripeUser = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          stripeCustomerId: true,
+        },
+      })
+
+      const stripe = getStripe()
+      stripeCustomerId = stripeUser?.stripeCustomerId ?? null
+      if (!stripeCustomerId && stripeUser) {
+        const customer = await stripe.customers.create({
+          email: stripeUser.email ?? undefined,
+          name: stripeUser.name ?? undefined,
+          metadata: {
+            userId: stripeUser.id,
+          },
+        })
+        stripeCustomerId = customer.id
+
+        await prisma.user.update({
+          where: { id: stripeUser.id },
+          data: {
+            stripeCustomerId,
+          },
+        })
+      }
+    } catch (error: any) {
+      if (!isSavedCardSchemaError(error)) {
+        throw error
+      }
+      stripeCustomerId = null
+    }
+
     if (!payment) {
       payment = await prisma.payment.create({
         data: {
@@ -181,7 +228,8 @@ export async function POST(
     const sessionParams = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      customer_email: session.user.email ?? undefined,
+      customer: stripeCustomerId ?? undefined,
+      customer_email: stripeCustomerId ? undefined : session.user.email ?? undefined,
       client_reference_id: payment.id,
       metadata: {
         paymentId: payment.id,
@@ -189,6 +237,7 @@ export async function POST(
         playerId: player.id,
         teamId: matchingTeamPlayer.teamId,
         slotIndex: String(matchingTeamPlayer.slotIndex),
+        userId: session.user.id,
       },
       payment_intent_data: {
         ...(destinationAccountId
@@ -205,7 +254,9 @@ export async function POST(
           playerId: player.id,
           teamId: matchingTeamPlayer.teamId,
           slotIndex: String(matchingTeamPlayer.slotIndex),
+          userId: session.user.id,
         },
+        ...(stripeCustomerId ? { setup_future_usage: 'off_session' as const } : {}),
       },
       line_items: [
         {
