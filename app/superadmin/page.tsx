@@ -151,6 +151,11 @@ export default function SuperAdminPage() {
             <p className="text-gray-600 mt-2">Full access to all tournaments</p>
           </div>
           <div className="flex gap-4">
+            <Link href="/superadmin/players">
+              <Button variant="outline">
+                Players
+              </Button>
+            </Link>
             <Link href="/superadmin/partners">
               <Button variant="outline">
                 Partner Integrations
