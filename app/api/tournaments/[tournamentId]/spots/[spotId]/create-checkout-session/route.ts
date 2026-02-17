@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 const CURRENCY = 'usd'
@@ -20,6 +21,11 @@ const isSavedCardSchemaError = (error: any) => {
 
 type PaymentTiming = 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
 
+const getEffectivePaymentTiming = (paymentTiming?: PaymentTiming | null): PaymentTiming => {
+  if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
+  return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
+
 const parseSpotId = (spotId: string) => {
   const [teamId, slotIndexRaw] = spotId.split(':')
   const slotIndex = Number(slotIndexRaw)
@@ -32,7 +38,8 @@ const getPaymentDueAt = (tournament: {
   registrationEndDate?: Date | null
   startDate: Date
 }) => {
-  if (tournament.paymentTiming === 'PAY_BY_DEADLINE') {
+  const effectivePaymentTiming = getEffectivePaymentTiming(tournament.paymentTiming)
+  if (effectivePaymentTiming === 'PAY_BY_DEADLINE') {
     return tournament.registrationEndDate ?? tournament.startDate
   }
   return new Date(Date.now() + FIFTEEN_MINUTES_MS)
@@ -118,7 +125,9 @@ export async function POST(
 
     const now = new Date()
     const paymentDueAt = getPaymentDueAt({
-      paymentTiming: (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as PaymentTiming,
+      paymentTiming: getEffectivePaymentTiming(
+        (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as PaymentTiming
+      ),
       registrationEndDate: tournament.registrationEndDate,
       startDate: tournament.startDate,
     })

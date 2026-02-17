@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import {
   assertTournamentAdmin,
   getUserTournamentIds,
@@ -170,6 +171,13 @@ const tournamentCreateInput = z.object({
   seasonLabel: z.string().optional(),
   timezone: z.string().optional(),
 })
+
+const getEffectivePaymentTiming = (
+  paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+): 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' => {
+  if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
+  return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
 
 const playersPerTeamSchema = z.union([z.literal(1), z.literal(2), z.literal(4)])
 
@@ -473,6 +481,7 @@ export const tournamentRouter = createTRPCRouter({
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -493,7 +502,7 @@ export const tournamentRouter = createTRPCRouter({
           entryFee: entryFeeDecimal,
           entryFeeCents,
           currency: input.currency,
-          paymentTiming: input.paymentTiming,
+          paymentTiming,
           isPublicBoardEnabled: input.isPublicBoardEnabled,
           allowDuprSubmission: input.allowDuprSubmission,
           image: input.image,
@@ -532,6 +541,7 @@ export const tournamentRouter = createTRPCRouter({
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -553,7 +563,7 @@ export const tournamentRouter = createTRPCRouter({
             entryFee: entryFeeDecimal,
             entryFeeCents,
             currency: input.currency,
-            paymentTiming: input.paymentTiming,
+            paymentTiming,
             isPublicBoardEnabled: input.isPublicBoardEnabled,
             allowDuprSubmission: input.allowDuprSubmission,
             image: input.image,
@@ -602,6 +612,7 @@ export const tournamentRouter = createTRPCRouter({
 
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -701,7 +712,7 @@ export const tournamentRouter = createTRPCRouter({
               entryFee: entryFeeDecimal,
               entryFeeCents,
               currency: input.currency,
-              paymentTiming: input.paymentTiming,
+              paymentTiming,
               isPublicBoardEnabled: false, // always draft for series
               allowDuprSubmission: input.allowDuprSubmission,
               image: input.image,
@@ -1055,6 +1066,7 @@ export const tournamentRouter = createTRPCRouter({
         ...rest,
         entryFee: entryFeeDecimal,
         entryFeeCents,
+        ...(ENABLE_DEFERRED_PAYMENTS ? {} : { paymentTiming: 'PAY_IN_15_MIN' as const }),
       }
 
       const tournament = await ctx.prisma.tournament.update({

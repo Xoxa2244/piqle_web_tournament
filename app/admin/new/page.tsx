@@ -13,7 +13,7 @@ import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
-import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
+import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { guessTimeZoneFromLocation, toUtcIsoFromLocalInput } from '@/lib/timezone'
 
 // Force dynamic rendering to prevent static generation issues
@@ -415,6 +415,15 @@ function NewTournamentPageInner() {
     if (ENABLE_RECURRING_DRAFTS) return
     setSeriesDraftForm((prev) => (prev.enabled ? { ...prev, enabled: false } : prev))
     setTemplateDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
+  }, [])
+
+  useEffect(() => {
+    if (ENABLE_DEFERRED_PAYMENTS) return
+    setFormData((prev) =>
+      prev.paymentTiming === 'PAY_IN_15_MIN'
+        ? prev
+        : { ...prev, paymentTiming: 'PAY_IN_15_MIN' }
+    )
   }, [])
 
   const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
@@ -1044,7 +1053,7 @@ function NewTournamentPageInner() {
           formData.registrationEndDate
         : undefined,
       entryFeeCents: entryFeeCents || 0,
-      paymentTiming: formData.paymentTiming,
+      paymentTiming: ENABLE_DEFERRED_PAYMENTS ? formData.paymentTiming : 'PAY_IN_15_MIN',
       currency: 'usd' as const,
       isPublicBoardEnabled: isSeries ? false : formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
@@ -2206,24 +2215,30 @@ function NewTournamentPageInner() {
                   ) : null}
                 </div>
 
-                <div>
-                  <label htmlFor="paymentTiming" className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Timing
-                  </label>
-                  <select
-                    id="paymentTiming"
-                    name="paymentTiming"
-                    value={formData.paymentTiming}
-                    onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                  >
-                    <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
-                    <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Players join first. If unpaid by the selected deadline, registration is canceled automatically.
-                  </p>
-                </div>
+                {ENABLE_DEFERRED_PAYMENTS ? (
+                  <div>
+                    <label htmlFor="paymentTiming" className="block text-sm font-medium text-gray-700 mb-2">
+                      Payment Timing
+                    </label>
+                    <select
+                      id="paymentTiming"
+                      name="paymentTiming"
+                      value={formData.paymentTiming}
+                      onChange={handleChange}
+                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    >
+                      <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                      <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Players join first. If unpaid by the selected deadline, registration is canceled automatically.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                    Payment flow: players join and pay immediately.
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Tournament Image (optional)</label>

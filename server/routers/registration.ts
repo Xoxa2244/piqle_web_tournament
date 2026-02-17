@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { getTeamSlotCount, normalizeTeamSlots } from '../utils/teamSlots'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import {
   releaseExpiredUnpaidRegistrations as releaseExpiredUnpaidRegistrationsCore,
   isDuePaymentsSchemaError,
@@ -37,6 +38,13 @@ const parseName = (name?: string | null) => {
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000
 
+const getEffectivePaymentTiming = (
+  paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null
+): 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' => {
+  if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
+  return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
+
 const getPaymentDueAt = (
   tournament: {
     paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null
@@ -45,7 +53,8 @@ const getPaymentDueAt = (
   },
   now = new Date()
 ) => {
-  if (tournament.paymentTiming === 'PAY_BY_DEADLINE') {
+  const effectivePaymentTiming = getEffectivePaymentTiming(tournament.paymentTiming)
+  if (effectivePaymentTiming === 'PAY_BY_DEADLINE') {
     return tournament.registrationEndDate ?? tournament.startDate
   }
   return new Date(now.getTime() + FIFTEEN_MINUTES_MS)
@@ -141,7 +150,9 @@ export const registrationRouter = createTRPCRouter({
         registrationEndDate: tournament.registrationEndDate,
         entryFeeCents: tournament.entryFeeCents ?? 0,
         currency: tournament.currency ?? 'usd',
-        paymentTiming: tournament.paymentTiming ?? 'PAY_IN_15_MIN',
+        paymentTiming: getEffectivePaymentTiming(
+          (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+        ),
         payoutsActive:
           Boolean(user?.organizerStripeAccountId) &&
           Boolean(user?.stripeOnboardingComplete),
@@ -253,7 +264,11 @@ export const registrationRouter = createTRPCRouter({
             ? latestPayment?.dueAt ??
               getPaymentDueAt(
                 {
-                  paymentTiming: tournament.paymentTiming,
+                  paymentTiming: getEffectivePaymentTiming(
+                    (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
+                      | 'PAY_IN_15_MIN'
+                      | 'PAY_BY_DEADLINE'
+                  ),
                   registrationEndDate: tournament.registrationEndDate,
                   startDate: tournament.startDate,
                 },
@@ -272,7 +287,9 @@ export const registrationRouter = createTRPCRouter({
           isPaid: Boolean(player.isPaid) || !isPaidTournament,
           paymentStatus,
           paymentDueAt,
-          paymentTiming: tournament.paymentTiming ?? 'PAY_IN_15_MIN',
+          paymentTiming: getEffectivePaymentTiming(
+            (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+          ),
           ...savedCardInfo,
         }
       }
@@ -463,7 +480,11 @@ export const registrationRouter = createTRPCRouter({
 
         if (isPaidTournament) {
           const now = new Date()
-          paymentTiming = (team.division.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
+          paymentTiming = getEffectivePaymentTiming(
+            (team.division.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
+              | 'PAY_IN_15_MIN'
+              | 'PAY_BY_DEADLINE'
+          ) as
             | 'PAY_IN_15_MIN'
             | 'PAY_BY_DEADLINE'
           paymentDueAt = getPaymentDueAt(

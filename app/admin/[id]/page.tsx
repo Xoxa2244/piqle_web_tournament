@@ -12,6 +12,7 @@ import AvatarCropper from '@/components/AvatarCropper'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { 
   Users, 
   Calendar, 
@@ -337,7 +338,9 @@ export default function TournamentDetailPage() {
           typeof tournament.entryFeeCents === 'number'
             ? fromCents(tournament.entryFeeCents).toFixed(2)
             : '',
-        paymentTiming: ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN') as
+        paymentTiming: (ENABLE_DEFERRED_PAYMENTS
+          ? ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN')
+          : 'PAY_IN_15_MIN') as
           | 'PAY_IN_15_MIN'
           | 'PAY_BY_DEADLINE',
         isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
@@ -516,7 +519,9 @@ export default function TournamentDetailPage() {
         typeof tournament.entryFeeCents === 'number'
           ? fromCents(tournament.entryFeeCents).toFixed(2)
           : '',
-      paymentTiming: ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN') as
+      paymentTiming: (ENABLE_DEFERRED_PAYMENTS
+        ? ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN')
+        : 'PAY_IN_15_MIN') as
         | 'PAY_IN_15_MIN'
         | 'PAY_BY_DEADLINE',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
@@ -638,7 +643,7 @@ export default function TournamentDetailPage() {
       registrationEndDate: payloadRegistrationEndDate,
       timezone: normalizedTimezone,
       entryFeeCents,
-      paymentTiming: tournamentForm.paymentTiming,
+      paymentTiming: ENABLE_DEFERRED_PAYMENTS ? tournamentForm.paymentTiming : 'PAY_IN_15_MIN',
       currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
@@ -1380,20 +1385,26 @@ export default function TournamentDetailPage() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Payment Timing
-                </label>
-                <select
-                  name="paymentTiming"
-                  value={tournamentForm.paymentTiming}
-                  onChange={handleTournamentChange}
-                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
-                >
-                  <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
-                  <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
-                </select>
-              </div>
+              {ENABLE_DEFERRED_PAYMENTS ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Payment Timing
+                  </label>
+                  <select
+                    name="paymentTiming"
+                    value={tournamentForm.paymentTiming}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
+                  >
+                    <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                    <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                  Payment flow: players join and pay immediately.
+                </div>
+              )}
 
               {/* Tournament Image */}
               <div>

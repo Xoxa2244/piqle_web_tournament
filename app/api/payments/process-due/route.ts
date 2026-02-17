@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import {
   isDuePaymentsSchemaError,
   releaseExpiredUnpaidRegistrations,
@@ -36,9 +37,29 @@ const processDue = async (request: Request) => {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const now = new Date()
+  if (!ENABLE_DEFERRED_PAYMENTS) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'Deferred payments are disabled',
+      processedAt: now.toISOString(),
+      totals: {
+        tournaments: 0,
+        considered: 0,
+        charged: 0,
+        failed: 0,
+        skippedNoUser: 0,
+        skippedNoCard: 0,
+        expiredCanceled: 0,
+        expiredReleasedPlayers: 0,
+      },
+      byTournament: {},
+    })
+  }
+
   const url = new URL(request.url)
   const tournamentId = url.searchParams.get('tournamentId')?.trim()
-  const now = new Date()
 
   let targetTournamentIds: string[]
   if (tournamentId) {

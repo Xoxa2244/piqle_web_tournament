@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { fromCents } from '@/lib/payment'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { MessageCircle, Send, Trash2, ShieldCheck } from 'lucide-react'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
@@ -105,6 +106,7 @@ export default function TournamentRegistrationPage() {
   }, [authStatus, tournamentId, inviteAcceptHandled, acceptInvitationMutation, router])
 
   useEffect(() => {
+    if (!ENABLE_DEFERRED_PAYMENTS) return
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     if (params.get('card') === 'saved') {
@@ -143,6 +145,14 @@ export default function TournamentRegistrationPage() {
         utils.registration.getSeatMap.invalidate({ tournamentId }),
       ])
       if (isPaidTournament) {
+        if (!ENABLE_DEFERRED_PAYMENTS) {
+          if (!payoutsActive) {
+            alert('You are registered. Payments are not enabled yet; contact the organizer.')
+            return
+          }
+          await handlePayNow({ teamId, slotIndex })
+          return
+        }
         const dueText =
           result?.paymentDueAt
             ? formatUsDateTimeShort(result.paymentDueAt, { timeZone: seatMap?.timezone })
@@ -160,12 +170,21 @@ export default function TournamentRegistrationPage() {
     }
   }
 
-  const handlePayNow = async () => {
+  const handlePayNow = async (spot?: { teamId: string; slotIndex: number }) => {
     try {
-      if (myStatus?.status !== 'active' || !myStatus.teamId || typeof myStatus.slotIndex !== 'number') {
+      const teamId =
+        spot?.teamId ??
+        (myStatus?.status === 'active' && myStatus.teamId ? myStatus.teamId : undefined)
+      const slotIndex =
+        typeof spot?.slotIndex === 'number'
+          ? spot.slotIndex
+          : myStatus?.status === 'active' && typeof myStatus.slotIndex === 'number'
+          ? myStatus.slotIndex
+          : undefined
+      if (!teamId || typeof slotIndex !== 'number') {
         throw new Error('Join a slot first')
       }
-      const spotId = `${myStatus.teamId}:${myStatus.slotIndex}`
+      const spotId = `${teamId}:${slotIndex}`
       const response = await fetch(
         `/api/tournaments/${tournamentId}/spots/${spotId}/create-checkout-session`,
         { method: 'POST' }
@@ -304,47 +323,58 @@ export default function TournamentRegistrationPage() {
                     <Badge variant="secondary" className="w-fit">Payment complete</Badge>
                   ) : (
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-2">
-                      <div className="text-sm font-medium">
-                        Payment pending
-                      </div>
-                      <div className="text-xs">
-                        {seatMap.paymentTiming === 'PAY_IN_15_MIN'
-                          ? 'Pay within 15 minutes after joining.'
-                          : 'Pay before registration deadline.'}
-                        {myStatus.paymentDueAt ? (
-                          <span className="block">
-                            Due: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
-                          </span>
-                        ) : null}
-                      </div>
-                      {seatMap.paymentTiming === 'PAY_BY_DEADLINE' && (
-                        <div className="rounded-md border border-amber-300 bg-white/70 p-2 text-xs text-amber-900 space-y-2">
-                          <div className="font-medium">Auto-pay at deadline</div>
-                          {myStatus.hasSavedCard ? (
-                            <div>
-                              Saved card:{' '}
-                              <span className="font-medium">
-                                {(myStatus.savedCardBrand || 'Card').toUpperCase()}
-                                {myStatus.savedCardLast4 ? ` •••• ${myStatus.savedCardLast4}` : ''}
+                      <div className="text-sm font-medium">Payment pending</div>
+                      {ENABLE_DEFERRED_PAYMENTS ? (
+                        <>
+                          <div className="text-xs">
+                            {seatMap.paymentTiming === 'PAY_IN_15_MIN'
+                              ? 'Pay within 15 minutes after joining.'
+                              : 'Pay before registration deadline.'}
+                            {myStatus.paymentDueAt ? (
+                              <span className="block">
+                                Due: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
                               </span>
+                            ) : null}
+                          </div>
+                          {seatMap.paymentTiming === 'PAY_BY_DEADLINE' && (
+                            <div className="rounded-md border border-amber-300 bg-white/70 p-2 text-xs text-amber-900 space-y-2">
+                              <div className="font-medium">Auto-pay at deadline</div>
+                              {myStatus.hasSavedCard ? (
+                                <div>
+                                  Saved card:{' '}
+                                  <span className="font-medium">
+                                    {(myStatus.savedCardBrand || 'Card').toUpperCase()}
+                                    {myStatus.savedCardLast4 ? ` •••• ${myStatus.savedCardLast4}` : ''}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>No saved card yet.</div>
+                              )}
+                              <Button
+                                variant="outline"
+                                onClick={handleSaveCardForAutoPay}
+                                disabled={saveCardLoading}
+                              >
+                                {saveCardLoading
+                                  ? 'Redirecting...'
+                                  : myStatus.hasSavedCard
+                                  ? 'Update saved card'
+                                  : 'Save card for auto-pay'}
+                              </Button>
                             </div>
-                          ) : (
-                            <div>No saved card yet.</div>
                           )}
-                          <Button
-                            variant="outline"
-                            onClick={handleSaveCardForAutoPay}
-                            disabled={saveCardLoading}
-                          >
-                            {saveCardLoading
-                              ? 'Redirecting...'
-                              : myStatus.hasSavedCard
-                              ? 'Update saved card'
-                              : 'Save card for auto-pay'}
-                          </Button>
+                        </>
+                      ) : (
+                        <div className="text-xs">
+                          Complete payment now to keep your spot.
+                          {myStatus.paymentDueAt ? (
+                            <span className="block">
+                              Spot release: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
+                            </span>
+                          ) : null}
                         </div>
                       )}
-                      <Button onClick={handlePayNow}>
+                      <Button onClick={() => void handlePayNow()} disabled={!payoutsActive}>
                         Pay now — ${fromCents(entryFeeCents).toFixed(2)}
                       </Button>
                     </div>
@@ -578,7 +608,9 @@ function DivisionSeatMap({
         {hasAvailableSlots && !isActiveInDivision && (
           <div className="text-sm text-gray-500">
             {isPaidTournament
-              ? 'Select a slot to join. Payment is completed after joining.'
+              ? ENABLE_DEFERRED_PAYMENTS
+                ? 'Select a slot to join. Payment is completed after joining.'
+                : 'Select a slot to join and continue to payment.'
               : 'Select a slot to join this division.'}
           </div>
         )}
@@ -650,7 +682,9 @@ function TeamCard({
               onClick={() => onClaimSlot(team.id, index)}
             >
               {isPaidTournament
-                ? `Join — then pay $${fromCents(entryFeeCents).toFixed(2)}`
+                ? ENABLE_DEFERRED_PAYMENTS
+                  ? `Join — then pay $${fromCents(entryFeeCents).toFixed(2)}`
+                  : `Join & pay — $${fromCents(entryFeeCents).toFixed(2)}`
                 : `Join — slot #${index + 1}`}
             </button>
           )
