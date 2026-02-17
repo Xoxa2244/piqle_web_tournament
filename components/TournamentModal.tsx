@@ -348,7 +348,7 @@ export default function TournamentModal({
               {(() => {
                 const pendingInvitation =
                   myTournamentInvitation?.status === 'PENDING' &&
-                  myTournamentInvitation?.tournamentId === tournament.id
+                  myTournamentInvitation?.tournamentId === String(tournamentAny?.id ?? '')
                     ? myTournamentInvitation
                     : null
 
