@@ -286,8 +286,9 @@ export default function TournamentModal({
   }
 
   const divisions = tournament.divisions ?? []
+  const imageValue = (tournament as any)?.image
   const tournamentImage =
-    typeof tournament.image === 'string' && tournament.image.trim() !== '' ? tournament.image : null
+    typeof imageValue === 'string' && imageValue.trim() !== '' ? imageValue : null
   const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
 
   return (
