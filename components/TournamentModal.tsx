@@ -386,7 +386,11 @@ export default function TournamentModal({
                 }
 
                 const status = registrationStatuses?.[tournamentIdStr]?.status ?? 'none'
-                const registrationOpen = isRegistrationOpen(tournament)
+                const registrationOpen = isRegistrationOpen({
+                  startDate: tournamentAny?.startDate,
+                  registrationStartDate: tournamentAny?.registrationStartDate,
+                  registrationEndDate: tournamentAny?.registrationEndDate,
+                } as any)
                 const label =
                   status === 'active'
                     ? 'Cancel Registration'
