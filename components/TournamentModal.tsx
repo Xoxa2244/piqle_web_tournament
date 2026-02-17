@@ -286,8 +286,13 @@ export default function TournamentModal({
   }
 
   const divisions = tournament.divisions ?? []
-  const imageValue = (tournament as any)?.image
-  const tournamentTitle = String((tournament as any)?.title ?? '')
+  const tournamentAny = tournament as any
+  const imageValue = tournamentAny?.image
+  const tournamentTitle = String(tournamentAny?.title ?? '')
+  const tournamentPublicSlug =
+    typeof tournamentAny?.publicSlug === 'string' && tournamentAny.publicSlug.trim() !== ''
+      ? tournamentAny.publicSlug
+      : null
   const tournamentImage =
     typeof imageValue === 'string' && imageValue.trim() !== '' ? imageValue : null
   const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
@@ -331,8 +336,8 @@ export default function TournamentModal({
                   <Link href={`/admin/${tournament.id}`}>
                     <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
                   </Link>
-                  {(tournament as { publicSlug?: string | null }).publicSlug && (
-                    <Link href={`/t/${(tournament as { publicSlug: string }).publicSlug}`}>
+                  {tournamentPublicSlug && (
+                    <Link href={`/t/${tournamentPublicSlug}`}>
                       <Button className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300">
                         View Board
                       </Button>
