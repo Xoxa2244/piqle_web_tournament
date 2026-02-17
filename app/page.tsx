@@ -571,6 +571,11 @@ function HomePageContent() {
                           <span>{getTimezoneLabel((tournament as any).timezone)}</span>
                         </div>
                       ) : null}
+                      {(tournament as any).timezone ? (
+                        <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900">
+                          All times shown in {getTimezoneLabel((tournament as any).timezone)}
+                        </div>
+                      ) : null}
                       
                       {tournament.venueName && (
                         <div

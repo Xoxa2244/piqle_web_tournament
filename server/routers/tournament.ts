@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { guessTimeZoneFromLocation } from '@/lib/timezone'
 import {
   assertTournamentAdmin,
   getUserTournamentIds,
@@ -177,6 +178,25 @@ const getEffectivePaymentTiming = (
 ): 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' => {
   if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
   return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
+
+const normalizeTimezoneInput = (value?: string | null) => {
+  const normalized = String(value ?? '').trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+const resolveTimezoneFromVenue = (params: {
+  timezone?: string | null
+  venueAddress?: string | null
+  fallbackTimezone?: string | null
+}) => {
+  const explicit = normalizeTimezoneInput(params.timezone)
+  if (explicit) return explicit
+
+  const guessed = guessTimeZoneFromLocation({ address: params.venueAddress })
+  if (guessed) return guessed
+
+  return normalizeTimezoneInput(params.fallbackTimezone)
 }
 
 const playersPerTeamSchema = z.union([z.literal(1), z.literal(2), z.literal(4)])
@@ -482,6 +502,10 @@ export const tournamentRouter = createTRPCRouter({
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const entryFeeCents = input.entryFeeCents ?? 0
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -508,7 +532,7 @@ export const tournamentRouter = createTRPCRouter({
           image: input.image,
           format: input.format,
           seasonLabel: input.seasonLabel,
-          timezone: input.timezone,
+          timezone,
           userId: ctx.session.user.id,
           publicSlug,
         },
@@ -542,6 +566,10 @@ export const tournamentRouter = createTRPCRouter({
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -569,7 +597,7 @@ export const tournamentRouter = createTRPCRouter({
             image: input.image,
             format: input.format,
             seasonLabel: input.seasonLabel,
-            timezone: input.timezone,
+            timezone,
             userId: ctx.session.user.id,
             publicSlug,
             hasDivisions,
@@ -613,6 +641,10 @@ export const tournamentRouter = createTRPCRouter({
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -718,7 +750,7 @@ export const tournamentRouter = createTRPCRouter({
               image: input.image,
               format: input.format,
               seasonLabel: input.seasonLabel,
-              timezone: input.timezone,
+              timezone,
               userId: ctx.session.user.id,
               publicSlug: occSlug,
               hasDivisions,
@@ -991,6 +1023,8 @@ export const tournamentRouter = createTRPCRouter({
           registrationStartDate: true,
           registrationEndDate: true,
           allowDuprSubmission: true,
+          timezone: true,
+          venueAddress: true,
         },
       })
 
@@ -1061,11 +1095,18 @@ export const tournamentRouter = createTRPCRouter({
             ? new Prisma.Decimal(entryFeeCents / 100)
             : null
           : undefined
+      const resolvedTimezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress:
+          input.venueAddress !== undefined ? input.venueAddress : currentTournament.venueAddress,
+        fallbackTimezone: currentTournament.timezone,
+      })
 
       const data = {
         ...rest,
         entryFee: entryFeeDecimal,
         entryFeeCents,
+        timezone: resolvedTimezone,
         ...(ENABLE_DEFERRED_PAYMENTS ? {} : { paymentTiming: 'PAY_IN_15_MIN' as const }),
       }
 

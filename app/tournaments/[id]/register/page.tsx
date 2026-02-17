@@ -282,6 +282,9 @@ export default function TournamentRegistrationPage() {
                   : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
               </span>
             </div>
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+              All tournament and registration times are shown in {getTimezoneLabel(seatMap.timezone)}.
+            </div>
             <Badge variant="outline">Time zone: {getTimezoneLabel(seatMap.timezone)}</Badge>
             <Badge variant={registrationOpen ? 'default' : 'secondary'}>
               {registrationOpen ? 'Registration Open' : 'Registration Closed'}
@@ -659,4 +662,3 @@ function TeamCard({
     </div>
   )
 }
-
