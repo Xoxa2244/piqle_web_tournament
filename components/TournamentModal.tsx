@@ -289,6 +289,7 @@ export default function TournamentModal({
   const tournamentAny = tournament as any
   const imageValue = tournamentAny?.image
   const tournamentTitle = String(tournamentAny?.title ?? '')
+  const tournamentIdStr = String(tournamentAny?.id ?? '')
   const tournamentPublicSlug =
     typeof tournamentAny?.publicSlug === 'string' && tournamentAny.publicSlug.trim() !== ''
       ? tournamentAny.publicSlug
@@ -384,7 +385,7 @@ export default function TournamentModal({
                   )
                 }
 
-                const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                const status = registrationStatuses?.[tournamentIdStr]?.status ?? 'none'
                 const registrationOpen = isRegistrationOpen(tournament)
                 const label =
                   status === 'active'
@@ -403,7 +404,7 @@ export default function TournamentModal({
                       e.stopPropagation()
                       if (!session) {
                         router.push(
-                          `/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`
+                          `/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournamentIdStr}/register`)}`
                         )
                         return
                       }
