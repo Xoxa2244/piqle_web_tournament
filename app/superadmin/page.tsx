@@ -56,6 +56,15 @@ export default function SuperAdminPage() {
     },
   })
 
+  const updateTournament = trpc.superadmin.updateTournament.useMutation({
+    onSuccess: () => {
+      refetch()
+    },
+    onError: (err) => {
+      alert(err.message || 'Failed to update tournament')
+    },
+  })
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -142,6 +151,11 @@ export default function SuperAdminPage() {
             <p className="text-gray-600 mt-2">Full access to all tournaments</p>
           </div>
           <div className="flex gap-4">
+            <Link href="/superadmin/players">
+              <Button variant="outline">
+                Players
+              </Button>
+            </Link>
             <Link href="/superadmin/partners">
               <Button variant="outline">
                 Partner Integrations
@@ -204,16 +218,28 @@ export default function SuperAdminPage() {
               <Card key={tournament.id} className="bg-white relative">
                 {/* Public/Private Badge */}
                 <div className="absolute top-4 right-4 z-10">
-                  <Badge 
-                    variant={tournament.isPublicBoardEnabled ? "default" : "secondary"}
-                    className={
-                      tournament.isPublicBoardEnabled 
-                        ? "bg-green-500 hover:bg-green-600 text-white" 
-                        : "bg-gray-500 hover:bg-gray-600 text-white"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateTournament.mutate({
+                        id: tournament.id,
+                        isPublicBoardEnabled: !tournament.isPublicBoardEnabled,
+                      })
                     }
+                    className="focus:outline-none"
+                    title="Toggle public board"
                   >
-                    {tournament.isPublicBoardEnabled ? 'Public' : 'Private'}
-                  </Badge>
+                    <Badge 
+                      variant={tournament.isPublicBoardEnabled ? "default" : "secondary"}
+                      className={
+                        tournament.isPublicBoardEnabled 
+                          ? "bg-green-500 hover:bg-green-600 text-white" 
+                          : "bg-gray-500 hover:bg-gray-600 text-white"
+                      }
+                    >
+                      {tournament.isPublicBoardEnabled ? 'Public' : 'Private'}
+                    </Badge>
+                  </button>
                 </div>
                 <CardHeader>
                   <CardTitle className="text-xl font-semibold pr-16">{tournament.title}</CardTitle>

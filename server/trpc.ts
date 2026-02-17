@@ -71,9 +71,16 @@ export const createTRPCRouter = t.router
 
 export const publicProcedure = t.procedure
 
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: 'UNAUTHORIZED' })
+  }
+  const user = await ctx.prisma.user.findUnique({
+    where: { id: ctx.session.user.id },
+    select: { isActive: true },
+  })
+  if (user && user.isActive === false) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'User account is blocked.' })
   }
   return next({
     ctx: {
@@ -83,9 +90,16 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   })
 })
 
-export const tdProcedure = t.procedure.use(({ ctx, next }) => {
+export const tdProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: 'UNAUTHORIZED' })
+  }
+  const user = await ctx.prisma.user.findUnique({
+    where: { id: ctx.session.user.id },
+    select: { isActive: true },
+  })
+  if (user && user.isActive === false) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'User account is blocked.' })
   }
 
   // For now, tdProcedure just checks authentication
