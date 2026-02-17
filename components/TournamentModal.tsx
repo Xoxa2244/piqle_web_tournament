@@ -414,18 +414,18 @@ export default function TournamentModal({
                       }
                       if (status === 'active') {
                         if (confirm('Cancel registration?')) {
-                          cancelRegistration.mutate({ tournamentId: tournament.id })
+                          cancelRegistration.mutate({ tournamentId: tournamentIdStr })
                         }
                         return
                       }
                       if (status === 'waitlisted') {
-                        const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                        const divisionId = registrationStatuses?.[tournamentIdStr]?.divisionId
                         if (divisionId && confirm('Leave waitlist?')) {
                           leaveWaitlist.mutate({ divisionId })
                         }
                         return
                       }
-                      router.push(`/tournaments/${tournament.id}/register`)
+                      router.push(`/tournaments/${tournamentIdStr}/register`)
                     }}
                   >
                     {label}
