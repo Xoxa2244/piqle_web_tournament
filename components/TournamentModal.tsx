@@ -287,6 +287,7 @@ export default function TournamentModal({
 
   const divisions = tournament.divisions ?? []
   const imageValue = (tournament as any)?.image
+  const tournamentTitle = String((tournament as any)?.title ?? '')
   const tournamentImage =
     typeof imageValue === 'string' && imageValue.trim() !== '' ? imageValue : null
   const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
@@ -310,7 +311,7 @@ export default function TournamentModal({
                 <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                   <Image
                     src={tournamentImage}
-                    alt={tournament.title}
+                    alt={tournamentTitle}
                     width={80}
                     height={80}
                     className="w-full h-full object-cover"
@@ -320,7 +321,7 @@ export default function TournamentModal({
                 <TournamentImagePlaceholder size="lg" />
               )}
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">{tournament.title}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">{tournamentTitle}</h2>
                 <p className="text-gray-600 mt-1">Tournament Details</p>
               </div>
             </div>
