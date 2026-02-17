@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
@@ -20,6 +20,7 @@ import BracketPyramid from '@/components/BracketPyramid'
 import BracketPyramidNew from '@/components/BracketPyramidNew'
 import BracketModal from '@/components/BracketModal'
 import { getTeamDisplayName } from '@/lib/utils'
+import { formatUsDateShort } from '@/lib/dateFormat'
 
 interface TeamStanding {
   teamId: string
@@ -60,6 +61,7 @@ export default function PublicCoursePage() {
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
+  const [selectedMatchDayId, setSelectedMatchDayId] = useState<string | null>(null)
 
   // Get tournament data (using public endpoint)
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getTournamentById.useQuery(
@@ -84,13 +86,13 @@ export default function PublicCoursePage() {
   // Get standings for current division (using public endpoint)
   const { data: standingsData, isLoading: standingsLoading } = trpc.public.getPublicStandings.useQuery(
     { divisionId: currentDivision?.id || '' },
-    { enabled: !!currentDivision?.id }
+    { enabled: !!currentDivision?.id && (tournament as any)?.format !== 'INDY_LEAGUE' }
   )
 
   // Get division stage (using public endpoint)
   const { data: divisionStage, isLoading: stageLoading } = trpc.public.getPublicDivisionStage.useQuery(
     { divisionId: currentDivision?.id || '' },
-    { enabled: !!currentDivision?.id }
+    { enabled: !!currentDivision?.id && (tournament as any)?.format !== 'INDY_LEAGUE' }
   )
 
   // Get bracket structure (play-in + elimination)
@@ -100,9 +102,29 @@ export default function PublicCoursePage() {
   } = (trpc as any).public.getBracketPublic.useQuery(
     { divisionId: currentDivision?.id || '' },
     {
-      enabled: !!currentDivision?.id,
+      enabled: !!currentDivision?.id && (tournament as any)?.format !== 'INDY_LEAGUE',
       refetchOnWindowFocus: false,
     }
+  )
+
+  const tournamentFormat = (tournament as any)?.format as string | undefined
+  const isIndy = tournamentFormat === 'INDY_LEAGUE'
+
+  const { data: indyMatchDays = [] } = trpc.public.getIndyMatchDays.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId && isIndy }
+  )
+
+  useEffect(() => {
+    if (!isIndy) return
+    if (!selectedMatchDayId && indyMatchDays.length > 0) {
+      setSelectedMatchDayId(indyMatchDays[0].id)
+    }
+  }, [isIndy, indyMatchDays, selectedMatchDayId])
+
+  const { data: indyMatchups = [], isLoading: indyMatchupsLoading } = trpc.public.getIndyMatchupsByDay.useQuery(
+    { matchDayId: selectedMatchDayId || '' },
+    { enabled: !!selectedMatchDayId && isIndy }
   )
 
   if (tournamentLoading) {
@@ -115,6 +137,108 @@ export default function PublicCoursePage() {
 
   if (tournament.divisions.length === 0) {
     return <div className="flex items-center justify-center min-h-screen">No divisions</div>
+  }
+
+  const indyMatchupsByDivision = useMemo(() => {
+    const grouped: Record<string, any[]> = {}
+    indyMatchups.forEach((matchup: any) => {
+      const divisionName = matchup.division?.name || 'Division'
+      if (!grouped[divisionName]) grouped[divisionName] = []
+      grouped[divisionName].push(matchup)
+    })
+    return grouped
+  }, [indyMatchups])
+
+  if (isIndy) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{tournament.title}</h1>
+                <p className="text-sm text-gray-600 mt-1">Indy League results by match day</p>
+              </div>
+              {!isEmbed && (
+                <button
+                  onClick={() => router.back()}
+                  className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Back
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Match Day</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {indyMatchDays.length === 0 ? (
+                <div className="text-sm text-gray-500">No match days available.</div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedMatchDayId || ''}
+                    onChange={(e) => setSelectedMatchDayId(e.target.value || null)}
+                    className="pl-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                    }}
+                  >
+                    {indyMatchDays.map((day) => (
+                      <option key={day.id} value={day.id}>
+                        {formatUsDateShort(day.date)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {indyMatchupsLoading ? (
+            <Card>
+              <CardContent className="py-6 text-center text-gray-500">Loading matchups...</CardContent>
+            </Card>
+          ) : indyMatchups.length === 0 ? (
+            <Card>
+              <CardContent className="py-6 text-center text-gray-500">No matchups for this day.</CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(indyMatchupsByDivision).map(([divisionName, matchups]) => (
+                <Card key={divisionName}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{divisionName}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(matchups as any[]).map((matchup: any) => (
+                        <div key={matchup.id} className="border rounded-lg p-3 flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{matchup.homeTeam.name} vs {matchup.awayTeam.name}</div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {matchup.gamesWonHome} - {matchup.gamesWonAway}
+                              {matchup.court?.name ? ` • Court ${matchup.court.name}` : ''}
+                            </div>
+                          </div>
+                          <Badge variant="secondary">{matchup.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const standings = standingsData?.standings || []
@@ -176,9 +300,9 @@ export default function PublicCoursePage() {
     return 64                         // 33+ teams → bracket 64
   }
   
-  const isMLP = tournament?.format === 'MLP'
-  const isRoundRobin = tournament?.format === 'ROUND_ROBIN'
-  const isLeagueRoundRobin = tournament?.format === 'LEAGUE_ROUND_ROBIN'
+  const isMLP = tournamentFormat === 'MLP'
+  const isRoundRobin = tournamentFormat === 'ROUND_ROBIN'
+  const isLeagueRoundRobin = tournamentFormat === 'LEAGUE_ROUND_ROBIN'
 
   const targetBracketSize = getTargetBracketSize(teamCount)
   const needsPlayIn = !isMLP && !isRoundRobin && !isLeagueRoundRobin && targetBracketSize < teamCount && teamCount < 2 * targetBracketSize

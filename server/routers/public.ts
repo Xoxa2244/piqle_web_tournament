@@ -40,13 +40,13 @@ export const publicRouter = createTRPCRouter({
             rating: true,
           },
         },
-      },
+      } as any,
     })
 
     // Calculate karma for each tournament and sort by karma (descending)
-    const tournamentsWithKarma = tournaments.map((tournament) => {
-      const likes = tournament.tournamentRatings.filter((r) => r.rating === 'LIKE').length
-      const dislikes = tournament.tournamentRatings.filter((r) => r.rating === 'DISLIKE').length
+    const tournamentsWithKarma = (tournaments as any[]).map((tournament) => {
+      const likes = tournament.tournamentRatings.filter((r: any) => r.rating === 'LIKE').length
+      const dislikes = tournament.tournamentRatings.filter((r: any) => r.rating === 'DISLIKE').length
       const karma = likes - dislikes
 
       return {
@@ -101,7 +101,7 @@ export const publicRouter = createTRPCRouter({
               name: true,
             },
           },
-        },
+        } as any,
       })
       if (!tournament) return null
       return tournament
@@ -217,6 +217,57 @@ export const publicRouter = createTRPCRouter({
       }
 
       return tournament
+    }),
+
+  getIndyMatchDays: publicProcedure
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: { id: true, format: true },
+      })
+      if (!tournament) {
+        throw new Error('Tournament not found')
+      }
+      if (tournament.format !== 'INDY_LEAGUE') {
+        throw new Error('This endpoint is only for IndyLeague tournaments')
+      }
+      return ctx.prisma.matchDay.findMany({
+        where: { tournamentId: input.tournamentId },
+        orderBy: { date: 'asc' },
+        select: { id: true, date: true, status: true },
+      })
+    }),
+
+  getIndyMatchupsByDay: publicProcedure
+    .input(z.object({ matchDayId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const matchDay = await ctx.prisma.matchDay.findUnique({
+        where: { id: input.matchDayId },
+        include: { tournament: { select: { format: true } } },
+      })
+      if (!matchDay) {
+        throw new Error('Match day not found')
+      }
+      if (matchDay.tournament?.format !== 'INDY_LEAGUE') {
+        throw new Error('This endpoint is only for IndyLeague tournaments')
+      }
+      const matchups = (await ctx.prisma.indyMatchup.findMany({
+        where: { matchDayId: input.matchDayId },
+        include: {
+          division: { select: { id: true, name: true } },
+          homeTeam: { select: { id: true, name: true } },
+          awayTeam: { select: { id: true, name: true } },
+          court: { select: { name: true } },
+        } as any,
+        orderBy: { createdAt: 'asc' },
+      })) as any[]
+      return matchups.sort((a, b) => {
+        const divA = a.division?.name || ''
+        const divB = b.division?.name || ''
+        if (divA !== divB) return divA.localeCompare(divB)
+        return a.createdAt.getTime() - b.createdAt.getTime()
+      })
     }),
 
   getStandings: publicProcedure
