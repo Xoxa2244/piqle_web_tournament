@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
@@ -8,10 +8,8 @@ import { formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import { fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
-import { MessageCircle, Send, Trash2, ShieldCheck } from 'lucide-react'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -64,14 +62,6 @@ export default function TournamentRegistrationPage() {
   const joinWaitlistMutation = trpc.registration.joinWaitlist.useMutation()
   const leaveWaitlistMutation = trpc.registration.leaveWaitlist.useMutation()
   const acceptInvitationMutation = trpc.tournamentInvitation.accept.useMutation()
-  const divisionIds = useMemo(
-    () => ((seatMap?.divisions ?? []) as any[]).map((d) => String(d.id)),
-    [seatMap?.divisions]
-  )
-  const { data: chatPermissions } = trpc.tournamentChat.getPermissions.useQuery(
-    { tournamentId, divisionIds },
-    { enabled: !!tournamentId && authStatus === 'authenticated' }
-  )
   const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
   const [saveCardLoading, setSaveCardLoading] = useState(false)
   const utils = trpc.useUtils()
@@ -124,13 +114,6 @@ export default function TournamentRegistrationPage() {
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
-  const divisionChatPermissionById = useMemo(() => {
-    const map: Record<string, any> = {}
-    for (const item of chatPermissions?.divisions ?? []) {
-      map[item.divisionId] = item
-    }
-    return map
-  }, [chatPermissions?.divisions])
   const entryFeeCents = seatMap?.entryFeeCents ?? 0
   const isPaidTournament = entryFeeCents > 0
   const payoutsActive = Boolean(seatMap?.payoutsActive)
@@ -395,12 +378,6 @@ export default function TournamentRegistrationPage() {
           </CardContent>
         </Card>
 
-        <TournamentChatCard
-          tournamentId={tournamentId}
-          currentUserId={session?.user?.id}
-          permission={chatPermissions?.tournament}
-        />
-
         <div className="space-y-6">
           {divisions.map((division) => (
             <DivisionSeatMap
@@ -435,7 +412,6 @@ export default function TournamentRegistrationPage() {
                 }
               }}
               currentUserId={session?.user?.id}
-              chatPermission={divisionChatPermissionById[division.id]}
             />
           ))}
         </div>
@@ -454,7 +430,6 @@ function DivisionSeatMap({
   onJoinWaitlist,
   onLeaveWaitlist,
   currentUserId,
-  chatPermission,
 }: {
   division: any
   isRegistrationOpen: boolean
@@ -465,7 +440,6 @@ function DivisionSeatMap({
   onJoinWaitlist: () => void
   onLeaveWaitlist: () => void
   currentUserId?: string
-  chatPermission?: any
 }) {
   const { data: waitlistEntries } = trpc.registration.getWaitlist.useQuery(
     { divisionId: division.id },
@@ -615,14 +589,6 @@ function DivisionSeatMap({
           </div>
         )}
 
-        <div className="border-t pt-4">
-            <DivisionChatCard
-            divisionId={division.id}
-            divisionName={division.name}
-            currentUserId={currentUserId}
-            permission={chatPermission}
-          />
-        </div>
       </CardContent>
     </Card>
   )
@@ -694,410 +660,3 @@ function TeamCard({
   )
 }
 
-type ChatPermission = {
-  canView: boolean
-  canPost: boolean
-  canModerate: boolean
-  isOwner: boolean
-  isTournamentAdmin: boolean
-  isClubAdmin: boolean
-  isParticipant: boolean
-  reason?: string
-}
-
-type ChatMessage = {
-  id: string
-  userId: string
-  text: string | null
-  isDeleted: boolean
-  createdAt: string | Date
-  user?: {
-    id: string
-    name: string | null
-    image: string | null
-  }
-}
-
-function TournamentChatCard({
-  tournamentId,
-  currentUserId,
-  permission,
-}: {
-  tournamentId: string
-  currentUserId?: string
-  permission?: ChatPermission
-}) {
-  const limit = 100
-  const utils = trpc.useUtils()
-  const canView = Boolean(permission?.canView)
-  const canPost = Boolean(permission?.canPost)
-  const canModerate = Boolean(permission?.canModerate)
-  const [draft, setDraft] = useState('')
-  const listRef = useRef<HTMLDivElement | null>(null)
-
-  const { data: messages, isLoading, error } = trpc.tournamentChat.listTournament.useQuery(
-    { tournamentId, limit },
-    { enabled: canView }
-  )
-
-  const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onSuccess: async (res) => {
-      setDraft('')
-      if (res?.wasFiltered) {
-        alert('Some words were filtered.')
-      }
-      await Promise.all([
-        utils.tournamentChat.listTournament.invalidate({ tournamentId, limit }),
-        utils.tournamentChat.listMyEventChats.invalidate(),
-      ])
-      setTimeout(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
-      }, 30)
-    },
-  })
-
-  const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.tournamentChat.listTournament.invalidate({ tournamentId, limit }),
-        utils.tournamentChat.listMyEventChats.invalidate(),
-      ])
-    },
-  })
-  const markRead = trpc.tournamentChat.markTournamentRead.useMutation({
-    onSuccess: async () => {
-      await utils.tournamentChat.listMyEventChats.invalidate()
-    },
-  })
-
-  const scrollToBottom = useCallback(() => {
-    if (!listRef.current) return
-    listRef.current.scrollTop = listRef.current.scrollHeight
-  }, [])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages?.length, scrollToBottom])
-
-  useEffect(() => {
-    if (!canView) return
-    markRead.mutate({ tournamentId })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournamentId, canView, messages?.length])
-
-  const handleSend = async () => {
-    const text = draft.trim()
-    if (!text || !canPost || sendMessage.isPending) return
-    try {
-      await sendMessage.mutateAsync({ tournamentId, text })
-    } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <MessageCircle className="h-4 w-4" />
-            Tournament chat
-          </CardTitle>
-          <Badge variant="outline">{(messages?.length ?? 0)} message{(messages?.length ?? 0) === 1 ? '' : 's'}</Badge>
-        </div>
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
-          Visible to organizer, admins, and tournament participants.
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!permission ? (
-          <div className="text-sm text-gray-500">Checking chat access…</div>
-        ) : !canView ? (
-          <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-600">
-            {permission.reason || 'You do not have access to this chat.'}
-          </div>
-        ) : (
-          <>
-            <div ref={listRef} className="max-h-[340px] overflow-y-auto rounded-md border bg-white">
-              {isLoading ? (
-                <div className="p-3 text-sm text-gray-500">Loading chat…</div>
-              ) : error ? (
-                <div className="p-3 text-sm text-red-700">{error.message}</div>
-              ) : !messages || messages.length === 0 ? (
-                <div className="p-3 text-sm text-gray-500">No messages yet. Start the conversation.</div>
-              ) : (
-                <div className="divide-y">
-                  {(messages as ChatMessage[]).map((m) => {
-                    const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                    const canDelete = Boolean(isMine || canModerate)
-                    return (
-                      <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
-                            <div className="text-xs text-gray-500">{new Date(m.createdAt).toLocaleString()}</div>
-                            {isMine ? <Badge variant="secondary">You</Badge> : null}
-                            {canModerate ? (
-                              <Badge variant="outline" className="gap-1">
-                                <ShieldCheck className="h-3 w-3" />
-                                Admin
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className={`mt-1 rounded-md border px-2 py-1 text-sm whitespace-pre-wrap break-words ${m.isDeleted ? 'border-gray-200 bg-gray-50 text-gray-400 italic' : isMine ? 'border-blue-200 bg-blue-50 text-gray-800' : 'border-gray-200 bg-white text-gray-700'}`}>
-                            {m.isDeleted ? 'Message removed' : m.text}
-                          </div>
-                        </div>
-                        {canDelete && !m.isDeleted ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            disabled={deleteMessage.isPending}
-                            onClick={async () => {
-                              if (!confirm('Delete this message?')) return
-                              await deleteMessage.mutateAsync({ messageId: m.id })
-                            }}
-                            title="Delete message"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {canPost ? (
-              <>
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Write a message to everyone in this tournament…"
-                    rows={2}
-                    className="flex-1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        handleSend()
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    className="gap-2"
-                    disabled={!draft.trim() || sendMessage.isPending}
-                    onClick={handleSend}
-                  >
-                    <Send className="h-4 w-4" />
-                    Send
-                  </Button>
-                </div>
-                <div className="text-xs text-gray-500">Press Enter to send, Shift+Enter for new line.</div>
-              </>
-            ) : (
-              <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-600">
-                You can view this chat but cannot post.
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function DivisionChatCard({
-  divisionId,
-  divisionName,
-  currentUserId,
-  permission,
-}: {
-  divisionId: string
-  divisionName: string
-  currentUserId?: string
-  permission?: ChatPermission
-}) {
-  const limit = 100
-  const utils = trpc.useUtils()
-  const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState('')
-  const listRef = useRef<HTMLDivElement | null>(null)
-  const canView = Boolean(permission?.canView)
-  const canPost = Boolean(permission?.canPost)
-  const canModerate = Boolean(permission?.canModerate)
-
-  const { data: messages, isLoading, error } = trpc.tournamentChat.listDivision.useQuery(
-    { divisionId, limit },
-    { enabled: canView && open }
-  )
-
-  const sendMessage = trpc.tournamentChat.sendDivision.useMutation({
-    onSuccess: async (res) => {
-      setDraft('')
-      if (res?.wasFiltered) {
-        alert('Some words were filtered.')
-      }
-      await Promise.all([
-        utils.tournamentChat.listDivision.invalidate({ divisionId, limit }),
-        utils.tournamentChat.listMyEventChats.invalidate(),
-      ])
-      setTimeout(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
-      }, 30)
-    },
-  })
-
-  const deleteMessage = trpc.tournamentChat.deleteDivision.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.tournamentChat.listDivision.invalidate({ divisionId, limit }),
-        utils.tournamentChat.listMyEventChats.invalidate(),
-      ])
-    },
-  })
-  const markRead = trpc.tournamentChat.markDivisionRead.useMutation({
-    onSuccess: async () => {
-      await utils.tournamentChat.listMyEventChats.invalidate()
-    },
-  })
-
-  const scrollToBottom = useCallback(() => {
-    if (!listRef.current) return
-    listRef.current.scrollTop = listRef.current.scrollHeight
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    scrollToBottom()
-  }, [messages?.length, open, scrollToBottom])
-
-  useEffect(() => {
-    if (!open || !canView) return
-    markRead.mutate({ divisionId })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [divisionId, open, canView, messages?.length])
-
-  const handleSend = async () => {
-    const text = draft.trim()
-    if (!text || !canPost || sendMessage.isPending) return
-    try {
-      await sendMessage.mutateAsync({ divisionId, text })
-    } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
-          <MessageCircle className="h-4 w-4" />
-          Division chat
-          <Badge variant="outline">{(messages?.length ?? 0)} msg</Badge>
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)}>
-          {open ? 'Hide chat' : 'Open chat'}
-        </Button>
-      </div>
-
-      {!open ? null : !permission ? (
-        <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-600">Checking chat access…</div>
-      ) : !canView ? (
-        <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-600">
-          {permission.reason || `You do not have access to ${divisionName} chat.`}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
-            {divisionName}: organizer/admins + participants of this division only.
-          </div>
-
-          <div ref={listRef} className="max-h-[300px] overflow-y-auto rounded-md border bg-white">
-            {isLoading ? (
-              <div className="p-3 text-sm text-gray-500">Loading chat…</div>
-            ) : error ? (
-              <div className="p-3 text-sm text-red-700">{error.message}</div>
-            ) : !messages || messages.length === 0 ? (
-              <div className="p-3 text-sm text-gray-500">No messages yet.</div>
-            ) : (
-              <div className="divide-y">
-                {(messages as ChatMessage[]).map((m) => {
-                  const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                  const canDelete = Boolean(isMine || canModerate)
-                  return (
-                    <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
-                          <div className="text-xs text-gray-500">{new Date(m.createdAt).toLocaleString()}</div>
-                          {isMine ? <Badge variant="secondary">You</Badge> : null}
-                        </div>
-                        <div className={`mt-1 rounded-md border px-2 py-1 text-sm whitespace-pre-wrap break-words ${m.isDeleted ? 'border-gray-200 bg-gray-50 text-gray-400 italic' : isMine ? 'border-blue-200 bg-blue-50 text-gray-800' : 'border-gray-200 bg-white text-gray-700'}`}>
-                          {m.isDeleted ? 'Message removed' : m.text}
-                        </div>
-                      </div>
-                      {canDelete && !m.isDeleted ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          disabled={deleteMessage.isPending}
-                          onClick={async () => {
-                            if (!confirm('Delete this message?')) return
-                            await deleteMessage.mutateAsync({ messageId: m.id })
-                          }}
-                          title="Delete message"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {canPost ? (
-            <>
-              <div className="flex items-end gap-2">
-                <Textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder={`Write to ${divisionName} participants…`}
-                  rows={2}
-                  className="flex-1"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSend()
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  className="gap-2"
-                  disabled={!draft.trim() || sendMessage.isPending}
-                  onClick={handleSend}
-                >
-                  <Send className="h-4 w-4" />
-                  Send
-                </Button>
-              </div>
-              <div className="text-xs text-gray-500">Press Enter to send, Shift+Enter for new line.</div>
-            </>
-          ) : (
-            <div className="rounded-md border bg-gray-50 p-3 text-sm text-gray-600">
-              You can view this chat but cannot post.
-            </div>
-          )}
-
-        </div>
-      )}
-    </div>
-  )
-}
