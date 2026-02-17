@@ -86,7 +86,7 @@ function TournamentImagePlaceholder() {
 
 export default function AdminPage() {
   const router = useRouter()
-  const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
+  const { data: tournaments, isLoading, error, refetch } = trpc.tournament.list.useQuery()
   const deleteTournament = trpc.tournament.delete.useMutation({
     onSuccess: () => {
       refetch()
@@ -184,6 +184,24 @@ export default function AdminPage() {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="text-lg">Loading tournaments...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-lg font-semibold text-red-900">Failed to load tournaments</h2>
+          <p className="mt-2 text-sm text-red-800">
+            {error.message || 'Unexpected error while loading tournament list.'}
+          </p>
+          <div className="mt-4">
+            <Button onClick={() => refetch()} variant="outline">
+              Retry
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }
