@@ -286,6 +286,8 @@ export default function TournamentModal({
   }
 
   const divisions = tournament.divisions ?? []
+  const tournamentImage =
+    typeof tournament.image === 'string' && tournament.image.trim() !== '' ? tournament.image : null
   const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
 
   return (
@@ -303,10 +305,10 @@ export default function TournamentModal({
         >
           <div className="p-6 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              {tournament.image ? (
+              {tournamentImage ? (
                 <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                   <Image
-                    src={tournament.image}
+                    src={tournamentImage}
                     alt={tournament.title}
                     width={80}
                     height={80}
