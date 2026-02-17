@@ -127,6 +127,16 @@ export default function PublicCoursePage() {
     { enabled: !!selectedMatchDayId && isIndy }
   )
 
+  const indyMatchupsByDivision = useMemo(() => {
+    const grouped: Record<string, any[]> = {}
+    indyMatchups.forEach((matchup: any) => {
+      const divisionName = matchup.division?.name || 'Division'
+      if (!grouped[divisionName]) grouped[divisionName] = []
+      grouped[divisionName].push(matchup)
+    })
+    return grouped
+  }, [indyMatchups])
+
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
   }
@@ -138,16 +148,6 @@ export default function PublicCoursePage() {
   if (tournament.divisions.length === 0) {
     return <div className="flex items-center justify-center min-h-screen">No divisions</div>
   }
-
-  const indyMatchupsByDivision = useMemo(() => {
-    const grouped: Record<string, any[]> = {}
-    indyMatchups.forEach((matchup: any) => {
-      const divisionName = matchup.division?.name || 'Division'
-      if (!grouped[divisionName]) grouped[divisionName] = []
-      grouped[divisionName].push(matchup)
-    })
-    return grouped
-  }, [indyMatchups])
 
   if (isIndy) {
     return (
