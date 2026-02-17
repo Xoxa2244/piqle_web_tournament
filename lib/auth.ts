@@ -207,8 +207,8 @@ export const authOptions: NextAuthOptions = {
       if (url && url.startsWith(baseUrl)) {
         return url
       }
-      // Default to /admin
-      return `${baseUrl}/admin`
+      // Default to home page
+      return `${baseUrl}/`
     },
     async session({ session, user, token }) {
       const userId = session?.user?.id || user?.id || token?.sub

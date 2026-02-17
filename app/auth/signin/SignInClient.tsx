@@ -2,12 +2,12 @@
 
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 
 export default function SignInClient() {
-  const router = useRouter()
   const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -33,7 +33,7 @@ export default function SignInClient() {
   }, [searchParams, email])
 
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/admin' })
+    signIn('google', { callbackUrl })
   }
 
   const handleRequestCode = async (e: React.SyntheticEvent) => {
@@ -84,7 +84,7 @@ export default function SignInClient() {
       await signIn('email-password', {
         email,
         password,
-        callbackUrl: '/admin',
+        callbackUrl,
       })
       return
     } catch (err) {
@@ -150,7 +150,7 @@ export default function SignInClient() {
       await signIn('email-password', {
         email,
         password,
-        callbackUrl: '/admin',
+        callbackUrl,
       })
       return
     } catch (err) {
