@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { guessTimeZoneFromLocation } from '@/lib/timezone'
+import { normalizeKnownTimezone } from '@/lib/timezoneList'
 import {
   assertTournamentAdmin,
   getUserTournamentIds,
@@ -182,7 +183,15 @@ const getEffectivePaymentTiming = (
 
 const normalizeTimezoneInput = (value?: string | null) => {
   const normalized = String(value ?? '').trim()
-  return normalized.length > 0 ? normalized : null
+  if (!normalized) return null
+  const known = normalizeKnownTimezone(normalized)
+  if (!known) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Unknown timezone: ${normalized}`,
+    })
+  }
+  return known
 }
 
 const resolveTimezoneFromVenue = (params: {

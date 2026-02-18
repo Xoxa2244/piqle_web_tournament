@@ -14,7 +14,7 @@ import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
-import { guessTimeZoneFromLocation, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { guessTimeZoneFromLocation, toUtcDateFromLocalInput, toUtcIsoFromLocalInput } from '@/lib/timezone'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -179,6 +179,7 @@ const normalizeRegistrationDateTime = (value: string) => {
   const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
   return `${datePart}T${timePart}`
 }
+
 const getTodayYmdLocal = () => {
   const now = new Date()
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
@@ -410,7 +411,6 @@ function NewTournamentPageInner() {
     payoutsActive: boolean
     isLoading: boolean
   }>({ hasAccount: false, payoutsActive: false, isLoading: true })
-
   useEffect(() => {
     if (ENABLE_RECURRING_DRAFTS) return
     setSeriesDraftForm((prev) => (prev.enabled ? { ...prev, enabled: false } : prev))
@@ -483,6 +483,13 @@ function NewTournamentPageInner() {
   })
 
   const { data: clubs } = trpc.club.list.useQuery(undefined)
+  const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
+  const timezoneOptions = useMemo(() => {
+    const all = timezoneData?.timezones ?? ['UTC', 'Etc/UTC']
+    const current = (formData.timezone || '').trim()
+    const withCurrent = current && !all.includes(current) ? [...all, current] : all
+    return withCurrent.slice().sort((a, b) => a.localeCompare(b))
+  }, [formData.timezone, timezoneData?.timezones])
   const selectedClub = useMemo(
     () => (clubs ?? []).find((c) => c.id === formData.clubId) ?? null,
     [clubs, formData.clubId]
@@ -617,8 +624,12 @@ function NewTournamentPageInner() {
       return false
     }
 
-    const startDate = new Date(formData.startDate)
-    const endDate = new Date(formData.endDate)
+    const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
+    const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
+    if (!startDate || !endDate) {
+      alert('Invalid date/time value')
+      return false
+    }
     if (endDate < startDate) {
       alert('End date cannot be earlier than start date')
       return false
@@ -626,10 +637,20 @@ function NewTournamentPageInner() {
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
       const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
-      const registrationCutoffDate = registrationCutoff ? new Date(registrationCutoff) : startDate
+      const registrationCutoffDate = registrationCutoff
+        ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
+        : startDate
+      if (!registrationCutoffDate) {
+        alert('Invalid date/time value')
+        return false
+      }
       if (formData.registrationStartDate && formData.registrationEndDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regStartDate || !regEndDate) {
+          alert('Invalid registration date/time value')
+          return false
+        }
         if (regEndDate < regStartDate) {
           alert('Registration end date cannot be earlier than registration start date')
           return false
@@ -637,7 +658,11 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationStartDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        if (!regStartDate) {
+          alert('Invalid registration start date/time value')
+          return false
+        }
         if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
@@ -645,7 +670,11 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationEndDate) {
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regEndDate) {
+          alert('Invalid registration end date/time value')
+          return false
+        }
         if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
@@ -678,8 +707,12 @@ function NewTournamentPageInner() {
       return false
     }
 
-    const startDate = new Date(formData.startDate)
-    const endDate = new Date(formData.endDate)
+    const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
+    const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
+    if (!startDate || !endDate) {
+      alert('Invalid date/time value')
+      return false
+    }
     if (endDate < startDate) {
       alert('End date cannot be earlier than start date')
       return false
@@ -687,10 +720,20 @@ function NewTournamentPageInner() {
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
       const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
-      const registrationCutoffDate = registrationCutoff ? new Date(registrationCutoff) : startDate
+      const registrationCutoffDate = registrationCutoff
+        ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
+        : startDate
+      if (!registrationCutoffDate) {
+        alert('Invalid date/time value')
+        return false
+      }
       if (formData.registrationStartDate && formData.registrationEndDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regStartDate || !regEndDate) {
+          alert('Invalid registration date/time value')
+          return false
+        }
         if (regEndDate < regStartDate) {
           alert('Registration end date cannot be earlier than registration start date')
           return false
@@ -698,7 +741,11 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationStartDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        if (!regStartDate) {
+          alert('Invalid registration start date/time value')
+          return false
+        }
         if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
@@ -706,7 +753,11 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationEndDate) {
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regEndDate) {
+          alert('Invalid registration end date/time value')
+          return false
+        }
         if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
@@ -1795,17 +1846,21 @@ function NewTournamentPageInner() {
                   <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
                     Timezone
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="timezone"
                     name="timezone"
                     value={formData.timezone}
                     onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                    placeholder="e.g., America/New_York"
-                  />
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                  >
+                    {timezoneOptions.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
                   <p className="mt-1 text-sm text-gray-500">
-                    Auto-filled from venue location. You can adjust manually.
+                    Auto-filled from venue location. All schedule dates/times are interpreted in this timezone.
                   </p>
                 </div>
 
