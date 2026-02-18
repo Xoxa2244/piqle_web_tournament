@@ -111,8 +111,20 @@ export default function ChatsPage() {
       return
     }
 
+    const activeEvents = events.filter((event) => {
+      const endMs = new Date(event.endDate).getTime()
+      return Number.isFinite(endMs) && endMs >= Date.now()
+    })
+    const archivedEvents = events
+      .filter((event) => {
+        const endMs = new Date(event.endDate).getTime()
+        return Number.isFinite(endMs) && endMs < Date.now()
+      })
+      .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
+    const preferredFirstEvent = activeEvents[0] ?? archivedEvents[0] ?? events[0]
+
     if (!activeEventId || !events.some((event) => event.id === activeEventId)) {
-      setActiveEventId(events[0]!.id)
+      setActiveEventId(preferredFirstEvent!.id)
       setActiveDivisionId(null)
       return
     }
@@ -131,6 +143,25 @@ export default function ChatsPage() {
     [clubs, activeClubId]
   )
 
+  const activeEventChats = useMemo(
+    () =>
+      (events ?? []).filter((event) => {
+        const endMs = new Date(event.endDate).getTime()
+        return Number.isFinite(endMs) && endMs >= Date.now()
+      }),
+    [events]
+  )
+  const archivedEventChats = useMemo(
+    () =>
+      (events ?? [])
+        .filter((event) => {
+          const endMs = new Date(event.endDate).getTime()
+          return Number.isFinite(endMs) && endMs < Date.now()
+        })
+        .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()),
+    [events]
+  )
+
   const selectedEvent = useMemo(
     () => (events ?? []).find((event) => event.id === activeEventId) ?? null,
     [events, activeEventId]
@@ -140,6 +171,77 @@ export default function ChatsPage() {
     () => selectedEvent?.divisions.find((division) => division.id === activeDivisionId) ?? null,
     [selectedEvent, activeDivisionId]
   )
+
+  const renderEventListItem = (event: any) => {
+    const eventActive = event.id === activeEventId && !activeDivisionId
+    const hasDivisions = event.divisions.length > 0
+
+    return (
+      <div key={event.id} className="rounded-lg border border-gray-200 bg-white p-2">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveEventId(event.id)
+            setActiveDivisionId(null)
+          }}
+          className={cn(
+            'w-full rounded-md p-2 text-left transition-colors',
+            eventActive ? 'bg-blue-50 text-blue-900' : 'hover:bg-gray-50'
+          )}
+        >
+          <div className="truncate text-sm font-medium">{event.title}</div>
+          {event.unreadCount > 0 ? (
+            <div className="mt-1">
+              <Badge className="bg-red-600 hover:bg-red-600">
+                {event.unreadCount > 99 ? '99+' : event.unreadCount} unread
+              </Badge>
+            </div>
+          ) : null}
+          <div className="mt-1 text-xs text-muted-foreground">
+            {formatUsDateTimeShort(event.startDate, { timeZone: event.timezone })} ·{' '}
+            {getTimezoneLabel(event.timezone)}
+          </div>
+          {event.club?.name ? (
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <Building2 className="h-3 w-3" />
+              <span className="truncate">{event.club.name}</span>
+            </div>
+          ) : null}
+        </button>
+
+        {hasDivisions ? (
+          <div className="ml-2 mt-1 space-y-1 border-l border-gray-200 pl-2">
+            {event.divisions.map((division: any) => {
+              const divisionActive = event.id === activeEventId && division.id === activeDivisionId
+              return (
+                <button
+                  key={division.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveEventId(event.id)
+                    setActiveDivisionId(division.id)
+                  }}
+                  className={cn(
+                    'w-full rounded-md px-2 py-1 text-left text-xs transition-colors',
+                    divisionActive ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <span>{division.name}</span>
+                    {division.unreadCount > 0 ? (
+                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {division.unreadCount > 99 ? '99+' : division.unreadCount}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   if (status === 'loading') {
     return (
@@ -283,80 +385,29 @@ export default function ChatsPage() {
                     You do not have access to event chats yet.
                   </div>
                 ) : (
-                  events.map((event) => {
-                    const eventActive = event.id === activeEventId && !activeDivisionId
-                    const hasDivisions = event.divisions.length > 0
-                    return (
-                      <div key={event.id} className="rounded-lg border border-gray-200 bg-white p-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEventId(event.id)
-                            setActiveDivisionId(null)
-                          }}
-                          className={cn(
-                            'w-full rounded-md p-2 text-left transition-colors',
-                            eventActive
-                              ? 'bg-blue-50 text-blue-900'
-                              : 'hover:bg-gray-50'
-                          )}
-                        >
-                          <div className="truncate text-sm font-medium">{event.title}</div>
-                          {event.unreadCount > 0 ? (
-                            <div className="mt-1">
-                              <Badge className="bg-red-600 hover:bg-red-600">
-                                {event.unreadCount > 99 ? '99+' : event.unreadCount} unread
-                              </Badge>
-                            </div>
-                          ) : null}
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {formatUsDateTimeShort(event.startDate, { timeZone: event.timezone })} ·{' '}
-                            {getTimezoneLabel(event.timezone)}
-                          </div>
-                          {event.club?.name ? (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                              <Building2 className="h-3 w-3" />
-                              <span className="truncate">{event.club.name}</span>
-                            </div>
-                          ) : null}
-                        </button>
-
-                        {hasDivisions ? (
-                          <div className="ml-2 mt-1 space-y-1 border-l border-gray-200 pl-2">
-                            {event.divisions.map((division) => {
-                              const divisionActive =
-                                event.id === activeEventId && division.id === activeDivisionId
-                              return (
-                                <button
-                                  key={division.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveEventId(event.id)
-                                    setActiveDivisionId(division.id)
-                                  }}
-                                  className={cn(
-                                    'w-full rounded-md px-2 py-1 text-left text-xs transition-colors',
-                                    divisionActive
-                                      ? 'bg-blue-50 text-blue-900'
-                                      : 'text-gray-700 hover:bg-gray-50'
-                                  )}
-                                >
-                                  <span className="inline-flex items-center gap-1">
-                                    <span>{division.name}</span>
-                                    {division.unreadCount > 0 ? (
-                                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                                        {division.unreadCount > 99 ? '99+' : division.unreadCount}
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        ) : null}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Active
                       </div>
-                    )
-                  })
+                      {activeEventChats.length > 0 ? (
+                        activeEventChats.map((event) => renderEventListItem(event))
+                      ) : (
+                        <div className="rounded-md border border-dashed border-gray-200 p-2 text-xs text-muted-foreground">
+                          No active events.
+                        </div>
+                      )}
+                    </div>
+
+                    {archivedEventChats.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Archive
+                        </div>
+                        {archivedEventChats.map((event) => renderEventListItem(event))}
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </CardContent>
             </Card>
