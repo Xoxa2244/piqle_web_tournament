@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
-import { MessageCircle, Send, Trash2, CalendarDays, Building2 } from 'lucide-react'
+import { MessageCircle, Send, Trash2, CalendarDays, Building2, ChevronRight } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
 import { formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
@@ -93,6 +93,7 @@ export default function ChatsPage() {
   const [activeClubId, setActiveClubId] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [activeDivisionId, setActiveDivisionId] = useState<string | null>(null)
+  const [archiveOpen, setArchiveOpen] = useState(false)
 
   useEffect(() => {
     if (!clubs || clubs.length === 0) {
@@ -171,6 +172,14 @@ export default function ChatsPage() {
     () => selectedEvent?.divisions.find((division) => division.id === activeDivisionId) ?? null,
     [selectedEvent, activeDivisionId]
   )
+  const isArchivedEventSelected = useMemo(
+    () => archivedEventChats.some((event) => event.id === activeEventId),
+    [archivedEventChats, activeEventId]
+  )
+
+  useEffect(() => {
+    if (isArchivedEventSelected) setArchiveOpen(true)
+  }, [isArchivedEventSelected])
 
   const renderEventListItem = (event: any) => {
     const eventActive = event.id === activeEventId && !activeDivisionId
@@ -401,10 +410,18 @@ export default function ChatsPage() {
 
                     {archivedEventChats.length > 0 ? (
                       <div className="space-y-2">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Archive
-                        </div>
-                        {archivedEventChats.map((event) => renderEventListItem(event))}
+                        <button
+                          type="button"
+                          onClick={() => setArchiveOpen((prev) => !prev)}
+                          className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-gray-50"
+                          aria-expanded={archiveOpen}
+                        >
+                          <span>Archive ({archivedEventChats.length})</span>
+                          <ChevronRight
+                            className={cn('h-4 w-4 transition-transform', archiveOpen ? 'rotate-90' : 'rotate-0')}
+                          />
+                        </button>
+                        {archiveOpen ? archivedEventChats.map((event) => renderEventListItem(event)) : null}
                       </div>
                     ) : null}
                   </div>
