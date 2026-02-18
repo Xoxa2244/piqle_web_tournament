@@ -485,10 +485,12 @@ function NewTournamentPageInner() {
   const { data: clubs } = trpc.club.list.useQuery(undefined)
   const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
   const timezoneOptions = useMemo(() => {
-    const all = timezoneData?.timezones ?? ['UTC', 'Etc/UTC']
+    const all = timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
     const current = (formData.timezone || '').trim()
-    const withCurrent = current && !all.includes(current) ? [...all, current] : all
-    return withCurrent.slice().sort((a, b) => a.localeCompare(b))
+    if (current && !all.some((option) => option.value === current)) {
+      return [...all, { value: current, label: current }]
+    }
+    return all
   }, [formData.timezone, timezoneData?.timezones])
   const selectedClub = useMemo(
     () => (clubs ?? []).find((c) => c.id === formData.clubId) ?? null,
@@ -1854,8 +1856,8 @@ function NewTournamentPageInner() {
                     className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
                   >
                     {timezoneOptions.map((tz) => (
-                      <option key={tz} value={tz}>
-                        {tz}
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
                       </option>
                     ))}
                   </select>
