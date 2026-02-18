@@ -1,4 +1,5 @@
 const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, '')
+const isStripeRedirectDebugEnabled = process.env.STRIPE_REDIRECT_DEBUG === 'true'
 
 const parseOrigin = (value: string | null): string | null => {
   if (!value) return null
@@ -25,7 +26,7 @@ const originsMatchHost = (origin: string, hostBaseUrl: string) => {
   }
 }
 
-export const getRequestBaseUrl = (request: Request) => {
+export const getRequestBaseUrl = (request: Request, options?: { scope?: string }) => {
   const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
   const forwardedProto = request.headers.get('x-forwarded-proto')
   const protocol =
@@ -37,14 +38,34 @@ export const getRequestBaseUrl = (request: Request) => {
   const hostBaseUrl = forwardedHost ? normalizeBaseUrl(`${protocol}://${forwardedHost}`) : null
 
   const origin = parseOrigin(request.headers.get('origin'))
-  if (origin && (!hostBaseUrl || originsMatchHost(origin, hostBaseUrl))) {
-    return origin
-  }
-
   const refererOrigin = parseOrigin(request.headers.get('referer'))
-  if (refererOrigin && (!hostBaseUrl || originsMatchHost(refererOrigin, hostBaseUrl))) {
-    return refererOrigin
+  let selectedSource = 'fallback'
+  let baseUrl = hostBaseUrl ?? resolveEnvBaseUrl()
+
+  if (origin && (!hostBaseUrl || originsMatchHost(origin, hostBaseUrl))) {
+    selectedSource = 'origin'
+    baseUrl = origin
+  } else if (refererOrigin && (!hostBaseUrl || originsMatchHost(refererOrigin, hostBaseUrl))) {
+    selectedSource = 'referer'
+    baseUrl = refererOrigin
+  } else if (hostBaseUrl) {
+    selectedSource = 'forwarded-host'
   }
 
-  return hostBaseUrl ?? resolveEnvBaseUrl()
+  if (isStripeRedirectDebugEnabled) {
+    console.info(
+      '[Stripe Redirect Base URL]',
+      JSON.stringify({
+        scope: options?.scope ?? 'unknown',
+        selectedSource,
+        baseUrl,
+        forwardedHost,
+        forwardedProto,
+        origin,
+        refererOrigin,
+      })
+    )
+  }
+
+  return baseUrl
 }

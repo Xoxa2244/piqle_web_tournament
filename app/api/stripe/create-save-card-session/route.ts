@@ -84,7 +84,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const baseUrl = getRequestBaseUrl(request)
+    const baseUrl = getRequestBaseUrl(request, {
+      scope: 'stripe-save-card-session',
+    })
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'setup',
       payment_method_types: ['card'],

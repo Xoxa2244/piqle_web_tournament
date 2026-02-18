@@ -234,7 +234,9 @@ export async function POST(
     }
 
     const stripe = getStripe()
-    const baseUrl = getRequestBaseUrl(request)
+    const baseUrl = getRequestBaseUrl(request, {
+      scope: 'tournament-spots-checkout',
+    })
     const sessionParams = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],

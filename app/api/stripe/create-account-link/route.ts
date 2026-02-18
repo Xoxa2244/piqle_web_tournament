@@ -12,7 +12,9 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const appUrl = getRequestBaseUrl(request)
+  const appUrl = getRequestBaseUrl(request, {
+    scope: 'stripe-create-account-link',
+  })
   const refreshUrl = body?.refreshUrl ?? `${appUrl}/admin?stripe=refresh`
   const returnUrl = body?.returnUrl ?? `${appUrl}/admin?stripe=return`
 
