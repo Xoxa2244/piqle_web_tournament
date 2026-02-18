@@ -259,6 +259,22 @@ export const publicRouter = createTRPCRouter({
           homeTeam: { select: { id: true, name: true } },
           awayTeam: { select: { id: true, name: true } },
           court: { select: { name: true } },
+          rosters: {
+            select: {
+              id: true,
+              teamId: true,
+              playerId: true,
+              isActive: true,
+              letter: true,
+              player: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
         } as any,
         orderBy: { createdAt: 'asc' },
       })) as any[]

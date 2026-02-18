@@ -298,10 +298,6 @@ export default function TournamentModal({
   const tournamentIdStr = String(tournamentAny?.id ?? '')
   const tournamentVenueName =
     typeof tournamentAny?.venueName === 'string' ? tournamentAny.venueName : ''
-  const tournamentPublicSlug =
-    typeof tournamentAny?.publicSlug === 'string' && tournamentAny.publicSlug.trim() !== ''
-      ? tournamentAny.publicSlug
-      : null
   const tournamentStatus = getTournamentStatus({
     startDate: tournamentAny?.startDate,
     endDate: tournamentAny?.endDate,
@@ -361,13 +357,6 @@ export default function TournamentModal({
                   <Link href={`/admin/${tournamentIdStr}`}>
                     <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
                   </Link>
-                  {tournamentPublicSlug && (
-                    <Link href={`/t/${tournamentPublicSlug}`}>
-                      <Button className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300">
-                        View Board
-                      </Button>
-                    </Link>
-                  )}
                 </>
               )}
               {(() => {

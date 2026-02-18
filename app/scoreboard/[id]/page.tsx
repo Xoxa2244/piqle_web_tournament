@@ -11,6 +11,8 @@ import {
   Trophy, 
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   CheckCircle,
   Clock,
   AlertCircle,
@@ -51,6 +53,12 @@ interface PlayoffMatch {
   stage: string
 }
 
+interface MatchupRosterPlayer {
+  id: string
+  name: string
+  letter: string
+}
+
 export default function PublicCoursePage() {
   const params = useParams()
   const pathname = usePathname()
@@ -62,6 +70,7 @@ export default function PublicCoursePage() {
   const [showBracketModal, setShowBracketModal] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string | null>(null)
+  const [expandedIndyMatchupId, setExpandedIndyMatchupId] = useState<string | null>(null)
 
   // Get tournament data (using public endpoint)
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getTournamentById.useQuery(
@@ -122,6 +131,10 @@ export default function PublicCoursePage() {
     }
   }, [isIndy, indyMatchDays, selectedMatchDayId])
 
+  useEffect(() => {
+    setExpandedIndyMatchupId(null)
+  }, [selectedMatchDayId])
+
   const { data: indyMatchups = [], isLoading: indyMatchupsLoading } = trpc.public.getIndyMatchupsByDay.useQuery(
     { matchDayId: selectedMatchDayId || '' },
     { enabled: !!selectedMatchDayId && isIndy }
@@ -136,6 +149,26 @@ export default function PublicCoursePage() {
     })
     return grouped
   }, [indyMatchups])
+
+  const getActiveRosterPlayers = (matchup: any, teamId: string): MatchupRosterPlayer[] => {
+    const rosters = Array.isArray(matchup?.rosters) ? matchup.rosters : []
+    const players: MatchupRosterPlayer[] = rosters
+      .filter(
+        (r: any) =>
+          r.teamId === teamId &&
+          r.isActive &&
+          typeof r.letter === 'string' &&
+          r.letter.trim() !== ''
+      )
+      .map((r: any) => ({
+        id: String(r.player?.id ?? r.playerId ?? ''),
+        name:
+          `${r.player?.firstName || ''} ${r.player?.lastName || ''}`.trim() ||
+          'Unknown player',
+        letter: String(r.letter),
+      }))
+    return players.sort((a, b) => a.letter.localeCompare(b.letter))
+  }
 
   if (tournamentLoading) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
@@ -218,18 +251,93 @@ export default function PublicCoursePage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {(matchups as any[]).map((matchup: any) => (
-                        <div key={matchup.id} className="border rounded-lg p-3 flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">{matchup.homeTeam.name} vs {matchup.awayTeam.name}</div>
-                            <div className="text-sm text-gray-500 mt-1">
-                              {matchup.gamesWonHome} - {matchup.gamesWonAway}
-                              {matchup.court?.name ? ` • Court ${matchup.court.name}` : ''}
-                            </div>
+                      {(matchups as any[]).map((matchup: any) => {
+                        const isExpanded = expandedIndyMatchupId === matchup.id
+                        const homeActivePlayers = getActiveRosterPlayers(matchup, matchup.homeTeamId)
+                        const awayActivePlayers = getActiveRosterPlayers(matchup, matchup.awayTeamId)
+
+                        return (
+                          <div key={matchup.id}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedIndyMatchupId((prev) => (prev === matchup.id ? null : matchup.id))
+                              }
+                              className={`w-full border p-3 text-left transition-colors hover:bg-gray-50 ${isExpanded ? 'rounded-t-lg' : 'rounded-lg'}`}
+                            >
+                              <div className="flex items-center justify-between gap-4">
+                                <div>
+                                  <div className="font-medium">
+                                    {matchup.homeTeam.name} vs {matchup.awayTeam.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500 mt-1">
+                                    {matchup.gamesWonHome} - {matchup.gamesWonAway}
+                                    {matchup.court?.name ? ` • Court ${matchup.court.name}` : ''}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="secondary">{matchup.status}</Badge>
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4 text-gray-500" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-gray-500" />
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="border border-t-0 rounded-b-lg bg-gray-50 p-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <div className="text-sm font-semibold text-gray-900 mb-2">
+                                      {matchup.homeTeam.name}
+                                    </div>
+                                    {homeActivePlayers.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {homeActivePlayers.map((player) => (
+                                          <div
+                                            key={`home-${matchup.id}-${player.id}-${player.letter}`}
+                                            className="text-sm text-gray-700"
+                                          >
+                                            {player.letter}: {player.name}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-gray-500">
+                                        No active players with letters.
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="text-sm font-semibold text-gray-900 mb-2">
+                                      {matchup.awayTeam.name}
+                                    </div>
+                                    {awayActivePlayers.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {awayActivePlayers.map((player) => (
+                                          <div
+                                            key={`away-${matchup.id}-${player.id}-${player.letter}`}
+                                            className="text-sm text-gray-700"
+                                          >
+                                            {player.letter}: {player.name}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm text-gray-500">
+                                        No active players with letters.
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <Badge variant="secondary">{matchup.status}</Badge>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </CardContent>
                 </Card>
