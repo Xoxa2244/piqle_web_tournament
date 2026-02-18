@@ -1236,6 +1236,7 @@ function ClubInviteCard({
   const [email, setEmail] = useState('')
   const [showQr, setShowQr] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const clientBaseUrl = typeof window !== 'undefined' ? window.location.origin : null
 
   const utils = trpc.useUtils()
   const sendInvite = trpc.club.sendInvite.useMutation()
@@ -1281,7 +1282,7 @@ function ClubInviteCard({
 
   const handleInviteUser = async (inviteeUserId: string) => {
     try {
-      const res = await sendInvite.mutateAsync({ clubId, inviteeUserId })
+      const res = await sendInvite.mutateAsync({ clubId, inviteeUserId, baseUrl: clientBaseUrl })
       toast({
         title: res.reason === 'already_joined' ? 'Already joined' : 'Invite sent',
         description:
@@ -1304,7 +1305,7 @@ function ClubInviteCard({
     const trimmed = email.trim()
     if (!trimmed) return
     try {
-      const res = await sendInvite.mutateAsync({ clubId, inviteeEmail: trimmed })
+      const res = await sendInvite.mutateAsync({ clubId, inviteeEmail: trimmed, baseUrl: clientBaseUrl })
       toast({
         title: 'Invite sent',
         description: res.delivered
