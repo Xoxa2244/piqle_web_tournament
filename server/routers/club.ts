@@ -131,7 +131,6 @@ const buildClubInviteEmailHtml = (args: {
                   <td style="padding: 20px 24px 28px; text-align: center; border-top: 1px solid #e5e7eb;">
                     <p style="margin: 0 0 16px; font-size: 13px; color: #6b7280;">Use this button to open the club page and join.</p>
                     <a href="${safeInviteUrl}" style="display: inline-block; padding: 12px 24px; background: #22c55e; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Join club</a>
-                    <p style="margin: 16px 0 0; font-size: 12px; color: #9ca3af; word-break: break-all;">${safeInviteUrl}</p>
                   </td>
                 </tr>
               </table>
