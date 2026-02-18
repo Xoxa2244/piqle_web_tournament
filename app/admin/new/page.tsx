@@ -15,6 +15,7 @@ import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { guessTimeZoneFromLocation, toUtcDateFromLocalInput, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { normalizeKnownTimezone } from '@/lib/timezoneList'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -71,9 +72,10 @@ const buildRecommendedStructure = (format: TournamentFormat): TournamentStructur
 
 const getBrowserTimeZone = () => {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    return normalizeKnownTimezone(browserTz) || 'UTC'
   } catch {
-    return ''
+    return 'UTC'
   }
 }
 
@@ -485,13 +487,8 @@ function NewTournamentPageInner() {
   const { data: clubs } = trpc.club.list.useQuery(undefined)
   const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
   const timezoneOptions = useMemo(() => {
-    const all = timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
-    const current = (formData.timezone || '').trim()
-    if (current && !all.some((option) => option.value === current)) {
-      return [...all, { value: current, label: current }]
-    }
-    return all
-  }, [formData.timezone, timezoneData?.timezones])
+    return timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
+  }, [timezoneData?.timezones])
   const selectedClub = useMemo(
     () => (clubs ?? []).find((c) => c.id === formData.clubId) ?? null,
     [clubs, formData.clubId]
@@ -521,10 +518,11 @@ function NewTournamentPageInner() {
         state: options?.state,
         country: options?.country,
       })
+      const normalizedFallbackTimezone = normalizeKnownTimezone(fallbackTimezone)
       if (fallbackTimezone) {
         setFormData((prev) => ({
           ...prev,
-          timezone: fallbackTimezone,
+          timezone: normalizedFallbackTimezone || prev.timezone,
         }))
       }
 
@@ -565,7 +563,7 @@ function NewTournamentPageInner() {
                 venueAddress: options?.normalizeAddress
                   ? (result.formatted_address ?? prev.venueAddress)
                   : prev.venueAddress,
-                timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
+                timezone: normalizeKnownTimezone(resolvedTimezone) || prev.timezone || getBrowserTimeZone(),
               }))
             })()
           }
@@ -600,7 +598,7 @@ function NewTournamentPageInner() {
         clubId: selectedIsAdmin ? selected.id : '',
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
-        timezone: fallbackTimezone || prev.timezone,
+        timezone: normalizeKnownTimezone(fallbackTimezone) || prev.timezone,
       }
     })
     if (selected.address?.trim()) {
@@ -1086,7 +1084,7 @@ function NewTournamentPageInner() {
       }
     }
 
-    const normalizedTimezone = formData.timezone || undefined
+    const normalizedTimezone = normalizeKnownTimezone(formData.timezone) || undefined
     const payload = {
       title: formData.title,
       description: formData.description || undefined,
@@ -1368,7 +1366,7 @@ function NewTournamentPageInner() {
           : undefined
 
       const templateTimezone =
-        (selectedTemplate as any)?.config?.tournament?.timezone ||
+        normalizeKnownTimezone((selectedTemplate as any)?.config?.tournament?.timezone) ||
         formData.timezone ||
         getBrowserTimeZone()
 
@@ -1421,7 +1419,7 @@ function NewTournamentPageInner() {
         ...next,
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
-        timezone: fallbackTimezone || next.timezone,
+        timezone: normalizeKnownTimezone(fallbackTimezone) || next.timezone,
       }
     })
 

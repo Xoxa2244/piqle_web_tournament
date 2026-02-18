@@ -31,6 +31,7 @@ const PRESET_TIMEZONE_OPTIONS: TimezoneOption[] = [
 let cachedTimezoneOptions: TimezoneOption[] | null = null
 let cachedTimezoneLowerMap: Map<string, string> | null = null
 let cachedTimezoneLabelLowerMap: Map<string, string> | null = null
+let cachedTimezoneAliasLowerMap: Map<string, string> | null = null
 
 export const getTimezoneOptions = () => {
   if (!cachedTimezoneOptions) {
@@ -48,6 +49,36 @@ const isValidIanaTimezone = (value: string) => {
   } catch {
     return false
   }
+}
+
+const extractHourOffsetFromIana = (timeZone: string) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'shortOffset',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date())
+    const offsetPart = parts.find((item) => item.type === 'timeZoneName')?.value || ''
+    const match = offsetPart.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/)
+    if (!match) return null
+    const sign = match[1] === '-' ? -1 : 1
+    const hours = Number(match[2])
+    const minutes = Number(match[3] || '0')
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+    if (minutes !== 0) return null
+    return sign * hours
+  } catch {
+    return null
+  }
+}
+
+const offsetToPresetTimezone = (offsetHours: number) => {
+  if (!Number.isFinite(offsetHours)) return null
+  if (offsetHours === 0) return 'UTC'
+  if (offsetHours > 0) return `Etc/GMT-${offsetHours}`
+  return `Etc/GMT+${Math.abs(offsetHours)}`
 }
 
 const getTimezoneLowerMap = () => {
@@ -70,6 +101,19 @@ const getTimezoneLabelLowerMap = () => {
   return cachedTimezoneLabelLowerMap
 }
 
+const getTimezoneAliasLowerMap = () => {
+  if (!cachedTimezoneAliasLowerMap) {
+    cachedTimezoneAliasLowerMap = new Map<string, string>([
+      ['etc/utc', 'UTC'],
+      ['etc/gmt', 'UTC'],
+      ['gmt', 'UTC'],
+      ['z', 'UTC'],
+      ['zulu', 'UTC'],
+    ])
+  }
+  return cachedTimezoneAliasLowerMap
+}
+
 export const normalizeKnownTimezone = (value?: string | null) => {
   const raw = String(value ?? '').trim()
   if (!raw) return null
@@ -82,7 +126,16 @@ export const normalizeKnownTimezone = (value?: string | null) => {
   const byLabel = getTimezoneLabelLowerMap().get(raw.toLowerCase())
   if (byLabel) return byLabel
 
-  if (isValidIanaTimezone(raw)) return raw
+  const byAlias = getTimezoneAliasLowerMap().get(raw.toLowerCase())
+  if (byAlias) return byAlias
+
+  if (isValidIanaTimezone(raw)) {
+    const hourOffset = extractHourOffsetFromIana(raw)
+    if (hourOffset !== null) {
+      const asPreset = offsetToPresetTimezone(hourOffset)
+      if (asPreset && getAllTimezones().includes(asPreset)) return asPreset
+    }
+  }
 
   return null
 }
