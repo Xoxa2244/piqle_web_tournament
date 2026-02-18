@@ -3,8 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+import { getRequestBaseUrl } from '@/lib/requestBaseUrl'
 
 const isSavedCardSchemaError = (error: any) => {
   const message = String(error?.message ?? '').toLowerCase()
@@ -85,6 +84,7 @@ export async function POST(request: Request) {
       }
     }
 
+    const baseUrl = getRequestBaseUrl(request)
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'setup',
       payment_method_types: ['card'],
@@ -95,8 +95,8 @@ export async function POST(request: Request) {
         tournamentId,
         purpose: 'AUTOPAY_SETUP',
       },
-      success_url: `${APP_URL}/tournaments/${tournamentId}/register?card=saved`,
-      cancel_url: `${APP_URL}/tournaments/${tournamentId}/register?card=cancel`,
+      success_url: `${baseUrl}/tournaments/${tournamentId}/register?card=saved`,
+      cancel_url: `${baseUrl}/tournaments/${tournamentId}/register?card=cancel`,
     })
 
     if (!checkoutSession.url) {

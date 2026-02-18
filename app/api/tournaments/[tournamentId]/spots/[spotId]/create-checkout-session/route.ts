@@ -5,8 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { getRequestBaseUrl } from '@/lib/requestBaseUrl'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 const CURRENCY = 'usd'
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000
 const isSavedCardSchemaError = (error: any) => {
@@ -46,7 +46,7 @@ const getPaymentDueAt = (tournament: {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ tournamentId: string; spotId: string }> }
 ) {
   try {
@@ -234,6 +234,7 @@ export async function POST(
     }
 
     const stripe = getStripe()
+    const baseUrl = getRequestBaseUrl(request)
     const sessionParams = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -279,8 +280,8 @@ export async function POST(
           quantity: 1,
         },
       ],
-      success_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=success`,
-      cancel_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=cancel`,
+      success_url: `${baseUrl}/tournaments/${tournament.id}/register?payment=success`,
+      cancel_url: `${baseUrl}/tournaments/${tournament.id}/register?payment=cancel`,
     })
 
     await prisma.payment.update({

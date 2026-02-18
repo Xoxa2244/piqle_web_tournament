@@ -3,8 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+import { getRequestBaseUrl } from '@/lib/requestBaseUrl'
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
@@ -13,8 +12,9 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const refreshUrl = body?.refreshUrl ?? `${APP_URL}/admin?stripe=refresh`
-  const returnUrl = body?.returnUrl ?? `${APP_URL}/admin?stripe=return`
+  const appUrl = getRequestBaseUrl(request)
+  const refreshUrl = body?.refreshUrl ?? `${appUrl}/admin?stripe=refresh`
+  const returnUrl = body?.returnUrl ?? `${appUrl}/admin?stripe=return`
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
