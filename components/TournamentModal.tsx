@@ -294,6 +294,10 @@ export default function TournamentModal({
     typeof tournamentAny?.publicSlug === 'string' && tournamentAny.publicSlug.trim() !== ''
       ? tournamentAny.publicSlug
       : null
+  const tournamentStatus = getTournamentStatus({
+    startDate: tournamentAny?.startDate,
+    endDate: tournamentAny?.endDate,
+  } as any)
   const tournamentImage =
     typeof imageValue === 'string' && imageValue.trim() !== '' ? imageValue : null
   const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
@@ -488,9 +492,9 @@ export default function TournamentModal({
                 <div className="space-y-4">
                   <div>
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(tournamentStatus)}`}
                     >
-                      {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                      {getTournamentStatusLabel(tournamentStatus)}
                     </span>
                   </div>
                   {tournament.description && (
