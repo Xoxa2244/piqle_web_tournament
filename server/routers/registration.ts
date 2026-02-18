@@ -2,6 +2,12 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { getTeamSlotCount, normalizeTeamSlots } from '../utils/teamSlots'
+import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import {
+  releaseExpiredUnpaidRegistrations as releaseExpiredUnpaidRegistrationsCore,
+  isDuePaymentsSchemaError,
+} from '../utils/paymentDue'
 
 const getRegistrationWindow = (tournament: {
   registrationStartDate: Date | null
@@ -30,10 +36,47 @@ const parseName = (name?: string | null) => {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
 }
 
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000
+
+const getEffectivePaymentTiming = (
+  paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null
+): 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' => {
+  if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
+  return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
+
+const getPaymentDueAt = (
+  tournament: {
+    paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null
+    registrationEndDate?: Date | null
+    startDate: Date
+  },
+  now = new Date()
+) => {
+  const effectivePaymentTiming = getEffectivePaymentTiming(tournament.paymentTiming)
+  if (effectivePaymentTiming === 'PAY_BY_DEADLINE') {
+    return tournament.registrationEndDate ?? tournament.startDate
+  }
+  return new Date(now.getTime() + FIFTEEN_MINUTES_MS)
+}
+
+const releaseExpiredUnpaidRegistrations = async (prisma: any, tournamentId: string) => {
+  try {
+    await releaseExpiredUnpaidRegistrationsCore(prisma, tournamentId)
+  } catch (error: any) {
+    if (isDuePaymentsSchemaError(error)) {
+      return
+    }
+    throw error
+  }
+}
+
 export const registrationRouter = createTRPCRouter({
   getSeatMap: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await releaseExpiredUnpaidRegistrations(ctx.prisma, input.tournamentId)
+
       let tournament: any
       try {
         tournament = await ctx.prisma.tournament.findUnique({
@@ -101,11 +144,15 @@ export const registrationRouter = createTRPCRouter({
         id: tournament.id,
         title: tournament.title,
         format: tournament.format,
+        timezone: tournament.timezone,
         startDate: tournament.startDate,
         registrationStartDate: tournament.registrationStartDate,
         registrationEndDate: tournament.registrationEndDate,
         entryFeeCents: tournament.entryFeeCents ?? 0,
         currency: tournament.currency ?? 'usd',
+        paymentTiming: getEffectivePaymentTiming(
+          (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+        ),
         payoutsActive:
           Boolean(user?.organizerStripeAccountId) &&
           Boolean(user?.stripeOnboardingComplete),
@@ -116,6 +163,56 @@ export const registrationRouter = createTRPCRouter({
   getMyStatus: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await releaseExpiredUnpaidRegistrations(ctx.prisma, input.tournamentId)
+
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: {
+          id: true,
+          entryFeeCents: true,
+          paymentTiming: true,
+          registrationEndDate: true,
+          startDate: true,
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
+      }
+
+      let savedCardInfo: {
+        hasSavedCard: boolean
+        savedCardBrand: string | null
+        savedCardLast4: string | null
+      } = {
+        hasSavedCard: false,
+        savedCardBrand: null,
+        savedCardLast4: null,
+      }
+
+      try {
+        const userCard = await ctx.prisma.user.findUnique({
+          where: { id: ctx.session.user.id },
+          select: {
+            stripeCustomerId: true,
+            stripeDefaultPaymentMethodId: true,
+            stripeDefaultCardBrand: true,
+            stripeDefaultCardLast4: true,
+          },
+        })
+        if (userCard?.stripeCustomerId && userCard.stripeDefaultPaymentMethodId) {
+          savedCardInfo = {
+            hasSavedCard: true,
+            savedCardBrand: userCard.stripeDefaultCardBrand ?? null,
+            savedCardLast4: userCard.stripeDefaultCardLast4 ?? null,
+          }
+        }
+      } catch (error: any) {
+        if (!isDuePaymentsSchemaError(error)) {
+          throw error
+        }
+      }
+
       const player = await ctx.prisma.player.findUnique({
         where: {
           userId_tournamentId: {
@@ -141,8 +238,44 @@ export const registrationRouter = createTRPCRouter({
         return { status: 'none' as const }
       }
 
+      const isPaidTournament = (tournament.entryFeeCents ?? 0) > 0
+
+      const latestPayment = isPaidTournament
+        ? await ctx.prisma.payment.findFirst({
+            where: {
+              playerId: player.id,
+              tournamentId: input.tournamentId,
+            },
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              status: true,
+              dueAt: true,
+              createdAt: true,
+            },
+          })
+        : null
+
       const activeTeamPlayer = player.teamPlayers.find(tp => tp.team.division.tournamentId === input.tournamentId)
       if (activeTeamPlayer) {
+        const paymentStatus = latestPayment?.status ?? (isPaidTournament ? 'PENDING' : 'PAID')
+        const paymentDueAt =
+          paymentStatus === 'PENDING'
+            ? latestPayment?.dueAt ??
+              getPaymentDueAt(
+                {
+                  paymentTiming: getEffectivePaymentTiming(
+                    (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
+                      | 'PAY_IN_15_MIN'
+                      | 'PAY_BY_DEADLINE'
+                  ),
+                  registrationEndDate: tournament.registrationEndDate,
+                  startDate: tournament.startDate,
+                },
+                latestPayment?.createdAt ?? new Date()
+              )
+            : null
+
         return {
           status: 'active' as const,
           playerId: player.id,
@@ -151,6 +284,13 @@ export const registrationRouter = createTRPCRouter({
           slotIndex: activeTeamPlayer.slotIndex,
           teamName: activeTeamPlayer.team.name,
           divisionName: activeTeamPlayer.team.division.name,
+          isPaid: Boolean(player.isPaid) || !isPaidTournament,
+          paymentStatus,
+          paymentDueAt,
+          paymentTiming: getEffectivePaymentTiming(
+            (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+          ),
+          ...savedCardInfo,
         }
       }
 
@@ -265,13 +405,7 @@ export const registrationRouter = createTRPCRouter({
         if (!isRegistrationOpen(team.division.tournament)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration closed' })
         }
-
-        if ((team.division.tournament.entryFeeCents ?? 0) > 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Payment required to join this tournament',
-          })
-        }
+        await releaseExpiredUnpaidRegistrations(tx, team.division.tournamentId)
 
         const slotCount = getTeamSlotCount(team.division.teamKind)
         if (input.slotIndex >= slotCount) {
@@ -331,16 +465,87 @@ export const registrationRouter = createTRPCRouter({
           },
         })
 
-        await tx.player.update({
-          where: { id: player.id },
-          data: { isWaitlist: false },
-        })
-
         const teamPlayer = await tx.teamPlayer.create({
           data: {
             teamId: team.id,
             playerId: player.id,
             slotIndex: input.slotIndex,
+          },
+        })
+
+        const entryFeeCents = team.division.tournament.entryFeeCents ?? 0
+        const isPaidTournament = entryFeeCents > 0
+        let paymentDueAt: Date | null = null
+        let paymentTiming: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null = null
+
+        if (isPaidTournament) {
+          const now = new Date()
+          paymentTiming = getEffectivePaymentTiming(
+            (team.division.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
+              | 'PAY_IN_15_MIN'
+              | 'PAY_BY_DEADLINE'
+          ) as
+            | 'PAY_IN_15_MIN'
+            | 'PAY_BY_DEADLINE'
+          paymentDueAt = getPaymentDueAt(
+            {
+              paymentTiming,
+              registrationEndDate: team.division.tournament.registrationEndDate,
+              startDate: team.division.tournament.startDate,
+            },
+            now
+          )
+          const { platformFeeCents, stripeFeeCents } = calculateOrganizerNetCents(entryFeeCents)
+
+          const existingPending = await tx.payment.findFirst({
+            where: {
+              tournamentId: team.division.tournamentId,
+              playerId: player.id,
+              status: 'PENDING',
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+          })
+
+          if (existingPending) {
+            await tx.payment.update({
+              where: { id: existingPending.id },
+              data: {
+                teamId: team.id,
+                slotIndex: input.slotIndex,
+                entryFeeAmount: fromCents(entryFeeCents),
+                platformFeeAmount: fromCents(platformFeeCents),
+                stripeFeeAmount: fromCents(stripeFeeCents),
+                totalAmount: fromCents(entryFeeCents),
+                currency: team.division.tournament.currency ?? 'usd',
+                dueAt: paymentDueAt,
+                status: 'PENDING',
+              },
+            })
+          } else {
+            await tx.payment.create({
+              data: {
+                tournamentId: team.division.tournamentId,
+                playerId: player.id,
+                teamId: team.id,
+                slotIndex: input.slotIndex,
+                entryFeeAmount: fromCents(entryFeeCents),
+                platformFeeAmount: fromCents(platformFeeCents),
+                stripeFeeAmount: fromCents(stripeFeeCents),
+                totalAmount: fromCents(entryFeeCents),
+                currency: team.division.tournament.currency ?? 'usd',
+                status: 'PENDING',
+                dueAt: paymentDueAt,
+              },
+            })
+          }
+        }
+
+        await tx.player.update({
+          where: { id: player.id },
+          data: {
+            isWaitlist: false,
+            isPaid: isPaidTournament ? false : true,
           },
         })
 
@@ -359,7 +564,7 @@ export const registrationRouter = createTRPCRouter({
           },
         })
 
-        return { success: true }
+        return { success: true, paymentDueAt, paymentTiming }
       })
     }),
 
@@ -401,38 +606,31 @@ export const registrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Registration not found' })
       }
 
-      await ctx.prisma.$transaction(async (tx) => {
-        await tx.teamPlayer.delete({ where: { id: teamPlayer.id } })
+      await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
 
-        await tx.waitlistEntry.deleteMany({
-          where: {
-            playerId: player.id,
-            tournamentId: input.tournamentId,
-          },
-        })
+      await ctx.prisma.payment.updateMany({
+        where: {
+          tournamentId: input.tournamentId,
+          playerId: player.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: 'CANCELED',
+        },
+      })
 
-        // Keep historical relations (payments/rosters) but remove player from tournament membership.
-        await tx.player.update({
-          where: { id: player.id },
-          data: {
-            tournamentId: null,
-            isWaitlist: false,
+      await ctx.prisma.auditLog.create({
+        data: {
+          actorUserId: ctx.session.user.id,
+          tournamentId: input.tournamentId,
+          action: 'PLAYER_CANCEL_REGISTRATION',
+          entityType: 'TeamPlayer',
+          entityId: teamPlayer.id,
+          payload: {
+            teamId: teamPlayer.teamId,
+            divisionId: teamPlayer.team.divisionId,
           },
-        })
-
-        await tx.auditLog.create({
-          data: {
-            actorUserId: ctx.session.user.id,
-            tournamentId: input.tournamentId,
-            action: 'PLAYER_CANCEL_REGISTRATION',
-            entityType: 'TeamPlayer',
-            entityId: teamPlayer.id,
-            payload: {
-              teamId: teamPlayer.teamId,
-              divisionId: teamPlayer.team.divisionId,
-            },
-          },
-        })
+        },
       })
 
       return { success: true }

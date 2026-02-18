@@ -1,22 +1,7 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import profanity from 'leo-profanity'
-
-// Load dictionaries once at module init.
-profanity.loadDictionary('en')
-profanity.add(profanity.getDictionary('ru'))
-profanity.add(profanity.getDictionary('es'))
-
-const extraBlocked = (process.env.CHAT_BLOCKED_WORDS || '')
-  .split(',')
-  .map((w) => w.trim())
-  .filter(Boolean)
-if (extraBlocked.length) {
-  profanity.add(extraBlocked)
-}
-
-const normalizeText = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ')
+import { normalizeTextForSpam, sanitizeChatText } from '../utils/chatModeration'
 
 const isMissingDbRelation = (err: any, relationName: string) => {
   const msg = String(err?.message ?? '').toLowerCase()
@@ -104,6 +89,77 @@ export const clubChatRouter = createTRPCRouter({
       }))
     }),
 
+  markRead: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const clubId = input.clubId
+
+      const [club, follower, admin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You are banned from this club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
+      }
+
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to use the chat' })
+      }
+
+      try {
+        await ctx.prisma.clubChatReadState.upsert({
+          where: { clubId_userId: { clubId, userId } },
+          create: {
+            clubId,
+            userId,
+            lastReadAt: new Date(),
+          },
+          update: {
+            lastReadAt: new Date(),
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_chat_read_states')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_chat_read_states table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
+    }),
+
   send: protectedProcedure
     .input(
       z.object({
@@ -176,7 +232,7 @@ export const clubChatRouter = createTRPCRouter({
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
         }
 
-        if (normalizeText(lastMessage.text) === normalizeText(trimmed)) {
+        if (normalizeTextForSpam(lastMessage.text) === normalizeTextForSpam(trimmed)) {
           throw new TRPCError({ code: 'CONFLICT', message: 'Duplicate message.' })
         }
       }
@@ -191,12 +247,9 @@ export const clubChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: `Too many links (max ${maxLinksPerMessage}).` })
       }
 
-      let sanitized = trimmed
-      let wasFiltered = false
-      if (profanity.check(sanitized)) {
-        sanitized = profanity.clean(sanitized)
-        wasFiltered = sanitized !== trimmed
-      }
+      const moderation = sanitizeChatText(trimmed)
+      const sanitized = moderation.text
+      const wasFiltered = moderation.wasFiltered
 
       const message = await ctx.prisma.clubChatMessage.create({
         data: {

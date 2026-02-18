@@ -10,7 +10,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { 
   Users, 
   Calendar, 
@@ -114,6 +116,149 @@ function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progres
   }
 }
 
+const getRegistrationMaxDateTime = (startDate: string) => {
+  const day = String(startDate || '').split('T')[0]
+  return day ? `${day}T23:59` : undefined
+}
+const TOURNAMENT_TIME_STEP_MINUTES = 15
+
+const pad2 = (num: number) => String(num).padStart(2, '0')
+const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
+  const hours24 = Math.floor(idx / 4)
+  const minutes = (idx % 4) * TOURNAMENT_TIME_STEP_MINUTES
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 || 12
+  return {
+    value: `${pad2(hours24)}:${pad2(minutes)}`,
+    label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
+  }
+})
+
+const getDatePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const [datePart] = raw.split('T')
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return ''
+  return datePart
+}
+
+const getTimePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const timeRaw = raw.split('T')[1] || ''
+  const hhmm = timeRaw.slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return ''
+  return hhmm
+}
+
+const normalizeQuarterHourTime = (value?: string | null) => {
+  const raw = String(value || '').trim().slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(raw)) return ''
+  const [hhRaw, mmRaw] = raw.split(':')
+  const hh = Number(hhRaw)
+  const mm = Number(mmRaw)
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return ''
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return ''
+
+  const total = hh * 60 + mm
+  const snapped = Math.round(total / TOURNAMENT_TIME_STEP_MINUTES) * TOURNAMENT_TIME_STEP_MINUTES
+  const clamped = Math.max(0, Math.min(23 * 60 + 45, snapped))
+  return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`
+}
+
+const getTodayYmdLocal = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+const normalizeTournamentDateTime = (value: string) => {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  if (!datePart) return String(value || '').trim()
+  const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
+  return `${datePart}T${timePart}`
+}
+
+type QuarterHourDateTimeInputProps = {
+  id?: string
+  name?: string
+  value: string
+  onChange: (value: string) => void
+  min?: string
+  max?: string
+  disabled?: boolean
+  className?: string
+}
+
+function QuarterHourDateTimeInput({
+  id,
+  name,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+  className,
+}: QuarterHourDateTimeInputProps) {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  const normalizedTime = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value))
+  const minDate = getDatePartFromDateTimeLocal(min)
+  const maxDate = getDatePartFromDateTimeLocal(max)
+
+  useEffect(() => {
+    const normalized = normalizeTournamentDateTime(value)
+    if (normalized && normalized !== value) {
+      onChange(normalized)
+    }
+  }, [onChange, value])
+
+  const handleDateChange = (nextDate: string) => {
+    if (!nextDate) {
+      onChange('')
+      return
+    }
+    const nextTime = normalizedTime || '00:00'
+    onChange(`${nextDate}T${nextTime}`)
+  }
+
+  const handleTimeChange = (nextTime: string) => {
+    const normalized = normalizeQuarterHourTime(nextTime) || '00:00'
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${normalized}`)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="date"
+        id={id}
+        name={name ? `${name}Date` : undefined}
+        value={datePart}
+        min={minDate || undefined}
+        max={maxDate || undefined}
+        onChange={(e) => handleDateChange(e.target.value)}
+        disabled={disabled}
+        className={className || "w-full min-w-0 pl-4 pr-12 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"}
+      />
+      <select
+        name={name ? `${name}Time` : undefined}
+        value={datePart ? (normalizedTime || '00:00') : ''}
+        onChange={(e) => handleTimeChange(e.target.value)}
+        disabled={disabled}
+        className={className || "w-full min-w-0 pl-4 pr-10 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"}
+      >
+        <option value="" disabled>
+          Select time
+        </option>
+        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export default function TournamentDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -138,7 +283,9 @@ export default function TournamentDetailPage() {
     endDate: '',
     registrationStartDate: '',
     registrationEndDate: '',
+    timezone: '',
     entryFee: '',
+    paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: false,
     allowDuprSubmission: false,
     image: '',
@@ -176,14 +323,26 @@ export default function TournamentDetailPage() {
         title: tournament.title,
         description: tournament.description || '',
         venueName: tournament.venueName || '',
-        startDate: new Date(tournament.startDate).toISOString().split('T')[0],
-        endDate: new Date(tournament.endDate).toISOString().split('T')[0],
-        registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
-        registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+        startDate: toDateTimeInputInTimeZone(tournament.startDate, tournament.timezone),
+        endDate: toDateTimeInputInTimeZone(tournament.endDate, tournament.timezone),
+        registrationStartDate: toDateTimeInputInTimeZone(
+          tournament.registrationStartDate,
+          tournament.timezone
+        ),
+        registrationEndDate: toDateTimeInputInTimeZone(
+          tournament.registrationEndDate,
+          tournament.timezone
+        ),
+        timezone: tournament.timezone || '',
         entryFee:
           typeof tournament.entryFeeCents === 'number'
             ? fromCents(tournament.entryFeeCents).toFixed(2)
             : '',
+        paymentTiming: (ENABLE_DEFERRED_PAYMENTS
+          ? ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN')
+          : 'PAY_IN_15_MIN') as
+          | 'PAY_IN_15_MIN'
+          | 'PAY_BY_DEADLINE',
         isPublicBoardEnabled: tournament.isPublicBoardEnabled ?? false,
         allowDuprSubmission: tournament.allowDuprSubmission ?? false,
         image: tournament.image || '',
@@ -345,14 +504,26 @@ export default function TournamentDetailPage() {
       title: tournament.title,
       description: tournament.description || '',
       venueName: tournament.venueName || '',
-      startDate: new Date(tournament.startDate).toISOString().split('T')[0],
-      endDate: new Date(tournament.endDate).toISOString().split('T')[0],
-      registrationStartDate: tournament.registrationStartDate ? new Date(tournament.registrationStartDate).toISOString().split('T')[0] : '',
-      registrationEndDate: tournament.registrationEndDate ? new Date(tournament.registrationEndDate).toISOString().split('T')[0] : '',
+      startDate: toDateTimeInputInTimeZone(tournament.startDate, tournament.timezone),
+      endDate: toDateTimeInputInTimeZone(tournament.endDate, tournament.timezone),
+      registrationStartDate: toDateTimeInputInTimeZone(
+        tournament.registrationStartDate,
+        tournament.timezone
+      ),
+      registrationEndDate: toDateTimeInputInTimeZone(
+        tournament.registrationEndDate,
+        tournament.timezone
+      ),
+      timezone: tournament.timezone || '',
       entryFee:
         typeof tournament.entryFeeCents === 'number'
           ? fromCents(tournament.entryFeeCents).toFixed(2)
           : '',
+      paymentTiming: (ENABLE_DEFERRED_PAYMENTS
+        ? ((tournament as any).paymentTiming ?? 'PAY_IN_15_MIN')
+        : 'PAY_IN_15_MIN') as
+        | 'PAY_IN_15_MIN'
+        | 'PAY_BY_DEADLINE',
       isPublicBoardEnabled: tournament.isPublicBoardEnabled,
       allowDuprSubmission: tournament.allowDuprSubmission || false,
       image: tournament.image || '',
@@ -410,6 +581,8 @@ export default function TournamentDetailPage() {
 
     // Validate registration dates if provided
     if (tournamentForm.registrationStartDate || tournamentForm.registrationEndDate) {
+      const registrationCutoffRaw = getRegistrationMaxDateTime(tournamentForm.startDate)
+      const registrationCutoff = registrationCutoffRaw ? new Date(registrationCutoffRaw) : startDate
       if (tournamentForm.registrationStartDate && tournamentForm.registrationEndDate) {
         const regStartDate = new Date(tournamentForm.registrationStartDate)
         const regEndDate = new Date(tournamentForm.registrationEndDate)
@@ -424,7 +597,7 @@ export default function TournamentDetailPage() {
       if (tournamentForm.registrationStartDate) {
         const regStartDate = new Date(tournamentForm.registrationStartDate)
         // Registration start date cannot be later than tournament start date
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoff) {
           alert('Registration start date cannot be later than tournament start date')
           return
         }
@@ -433,7 +606,7 @@ export default function TournamentDetailPage() {
       if (tournamentForm.registrationEndDate) {
         const regEndDate = new Date(tournamentForm.registrationEndDate)
         // Registration end date cannot be later than tournament start date
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoff) {
           alert('Registration end date cannot be later than tournament start date')
           return
         }
@@ -445,17 +618,32 @@ export default function TournamentDetailPage() {
       Number.isFinite(parsedEntryFee) && parsedEntryFee > 0
         ? toCents(parsedEntryFee)
         : 0
+    const normalizedTimezone = tournamentForm.timezone || null
+    const payloadStartDate =
+      toUtcIsoFromLocalInput(tournamentForm.startDate, normalizedTimezone) || tournamentForm.startDate
+    const payloadEndDate =
+      toUtcIsoFromLocalInput(tournamentForm.endDate, normalizedTimezone) || tournamentForm.endDate
+    const payloadRegistrationStartDate = tournamentForm.registrationStartDate
+      ? toUtcIsoFromLocalInput(tournamentForm.registrationStartDate, normalizedTimezone) ||
+        tournamentForm.registrationStartDate
+      : null
+    const payloadRegistrationEndDate = tournamentForm.registrationEndDate
+      ? toUtcIsoFromLocalInput(tournamentForm.registrationEndDate, normalizedTimezone) ||
+        tournamentForm.registrationEndDate
+      : null
 
     updateTournament.mutate({
       id: tournamentId,
       title: tournamentForm.title,
       description: tournamentForm.description || undefined,
       venueName: tournamentForm.venueName || undefined,
-      startDate: tournamentForm.startDate,
-      endDate: tournamentForm.endDate,
-      registrationStartDate: tournamentForm.registrationStartDate || null,
-      registrationEndDate: tournamentForm.registrationEndDate || null,
+      startDate: payloadStartDate,
+      endDate: payloadEndDate,
+      registrationStartDate: payloadRegistrationStartDate,
+      registrationEndDate: payloadRegistrationEndDate,
+      timezone: normalizedTimezone,
       entryFeeCents,
+      paymentTiming: ENABLE_DEFERRED_PAYMENTS ? tournamentForm.paymentTiming : 'PAY_IN_15_MIN',
       currency: 'usd',
       isPublicBoardEnabled: tournamentForm.isPublicBoardEnabled,
       allowDuprSubmission: tournamentForm.allowDuprSubmission,
@@ -560,13 +748,29 @@ export default function TournamentDetailPage() {
     }
   }
 
-  const handleTournamentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleTournamentChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value, type } = e.target
     setTournamentForm(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }))
   }
+
+  const setTournamentDateTimeField = useCallback(
+    (
+      name: 'startDate' | 'endDate' | 'registrationStartDate' | 'registrationEndDate',
+      value: string
+    ) => {
+      const normalized = normalizeTournamentDateTime(value)
+      setTournamentForm((prev) => ({
+        ...prev,
+        [name]: normalized,
+      }))
+    },
+    []
+  )
 
   if (isLoading) {
     return (
@@ -680,9 +884,9 @@ export default function TournamentDetailPage() {
                 <div className="flex items-center gap-2 text-base text-gray-700">
                   <Calendar className="h-4 w-4 flex-shrink-0 text-gray-500" />
                   <span>
-                    {formatUsDateShort(tournament.startDate)}
+                    {formatUsDateTimeShort(tournament.startDate, { timeZone: tournament.timezone })}
                     {' – '}
-                    {formatUsDateShort(tournament.endDate)}
+                    {formatUsDateTimeShort(tournament.endDate, { timeZone: tournament.timezone })}
                   </span>
                 </div>
 
@@ -1058,28 +1262,26 @@ export default function TournamentDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Start Date *
+                    Start Date & Time *
                   </label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
+                    id="editStartDate"
                     name="startDate"
                     value={tournamentForm.startDate}
-                    onChange={handleTournamentChange}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    onChange={(nextValue) => setTournamentDateTimeField('startDate', nextValue)}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    End Date *
+                    End Date & Time *
                   </label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
+                    id="editEndDate"
                     name="endDate"
                     value={tournamentForm.endDate}
-                    onChange={handleTournamentChange}
+                    onChange={(nextValue) => setTournamentDateTimeField('endDate', nextValue)}
                     min={tournamentForm.startDate || undefined}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
                   />
                 </div>
               </div>
@@ -1087,32 +1289,51 @@ export default function TournamentDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Registration Start Date
+                    Registration Start
                   </label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
+                    id="editRegistrationStartDate"
                     name="registrationStartDate"
                     value={tournamentForm.registrationStartDate}
-                    onChange={handleTournamentChange}
-                    max={tournamentForm.startDate || undefined}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    onChange={(nextValue) =>
+                      setTournamentDateTimeField('registrationStartDate', nextValue)
+                    }
+                    max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Registration End Date
+                    Registration End
                   </label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
+                    id="editRegistrationEndDate"
                     name="registrationEndDate"
                     value={tournamentForm.registrationEndDate}
-                    onChange={handleTournamentChange}
+                    onChange={(nextValue) =>
+                      setTournamentDateTimeField('registrationEndDate', nextValue)
+                    }
                     min={tournamentForm.registrationStartDate || undefined}
-                    max={tournamentForm.startDate || undefined}
-                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                    max={getRegistrationMaxDateTime(tournamentForm.startDate)}
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Timezone
+                </label>
+                <input
+                  type="text"
+                  name="timezone"
+                  value={tournamentForm.timezone}
+                  onChange={handleTournamentChange}
+                  placeholder="e.g., America/New_York"
+                  className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">Times for players are shown in this timezone.</p>
               </div>
 
               <div>
@@ -1163,6 +1384,27 @@ export default function TournamentDetailPage() {
                   </div>
                 )}
               </div>
+
+              {ENABLE_DEFERRED_PAYMENTS ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Payment Timing
+                  </label>
+                  <select
+                    name="paymentTiming"
+                    value={tournamentForm.paymentTiming}
+                    onChange={handleTournamentChange}
+                    className="w-full px-4 py-3 text-base border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-white/80 backdrop-blur-sm pr-[2.5rem]"
+                  >
+                    <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                    <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                  Payment flow: players join and pay immediately.
+                </div>
+              )}
 
               {/* Tournament Image */}
               <div>

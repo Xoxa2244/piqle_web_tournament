@@ -4,11 +4,12 @@ import { useMemo, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
-import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fromCents } from '@/lib/payment'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -62,6 +63,7 @@ export default function TournamentRegistrationPage() {
   const leaveWaitlistMutation = trpc.registration.leaveWaitlist.useMutation()
   const acceptInvitationMutation = trpc.tournamentInvitation.accept.useMutation()
   const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
+  const [saveCardLoading, setSaveCardLoading] = useState(false)
   const utils = trpc.useUtils()
 
   useEffect(() => {
@@ -93,6 +95,23 @@ export default function TournamentRegistrationPage() {
     processInviteAccept()
   }, [authStatus, tournamentId, inviteAcceptHandled, acceptInvitationMutation, router])
 
+  useEffect(() => {
+    if (!ENABLE_DEFERRED_PAYMENTS) return
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('card') === 'saved') {
+      alert('Card saved. If still unpaid, we will auto-charge it at the payment deadline.')
+      params.delete('card')
+      const next = params.toString()
+      const nextUrl = `${window.location.pathname}${next ? `?${next}` : ''}`
+      window.history.replaceState({}, '', nextUrl)
+      void Promise.all([
+        utils.registration.getMyStatus.invalidate({ tournamentId }),
+        utils.registration.getSeatMap.invalidate({ tournamentId }),
+      ])
+    }
+  }, [tournamentId, utils])
+
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
   const entryFeeCents = seatMap?.entryFeeCents ?? 0
@@ -103,19 +122,51 @@ export default function TournamentRegistrationPage() {
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {
-      await claimSlotMutation.mutateAsync({ teamId, slotIndex })
+      const result = await claimSlotMutation.mutateAsync({ teamId, slotIndex })
       await Promise.all([
         utils.registration.getMyStatus.invalidate({ tournamentId }),
         utils.registration.getSeatMap.invalidate({ tournamentId }),
       ])
-      alert('You are registered!')
+      if (isPaidTournament) {
+        if (!ENABLE_DEFERRED_PAYMENTS) {
+          if (!payoutsActive) {
+            alert('You are registered. Payments are not enabled yet; contact the organizer.')
+            return
+          }
+          await handlePayNow({ teamId, slotIndex })
+          return
+        }
+        const dueText =
+          result?.paymentDueAt
+            ? formatUsDateTimeShort(result.paymentDueAt, { timeZone: seatMap?.timezone })
+            : null
+        alert(
+          dueText
+            ? `You are registered. Complete payment by ${dueText}.`
+            : 'You are registered. Complete payment to keep your spot.'
+        )
+      } else {
+        alert('You are registered!')
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to claim slot')
     }
   }
 
-  const handlePayJoin = async (teamId: string, slotIndex: number) => {
+  const handlePayNow = async (spot?: { teamId: string; slotIndex: number }) => {
     try {
+      const teamId =
+        spot?.teamId ??
+        (myStatus?.status === 'active' && myStatus.teamId ? myStatus.teamId : undefined)
+      const slotIndex =
+        typeof spot?.slotIndex === 'number'
+          ? spot.slotIndex
+          : myStatus?.status === 'active' && typeof myStatus.slotIndex === 'number'
+          ? myStatus.slotIndex
+          : undefined
+      if (!teamId || typeof slotIndex !== 'number') {
+        throw new Error('Join a slot first')
+      }
       const spotId = `${teamId}:${slotIndex}`
       const response = await fetch(
         `/api/tournaments/${tournamentId}/spots/${spotId}/create-checkout-session`,
@@ -133,6 +184,32 @@ export default function TournamentRegistrationPage() {
       throw new Error('Checkout session URL missing')
     } catch (error: any) {
       alert(error.message || 'Failed to start payment')
+    }
+  }
+
+  const handleSaveCardForAutoPay = async () => {
+    try {
+      setSaveCardLoading(true)
+      const response = await fetch('/api/stripe/create-save-card-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tournamentId }),
+      })
+      const raw = await response.text()
+      const payload = raw ? JSON.parse(raw) : null
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to start card setup')
+      }
+      if (!payload?.url) {
+        throw new Error('Setup session URL missing')
+      }
+      window.location.href = payload.url
+    } catch (error: any) {
+      alert(error.message || 'Failed to save card')
+    } finally {
+      setSaveCardLoading(false)
     }
   }
 
@@ -188,17 +265,24 @@ export default function TournamentRegistrationPage() {
               )}
             </div>
             <div>
+              Tournament starts:{' '}
+              <span className="font-medium text-gray-900">
+                {formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
+              </span>
+            </div>
+            <div>
               Registration window:{' '}
               <span className="font-medium text-gray-900">
                 {seatMap.registrationStartDate
-                  ? formatUsDateTimeShort(seatMap.registrationStartDate)
-                  : formatUsDateTimeShort(seatMap.startDate)}
+                  ? formatUsDateTimeShort(seatMap.registrationStartDate, { timeZone: seatMap.timezone })
+                  : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
                 {' — '}
                 {seatMap.registrationEndDate
-                  ? formatUsDateTimeShort(seatMap.registrationEndDate)
-                  : formatUsDateTimeShort(seatMap.startDate)}
+                  ? formatUsDateTimeShort(seatMap.registrationEndDate, { timeZone: seatMap.timezone })
+                  : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
               </span>
             </div>
+            <Badge variant="outline">Time zone: {getTimezoneLabel(seatMap.timezone)}</Badge>
             <Badge variant={registrationOpen ? 'default' : 'secondary'}>
               {registrationOpen ? 'Registration Open' : 'Registration Closed'}
             </Badge>
@@ -217,6 +301,68 @@ export default function TournamentRegistrationPage() {
                     </span>
                   )}
                 </p>
+                {isPaidTournament ? (
+                  myStatus.isPaid ? (
+                    <Badge variant="secondary" className="w-fit">Payment complete</Badge>
+                  ) : (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 space-y-2">
+                      <div className="text-sm font-medium">Payment pending</div>
+                      {ENABLE_DEFERRED_PAYMENTS ? (
+                        <>
+                          <div className="text-xs">
+                            {seatMap.paymentTiming === 'PAY_IN_15_MIN'
+                              ? 'Pay within 15 minutes after joining.'
+                              : 'Pay before registration deadline.'}
+                            {myStatus.paymentDueAt ? (
+                              <span className="block">
+                                Due: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
+                              </span>
+                            ) : null}
+                          </div>
+                          {seatMap.paymentTiming === 'PAY_BY_DEADLINE' && (
+                            <div className="rounded-md border border-amber-300 bg-white/70 p-2 text-xs text-amber-900 space-y-2">
+                              <div className="font-medium">Auto-pay at deadline</div>
+                              {myStatus.hasSavedCard ? (
+                                <div>
+                                  Saved card:{' '}
+                                  <span className="font-medium">
+                                    {(myStatus.savedCardBrand || 'Card').toUpperCase()}
+                                    {myStatus.savedCardLast4 ? ` •••• ${myStatus.savedCardLast4}` : ''}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div>No saved card yet.</div>
+                              )}
+                              <Button
+                                variant="outline"
+                                onClick={handleSaveCardForAutoPay}
+                                disabled={saveCardLoading}
+                              >
+                                {saveCardLoading
+                                  ? 'Redirecting...'
+                                  : myStatus.hasSavedCard
+                                  ? 'Update saved card'
+                                  : 'Save card for auto-pay'}
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-xs">
+                          Complete payment now to keep your spot.
+                          {myStatus.paymentDueAt ? (
+                            <span className="block">
+                              Spot release: {formatUsDateTimeShort(myStatus.paymentDueAt, { timeZone: seatMap.timezone })}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+                      <Button onClick={() => void handlePayNow()} disabled={!payoutsActive}>
+                        Pay now — ${fromCents(entryFeeCents).toFixed(2)}
+                      </Button>
+                    </div>
+                  )
+                ) : null}
                 <Button onClick={handleCancel} variant="destructive" disabled={!registrationOpen}>
                   Cancel Registration
                 </Button>
@@ -240,10 +386,8 @@ export default function TournamentRegistrationPage() {
               isRegistrationOpen={registrationOpen}
               myStatus={myStatus}
               onClaimSlot={handleClaimSlot}
-              onPayJoin={handlePayJoin}
               entryFeeCents={entryFeeCents}
               isPaidTournament={isPaidTournament}
-              payoutsActive={payoutsActive}
               onJoinWaitlist={async () => {
                 try {
                   await joinWaitlistMutation.mutateAsync({ divisionId: division.id })
@@ -281,10 +425,8 @@ function DivisionSeatMap({
   isRegistrationOpen,
   myStatus,
   onClaimSlot,
-  onPayJoin,
   entryFeeCents,
   isPaidTournament,
-  payoutsActive,
   onJoinWaitlist,
   onLeaveWaitlist,
   currentUserId,
@@ -293,10 +435,8 @@ function DivisionSeatMap({
   isRegistrationOpen: boolean
   myStatus: any
   onClaimSlot: (teamId: string, slotIndex: number) => void
-  onPayJoin: (teamId: string, slotIndex: number) => void
   entryFeeCents: number
   isPaidTournament: boolean
-  payoutsActive: boolean
   onJoinWaitlist: () => void
   onLeaveWaitlist: () => void
   currentUserId?: string
@@ -360,10 +500,8 @@ function DivisionSeatMap({
                     slots={slotsByTeam[team.id]}
                     isRegistrationOpen={isRegistrationOpen}
                     onClaimSlot={onClaimSlot}
-                    onPayJoin={onPayJoin}
                     entryFeeCents={entryFeeCents}
                     isPaidTournament={isPaidTournament}
-                    payoutsActive={payoutsActive}
                     currentUserId={currentUserId}
                     isAlreadyActive={isAlreadyActive}
                   />
@@ -380,10 +518,8 @@ function DivisionSeatMap({
                 slots={slotsByTeam[team.id]}
                 isRegistrationOpen={isRegistrationOpen}
                 onClaimSlot={onClaimSlot}
-                onPayJoin={onPayJoin}
                 entryFeeCents={entryFeeCents}
                 isPaidTournament={isPaidTournament}
-                payoutsActive={payoutsActive}
                 currentUserId={currentUserId}
                 isAlreadyActive={isAlreadyActive}
               />
@@ -402,10 +538,8 @@ function DivisionSeatMap({
                   slots={slotsByTeam[team.id]}
                   isRegistrationOpen={isRegistrationOpen}
                   onClaimSlot={onClaimSlot}
-                  onPayJoin={onPayJoin}
                   entryFeeCents={entryFeeCents}
                   isPaidTournament={isPaidTournament}
-                  payoutsActive={payoutsActive}
                   currentUserId={currentUserId}
                   isAlreadyActive={isAlreadyActive}
                 />
@@ -447,9 +581,14 @@ function DivisionSeatMap({
 
         {hasAvailableSlots && !isActiveInDivision && (
           <div className="text-sm text-gray-500">
-            {isPaidTournament ? 'Select a slot to pay and join this division.' : 'Select a slot to join this division.'}
+            {isPaidTournament
+              ? ENABLE_DEFERRED_PAYMENTS
+                ? 'Select a slot to join. Payment is completed after joining.'
+                : 'Select a slot to join and continue to payment.'
+              : 'Select a slot to join this division.'}
           </div>
         )}
+
       </CardContent>
     </Card>
   )
@@ -460,10 +599,8 @@ function TeamCard({
   slots,
   isRegistrationOpen,
   onClaimSlot,
-  onPayJoin,
   entryFeeCents,
   isPaidTournament,
-  payoutsActive,
   currentUserId,
   isAlreadyActive,
 }: {
@@ -471,10 +608,8 @@ function TeamCard({
   slots: any[]
   isRegistrationOpen: boolean
   onClaimSlot: (teamId: string, slotIndex: number) => void
-  onPayJoin: (teamId: string, slotIndex: number) => void
   entryFeeCents: number
   isPaidTournament: boolean
-  payoutsActive: boolean
   currentUserId?: string
   isAlreadyActive: boolean
 }) {
@@ -510,14 +645,12 @@ function TeamCard({
               key={index}
               className="w-full text-left text-sm text-gray-600 border border-dashed rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-50"
               disabled={disableJoin}
-              onClick={() =>
-                isPaidTournament
-                  ? onPayJoin(team.id, index)
-                  : onClaimSlot(team.id, index)
-              }
+              onClick={() => onClaimSlot(team.id, index)}
             >
               {isPaidTournament
-                ? `Pay & Join — $${fromCents(entryFeeCents).toFixed(2)}`
+                ? ENABLE_DEFERRED_PAYMENTS
+                  ? `Join — then pay $${fromCents(entryFeeCents).toFixed(2)}`
+                  : `Join & pay — $${fromCents(entryFeeCents).toFixed(2)}`
                 : `Join — slot #${index + 1}`}
             </button>
           )

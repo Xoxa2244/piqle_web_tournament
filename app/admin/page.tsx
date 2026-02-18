@@ -2,7 +2,7 @@
 
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
@@ -86,7 +86,7 @@ function TournamentImagePlaceholder() {
 
 export default function AdminPage() {
   const router = useRouter()
-  const { data: tournaments, isLoading, refetch } = trpc.tournament.list.useQuery()
+  const { data: tournaments, isLoading, error, refetch } = trpc.tournament.list.useQuery()
   const deleteTournament = trpc.tournament.delete.useMutation({
     onSuccess: () => {
       refetch()
@@ -184,6 +184,24 @@ export default function AdminPage() {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="text-lg">Loading tournaments...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-lg font-semibold text-red-900">Failed to load tournaments</h2>
+          <p className="mt-2 text-sm text-red-800">
+            {error.message || 'Unexpected error while loading tournament list.'}
+          </p>
+          <div className="mt-4">
+            <Button onClick={() => refetch()} variant="outline">
+              Retry
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -386,7 +404,9 @@ export default function AdminPage() {
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
-                    <span>{formatUsDateShort(tournament.startDate)} – {formatUsDateShort(tournament.endDate)}</span>
+                    <span>
+                      {formatUsDateTimeShort(tournament.startDate, { timeZone: tournament.timezone })} – {formatUsDateTimeShort(tournament.endDate, { timeZone: tournament.timezone })}
+                    </span>
                   </div>
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />

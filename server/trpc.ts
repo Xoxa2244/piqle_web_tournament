@@ -50,13 +50,24 @@ const getSessionFromDb = async (sessionToken: string): Promise<Session | null> =
 }
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
-  // In App Router, getServerSession uses cookies() internally
-  let session = await getServerSession(authOptions)
+  // In App Router, getServerSession uses cookies() internally.
+  // If NextAuth is misconfigured (e.g. missing NEXTAUTH_SECRET in an env),
+  // do not break all TRPC requests; gracefully continue as anonymous/fallback.
+  let session: Session | null = null
+  try {
+    session = await getServerSession(authOptions)
+  } catch (error) {
+    console.error('[TRPC] getServerSession failed, falling back to DB session lookup', error)
+  }
 
   if (!session) {
     const sessionToken = getSessionTokenFromRequest(opts.req)
     if (sessionToken) {
-      session = await getSessionFromDb(sessionToken)
+      try {
+        session = await getSessionFromDb(sessionToken)
+      } catch (error) {
+        console.error('[TRPC] getSessionFromDb failed', error)
+      }
     }
   }
 

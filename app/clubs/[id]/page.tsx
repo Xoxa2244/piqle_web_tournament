@@ -16,6 +16,7 @@ import { fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
+import { toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
 import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
@@ -41,6 +42,11 @@ const MONTH_LABELS = [
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
+const getRegistrationMaxDateTime = (startDate: string) => {
+  const day = String(startDate || '').split('T')[0]
+  return day ? `${day}T23:59` : undefined
+}
+
 const toLocalYmd = (date: Date) => {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
@@ -65,6 +71,37 @@ const formatWeekRange = (weekStart: Date) => {
   const startLabel = formatUsDateShort(weekStart)
   const endLabel = formatUsDateShort(end)
   return `${startLabel}–${endLabel}`
+}
+
+const formatEventDateTimeRange = (
+  startDate: Date | string,
+  endDate?: Date | string,
+  timeZone?: string | null
+) => {
+  const end = endDate ?? startDate
+  return `${formatUsDateTimeShort(startDate, { timeZone })} - ${formatUsDateTimeShort(end, {
+    timeZone,
+  })}`
+}
+
+const formatEventTimeRange = (
+  startDate: Date | string,
+  endDate?: Date | string,
+  timeZone?: string | null
+) => {
+  const start = new Date(startDate)
+  const end = new Date(endDate ?? startDate)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return ''
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: String(timeZone || '').trim() || undefined,
+    })
+    return `${formatter.format(start)} - ${formatter.format(end)}`
+  } catch {
+    return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+  }
 }
 
 const buildMonthGrid = (month: Date) => {
@@ -504,7 +541,11 @@ export default function ClubDetailPage() {
                           <div className="min-w-0">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
-                              {formatUsDateTimeShort(tournament.startDate)}
+                              {formatEventDateTimeRange(
+                                tournament.startDate,
+                                tournament.endDate,
+                                tournament.timezone
+                              )}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
@@ -518,7 +559,7 @@ export default function ClubDetailPage() {
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
                                 {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
-                                  ? `Pay & Join${typeof tournament.entryFeeCents === 'number' ? ` — $${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''}`
+                                  ? `Join & Pay${typeof tournament.entryFeeCents === 'number' ? ` — $${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''}`
                                   : 'Join'}
                               </Button>
                             </Link>
@@ -770,6 +811,7 @@ function ClubEventsCalendar({
     title: string
     startDate: Date | string
     endDate?: Date | string
+    timezone?: string | null
     entryFeeCents?: number | null
     publicSlug?: string | null
     format?: string | null
@@ -855,10 +897,8 @@ function ClubEventsCalendar({
     }
   }
 
-  const formatTime = (startDate: Date | string) => {
-    const d = new Date(startDate)
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  }
+  const formatTime = (startDate: Date | string, endDate?: Date | string, timeZone?: string | null) =>
+    formatEventTimeRange(startDate, endDate, timeZone)
 
   const weekDays: Date[] = []
   for (let i = 0; i < 7; i++) {
@@ -995,7 +1035,13 @@ function ClubEventsCalendar({
                         const occupancy =
                           ev?.totals && ev.totals.totalSlots ? `${ev.totals.filledSlots}/${ev.totals.totalSlots}` : null
                         const shortType = formatTournamentTypeShort(ev?.format)
-                        const meta = [formatTime(ev.startDate), shortType, occupancy].filter(Boolean).join(' · ')
+                        const meta = [
+                          formatTime(ev.startDate, ev.endDate, ev.timezone),
+                          shortType,
+                          occupancy,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
                         const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
 
                         return ev?.id ? (
@@ -1101,7 +1147,7 @@ function ClubEventsCalendar({
                         const occupancy =
                           t?.totals && t.totals.totalSlots ? `${t.totals.filledSlots}/${t.totals.totalSlots}` : null
                         const typeLabel = formatTournamentType(t.format)
-                        const timeLabel = formatTime(t.startDate)
+                        const timeLabel = formatTime(t.startDate, t.endDate, t.timezone)
                         const showGender = t.genderLabel && t.genderLabel !== 'Any'
 
                         return (
@@ -1162,7 +1208,11 @@ function ClubEventsCalendar({
                   ? `${tournament.totals.filledSlots}/${tournament.totals.totalSlots}`
                   : null
               const typeLabel = formatTournamentType(tournament.format)
-              const timeLabel = formatTime(tournament.startDate)
+              const timeLabel = formatTime(
+                tournament.startDate,
+                tournament.endDate,
+                tournament.timezone
+              )
               return (
                 <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
                   <div className="min-w-0">
@@ -1196,7 +1246,7 @@ function ClubEventsCalendar({
                   <div className="flex items-center gap-2">
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
-                        {isPaid ? 'Pay & Join' : 'Join'}
+                        {isPaid ? 'Join & Pay' : 'Join'}
                       </Button>
                     </Link>
                     {tournament.publicSlug ? (
@@ -1513,12 +1563,20 @@ function ClubChatCard({
   const sendMessage = trpc.clubChat.send.useMutation({
     onSuccess: async () => {
       await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+      await utils.club.listMyChatClubs.invalidate()
     },
   })
 
   const deleteMessage = trpc.clubChat.delete.useMutation({
     onSuccess: async () => {
       await utils.clubChat.list.invalidate({ clubId, limit: messageLimit })
+      await utils.club.listMyChatClubs.invalidate()
+    },
+  })
+
+  const markRead = trpc.clubChat.markRead.useMutation({
+    onSuccess: async () => {
+      await utils.club.listMyChatClubs.invalidate()
     },
   })
 
@@ -1536,6 +1594,12 @@ function ClubChatCard({
   useEffect(() => {
     scrollToBottom()
   }, [messages?.length, scrollToBottom])
+
+  useEffect(() => {
+    if (!canView) return
+    markRead.mutate({ clubId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubId, canView, messages?.length])
 
   const handleSend = useCallback(async () => {
     const text = draft.trim()
@@ -1700,7 +1764,7 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
   const deleteTemplate = trpc.clubTemplate.delete.useMutation()
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [selected, setSelected] = useState<{ id: string; name: string } | null>(null)
+  const [selected, setSelected] = useState<{ id: string; name: string; timezone?: string | null } | null>(null)
   const [draftForm, setDraftForm] = useState({
     title: '',
     startDate: '',
@@ -1719,11 +1783,15 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
     setDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
   }, [])
 
-  const openCreate = (t: { id: string; name: string }) => {
+  const openCreate = (t: { id: string; name: string; config?: any }) => {
     const now = new Date()
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const wd = parseYmdToUtc(today)?.getUTCDay() ?? 0
-    setSelected({ id: t.id, name: t.name })
+    setSelected({
+      id: t.id,
+      name: t.name,
+      timezone: t?.config?.tournament?.timezone ?? null,
+    })
     setDraftForm({
       title: '',
       startDate: today,
@@ -1781,10 +1849,18 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
       const res = await createDraft.mutateAsync({
         templateId: selected.id,
         title: draftForm.title.trim() ? draftForm.title.trim() : undefined,
-        startDate: draftForm.startDate,
-        endDate: draftForm.endDate,
-        registrationStartDate: draftForm.registrationStartDate || undefined,
-        registrationEndDate: draftForm.registrationEndDate || undefined,
+        startDate:
+          toUtcIsoFromLocalInput(draftForm.startDate, selected.timezone) || draftForm.startDate,
+        endDate:
+          toUtcIsoFromLocalInput(draftForm.endDate, selected.timezone) || draftForm.endDate,
+        registrationStartDate: draftForm.registrationStartDate
+          ? toUtcIsoFromLocalInput(draftForm.registrationStartDate, selected.timezone) ||
+            draftForm.registrationStartDate
+          : undefined,
+        registrationEndDate: draftForm.registrationEndDate
+          ? toUtcIsoFromLocalInput(draftForm.registrationEndDate, selected.timezone) ||
+            draftForm.registrationEndDate
+          : undefined,
         entryFeeCents,
         recurrence,
       })
@@ -1959,21 +2035,23 @@ function ClubTournamentTemplatesCard({ clubId }: { clubId: string }) {
                   <div>
                     <div className="text-sm font-medium text-gray-700 mb-1">Registration start (optional)</div>
                     <Input
-                      type="date"
+                      type="datetime-local"
                       value={draftForm.registrationStartDate}
                       onChange={(e) => setDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
-                      max={draftForm.startDate || undefined}
+                      max={getRegistrationMaxDateTime(draftForm.startDate)}
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
                   <div>
                     <div className="text-sm font-medium text-gray-700 mb-1">Registration end (optional)</div>
                     <Input
-                      type="date"
+                      type="datetime-local"
                       value={draftForm.registrationEndDate}
                       onChange={(e) => setDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
                       min={draftForm.registrationStartDate || undefined}
-                      max={draftForm.startDate || undefined}
+                      max={getRegistrationMaxDateTime(draftForm.startDate)}
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
                 </div>
 

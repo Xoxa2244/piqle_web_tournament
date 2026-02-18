@@ -2,49 +2,83 @@ import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '../trpc'
 import { getTeamDisplayName } from '../utils/teamDisplay'
 
+const hasMissingTournamentOptionalColumns = (error: unknown) => {
+  const message = String((error as any)?.message ?? '').toLowerCase()
+  if (!message) return false
+  return (
+    message.includes('timezone') ||
+    message.includes('registration_start_date') ||
+    message.includes('registration_end_date')
+  )
+}
+
 export const publicRouter = createTRPCRouter({
   listBoards: publicProcedure.query(async ({ ctx }) => {
-    const tournaments = await ctx.prisma.tournament.findMany({
-      where: {
-        isPublicBoardEnabled: true,
+    const baseSelect = {
+      id: true,
+      title: true,
+      description: true,
+      venueName: true,
+      venueAddress: true,
+      startDate: true,
+      endDate: true,
+      entryFee: true,
+      publicSlug: true,
+      image: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          email: true,
+        },
       },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        venueName: true,
-        venueAddress: true,
-        startDate: true,
-        endDate: true,
-        registrationStartDate: true,
-        registrationEndDate: true,
-        entryFee: true,
-        publicSlug: true,
-        image: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            email: true,
-          },
+      divisions: {
+        select: {
+          id: true,
+          name: true,
         },
-        divisions: {
-          select: {
-            id: true,
-            name: true,
-          },
+      },
+      tournamentRatings: {
+        select: {
+          rating: true,
         },
-        tournamentRatings: {
-          select: {
-            rating: true,
-          },
+      },
+    } as const
+
+    let tournaments: any[]
+    try {
+      tournaments = await ctx.prisma.tournament.findMany({
+        where: {
+          isPublicBoardEnabled: true,
         },
-      } as any,
-    })
+        select: {
+          ...baseSelect,
+          timezone: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+        },
+      })
+    } catch (error) {
+      if (!hasMissingTournamentOptionalColumns(error)) {
+        throw error
+      }
+      const fallback = await ctx.prisma.tournament.findMany({
+        where: {
+          isPublicBoardEnabled: true,
+        },
+        select: baseSelect,
+      })
+      tournaments = fallback.map((item) => ({
+        ...item,
+        timezone: null,
+        registrationStartDate: null,
+        registrationEndDate: null,
+      }))
+    }
 
     // Calculate karma for each tournament and sort by karma (descending)
-    const tournamentsWithKarma = (tournaments as any[]).map((tournament) => {
+    const tournamentsWithKarma = tournaments.map((tournament) => {
       const likes = tournament.tournamentRatings.filter((r: any) => r.rating === 'LIKE').length
       const dislikes = tournament.tournamentRatings.filter((r: any) => r.rating === 'DISLIKE').length
       const karma = likes - dislikes
@@ -72,37 +106,61 @@ export const publicRouter = createTRPCRouter({
   getBoardById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      const tournament = await ctx.prisma.tournament.findUnique({
-        where: { id: input.id, isPublicBoardEnabled: true },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          venueName: true,
-          venueAddress: true,
-          startDate: true,
-          endDate: true,
-          registrationStartDate: true,
-          registrationEndDate: true,
-          entryFee: true,
-          publicSlug: true,
-          image: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              email: true,
-            },
+      const baseSelect = {
+        id: true,
+        title: true,
+        description: true,
+        venueName: true,
+        venueAddress: true,
+        startDate: true,
+        endDate: true,
+        entryFee: true,
+        publicSlug: true,
+        image: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            email: true,
           },
-          divisions: {
-            select: {
-              id: true,
-              name: true,
-            },
+        },
+        divisions: {
+          select: {
+            id: true,
+            name: true,
           },
-        } as any,
-      })
+        },
+      } as const
+
+      let tournament: any
+      try {
+        tournament = await ctx.prisma.tournament.findUnique({
+          where: { id: input.id, isPublicBoardEnabled: true },
+          select: {
+            ...baseSelect,
+            timezone: true,
+            registrationStartDate: true,
+            registrationEndDate: true,
+          },
+        })
+      } catch (error) {
+        if (!hasMissingTournamentOptionalColumns(error)) {
+          throw error
+        }
+        const fallback = await ctx.prisma.tournament.findUnique({
+          where: { id: input.id, isPublicBoardEnabled: true },
+          select: baseSelect,
+        })
+        tournament = fallback
+          ? {
+              ...fallback,
+              timezone: null,
+              registrationStartDate: null,
+              registrationEndDate: null,
+            }
+          : null
+      }
       if (!tournament) return null
       return tournament
     }),
@@ -217,73 +275,6 @@ export const publicRouter = createTRPCRouter({
       }
 
       return tournament
-    }),
-
-  getIndyMatchDays: publicProcedure
-    .input(z.object({ tournamentId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const tournament = await ctx.prisma.tournament.findUnique({
-        where: { id: input.tournamentId },
-        select: { id: true, format: true },
-      })
-      if (!tournament) {
-        throw new Error('Tournament not found')
-      }
-      if (tournament.format !== 'INDY_LEAGUE') {
-        throw new Error('This endpoint is only for IndyLeague tournaments')
-      }
-      return ctx.prisma.matchDay.findMany({
-        where: { tournamentId: input.tournamentId },
-        orderBy: { date: 'asc' },
-        select: { id: true, date: true, status: true },
-      })
-    }),
-
-  getIndyMatchupsByDay: publicProcedure
-    .input(z.object({ matchDayId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const matchDay = await ctx.prisma.matchDay.findUnique({
-        where: { id: input.matchDayId },
-        include: { tournament: { select: { format: true } } },
-      })
-      if (!matchDay) {
-        throw new Error('Match day not found')
-      }
-      if (matchDay.tournament?.format !== 'INDY_LEAGUE') {
-        throw new Error('This endpoint is only for IndyLeague tournaments')
-      }
-      const matchups = (await ctx.prisma.indyMatchup.findMany({
-        where: { matchDayId: input.matchDayId },
-        include: {
-          division: { select: { id: true, name: true } },
-          homeTeam: { select: { id: true, name: true } },
-          awayTeam: { select: { id: true, name: true } },
-          court: { select: { name: true } },
-          rosters: {
-            select: {
-              id: true,
-              teamId: true,
-              playerId: true,
-              isActive: true,
-              letter: true,
-              player: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          },
-        } as any,
-        orderBy: { createdAt: 'asc' },
-      })) as any[]
-      return matchups.sort((a, b) => {
-        const divA = a.division?.name || ''
-        const divB = b.division?.name || ''
-        if (divA !== divB) return divA.localeCompare(divB)
-        return a.createdAt.getTime() - b.createdAt.getTime()
-      })
     }),
 
   getStandings: publicProcedure

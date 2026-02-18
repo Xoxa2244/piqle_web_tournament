@@ -13,7 +13,9 @@ import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
-import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
+import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
+import { guessTimeZoneFromLocation, toUtcDateFromLocalInput, toUtcIsoFromLocalInput } from '@/lib/timezone'
+import { normalizeKnownTimezone } from '@/lib/timezoneList'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -66,6 +68,202 @@ const buildRecommendedStructure = (format: TournamentFormat): TournamentStructur
     default:
       return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
   }
+}
+
+const getBrowserTimeZone = () => {
+  try {
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    return normalizeKnownTimezone(browserTz) || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+const resolveTimeZoneFromLatLng = async (lat: number, lng: number, googleApi?: any) => {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  const mapsApi = googleApi?.maps || (window as any)?.google?.maps
+  if (mapsApi?.TimeZoneService && mapsApi?.LatLng) {
+    try {
+      const service = new mapsApi.TimeZoneService()
+      const timezoneId = await new Promise<string | null>((resolve) => {
+        service.getTimeZoneForLocation(
+          { location: new mapsApi.LatLng(lat, lng), timestamp: new Date() },
+          (result: any, status: any) => {
+            if (status === 'OK' && result?.timeZoneId) {
+              resolve(String(result.timeZoneId))
+              return
+            }
+            resolve(null)
+          }
+        )
+      })
+      if (timezoneId) return timezoneId
+    } catch {
+      // fall through to HTTP fallback
+    }
+  }
+
+  if (!apiKey) return null
+  try {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const url = new URL('https://maps.googleapis.com/maps/api/timezone/json')
+    url.searchParams.set('location', `${lat},${lng}`)
+    url.searchParams.set('timestamp', String(timestamp))
+    url.searchParams.set('key', apiKey)
+    const response = await fetch(url.toString())
+    if (!response.ok) return null
+    const data = await response.json()
+    if (data?.status === 'OK' && typeof data?.timeZoneId === 'string') {
+      return data.timeZoneId as string
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+const getRegistrationMaxDateTime = (startDate: string) => {
+  const day = String(startDate || '').split('T')[0]
+  return day ? `${day}T23:59` : undefined
+}
+const REGISTRATION_TIME_STEP_MINUTES = 15
+
+const pad2 = (num: number) => String(num).padStart(2, '0')
+
+const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
+  const hours24 = Math.floor(idx / 4)
+  const minutes = (idx % 4) * REGISTRATION_TIME_STEP_MINUTES
+  const period = hours24 >= 12 ? 'PM' : 'AM'
+  const hours12 = hours24 % 12 || 12
+  return {
+    value: `${pad2(hours24)}:${pad2(minutes)}`,
+    label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
+  }
+})
+
+const getDatePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const [datePart] = raw.split('T')
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return ''
+  return datePart
+}
+
+const getTimePartFromDateTimeLocal = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const timeRaw = raw.split('T')[1] || ''
+  const hhmm = timeRaw.slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return ''
+  return hhmm
+}
+
+const normalizeQuarterHourTime = (value?: string | null) => {
+  const raw = String(value || '').trim().slice(0, 5)
+  if (!/^\d{2}:\d{2}$/.test(raw)) return ''
+  const [hhRaw, mmRaw] = raw.split(':')
+  const hh = Number(hhRaw)
+  const mm = Number(mmRaw)
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return ''
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return ''
+
+  const total = hh * 60 + mm
+  const snapped = Math.round(total / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const clamped = Math.max(0, Math.min(23 * 60 + 45, snapped))
+  return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`
+}
+
+const normalizeRegistrationDateTime = (value: string) => {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  if (!datePart) return String(value || '').trim()
+  const timePart = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value) || '00:00') || '00:00'
+  return `${datePart}T${timePart}`
+}
+
+const getTodayYmdLocal = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+type QuarterHourDateTimeInputProps = {
+  id?: string
+  name?: string
+  value: string
+  onChange: (value: string) => void
+  min?: string
+  max?: string
+  disabled?: boolean
+}
+
+function QuarterHourDateTimeInput({
+  id,
+  name,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+}: QuarterHourDateTimeInputProps) {
+  const datePart = getDatePartFromDateTimeLocal(value)
+  const normalizedTime = normalizeQuarterHourTime(getTimePartFromDateTimeLocal(value))
+  const minDate = getDatePartFromDateTimeLocal(min)
+  const maxDate = getDatePartFromDateTimeLocal(max)
+
+  useEffect(() => {
+    const normalized = normalizeRegistrationDateTime(value)
+    if (normalized && normalized !== value) {
+      onChange(normalized)
+    }
+  }, [onChange, value])
+
+  const handleDateChange = (nextDate: string) => {
+    if (!nextDate) {
+      onChange('')
+      return
+    }
+    const nextTime = normalizedTime || '00:00'
+    onChange(`${nextDate}T${nextTime}`)
+  }
+
+  const handleTimeChange = (nextTime: string) => {
+    const normalized = normalizeQuarterHourTime(nextTime) || '00:00'
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${normalized}`)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        type="date"
+        id={id}
+        name={name ? `${name}Date` : undefined}
+        value={datePart}
+        min={minDate || undefined}
+        max={maxDate || undefined}
+        onChange={(e) => handleDateChange(e.target.value)}
+        disabled={disabled}
+        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+      />
+      <select
+        name={name ? `${name}Time` : undefined}
+        value={datePart ? (normalizedTime || '00:00') : ''}
+        onChange={(e) => handleTimeChange(e.target.value)}
+        disabled={disabled}
+        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
+      >
+        <option value="" disabled>
+          Select time
+        </option>
+        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
 }
 
 // Helper function to resize image on client side
@@ -153,11 +351,12 @@ function NewTournamentPageInner() {
     registrationStartDate: '',
     registrationEndDate: '',
     entryFee: '',
+    paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
     format: 'SINGLE_ELIMINATION' as TournamentFormat,
     seasonLabel: '',
-    timezone: '',
+    timezone: getBrowserTimeZone(),
     image: '',
   })
   const [stepIndex, setStepIndex] = useState(0)
@@ -204,6 +403,7 @@ function NewTournamentPageInner() {
   const addressAutocompleteRef = useRef<any>(null)
   const addressListenerRef = useRef<any>(null)
   const googleRef = useRef<any>(null)
+  const addressTimezoneSyncSeqRef = useRef(0)
   const lastAddressSelectionRef = useRef<{ placeId: string | null; formatted: string | null }>({
     placeId: null,
     formatted: null,
@@ -213,11 +413,19 @@ function NewTournamentPageInner() {
     payoutsActive: boolean
     isLoading: boolean
   }>({ hasAccount: false, payoutsActive: false, isLoading: true })
-
   useEffect(() => {
     if (ENABLE_RECURRING_DRAFTS) return
     setSeriesDraftForm((prev) => (prev.enabled ? { ...prev, enabled: false } : prev))
     setTemplateDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
+  }, [])
+
+  useEffect(() => {
+    if (ENABLE_DEFERRED_PAYMENTS) return
+    setFormData((prev) =>
+      prev.paymentTiming === 'PAY_IN_15_MIN'
+        ? prev
+        : { ...prev, paymentTiming: 'PAY_IN_15_MIN' }
+    )
   }, [])
 
   const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
@@ -277,6 +485,10 @@ function NewTournamentPageInner() {
   })
 
   const { data: clubs } = trpc.club.list.useQuery(undefined)
+  const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
+  const timezoneOptions = useMemo(() => {
+    return timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
+  }, [timezoneData?.timezones])
   const selectedClub = useMemo(
     () => (clubs ?? []).find((c) => c.id === formData.clubId) ?? null,
     [clubs, formData.clubId]
@@ -292,6 +504,77 @@ function NewTournamentPageInner() {
   const createDraftFromTemplate = trpc.clubTemplate.createDraftFromTemplate.useMutation()
   const saveTemplateFromTournament = trpc.clubTemplate.saveFromTournament.useMutation()
 
+  const syncTimezoneFromAddress = useCallback(
+    async (
+      rawAddress: string,
+      options?: { normalizeAddress?: boolean; state?: string | null; country?: string | null }
+    ) => {
+      const address = rawAddress.trim()
+      if (!address) return
+
+      const requestSeq = ++addressTimezoneSyncSeqRef.current
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address,
+        state: options?.state,
+        country: options?.country,
+      })
+      const normalizedFallbackTimezone = normalizeKnownTimezone(fallbackTimezone)
+      if (fallbackTimezone) {
+        setFormData((prev) => ({
+          ...prev,
+          timezone: normalizedFallbackTimezone || prev.timezone,
+        }))
+      }
+
+      try {
+        const googleApi =
+          googleRef.current ??
+          (await loadGoogleMaps({
+            apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+            libraries: ['places'],
+          }))
+
+        googleRef.current = googleApi
+        const geocoder = new googleApi.maps.Geocoder()
+        geocoder.geocode(
+          { address },
+          (results: any, status: any) => {
+            if (status !== 'OK' || !results?.length) return
+            const result = results[0]
+            if (!result?.formatted_address) return
+
+            const lat = result?.geometry?.location?.lat?.()
+            const lng = result?.geometry?.location?.lng?.()
+            void (async () => {
+              const resolvedTimezone =
+                Number.isFinite(lat) && Number.isFinite(lng)
+                  ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
+                  : null
+
+              if (requestSeq !== addressTimezoneSyncSeqRef.current) return
+
+              setAddressError(null)
+              lastAddressSelectionRef.current = {
+                placeId: result.place_id ?? null,
+                formatted: result.formatted_address ?? null,
+              }
+              setFormData((prev) => ({
+                ...prev,
+                venueAddress: options?.normalizeAddress
+                  ? (result.formatted_address ?? prev.venueAddress)
+                  : prev.venueAddress,
+                timezone: normalizeKnownTimezone(resolvedTimezone) || prev.timezone || getBrowserTimeZone(),
+              }))
+            })()
+          }
+        )
+      } catch {
+        // Best-effort only.
+      }
+    },
+    []
+  )
+
   useEffect(() => {
     if (prefillAppliedRef.current) return
     const clubIdFromQuery = searchParams.get('clubId')
@@ -305,14 +588,27 @@ function NewTournamentPageInner() {
     const selectedIsAdmin = Boolean((selected as any).isAdmin)
     setFormData((prev) => {
       if (prev.clubId) return prev
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address: selected.address,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
       return {
         ...prev,
         clubId: selectedIsAdmin ? selected.id : '',
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
+        timezone: normalizeKnownTimezone(fallbackTimezone) || prev.timezone,
       }
     })
-  }, [clubs, searchParams])
+    if (selected.address?.trim()) {
+      void syncTimezoneFromAddress(selected.address, {
+        normalizeAddress: true,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
+    }
+  }, [clubs, searchParams, syncTimezoneFromAddress])
 
   const validateBaseForm = () => {
     const nextErrors = {
@@ -328,17 +624,33 @@ function NewTournamentPageInner() {
       return false
     }
 
-    const startDate = new Date(formData.startDate)
-    const endDate = new Date(formData.endDate)
+    const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
+    const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
+    if (!startDate || !endDate) {
+      alert('Invalid date/time value')
+      return false
+    }
     if (endDate < startDate) {
       alert('End date cannot be earlier than start date')
       return false
     }
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
+      const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
+      const registrationCutoffDate = registrationCutoff
+        ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
+        : startDate
+      if (!registrationCutoffDate) {
+        alert('Invalid date/time value')
+        return false
+      }
       if (formData.registrationStartDate && formData.registrationEndDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regStartDate || !regEndDate) {
+          alert('Invalid registration date/time value')
+          return false
+        }
         if (regEndDate < regStartDate) {
           alert('Registration end date cannot be earlier than registration start date')
           return false
@@ -346,16 +658,24 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationStartDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        if (regStartDate > startDate) {
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        if (!regStartDate) {
+          alert('Invalid registration start date/time value')
+          return false
+        }
+        if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
       }
 
       if (formData.registrationEndDate) {
-        const regEndDate = new Date(formData.registrationEndDate)
-        if (regEndDate > startDate) {
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regEndDate) {
+          alert('Invalid registration end date/time value')
+          return false
+        }
+        if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -387,17 +707,33 @@ function NewTournamentPageInner() {
       return false
     }
 
-    const startDate = new Date(formData.startDate)
-    const endDate = new Date(formData.endDate)
+    const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
+    const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
+    if (!startDate || !endDate) {
+      alert('Invalid date/time value')
+      return false
+    }
     if (endDate < startDate) {
       alert('End date cannot be earlier than start date')
       return false
     }
 
     if (formData.registrationStartDate || formData.registrationEndDate) {
+      const registrationCutoff = getRegistrationMaxDateTime(formData.startDate)
+      const registrationCutoffDate = registrationCutoff
+        ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
+        : startDate
+      if (!registrationCutoffDate) {
+        alert('Invalid date/time value')
+        return false
+      }
       if (formData.registrationStartDate && formData.registrationEndDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        const regEndDate = new Date(formData.registrationEndDate)
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regStartDate || !regEndDate) {
+          alert('Invalid registration date/time value')
+          return false
+        }
         if (regEndDate < regStartDate) {
           alert('Registration end date cannot be earlier than registration start date')
           return false
@@ -405,16 +741,24 @@ function NewTournamentPageInner() {
       }
 
       if (formData.registrationStartDate) {
-        const regStartDate = new Date(formData.registrationStartDate)
-        if (regStartDate > startDate) {
+        const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
+        if (!regStartDate) {
+          alert('Invalid registration start date/time value')
+          return false
+        }
+        if (regStartDate > registrationCutoffDate) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
       }
 
       if (formData.registrationEndDate) {
-        const regEndDate = new Date(formData.registrationEndDate)
-        if (regEndDate > startDate) {
+        const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
+        if (!regEndDate) {
+          alert('Invalid registration end date/time value')
+          return false
+        }
+        if (regEndDate > registrationCutoffDate) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -563,36 +907,47 @@ function NewTournamentPageInner() {
 
       googleRef.current = googleApi
 
-      if (addressAutocompleteRef.current) return
+      if (!googleApi?.maps?.places?.Autocomplete) {
+        throw new Error('Google Places is unavailable. Check API key restrictions and Places API.')
+      }
 
-      addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(
-        venueAddressInputRef.current,
-        {
-          fields: ['formatted_address', 'geometry', 'place_id'],
-          types: ['geocode'],
-        }
-      )
+      // Recreate autocomplete to ensure it's bound to the currently mounted input.
+      addressListenerRef.current?.remove?.()
+      addressAutocompleteRef.current = new googleApi.maps.places.Autocomplete(venueAddressInputRef.current, {
+        fields: ['formatted_address', 'geometry', 'place_id'],
+        types: ['geocode'],
+      })
 
       addressListenerRef.current =
         addressAutocompleteRef.current.addListener('place_changed', () => {
-          const place = addressAutocompleteRef.current?.getPlace()
-          // `formatted_address` can be missing depending on the selection type / API response.
-          // Fall back to the input value (which Google updates) and don't show an error since it's optional.
-          const rawInput = (venueAddressInputRef.current?.value ?? '').trim()
-          const formatted =
-            (place?.formatted_address ? place.formatted_address.trim() : '') ||
-            rawInput ||
-            null
+          void (async () => {
+            const place = addressAutocompleteRef.current?.getPlace()
+            // `formatted_address` can be missing depending on the selection type / API response.
+            // Fall back to the input value (which Google updates) and don't show an error since it's optional.
+            const rawInput = (venueAddressInputRef.current?.value ?? '').trim()
+            const formatted =
+              (place?.formatted_address ? place.formatted_address.trim() : '') ||
+              rawInput ||
+              null
 
-          setAddressError(null)
-          lastAddressSelectionRef.current = {
-            placeId: place?.place_id ?? null,
-            formatted,
-          }
-          setFormData((prev) => ({
-            ...prev,
-            venueAddress: formatted ?? '',
-          }))
+            const lat = place?.geometry?.location?.lat?.()
+            const lng = place?.geometry?.location?.lng?.()
+            const resolvedTimezone =
+              Number.isFinite(lat) && Number.isFinite(lng)
+                ? await resolveTimeZoneFromLatLng(lat as number, lng as number, googleApi)
+                : null
+
+            setAddressError(null)
+            lastAddressSelectionRef.current = {
+              placeId: place?.place_id ?? null,
+              formatted,
+            }
+            setFormData((prev) => ({
+              ...prev,
+              venueAddress: formatted ?? '',
+              timezone: resolvedTimezone || prev.timezone || getBrowserTimeZone(),
+            }))
+          })()
         })
     } catch (error) {
       setAddressError(
@@ -602,11 +957,12 @@ function NewTournamentPageInner() {
   }, [])
 
   useEffect(() => {
-    setupAddressAutocomplete()
+    if (stepIndex !== 0) return
+    void setupAddressAutocomplete()
     return () => {
       addressListenerRef.current?.remove?.()
     }
-  }, [setupAddressAutocomplete])
+  }, [setupAddressAutocomplete, stepIndex])
 
   useEffect(() => {
     let isMounted = true
@@ -661,39 +1017,7 @@ function NewTournamentPageInner() {
       return
     }
 
-    try {
-      const googleApi =
-        googleRef.current ??
-        (await loadGoogleMaps({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
-          libraries: ['places'],
-        }))
-
-      googleRef.current = googleApi
-      const geocoder = new googleApi.maps.Geocoder()
-      geocoder.geocode(
-        { address: raw },
-        (results: any, status: any) => {
-          // Venue address is optional; don't block the flow if validation fails.
-          if (status !== 'OK' || !results?.length) return
-
-          const result = results[0]
-          if (!result?.formatted_address) return
-
-          setAddressError(null)
-          lastAddressSelectionRef.current = {
-            placeId: result.place_id ?? null,
-            formatted: result.formatted_address ?? null,
-          }
-          setFormData((prev) => ({
-            ...prev,
-            venueAddress: result.formatted_address,
-          }))
-        }
-      )
-    } catch (error) {
-      // Best-effort only; keep address as-is.
-    }
+    void syncTimezoneFromAddress(raw, { normalizeAddress: true })
   }
 
   const parsedEntryFee = Number(formData.entryFee)
@@ -760,17 +1084,27 @@ function NewTournamentPageInner() {
       }
     }
 
+    const normalizedTimezone = normalizeKnownTimezone(formData.timezone) || undefined
     const payload = {
       title: formData.title,
       description: formData.description || undefined,
       venueName: formData.venueName || undefined,
       venueAddress: formData.venueAddress || undefined,
       clubId: formData.clubId || undefined,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      registrationStartDate: formData.registrationStartDate || undefined,
-      registrationEndDate: formData.registrationEndDate || undefined,
+      startDate:
+        toUtcIsoFromLocalInput(formData.startDate, normalizedTimezone) || formData.startDate,
+      endDate:
+        toUtcIsoFromLocalInput(formData.endDate, normalizedTimezone) || formData.endDate,
+      registrationStartDate: formData.registrationStartDate
+        ? toUtcIsoFromLocalInput(formData.registrationStartDate, normalizedTimezone) ||
+          formData.registrationStartDate
+        : undefined,
+      registrationEndDate: formData.registrationEndDate
+        ? toUtcIsoFromLocalInput(formData.registrationEndDate, normalizedTimezone) ||
+          formData.registrationEndDate
+        : undefined,
       entryFeeCents: entryFeeCents || 0,
+      paymentTiming: ENABLE_DEFERRED_PAYMENTS ? formData.paymentTiming : 'PAY_IN_15_MIN',
       currency: 'usd' as const,
       isPublicBoardEnabled: isSeries ? false : formData.isPublicBoardEnabled,
       allowDuprSubmission: formData.allowDuprSubmission,
@@ -780,10 +1114,7 @@ function NewTournamentPageInner() {
         formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
           ? (formData.seasonLabel || undefined)
           : undefined,
-      timezone:
-        formData.format === 'INDY_LEAGUE' || formData.format === 'LADDER_LEAGUE'
-          ? (formData.timezone || undefined)
-          : undefined,
+      timezone: normalizedTimezone,
     }
 
     if (isSeries) {
@@ -878,6 +1209,8 @@ function NewTournamentPageInner() {
     }
 
     if (templateDraftForm.registrationStartDate || templateDraftForm.registrationEndDate) {
+      const registrationCutoffRaw = getRegistrationMaxDateTime(templateDraftForm.startDate)
+      const registrationCutoff = registrationCutoffRaw ? new Date(registrationCutoffRaw) : startDate
       if (templateDraftForm.registrationStartDate && templateDraftForm.registrationEndDate) {
         const regStartDate = new Date(templateDraftForm.registrationStartDate)
         const regEndDate = new Date(templateDraftForm.registrationEndDate)
@@ -889,7 +1222,7 @@ function NewTournamentPageInner() {
 
       if (templateDraftForm.registrationStartDate) {
         const regStartDate = new Date(templateDraftForm.registrationStartDate)
-        if (regStartDate > startDate) {
+        if (regStartDate > registrationCutoff) {
           alert('Registration start date cannot be later than tournament start date')
           return false
         }
@@ -897,7 +1230,7 @@ function NewTournamentPageInner() {
 
       if (templateDraftForm.registrationEndDate) {
         const regEndDate = new Date(templateDraftForm.registrationEndDate)
-        if (regEndDate > startDate) {
+        if (regEndDate > registrationCutoff) {
           alert('Registration end date cannot be later than tournament start date')
           return false
         }
@@ -1032,13 +1365,28 @@ function NewTournamentPageInner() {
             }
           : undefined
 
+      const templateTimezone =
+        normalizeKnownTimezone((selectedTemplate as any)?.config?.tournament?.timezone) ||
+        formData.timezone ||
+        getBrowserTimeZone()
+
       const res = await createDraftFromTemplate.mutateAsync({
         templateId: selectedTemplateId,
         title: templateDraftForm.title.trim() ? templateDraftForm.title.trim() : undefined,
-        startDate: templateDraftForm.startDate,
-        endDate: templateDraftForm.endDate,
-        registrationStartDate: templateDraftForm.registrationStartDate || undefined,
-        registrationEndDate: templateDraftForm.registrationEndDate || undefined,
+        startDate:
+          toUtcIsoFromLocalInput(templateDraftForm.startDate, templateTimezone) ||
+          templateDraftForm.startDate,
+        endDate:
+          toUtcIsoFromLocalInput(templateDraftForm.endDate, templateTimezone) ||
+          templateDraftForm.endDate,
+        registrationStartDate: templateDraftForm.registrationStartDate
+          ? toUtcIsoFromLocalInput(templateDraftForm.registrationStartDate, templateTimezone) ||
+            templateDraftForm.registrationStartDate
+          : undefined,
+        registrationEndDate: templateDraftForm.registrationEndDate
+          ? toUtcIsoFromLocalInput(templateDraftForm.registrationEndDate, templateTimezone) ||
+            templateDraftForm.registrationEndDate
+          : undefined,
         entryFeeCents,
         recurrence,
       })
@@ -1056,18 +1404,39 @@ function NewTournamentPageInner() {
 
   const handleClubSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value
+    const selected = clubs?.find((c) => c.id === selectedId)
     setSelectedTemplateId('')
     setFormData((prev) => {
       const next = { ...prev, clubId: selectedId }
       if (!selectedId) return next
-      const selected = clubs?.find((c) => c.id === selectedId)
       if (!selected) return next
+      const fallbackTimezone = guessTimeZoneFromLocation({
+        address: selected.address,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
       return {
         ...next,
         venueName: selected.name,
         venueAddress: selected.address || prev.venueAddress,
+        timezone: normalizeKnownTimezone(fallbackTimezone) || next.timezone,
       }
     })
+
+    if (selected?.address?.trim()) {
+      void syncTimezoneFromAddress(selected.address, {
+        normalizeAddress: true,
+        state: (selected as any).state,
+        country: (selected as any).country,
+      })
+      return
+    }
+    if (!selectedId) {
+      const currentAddress = (formData.venueAddress || '').trim()
+      if (currentAddress) {
+        void syncTimezoneFromAddress(currentAddress, { normalizeAddress: true })
+      }
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -1085,6 +1454,21 @@ function NewTournamentPageInner() {
         [name]: !value,
       }))
     }
+  }
+
+  const handleTournamentDateTimeFieldChange = (
+    name: 'startDate' | 'endDate',
+    value: string
+  ) => {
+    const normalized = normalizeRegistrationDateTime(value)
+    setFormData((prev) => ({
+      ...prev,
+      [name]: normalized,
+    }))
+    setRequiredErrors((prev) => ({
+      ...prev,
+      [name]: !normalized,
+    }))
   }
 
   const handleCancel = useCallback(() => {
@@ -1393,17 +1777,13 @@ function NewTournamentPageInner() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Start Date *
+                      Start Date & Time *
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="startDate"
                       name="startDate"
                       value={formData.startDate}
-                      onChange={handleChange}
-                      className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
-                        requiredErrors.startDate ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                      }`}
+                      onChange={(nextValue) => handleTournamentDateTimeFieldChange('startDate', nextValue)}
                     />
                     {requiredErrors.startDate ? (
                       <p className="mt-1 text-sm text-red-600">Start date is required.</p>
@@ -1412,18 +1792,14 @@ function NewTournamentPageInner() {
 
                   <div>
                     <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      End Date *
+                      End Date & Time *
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="endDate"
                       name="endDate"
                       value={formData.endDate}
-                      onChange={handleChange}
+                      onChange={(nextValue) => handleTournamentDateTimeFieldChange('endDate', nextValue)}
                       min={formData.startDate || undefined}
-                      className={`w-full pl-3 py-2 border rounded-md focus:outline-none focus:ring-2 pr-[2.5rem] ${
-                        requiredErrors.endDate ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                      }`}
                     />
                     {requiredErrors.endDate ? (
                       <p className="mt-1 text-sm text-red-600">End date is required.</p>
@@ -1434,34 +1810,58 @@ function NewTournamentPageInner() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="registrationStartDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Registration Start Date (optional)
+                      Registration Start (optional)
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="registrationStartDate"
                       name="registrationStartDate"
                       value={formData.registrationStartDate}
-                      onChange={handleChange}
-                      max={formData.startDate || undefined}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                      onChange={(nextValue) =>
+                        setFormData((prev) => ({ ...prev, registrationStartDate: normalizeRegistrationDateTime(nextValue) }))
+                      }
+                      max={getRegistrationMaxDateTime(formData.startDate)}
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
 
                   <div>
                     <label htmlFor="registrationEndDate" className="block text-sm font-medium text-gray-700 mb-2">
-                      Registration End Date (optional)
+                      Registration End (optional)
                     </label>
-                    <input
-                      type="date"
+                    <QuarterHourDateTimeInput
                       id="registrationEndDate"
                       name="registrationEndDate"
                       value={formData.registrationEndDate}
-                      onChange={handleChange}
+                      onChange={(nextValue) =>
+                        setFormData((prev) => ({ ...prev, registrationEndDate: normalizeRegistrationDateTime(nextValue) }))
+                      }
                       min={formData.registrationStartDate || undefined}
-                      max={formData.startDate || undefined}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                      max={getRegistrationMaxDateTime(formData.startDate)}
                     />
+                    <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                   </div>
+                </div>
+
+                <div>
+                  <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
+                    Timezone
+                  </label>
+                  <select
+                    id="timezone"
+                    name="timezone"
+                    value={formData.timezone}
+                    onChange={handleChange}
+                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                  >
+                    {timezoneOptions.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Auto-filled from venue location. All schedule dates/times are interpreted in this timezone.
+                  </p>
                 </div>
 
                 {ENABLE_RECURRING_DRAFTS ? (
@@ -1674,21 +2074,6 @@ function NewTournamentPageInner() {
                       />
                     </div>
 
-                    <div>
-                      <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-2">
-                        Timezone (optional)
-                      </label>
-                      <input
-                        type="text"
-                        id="timezone"
-                        name="timezone"
-                        value={formData.timezone}
-                        onChange={handleChange}
-                        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                        placeholder="e.g., America/New_York"
-                      />
-                      <p className="mt-1 text-sm text-gray-500">IANA timezone identifier</p>
-                    </div>
                   </>
                 ) : null}
 
@@ -1884,6 +2269,31 @@ function NewTournamentPageInner() {
                     </div>
                   ) : null}
                 </div>
+
+                {ENABLE_DEFERRED_PAYMENTS ? (
+                  <div>
+                    <label htmlFor="paymentTiming" className="block text-sm font-medium text-gray-700 mb-2">
+                      Payment Timing
+                    </label>
+                    <select
+                      id="paymentTiming"
+                      name="paymentTiming"
+                      value={formData.paymentTiming}
+                      onChange={handleChange}
+                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    >
+                      <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
+                      <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Players join first. If unpaid by the selected deadline, registration is canceled automatically.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                    Payment flow: players join and pay immediately.
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Tournament Image (optional)</label>
@@ -2153,24 +2563,32 @@ function NewTournamentPageInner() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration Start (optional)</label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
                     value={templateDraftForm.registrationStartDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationStartDate: e.target.value }))}
-                    max={templateDraftForm.startDate || undefined}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    onChange={(nextValue) =>
+                      setTemplateDraftForm((prev) => ({
+                        ...prev,
+                        registrationStartDate: normalizeRegistrationDateTime(nextValue),
+                      }))
+                    }
+                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Registration End (optional)</label>
-                  <input
-                    type="date"
+                  <QuarterHourDateTimeInput
                     value={templateDraftForm.registrationEndDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, registrationEndDate: e.target.value }))}
+                    onChange={(nextValue) =>
+                      setTemplateDraftForm((prev) => ({
+                        ...prev,
+                        registrationEndDate: normalizeRegistrationDateTime(nextValue),
+                      }))
+                    }
                     min={templateDraftForm.registrationStartDate || undefined}
-                    max={templateDraftForm.startDate || undefined}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
                   />
+                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
                 </div>
               </div>
 

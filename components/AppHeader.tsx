@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Settings, Bell } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Settings, Bell, Calendar } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Button } from '@/components/ui/button'
@@ -85,6 +85,30 @@ export default function AppHeader() {
   const notifications = notificationsData?.items ?? []
   const unreadCount = notificationsData?.unreadCount ?? 0
 
+  const { data: myChatClubs } = trpc.club.listMyChatClubs.useQuery(undefined, {
+    enabled: isLoggedIn,
+  })
+  const { data: myEventChats } = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
+    enabled: isLoggedIn,
+  })
+
+  const unreadChatsCount = useMemo(() => {
+    if (!isLoggedIn) return 0
+    const clubsUnread = (myChatClubs ?? []).reduce(
+      (sum: number, club: any) => sum + (club.unreadCount ?? 0),
+      0
+    )
+    const eventsUnread = (myEventChats ?? []).reduce((sum: number, event: any) => {
+      const eventUnread = event.unreadCount ?? 0
+      const divisionsUnread = (event.divisions ?? []).reduce(
+        (inner: number, division: any) => inner + (division.unreadCount ?? 0),
+        0
+      )
+      return sum + eventUnread + divisionsUnread
+    }, 0)
+    return clubsUnread + eventsUnread
+  }, [isLoggedIn, myChatClubs, myEventChats])
+
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-white border-b border-gray-200 shadow-sm">
@@ -110,6 +134,23 @@ export default function AppHeader() {
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
                   Clubs
+                </Link>
+                <Link
+                  href="/chats"
+                  className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  <span>Chats</span>
+                  {isLoggedIn && unreadChatsCount > 0 ? (
+                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white leading-none">
+                      {unreadChatsCount > 99 ? '99+' : unreadChatsCount}
+                    </span>
+                  ) : null}
+                </Link>
+                <Link
+                  href="/my-events"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  My Events
                 </Link>
                 <Link
                   href="/players"
@@ -279,6 +320,14 @@ export default function AppHeader() {
                           My Profile
                         </Link>
                         <Link
+                          href="/my-events"
+                          className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <Calendar className="h-4 w-4 text-gray-500" />
+                          My Events
+                        </Link>
+                        <Link
                           href="/admin"
                           className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
                           onClick={() => setUserMenuOpen(false)}
@@ -392,6 +441,25 @@ export default function AppHeader() {
                       onClick={() => setBurgerOpen(false)}
                     >
                       Clubs
+                    </Link>
+                    <Link
+                      href="/chats"
+                      className="flex items-center justify-between px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      <span>Chats</span>
+                      {isLoggedIn && unreadChatsCount > 0 ? (
+                        <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white leading-none">
+                          {unreadChatsCount > 99 ? '99+' : unreadChatsCount}
+                        </span>
+                      ) : null}
+                    </Link>
+                    <Link
+                      href="/my-events"
+                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      My Events
                     </Link>
                     <Link
                       href="/players"

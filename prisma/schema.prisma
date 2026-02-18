@@ -35,6 +35,11 @@ model User {
   clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
   clubChatMessages         ClubChatMessage[]
+  clubChatReadStates       ClubChatReadState[]
+  tournamentChatMessages   TournamentChatMessage[]
+  tournamentChatReadStates TournamentChatReadState[]
+  divisionChatMessages     DivisionChatMessage[]
+  divisionChatReadStates   DivisionChatReadState[]
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests         ClubJoinRequest[]
@@ -53,6 +58,10 @@ model User {
   organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
   stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
   tournamentInvitationsReceived TournamentInvitation[] @relation("InvitedUser")
+  stripeCustomerId         String?                   @map("stripe_customer_id")
+  stripeDefaultPaymentMethodId String?               @map("stripe_default_payment_method_id")
+  stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
+  stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
 
   @@map("users")
 }
@@ -123,6 +132,7 @@ model Tournament {
   entryFee                Decimal?                  @db.Decimal(10, 2)
   entryFeeCents           Int?                      @map("entry_fee_cents")
   currency                String                    @default("usd")
+  paymentTiming           PaymentTiming             @default(PAY_IN_15_MIN) @map("payment_timing")
   isPublicBoardEnabled    Boolean                   @default(false)
   publicSlug              String?                   @unique
   image                   String?
@@ -150,6 +160,8 @@ model Tournament {
   waitlistEntries         WaitlistEntry[]
   payments                Payment[]
   tournamentInvitations   TournamentInvitation[]
+  chatMessages            TournamentChatMessage[]
+  chatReadStates          TournamentChatReadState[]
   club                    Club?                     @relation(fields: [clubId], references: [id], onDelete: SetNull)
 
   @@index([clubId])
@@ -196,6 +208,7 @@ model Club {
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
   chatMessages       ClubChatMessage[]
+  chatReadStates     ClubChatReadState[]
   invites            ClubInvite[]
   bans               ClubBan[]
 
@@ -301,6 +314,90 @@ model ClubChatMessage {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_chat_messages")
+}
+
+model TournamentChatMessage {
+  id              String    @id @default(uuid())
+  tournamentId    String    @map("tournament_id")
+  userId          String    @map("user_id")
+  text            String
+  deletedAt       DateTime? @map("deleted_at")
+  deletedByUserId String?   @map("deleted_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
+  @@index([userId])
+  @@map("tournament_chat_messages")
+}
+
+model DivisionChatMessage {
+  id              String    @id @default(uuid())
+  divisionId      String    @map("division_id")
+  userId          String    @map("user_id")
+  text            String
+  deletedAt       DateTime? @map("deleted_at")
+  deletedByUserId String?   @map("deleted_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([divisionId, createdAt])
+  @@index([userId])
+  @@map("division_chat_messages")
+}
+
+model ClubChatReadState {
+  id         String   @id @default(uuid())
+  clubId     String   @map("club_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId, updatedAt])
+  @@map("club_chat_read_states")
+}
+
+model TournamentChatReadState {
+  id           String   @id @default(uuid())
+  tournamentId String   @map("tournament_id")
+  userId       String   @map("user_id")
+  lastReadAt   DateTime @default(now()) @map("last_read_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([userId, updatedAt])
+  @@map("tournament_chat_read_states")
+}
+
+model DivisionChatReadState {
+  id         String   @id @default(uuid())
+  divisionId String   @map("division_id")
+  userId     String   @map("user_id")
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([divisionId, userId])
+  @@index([userId, updatedAt])
+  @@map("division_chat_read_states")
 }
 
 model ClubInvite {
@@ -414,6 +511,8 @@ model Division {
   waitlistEntries       WaitlistEntry[]
   tournamentAccesses    TournamentAccess[]
   indyMatchups          IndyMatchup[]
+  chatMessages          DivisionChatMessage[]
+  chatReadStates        DivisionChatReadState[]
 
   @@map("divisions")
 }
@@ -547,6 +646,7 @@ model Payment {
   totalAmount             Decimal       @db.Decimal(10, 2) @map("total_amount")
   currency                String        @default("usd")
   status                  PaymentStatus @default(PENDING)
+  dueAt                   DateTime?     @map("due_at")
   stripeCheckoutSessionId String?       @map("stripe_checkout_session_id")
   stripePaymentIntentId   String?       @map("stripe_payment_intent_id")
   createdAt               DateTime      @default(now()) @map("created_at")
@@ -1071,6 +1171,11 @@ enum PaymentStatus {
   PAID
   CANCELED
   FAILED
+}
+
+enum PaymentTiming {
+  PAY_IN_15_MIN
+  PAY_BY_DEADLINE
 }
 
 enum PartnerWebhookEvent {

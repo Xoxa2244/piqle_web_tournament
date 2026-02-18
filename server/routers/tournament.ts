@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { guessTimeZoneFromLocation } from '@/lib/timezone'
+import { normalizeKnownTimezone } from '@/lib/timezoneList'
 import {
   assertTournamentAdmin,
   getUserTournamentIds,
@@ -151,6 +154,7 @@ const tournamentCreateInput = z.object({
   registrationEndDate: z.string().transform((str) => new Date(str)).optional(),
   entryFeeCents: z.number().int().min(0).optional(),
   currency: z.literal('usd').default('usd'),
+  paymentTiming: z.enum(['PAY_IN_15_MIN', 'PAY_BY_DEADLINE']).default('PAY_IN_15_MIN'),
   isPublicBoardEnabled: z.boolean().default(false),
   allowDuprSubmission: z.boolean().default(false),
   publicSlug: z.string().optional(),
@@ -169,6 +173,40 @@ const tournamentCreateInput = z.object({
   seasonLabel: z.string().optional(),
   timezone: z.string().optional(),
 })
+
+const getEffectivePaymentTiming = (
+  paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
+): 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' => {
+  if (!ENABLE_DEFERRED_PAYMENTS) return 'PAY_IN_15_MIN'
+  return paymentTiming === 'PAY_BY_DEADLINE' ? 'PAY_BY_DEADLINE' : 'PAY_IN_15_MIN'
+}
+
+const normalizeTimezoneInput = (value?: string | null) => {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  const known = normalizeKnownTimezone(normalized)
+  if (!known) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Unknown timezone: ${normalized}`,
+    })
+  }
+  return known
+}
+
+const resolveTimezoneFromVenue = (params: {
+  timezone?: string | null
+  venueAddress?: string | null
+  fallbackTimezone?: string | null
+}) => {
+  const explicit = normalizeTimezoneInput(params.timezone)
+  if (explicit) return explicit
+
+  const guessed = guessTimeZoneFromLocation({ address: params.venueAddress })
+  if (guessed) return guessed
+
+  return normalizeTimezoneInput(params.fallbackTimezone)
+}
 
 const playersPerTeamSchema = z.union([z.literal(1), z.literal(2), z.literal(4)])
 
@@ -274,6 +312,21 @@ const formatYmdUtc = (date: Date) => {
   return `${y}-${m}-${d}`
 }
 
+const getRegistrationCutoff = (startDate: Date) => {
+  const cutoff = new Date(startDate)
+  // Date-only inputs (YYYY-MM-DD) are parsed as 00:00:00 UTC.
+  // For those tournaments, allow registration until end of that day.
+  const isMidnightUtc =
+    cutoff.getUTCHours() === 0 &&
+    cutoff.getUTCMinutes() === 0 &&
+    cutoff.getUTCSeconds() === 0 &&
+    cutoff.getUTCMilliseconds() === 0
+  if (isMidnightUtc) {
+    cutoff.setUTCHours(23, 59, 59, 999)
+  }
+  return cutoff
+}
+
 const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) => {
   if (input.endDate < input.startDate) {
     throw new TRPCError({
@@ -283,6 +336,8 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
   }
 
   if (input.registrationStartDate || input.registrationEndDate) {
+    const registrationCutoff = getRegistrationCutoff(input.startDate)
+
     if (input.registrationStartDate && input.registrationEndDate) {
       if (input.registrationEndDate < input.registrationStartDate) {
         throw new TRPCError({
@@ -293,7 +348,7 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
     }
     
     if (input.registrationStartDate) {
-      if (input.registrationStartDate > input.startDate) {
+      if (input.registrationStartDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration start date cannot be later than tournament start date',
@@ -302,7 +357,7 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
     }
     
     if (input.registrationEndDate) {
-      if (input.registrationEndDate > input.startDate) {
+      if (input.registrationEndDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration end date cannot be later than tournament start date',
@@ -455,6 +510,11 @@ export const tournamentRouter = createTRPCRouter({
 
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -475,12 +535,13 @@ export const tournamentRouter = createTRPCRouter({
           entryFee: entryFeeDecimal,
           entryFeeCents,
           currency: input.currency,
+          paymentTiming,
           isPublicBoardEnabled: input.isPublicBoardEnabled,
           allowDuprSubmission: input.allowDuprSubmission,
           image: input.image,
           format: input.format,
           seasonLabel: input.seasonLabel,
-          timezone: input.timezone,
+          timezone,
           userId: ctx.session.user.id,
           publicSlug,
         },
@@ -513,6 +574,11 @@ export const tournamentRouter = createTRPCRouter({
       const publicSlug = await getUniqueTournamentSlug(ctx, input)
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -534,12 +600,13 @@ export const tournamentRouter = createTRPCRouter({
             entryFee: entryFeeDecimal,
             entryFeeCents,
             currency: input.currency,
+            paymentTiming,
             isPublicBoardEnabled: input.isPublicBoardEnabled,
             allowDuprSubmission: input.allowDuprSubmission,
             image: input.image,
             format: input.format,
             seasonLabel: input.seasonLabel,
-            timezone: input.timezone,
+            timezone,
             userId: ctx.session.user.id,
             publicSlug,
             hasDivisions,
@@ -582,6 +649,11 @@ export const tournamentRouter = createTRPCRouter({
 
       const hasDivisions = input.structure.mode === 'WITH_DIVISIONS'
       const entryFeeCents = input.entryFeeCents ?? 0
+      const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
+      const timezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress: input.venueAddress,
+      })
       const entryFeeDecimal =
         entryFeeCents > 0
           ? new Prisma.Decimal(entryFeeCents / 100)
@@ -681,12 +753,13 @@ export const tournamentRouter = createTRPCRouter({
               entryFee: entryFeeDecimal,
               entryFeeCents,
               currency: input.currency,
+              paymentTiming,
               isPublicBoardEnabled: false, // always draft for series
               allowDuprSubmission: input.allowDuprSubmission,
               image: input.image,
               format: input.format,
               seasonLabel: input.seasonLabel,
-              timezone: input.timezone,
+              timezone,
               userId: ctx.session.user.id,
               publicSlug: occSlug,
               hasDivisions,
@@ -937,8 +1010,10 @@ export const tournamentRouter = createTRPCRouter({
       endDate: z.string().transform((str) => new Date(str)).optional(),
       registrationStartDate: z.string().transform((str) => new Date(str)).optional().nullable(),
       registrationEndDate: z.string().transform((str) => new Date(str)).optional().nullable(),
+      timezone: z.string().optional().nullable(),
       entryFeeCents: z.number().int().min(0).optional(),
       currency: z.literal('usd').optional(),
+      paymentTiming: z.enum(['PAY_IN_15_MIN', 'PAY_BY_DEADLINE']).optional(),
       isPublicBoardEnabled: z.boolean().optional(),
       allowDuprSubmission: z.boolean().optional(),
       publicSlug: z.string().optional(),
@@ -957,6 +1032,8 @@ export const tournamentRouter = createTRPCRouter({
           registrationStartDate: true,
           registrationEndDate: true,
           allowDuprSubmission: true,
+          timezone: true,
+          venueAddress: true,
         },
       })
 
@@ -988,6 +1065,7 @@ export const tournamentRouter = createTRPCRouter({
 
       // Validate registration dates if provided
       if (registrationStartDate !== null || registrationEndDate !== null) {
+        const registrationCutoff = getRegistrationCutoff(startDate)
         if (registrationStartDate && registrationEndDate) {
           // Registration end date cannot be earlier than registration start date
           if (registrationEndDate < registrationStartDate) {
@@ -1000,7 +1078,7 @@ export const tournamentRouter = createTRPCRouter({
         
         if (registrationStartDate) {
           // Registration start date cannot be later than tournament start date
-          if (registrationStartDate > startDate) {
+          if (registrationStartDate > registrationCutoff) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'Registration start date cannot be later than tournament start date',
@@ -1010,7 +1088,7 @@ export const tournamentRouter = createTRPCRouter({
         
         if (registrationEndDate) {
           // Registration end date cannot be later than tournament start date
-          if (registrationEndDate > startDate) {
+          if (registrationEndDate > registrationCutoff) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: 'Registration end date cannot be later than tournament start date',
@@ -1026,11 +1104,19 @@ export const tournamentRouter = createTRPCRouter({
             ? new Prisma.Decimal(entryFeeCents / 100)
             : null
           : undefined
+      const resolvedTimezone = resolveTimezoneFromVenue({
+        timezone: input.timezone,
+        venueAddress:
+          input.venueAddress !== undefined ? input.venueAddress : currentTournament.venueAddress,
+        fallbackTimezone: currentTournament.timezone,
+      })
 
       const data = {
         ...rest,
         entryFee: entryFeeDecimal,
         entryFeeCents,
+        timezone: resolvedTimezone,
+        ...(ENABLE_DEFERRED_PAYMENTS ? {} : { paymentTiming: 'PAY_IN_15_MIN' as const }),
       }
 
       const tournament = await ctx.prisma.tournament.update({

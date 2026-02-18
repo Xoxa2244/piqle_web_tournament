@@ -120,6 +120,7 @@ const templateConfigV1Schema = z.object({
     format: tournamentFormatSchema,
     allowDuprSubmission: z.boolean().optional(),
     currency: z.string().optional(),
+    paymentTiming: z.enum(['PAY_IN_15_MIN', 'PAY_BY_DEADLINE']).optional(),
     timezone: z.string().nullable().optional(),
     seasonLabel: z.string().nullable().optional(),
   }),
@@ -132,6 +133,16 @@ const validateTournamentDates = (input: {
   registrationStartDate?: Date
   registrationEndDate?: Date
 }) => {
+  const registrationCutoff = new Date(input.startDate)
+  const isMidnightUtc =
+    registrationCutoff.getUTCHours() === 0 &&
+    registrationCutoff.getUTCMinutes() === 0 &&
+    registrationCutoff.getUTCSeconds() === 0 &&
+    registrationCutoff.getUTCMilliseconds() === 0
+  if (isMidnightUtc) {
+    registrationCutoff.setUTCHours(23, 59, 59, 999)
+  }
+
   if (input.endDate < input.startDate) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -150,7 +161,7 @@ const validateTournamentDates = (input: {
     }
 
     if (input.registrationStartDate) {
-      if (input.registrationStartDate > input.startDate) {
+      if (input.registrationStartDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration start date cannot be later than tournament start date',
@@ -159,7 +170,7 @@ const validateTournamentDates = (input: {
     }
 
     if (input.registrationEndDate) {
-      if (input.registrationEndDate > input.startDate) {
+      if (input.registrationEndDate > registrationCutoff) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Registration end date cannot be later than tournament start date',
@@ -437,6 +448,7 @@ export const clubTemplateRouter = createTRPCRouter({
               entryFee: entryFeeDecimal,
               entryFeeCents,
               currency: (config.tournament.currency ?? 'usd') as string,
+              paymentTiming: (config.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as any,
               isPublicBoardEnabled: false, // always draft
               allowDuprSubmission: Boolean(config.tournament.allowDuprSubmission),
               format: config.tournament.format,
@@ -712,6 +724,7 @@ export const clubTemplateRouter = createTRPCRouter({
           format: tournament.format,
           allowDuprSubmission: Boolean(tournament.allowDuprSubmission),
           currency: tournament.currency ?? 'usd',
+          paymentTiming: (tournament as any).paymentTiming ?? 'PAY_IN_15_MIN',
           timezone: tournament.timezone ?? null,
           seasonLabel: tournament.seasonLabel ?? null,
         },
