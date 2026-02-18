@@ -42,6 +42,13 @@ export const getTimezoneOptions = () => {
 
 export const getAllTimezones = () => getTimezoneOptions().map((option) => option.value)
 
+export const getTimezoneOptionLabel = (value?: string | null) => {
+  const normalized = normalizeKnownTimezone(value)
+  if (!normalized) return null
+  const option = getTimezoneOptions().find((item) => item.value === normalized)
+  return option?.label ?? null
+}
+
 const isValidIanaTimezone = (value: string) => {
   try {
     Intl.DateTimeFormat('en-US', { timeZone: value })

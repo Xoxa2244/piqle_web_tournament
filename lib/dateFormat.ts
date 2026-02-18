@@ -1,3 +1,5 @@
+import { getTimezoneOptionLabel, normalizeKnownTimezone } from '@/lib/timezoneList'
+
 type DateFormatOptions = {
   timeZone?: string | null
 }
@@ -69,6 +71,13 @@ const getUsDateFormatter = (timeZone?: string | null) => {
 export const getTimezoneLabel = (timeZone?: string | null) => {
   const tz = String(timeZone || '').trim()
   if (!tz) return 'Local time'
+  const presetLabel = getTimezoneOptionLabel(tz)
+  if (presetLabel) return presetLabel
+  const normalized = normalizeKnownTimezone(tz)
+  if (normalized && normalized !== tz) {
+    const normalizedLabel = getTimezoneOptionLabel(normalized)
+    if (normalizedLabel) return normalizedLabel
+  }
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
