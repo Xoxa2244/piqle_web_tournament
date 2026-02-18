@@ -401,20 +401,38 @@ export const registrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Registration not found' })
       }
 
-      await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.teamPlayer.delete({ where: { id: teamPlayer.id } })
 
-      await ctx.prisma.auditLog.create({
-        data: {
-          actorUserId: ctx.session.user.id,
-          tournamentId: input.tournamentId,
-          action: 'PLAYER_CANCEL_REGISTRATION',
-          entityType: 'TeamPlayer',
-          entityId: teamPlayer.id,
-          payload: {
-            teamId: teamPlayer.teamId,
-            divisionId: teamPlayer.team.divisionId,
+        await tx.waitlistEntry.deleteMany({
+          where: {
+            playerId: player.id,
+            tournamentId: input.tournamentId,
           },
-        },
+        })
+
+        // Keep historical relations (payments/rosters) but remove player from tournament membership.
+        await tx.player.update({
+          where: { id: player.id },
+          data: {
+            tournamentId: null,
+            isWaitlist: false,
+          },
+        })
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+            action: 'PLAYER_CANCEL_REGISTRATION',
+            entityType: 'TeamPlayer',
+            entityId: teamPlayer.id,
+            payload: {
+              teamId: teamPlayer.teamId,
+              divisionId: teamPlayer.team.divisionId,
+            },
+          },
+        })
       })
 
       return { success: true }
