@@ -30,18 +30,8 @@ export const matchDayRouter = createTRPCRouter({
         })
       }
 
-      // Check if date is in the future (or today)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
       const matchDate = new Date(input.date)
       matchDate.setHours(0, 0, 0, 0)
-
-      if (matchDate < today) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Match day date must be today or in the future',
-        })
-      }
 
       // Check if match day with this date already exists for this tournament
       const existingMatchDay = await ctx.prisma.matchDay.findFirst({

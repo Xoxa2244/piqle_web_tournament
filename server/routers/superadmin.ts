@@ -101,6 +101,46 @@ export const superadminRouter = createTRPCRouter({
       return users
     }),
 
+  listPlayers: publicProcedure
+    .input(z.object({ query: z.string().max(120).optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const query = input?.query?.trim()
+      const where = query
+        ? {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' as const } },
+              { email: { contains: query, mode: 'insensitive' as const } },
+              { city: { contains: query, mode: 'insensitive' as const } },
+            ],
+          }
+        : undefined
+      const users = await ctx.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          city: true,
+          gender: true,
+          isActive: true,
+        },
+      })
+      return users
+    }),
+
+  setUserActive: publicProcedure
+    .input(z.object({ userId: z.string(), isActive: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await ctx.prisma.user.update({
+        where: { id: input.userId },
+        data: { isActive: input.isActive },
+        select: { id: true, isActive: true },
+      })
+      return user
+    }),
+
   // Get tournament by ID (no access checks)
   getTournament: publicProcedure
     .input(z.object({ id: z.string() }))

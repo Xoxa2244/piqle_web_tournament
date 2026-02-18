@@ -49,6 +49,8 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      // Allow linking Google account to an existing user with the same verified email.
+      allowDangerousEmailAccountLinking: true,
     }),
     EmailProvider({
       server: {
@@ -205,8 +207,8 @@ export const authOptions: NextAuthOptions = {
       if (url && url.startsWith(baseUrl)) {
         return url
       }
-      // Default to /admin
-      return `${baseUrl}/admin`
+      // Default to home page
+      return `${baseUrl}/`
     },
     async session({ session, user, token }) {
       const userId = session?.user?.id || user?.id || token?.sub

@@ -33,6 +33,123 @@ const maskEmail = (email: string | null | undefined) => {
   }
 }
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+const resolveAppBaseUrl = (baseUrlFromClient?: string | null) => {
+  const fromClient = String(baseUrlFromClient ?? '').trim()
+  if (fromClient) {
+    try {
+      const parsed = new URL(fromClient)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return `${parsed.protocol}//${parsed.host}`
+      }
+    } catch {
+      // Fall through to env.
+    }
+  }
+
+  const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+  if (env) {
+    const normalized = env.startsWith('http') ? env : `https://${env}`
+    return normalized.replace(/\/$/, '')
+  }
+
+  return 'http://localhost:3000'
+}
+
+const buildClubInviteEmailHtml = (args: {
+  baseUrl: string
+  inviteUrl: string
+  inviterName: string
+  clubName: string
+  clubLogoUrl?: string | null
+  inviteeName?: string | null
+  inviteeEmail: string
+  city?: string | null
+  state?: string | null
+}) => {
+  const {
+    baseUrl,
+    inviteUrl,
+    inviterName,
+    clubName,
+    clubLogoUrl,
+    inviteeName,
+    inviteeEmail,
+    city,
+    state,
+  } = args
+  const safeClubName = escapeHtml(clubName)
+  const safeInviterName = escapeHtml(inviterName)
+  const safeInviteeName = inviteeName ? escapeHtml(inviteeName) : null
+  const safeInviteeEmail = escapeHtml(inviteeEmail)
+  const safeInviteUrl = escapeHtml(inviteUrl)
+  const safeLocation = [city, state]
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean)
+    .join(', ')
+  const logoUrl = `${baseUrl}/Logo.png`
+  const clubImageUrl = clubLogoUrl || `${baseUrl}/tournament-placeholder.png`
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitation: ${safeClubName}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="Logo" width="120" height="40" style="display: block; max-width: 120px; height: auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #ffffff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 28px 24px 20px; text-align: center;">
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #6b7280;">${safeInviteeName ? `Hi ${safeInviteeName},` : 'Hi,'}</p>
+                    <p style="margin: 0 0 20px; font-size: 15px; color: #6b7280;">${safeInviterName} invited you to join this club</p>
+                    <img src="${clubImageUrl}" alt="" width="80" height="80" style="display: block; width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 0 auto 12px;" />
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">${safeClubName}</h1>
+                    ${safeLocation ? `<p style="margin: 8px 0 0; font-size: 13px; color: #6b7280;">${escapeHtml(safeLocation)}</p>` : ''}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 20px 24px 28px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0 0 16px; font-size: 13px; color: #6b7280;">Use this button to open the club page and join.</p>
+                    <a href="${safeInviteUrl}" style="display: inline-block; padding: 12px 24px; background: #22c55e; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Join club</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 0; text-align: center; font-size: 12px; color: #9ca3af;">
+              This invitation was sent to ${safeInviteeEmail}. If you were not expecting this email, you can ignore it.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
 const decimalToNumber = (val: any): number | null => {
   if (val === null || val === undefined) return null
   if (typeof val === 'number') return Number.isFinite(val) ? val : null
@@ -963,6 +1080,7 @@ export const clubRouter = createTRPCRouter({
           clubId: z.string(),
           inviteeUserId: z.string().optional(),
           inviteeEmail: z.string().email().optional(),
+          baseUrl: z.string().optional().nullable(),
         })
         .refine((v) => Boolean(v.inviteeUserId || v.inviteeEmail), {
           message: 'Invitee is required',
@@ -974,7 +1092,7 @@ export const clubRouter = createTRPCRouter({
       const [club, adminRole] = await Promise.all([
         ctx.prisma.club.findUnique({
           where: { id: input.clubId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, logoUrl: true, city: true, state: true },
         }),
         ctx.prisma.clubAdmin.findUnique({
           where: { clubId_userId: { clubId: input.clubId, userId: inviterUserId } },
@@ -1022,17 +1140,7 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invitee email is required' })
       }
 
-      const baseUrlRaw =
-        process.env.NEXT_PUBLIC_APP_URL ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
-        ''
-      const baseUrl = baseUrlRaw.replace(/\/$/, '')
-      if (!baseUrl) {
-        throw new TRPCError({
-          code: 'PRECONDITION_FAILED',
-          message: 'App URL is not configured (NEXT_PUBLIC_APP_URL)',
-        })
-      }
+      const baseUrl = resolveAppBaseUrl(input.baseUrl)
 
       const inviteUrl = `${baseUrl}/clubs/${club.id}?ref=invite`
 
@@ -1144,12 +1252,24 @@ ${inviterName} invited you to join the club "${club.name}" on Piqle.
 Join here: ${inviteUrl}
 
 If you weren’t expecting this, you can ignore this email.`
+      const html = buildClubInviteEmailHtml({
+        baseUrl,
+        inviteUrl,
+        inviterName,
+        clubName: club.name,
+        clubLogoUrl: club.logoUrl,
+        inviteeName: toName,
+        inviteeEmail: toEmail,
+        city: club.city,
+        state: club.state,
+      })
 
       await transporter.sendMail({
         from: fromAddress,
         to: toEmail,
         subject,
         text,
+        html,
       })
 
       if (inviteId) {

@@ -999,4 +999,84 @@ export const publicRouter = createTRPCRouter({
         bracketSize: B,
       }
     }),
+
+  getIndyMatchDays: publicProcedure
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: { id: true, isPublicBoardEnabled: true, format: true },
+      })
+
+      if (!tournament || !tournament.isPublicBoardEnabled) {
+        throw new Error('Tournament not found or public board disabled')
+      }
+      if (tournament.format !== 'INDY_LEAGUE') return []
+
+      return ctx.prisma.matchDay.findMany({
+        where: { tournamentId: input.tournamentId },
+        select: {
+          id: true,
+          date: true,
+          status: true,
+        },
+        orderBy: { date: 'asc' },
+      })
+    }),
+
+  getIndyMatchupsByDay: publicProcedure
+    .input(z.object({ matchDayId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const matchDay = await ctx.prisma.matchDay.findUnique({
+        where: { id: input.matchDayId },
+        select: {
+          id: true,
+          tournament: { select: { id: true, isPublicBoardEnabled: true, format: true } },
+        },
+      })
+
+      if (!matchDay || !matchDay.tournament.isPublicBoardEnabled) {
+        throw new Error('Match day not found or public board disabled')
+      }
+      if (matchDay.tournament.format !== 'INDY_LEAGUE') return []
+
+      return ctx.prisma.indyMatchup.findMany({
+        where: { matchDayId: input.matchDayId },
+        include: {
+          division: {
+            select: { id: true, name: true },
+          },
+          homeTeam: {
+            select: { id: true, name: true },
+          },
+          awayTeam: {
+            select: { id: true, name: true },
+          },
+          court: {
+            select: { id: true, name: true },
+          },
+          rosters: {
+            include: {
+              player: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          games: {
+            orderBy: { order: 'asc' },
+            select: {
+              id: true,
+              order: true,
+              homeScore: true,
+              awayScore: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+    }),
 })

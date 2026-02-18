@@ -6,74 +6,148 @@ export const importRouter = createTRPCRouter({
   resetTournament: tdProcedure
     .input(z.object({ tournamentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // Delete all related data in correct order (respecting foreign keys)
-      await ctx.prisma.auditLog.deleteMany({
-        where: { tournamentId: input.tournamentId }
-      })
-      
-      await ctx.prisma.match.deleteMany({
-        where: { 
-          OR: [
-            { division: { tournamentId: input.tournamentId } },
-            { rrGroup: { tournamentId: input.tournamentId } }
-          ]
+      const tournamentId = input.tournamentId
+
+      // Collect IDs to clean partner external mappings for deleted entities.
+      const [divisionRows, teamRows, playerRows, matchDayRows, matchupRows] = await Promise.all([
+        ctx.prisma.division.findMany({
+          where: { tournamentId },
+          select: { id: true },
+        }),
+        ctx.prisma.team.findMany({
+          where: { division: { tournamentId } },
+          select: { id: true },
+        }),
+        ctx.prisma.player.findMany({
+          where: { tournamentId },
+          select: { id: true },
+        }),
+        ctx.prisma.matchDay.findMany({
+          where: { tournamentId },
+          select: { id: true },
+        }),
+        ctx.prisma.indyMatchup.findMany({
+          where: { matchDay: { tournamentId } },
+          select: { id: true },
+        }),
+      ])
+
+      const divisionIds = divisionRows.map((r) => r.id)
+      const teamIds = teamRows.map((r) => r.id)
+      const playerIds = playerRows.map((r) => r.id)
+      const matchDayIds = matchDayRows.map((r) => r.id)
+      const matchupIds = matchupRows.map((r) => r.id)
+
+      await ctx.prisma.$transaction(async (tx) => {
+        // Remove partner mappings for entities that will be deleted.
+        if (divisionIds.length > 0) {
+          await tx.externalIdMapping.deleteMany({
+            where: { entityType: 'DIVISION', internalId: { in: divisionIds } },
+          })
         }
-      })
-      
-      await ctx.prisma.standing.deleteMany({
-        where: { 
-          OR: [
-            { division: { tournamentId: input.tournamentId } },
-            { rrGroup: { tournamentId: input.tournamentId } }
-          ]
+        if (teamIds.length > 0) {
+          await tx.externalIdMapping.deleteMany({
+            where: { entityType: 'TEAM', internalId: { in: teamIds } },
+          })
         }
-      })
-      
-      await ctx.prisma.teamPlayer.deleteMany({
-        where: { team: { division: { tournamentId: input.tournamentId } } }
-      })
-      
-      await ctx.prisma.team.deleteMany({
-        where: { division: { tournamentId: input.tournamentId } }
-      })
-      
-      await ctx.prisma.pool.deleteMany({
-        where: { division: { tournamentId: input.tournamentId } }
-      })
-      
-      await ctx.prisma.divisionRRBinding.deleteMany({
-        where: { division: { tournamentId: input.tournamentId } }
-      })
-      
-      await ctx.prisma.roundRobinGroup.deleteMany({
-        where: { tournamentId: input.tournamentId }
-      })
-      
-      await ctx.prisma.divisionConstraints.deleteMany({
-        where: { division: { tournamentId: input.tournamentId } }
-      })
-      
-      await ctx.prisma.division.deleteMany({
-        where: { tournamentId: input.tournamentId }
-      })
-      
-      await ctx.prisma.prize.deleteMany({
-        where: { tournamentId: input.tournamentId }
+        if (playerIds.length > 0) {
+          await tx.externalIdMapping.deleteMany({
+            where: { entityType: 'PLAYER', internalId: { in: playerIds } },
+          })
+        }
+        if (matchDayIds.length > 0) {
+          await tx.externalIdMapping.deleteMany({
+            where: { entityType: 'MATCH_DAY', internalId: { in: matchDayIds } },
+          })
+        }
+        if (matchupIds.length > 0) {
+          await tx.externalIdMapping.deleteMany({
+            where: { entityType: 'MATCHUP', internalId: { in: matchupIds } },
+          })
+        }
+
+        // Tournament-scoped mutable data.
+        await tx.auditLog.deleteMany({ where: { tournamentId } })
+        await tx.tournamentComment.deleteMany({ where: { tournamentId } })
+        await tx.tournamentRating.deleteMany({ where: { tournamentId } })
+        await tx.tournamentInvitation.deleteMany({ where: { tournamentId } })
+        await tx.importJob.deleteMany({ where: { tournamentId } })
+        await tx.waitlistEntry.deleteMany({ where: { tournamentId } })
+        await tx.payment.deleteMany({ where: { tournamentId } })
+
+        // Indy League structures.
+        await tx.dayRoster.deleteMany({
+          where: { matchup: { matchDay: { tournamentId } } },
+        })
+        await tx.indyGame.deleteMany({
+          where: { matchup: { matchDay: { tournamentId } } },
+        })
+        await tx.indyMatchup.deleteMany({
+          where: { matchDay: { tournamentId } },
+        })
+        await tx.matchDay.deleteMany({ where: { tournamentId } })
+
+        // Brackets / RR structures.
+        await tx.tiebreaker.deleteMany({
+          where: {
+            match: {
+              OR: [{ division: { tournamentId } }, { rrGroup: { tournamentId } }],
+            },
+          },
+        })
+        await tx.game.deleteMany({
+          where: {
+            match: {
+              OR: [{ division: { tournamentId } }, { rrGroup: { tournamentId } }],
+            },
+          },
+        })
+        await tx.match.deleteMany({
+          where: {
+            OR: [{ division: { tournamentId } }, { rrGroup: { tournamentId } }],
+          },
+        })
+        await tx.standing.deleteMany({
+          where: {
+            OR: [{ division: { tournamentId } }, { rrGroup: { tournamentId } }],
+          },
+        })
+
+        // Teams/divisions/players.
+        await tx.teamPlayer.deleteMany({
+          where: {
+            OR: [{ team: { division: { tournamentId } } }, { player: { tournamentId } }],
+          },
+        })
+        await tx.team.deleteMany({ where: { division: { tournamentId } } })
+        await tx.pool.deleteMany({ where: { division: { tournamentId } } })
+        await tx.divisionRRBinding.deleteMany({
+          where: {
+            OR: [{ division: { tournamentId } }, { rrGroup: { tournamentId } }],
+          },
+        })
+        await tx.roundRobinGroup.deleteMany({ where: { tournamentId } })
+        await tx.divisionConstraints.deleteMany({
+          where: { division: { tournamentId } },
+        })
+        await tx.division.deleteMany({ where: { tournamentId } })
+        await tx.prize.deleteMany({ where: { tournamentId } })
+        await tx.player.deleteMany({ where: { tournamentId } })
+
+        // Keep tournament row/settings/public slug intact and write fresh reset log.
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId,
+            action: 'RESET',
+            entityType: 'Tournament',
+            entityId: tournamentId,
+            payload: { message: 'Tournament data reset - tournament settings preserved' },
+          },
+        })
       })
 
-      // Log the reset
-      await ctx.prisma.auditLog.create({
-        data: {
-          actorUserId: ctx.session.user.id,
-          tournamentId: input.tournamentId,
-          action: 'RESET',
-          entityType: 'Tournament',
-          entityId: input.tournamentId,
-          payload: { message: 'Tournament reset - all data cleared' },
-        },
-      })
-
-      return { success: true, message: 'Tournament reset successfully' }
+      return { success: true, message: 'Tournament data reset successfully' }
     }),
 
   importCSV: tdProcedure
