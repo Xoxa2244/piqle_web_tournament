@@ -144,6 +144,12 @@ function isRegistrationOpen(tournament: {
   return now >= start && now <= end
 }
 
+function formatDateValue(value: unknown): string {
+  if (!value) return '—'
+  const date = new Date(value as string | number | Date)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
+}
+
 export type TournamentModalProps = {
   tournamentId: string | null
   onClose: () => void
@@ -285,11 +291,13 @@ export default function TournamentModal({
     )
   }
 
-  const divisions = tournament.divisions ?? []
   const tournamentAny = tournament as any
+  const divisions = Array.isArray(tournamentAny?.divisions) ? tournamentAny.divisions : []
   const imageValue = tournamentAny?.image
   const tournamentTitle = String(tournamentAny?.title ?? '')
   const tournamentIdStr = String(tournamentAny?.id ?? '')
+  const tournamentVenueName =
+    typeof tournamentAny?.venueName === 'string' ? tournamentAny.venueName : ''
   const tournamentPublicSlug =
     typeof tournamentAny?.publicSlug === 'string' && tournamentAny.publicSlug.trim() !== ''
       ? tournamentAny.publicSlug
@@ -300,7 +308,19 @@ export default function TournamentModal({
   } as any)
   const tournamentImage =
     typeof imageValue === 'string' && imageValue.trim() !== '' ? imageValue : null
-  const entryFeeNum = tournament.entryFee != null ? Number(tournament.entryFee) : 0
+  const tournamentDescription =
+    typeof tournamentAny?.description === 'string' ? tournamentAny.description : ''
+  const entryFeeNum = tournamentAny?.entryFee != null ? Number(tournamentAny.entryFee) : 0
+  const registrationStartDate = tournamentAny?.registrationStartDate ?? null
+  const registrationEndDate = tournamentAny?.registrationEndDate ?? null
+  const tournamentUser =
+    tournamentAny?.user && typeof tournamentAny.user === 'object' ? tournamentAny.user : null
+  const tournamentUserId = tournamentUser?.id ? String(tournamentUser.id) : ''
+  const tournamentUserName = typeof tournamentUser?.name === 'string' ? tournamentUser.name : null
+  const tournamentUserEmail =
+    typeof tournamentUser?.email === 'string' ? tournamentUser.email : null
+  const tournamentUserImage =
+    typeof tournamentUser?.image === 'string' ? tournamentUser.image : null
 
   return (
     <>
@@ -338,7 +358,7 @@ export default function TournamentModal({
             <div className="flex items-center gap-2">
               {(tournament as { user?: { id: string } }).user?.id === session?.user?.id && (
                 <>
-                  <Link href={`/admin/${tournament.id}`}>
+                  <Link href={`/admin/${tournamentIdStr}`}>
                     <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
                   </Link>
                   {tournamentPublicSlug && (
@@ -497,15 +517,15 @@ export default function TournamentModal({
                       {getTournamentStatusLabel(tournamentStatus)}
                     </span>
                   </div>
-                  {tournament.description && (
+                  {tournamentDescription && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
                       <div
                         className={`text-gray-700 whitespace-pre-wrap break-words prose prose-sm max-w-none ${!descriptionExpanded ? 'line-clamp-3' : ''}`}
-                        dangerouslySetInnerHTML={{ __html: formatDescription(tournament.description) }}
+                        dangerouslySetInnerHTML={{ __html: formatDescription(tournamentDescription) }}
                       />
-                      {(tournament.description.split('\n').length > 3 ||
-                        tournament.description.length > 150) && (
+                      {(tournamentDescription.split('\n').length > 3 ||
+                        tournamentDescription.length > 150) && (
                         <button
                           onClick={() => setDescriptionExpanded(!descriptionExpanded)}
                           className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
@@ -521,31 +541,20 @@ export default function TournamentModal({
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {new Date(tournament.startDate).toLocaleDateString()} -{' '}
-                          {new Date(tournament.endDate).toLocaleDateString()}
+                          {formatDateValue(tournamentAny?.startDate)} -{' '}
+                          {formatDateValue(tournamentAny?.endDate)}
                         </span>
                       </div>
-                      {((tournament as { registrationStartDate?: string | null }).registrationStartDate ||
-                        (tournament as { registrationEndDate?: string | null }).registrationEndDate) && (
+                      {(registrationStartDate || registrationEndDate) && (
                         <div className="flex items-center text-sm text-gray-600">
                           <ClipboardList className="h-4 w-4 mr-2" />
                           <span>
-                            Registration:{' '}
-                            {(tournament as { registrationStartDate?: string }).registrationStartDate
-                              ? new Date(
-                                  (tournament as { registrationStartDate: string }).registrationStartDate
-                                ).toLocaleDateString()
-                              : '—'}{' '}
-                            –{' '}
-                            {(tournament as { registrationEndDate?: string }).registrationEndDate
-                              ? new Date(
-                                  (tournament as { registrationEndDate: string }).registrationEndDate
-                                ).toLocaleDateString()
-                              : '—'}
+                            Registration: {formatDateValue(registrationStartDate)} –{' '}
+                            {formatDateValue(registrationEndDate)}
                           </span>
                         </div>
                       )}
-                      {tournament.venueName && (
+                      {tournamentVenueName && (
                         <div
                           role={onVenueClick ? 'button' : undefined}
                           tabIndex={onVenueClick ? 0 : undefined}
@@ -553,7 +562,7 @@ export default function TournamentModal({
                             onVenueClick
                               ? () => {
                                   onClose()
-                                  onVenueClick(tournament.id)
+                                  onVenueClick(tournamentIdStr)
                                 }
                               : undefined
                           }
@@ -563,7 +572,7 @@ export default function TournamentModal({
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault()
                                     onClose()
-                                    onVenueClick(tournament.id)
+                                    onVenueClick(tournamentIdStr)
                                   }
                                 }
                               : undefined
@@ -571,7 +580,7 @@ export default function TournamentModal({
                           className={`flex items-center text-sm ${onVenueClick ? 'cursor-pointer hover:underline' : ''} ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
                         >
                           <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>{tournament.venueName}</span>
+                          <span>{tournamentVenueName}</span>
                         </div>
                       )}
                       <div className="flex items-center text-sm text-gray-600">
@@ -600,34 +609,24 @@ export default function TournamentModal({
                       </div>
                     </div>
                   )}
-                  {(tournament as { user?: { id: string; name?: string | null; image?: string | null; email?: string | null } }).user && (
+                  {tournamentUserId && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
                       <Link
                         href={
-                          session?.user?.id &&
-                          String((tournament as { user: { id: string } }).user.id) === String(session.user.id)
+                          session?.user?.id && tournamentUserId === String(session.user.id)
                             ? '/profile'
-                            : `/profile/${(tournament as { user: { id: string } }).user.id}`
+                            : `/profile/${tournamentUserId}`
                         }
                         className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
                       >
                         <AvatarImage
-                          src={(tournament as { user: { image?: string | null } }).user.image}
-                          alt={
-                            (tournament as { user: { name?: string | null; email?: string | null } }).user
-                              .name ||
-                            (tournament as { user: { email?: string | null } }).user.email ||
-                            'TD'
-                          }
-                          userId={(tournament as { user: { id: string } }).user.id}
+                          src={tournamentUserImage}
+                          alt={tournamentUserName || tournamentUserEmail || 'TD'}
+                          userId={tournamentUserId}
                           size={32}
                         />
-                        <span className="font-medium">
-                          {(tournament as { user: { name?: string | null; email?: string | null } }).user
-                            .name ||
-                            (tournament as { user: { email?: string | null } }).user.email}
-                        </span>
+                        <span className="font-medium">{tournamentUserName || tournamentUserEmail}</span>
                       </Link>
                     </div>
                   )}
@@ -775,7 +774,7 @@ export default function TournamentModal({
             {modalTab === 'view-results' && (
               <div className="flex-1 min-h-0 flex flex-col">
                 <iframe
-                  src={`/scoreboard/${tournament.id}/embed`}
+                  src={`/scoreboard/${tournamentIdStr}/embed`}
                   title="View Results"
                   className="w-full flex-1 min-h-[60vh] border-0"
                 />
@@ -790,7 +789,7 @@ export default function TournamentModal({
           isOpen={!!reportCommentModal}
           onClose={() => setReportCommentModal(null)}
           tournamentId={tournamentId}
-          tournamentTitle={tournament.title}
+          tournamentTitle={tournamentTitle}
           commentId={reportCommentModal.commentId}
           commentText={reportCommentModal.commentText}
           commentAuthorName={reportCommentModal.authorName}
