@@ -466,7 +466,7 @@ export default function TournamentModal({
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Comments ({commentCounts?.[tournament.id] ?? 0})
+                Comments ({commentCounts?.[tournamentIdStr] ?? 0})
               </button>
               <button
                 type="button"
