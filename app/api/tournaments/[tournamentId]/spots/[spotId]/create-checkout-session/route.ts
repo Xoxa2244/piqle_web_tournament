@@ -6,7 +6,22 @@ import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const resolveAppBaseUrl = (request: Request) => {
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  if (forwardedHost) {
+    const protocol = forwardedProto || (forwardedHost.startsWith('localhost') ? 'http' : 'https')
+    return `${protocol}://${forwardedHost}`
+  }
+
+  try {
+    return new URL(request.url).origin
+  } catch {
+    const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+    if (env) return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
+    return 'http://localhost:3000'
+  }
+}
 const CURRENCY = 'usd'
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000
 const isSavedCardSchemaError = (error: any) => {
@@ -46,7 +61,7 @@ const getPaymentDueAt = (tournament: {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ tournamentId: string; spotId: string }> }
 ) {
   try {
@@ -234,6 +249,7 @@ export async function POST(
     }
 
     const stripe = getStripe()
+    const appBaseUrl = resolveAppBaseUrl(request)
     const sessionParams = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -279,8 +295,8 @@ export async function POST(
           quantity: 1,
         },
       ],
-      success_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=success`,
-      cancel_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=cancel`,
+      success_url: `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success`,
+      cancel_url: `${appBaseUrl}/tournaments/${tournament.id}/register?payment=cancel`,
     })
 
     await prisma.payment.update({
