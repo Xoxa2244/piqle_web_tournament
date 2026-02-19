@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native'
 import { type BottomTabNavigationProp } from '@react-navigation/bottom-tabs'
 import { type CompositeNavigationProp, type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -27,6 +38,7 @@ type TournamentsNavigation = CompositeNavigationProp<
 type TournamentsRoute = RouteProp<MainTabParamList, 'Tournaments'>
 
 const PAGE_SIZE = 6
+const SCROLL_END_THRESHOLD = 160
 
 const policyFilters: Array<{ id: PolicyFilter; label: string }> = [
   { id: 'ALL', label: 'All' },
@@ -79,6 +91,8 @@ export function TournamentsScreen() {
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('ALL')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [refreshing, setRefreshing] = useState(false)
+  const [isAutoLoading, setIsAutoLoading] = useState(false)
+  const autoLoadLockRef = useRef(false)
 
   const loadTournaments = useCallback(async (mode: 'initial' | 'refresh') => {
     if (mode === 'refresh') {
@@ -137,6 +151,32 @@ export function TournamentsScreen() {
   )
   const hasMore = visibleTournaments.length < filteredTournaments.length
 
+  useEffect(() => {
+    autoLoadLockRef.current = false
+    setIsAutoLoading(false)
+  }, [visibleCount, filteredTournaments.length])
+
+  const loadNextPage = useCallback(() => {
+    if (!hasMore) return
+    setVisibleCount((previousCount) => Math.min(previousCount + PAGE_SIZE, filteredTournaments.length))
+  }, [filteredTournaments.length, hasMore])
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!hasMore || autoLoadLockRef.current) return
+
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent
+      const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - SCROLL_END_THRESHOLD
+
+      if (!nearBottom) return
+
+      autoLoadLockRef.current = true
+      setIsAutoLoading(true)
+      loadNextPage()
+    },
+    [hasMore, loadNextPage]
+  )
+
   return (
     <AppBackground>
       <SafeAreaView style={styles.safeArea}>
@@ -144,6 +184,8 @@ export function TournamentsScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
           <View style={styles.header}>
             <Text style={styles.title}>Tournaments</Text>
@@ -244,11 +286,14 @@ export function TournamentsScreen() {
           })}
 
           {hasMore ? (
-            <Pressable style={styles.loadMoreButton} onPress={() => setVisibleCount((prev) => prev + PAGE_SIZE)}>
-              <Text style={styles.loadMoreText}>
-                Load more ({filteredTournaments.length - visibleTournaments.length} left)
+            <View style={styles.autoLoadingRow}>
+              {isAutoLoading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+              <Text style={styles.autoLoadingText}>
+                {isAutoLoading
+                  ? 'Loading more tournaments...'
+                  : `${filteredTournaments.length - visibleTournaments.length} more tournaments`}
               </Text>
-            </Pressable>
+            </View>
           ) : filteredTournaments.length > 0 ? (
             <Text style={styles.endText}>End of results</Text>
           ) : null}
@@ -393,18 +438,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
-  loadMoreButton: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: '#FFFFFFD4',
-    paddingVertical: 12,
+  autoLoadingRow: {
+    minHeight: 40,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
-  loadMoreText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.accent,
+  autoLoadingText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.muted,
   },
   endText: {
     textAlign: 'center',

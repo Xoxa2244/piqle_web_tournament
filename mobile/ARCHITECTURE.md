@@ -61,7 +61,7 @@ flowchart TD
 
 3. `TournamentsScreen`
 - Search + filters (policy and format)
-- Pull-to-refresh + incremental pagination (`Load more`)
+- Pull-to-refresh + infinite scroll (auto-load on list end)
 - Full tournament list and quick access to details
 - API first: `tournament.list`, fallback: `public.listBoards`
 
