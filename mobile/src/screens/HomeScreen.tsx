@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { useNavigation } from '@react-navigation/native'
+import { type BottomTabNavigationProp } from '@react-navigation/bottom-tabs'
+import { type CompositeNavigationProp, useNavigation } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { fetchFeedTournaments } from '../api/mobileData'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { feedTournaments, isWebOnlyTournament, type Tournament } from '../data/mockData'
-import { type RootStackParamList } from '../navigation/types'
+import {
+  type MainTabParamList,
+  type RootStackParamList,
+  type TournamentPolicyFilter,
+  type TournamentsTabParams,
+} from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 
-type RootNavigation = NativeStackNavigationProp<RootStackParamList>
+type HomeNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>
 
 const toFormatLabel = (format: string) =>
   format
@@ -35,8 +44,22 @@ function StatCard({ label, value }: { label: string; value: string }) {
   )
 }
 
+function QuickFilterButton({
+  label,
+  onPress,
+}: {
+  label: string
+  onPress: () => void
+}) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.quickFilter, pressed ? styles.quickFilterPressed : null]}>
+      <Text style={styles.quickFilterText}>{label}</Text>
+    </Pressable>
+  )
+}
+
 export function HomeScreen() {
-  const navigation = useNavigation<RootNavigation>()
+  const navigation = useNavigation<HomeNavigation>()
   const [tournaments, setTournaments] = useState<Tournament[]>(feedTournaments)
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
 
@@ -51,6 +74,15 @@ export function HomeScreen() {
       mounted = false
     }
   }, [])
+
+  const openFilteredTournaments = (policyFilter: TournamentPolicyFilter, extra?: Partial<TournamentsTabParams>) => {
+    navigation.navigate('Tournaments', {
+      initialPolicyFilter: policyFilter,
+      initialFormatFilter: extra?.initialFormatFilter ?? 'ALL',
+      initialSearchQuery: extra?.initialSearchQuery ?? '',
+      presetKey: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    })
+  }
 
   const stats = useMemo(() => {
     const totalOpenSlots = tournaments.reduce((sum, tournament) => sum + getOpenSlots(tournament), 0)
@@ -69,11 +101,15 @@ export function HomeScreen() {
     [tournaments]
   )
 
-  const mobileFriendly = useMemo(() => tournaments.filter((tournament) => !isWebOnlyTournament(tournament)).slice(0, 3), [
-    tournaments,
-  ])
+  const mobileFriendly = useMemo(
+    () => tournaments.filter((tournament) => !isWebOnlyTournament(tournament)).slice(0, 3),
+    [tournaments]
+  )
 
-  const webOnly = useMemo(() => tournaments.filter((tournament) => isWebOnlyTournament(tournament)).slice(0, 2), [tournaments])
+  const webOnly = useMemo(
+    () => tournaments.filter((tournament) => isWebOnlyTournament(tournament)).slice(0, 2),
+    [tournaments]
+  )
 
   return (
     <AppBackground>
@@ -103,7 +139,21 @@ export function HomeScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Starting Soon</Text>
+            <Text style={styles.sectionTitle}>Quick Filters</Text>
+            <View style={styles.quickFiltersRow}>
+              <QuickFilterButton label="All tournaments" onPress={() => openFilteredTournaments('ALL')} />
+              <QuickFilterButton label="Mobile allowed" onPress={() => openFilteredTournaments('MOBILE')} />
+              <QuickFilterButton label="Web-only admin" onPress={() => openFilteredTournaments('WEB_ONLY')} />
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Starting Soon</Text>
+              <Pressable onPress={() => openFilteredTournaments('ALL')} style={styles.sectionAction}>
+                <Text style={styles.sectionActionText}>See all</Text>
+              </Pressable>
+            </View>
             {startingSoon.map((tournament) => (
               <Pressable
                 key={tournament.id}
@@ -123,7 +173,12 @@ export function HomeScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Mobile-Friendly Tournaments</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Mobile-Friendly Tournaments</Text>
+              <Pressable onPress={() => openFilteredTournaments('MOBILE')} style={styles.sectionAction}>
+                <Text style={styles.sectionActionText}>Open list</Text>
+              </Pressable>
+            </View>
             {mobileFriendly.map((tournament) => (
               <Pressable
                 key={tournament.id}
@@ -144,7 +199,12 @@ export function HomeScreen() {
 
           {webOnly.length > 0 ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Large Tournaments</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Large Tournaments</Text>
+                <Pressable onPress={() => openFilteredTournaments('WEB_ONLY')} style={styles.sectionAction}>
+                  <Text style={styles.sectionActionText}>Open list</Text>
+                </Pressable>
+              </View>
               {webOnly.map((tournament) => (
                 <Pressable
                   key={tournament.id}
@@ -230,9 +290,49 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.sm,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '800',
+    color: colors.ink,
+  },
+  sectionAction: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.accentSoft,
+  },
+  sectionActionText: {
+    fontSize: 12,
+    color: colors.accent,
+    fontWeight: '800',
+  },
+  quickFiltersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  quickFilter: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.outline,
+    backgroundColor: '#FFFFFFCC',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  quickFilterPressed: {
+    opacity: 0.86,
+  },
+  quickFilterText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.ink,
   },
   eventRow: {

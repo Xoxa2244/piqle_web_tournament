@@ -56,10 +56,12 @@ flowchart TD
 
 2. `HomeScreen`
 - Dashboard: stats, starting soon, mobile-friendly and web-only highlights
+- Deep-link quick filters to `TournamentsScreen` presets (`ALL`, `MOBILE`, `WEB_ONLY`)
 - API: feed endpoints (same source as tournaments list)
 
 3. `TournamentsScreen`
 - Search + filters (policy and format)
+- Pull-to-refresh + incremental pagination (`Load more`)
 - Full tournament list and quick access to details
 - API first: `tournament.list`, fallback: `public.listBoards`
 

@@ -1,19 +1,32 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { type BottomTabNavigationProp } from '@react-navigation/bottom-tabs'
+import { type CompositeNavigationProp, type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useNavigation } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { fetchFeedTournaments } from '../api/mobileData'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { feedTournaments, isWebOnlyTournament, type Tournament, type TournamentFormat } from '../data/mockData'
-import { type RootStackParamList } from '../navigation/types'
+import {
+  type MainTabParamList,
+  type RootStackParamList,
+  type TournamentFormatFilter,
+  type TournamentPolicyFilter,
+} from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 
-type RootNavigation = NativeStackNavigationProp<RootStackParamList>
-type PolicyFilter = 'ALL' | 'MOBILE' | 'WEB_ONLY'
-type FormatFilter = 'ALL' | TournamentFormat
+type PolicyFilter = TournamentPolicyFilter
+type FormatFilter = TournamentFormatFilter
+
+type TournamentsNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Tournaments'>,
+  NativeStackNavigationProp<RootStackParamList>
+>
+type TournamentsRoute = RouteProp<MainTabParamList, 'Tournaments'>
+
+const PAGE_SIZE = 6
 
 const policyFilters: Array<{ id: PolicyFilter; label: string }> = [
   { id: 'ALL', label: 'All' },
@@ -57,24 +70,50 @@ function isMatchByFormat(tournament: Tournament, formatFilter: FormatFilter) {
 }
 
 export function TournamentsScreen() {
-  const navigation = useNavigation<RootNavigation>()
+  const navigation = useNavigation<TournamentsNavigation>()
+  const route = useRoute<TournamentsRoute>()
   const [tournaments, setTournaments] = useState<Tournament[]>(feedTournaments)
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
   const [searchQuery, setSearchQuery] = useState('')
   const [policyFilter, setPolicyFilter] = useState<PolicyFilter>('ALL')
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('ALL')
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => {
-    let mounted = true
-    fetchFeedTournaments().then((result) => {
-      if (!mounted) return
+  const loadTournaments = useCallback(async (mode: 'initial' | 'refresh') => {
+    if (mode === 'refresh') {
+      setRefreshing(true)
+    }
+    try {
+      const result = await fetchFeedTournaments()
       setTournaments(result.data)
       setDataSource(result.source)
-    })
-    return () => {
-      mounted = false
+    } finally {
+      if (mode === 'refresh') {
+        setRefreshing(false)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    void loadTournaments('initial')
+  }, [loadTournaments])
+
+  useEffect(() => {
+    if (!route.params) return
+    setSearchQuery(route.params.initialSearchQuery?.trim() ?? '')
+    setPolicyFilter(route.params.initialPolicyFilter ?? 'ALL')
+    setFormatFilter(route.params.initialFormatFilter ?? 'ALL')
+    setVisibleCount(PAGE_SIZE)
+  }, [route.params])
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [searchQuery, policyFilter, formatFilter])
+
+  const onRefresh = useCallback(() => {
+    void loadTournaments('refresh')
+  }, [loadTournaments])
 
   const formatFilters = useMemo(() => {
     const formats = new Set<TournamentFormat>()
@@ -92,15 +131,25 @@ export function TournamentsScreen() {
     [formatFilter, policyFilter, searchQuery, tournaments]
   )
 
+  const visibleTournaments = useMemo(
+    () => filteredTournaments.slice(0, visibleCount),
+    [filteredTournaments, visibleCount]
+  )
+  const hasMore = visibleTournaments.length < filteredTournaments.length
+
   return (
     <AppBackground>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        >
           <View style={styles.header}>
             <Text style={styles.title}>Tournaments</Text>
             <Text style={styles.subtitle}>Find events, filter by access policy, and jump into registration.</Text>
             <View style={styles.metaRow}>
-              <Badge label={`${filteredTournaments.length} shown`} tone="neutral" />
+              <Badge label={`${visibleTournaments.length}/${filteredTournaments.length} shown`} tone="neutral" />
               <Badge
                 label={dataSource === 'live' ? 'Live data' : 'Demo data'}
                 tone={dataSource === 'live' ? 'success' : 'warning'}
@@ -164,7 +213,7 @@ export function TournamentsScreen() {
             </View>
           ) : null}
 
-          {filteredTournaments.map((tournament) => {
+          {visibleTournaments.map((tournament) => {
             const webOnly = isWebOnlyTournament(tournament)
             const openSlots = getOpenSlots(tournament)
 
@@ -193,6 +242,16 @@ export function TournamentsScreen() {
               </Pressable>
             )
           })}
+
+          {hasMore ? (
+            <Pressable style={styles.loadMoreButton} onPress={() => setVisibleCount((prev) => prev + PAGE_SIZE)}>
+              <Text style={styles.loadMoreText}>
+                Load more ({filteredTournaments.length - visibleTournaments.length} left)
+              </Text>
+            </Pressable>
+          ) : filteredTournaments.length > 0 ? (
+            <Text style={styles.endText}>End of results</Text>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </AppBackground>
@@ -333,5 +392,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
+  },
+  loadMoreButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: '#FFFFFFD4',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.accent,
+  },
+  endText: {
+    textAlign: 'center',
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
   },
 })

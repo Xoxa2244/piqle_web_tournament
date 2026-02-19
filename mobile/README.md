@@ -10,8 +10,8 @@ This folder contains an isolated Expo app scaffold for the mobile product.
 - Real mobile sign-in flow (email + password) using dedicated mobile auth API (currently not blocking app entry).
 - In-app mobile sign-up flow with OTP (request code + complete sign-up).
 - Bottom-tab navigation with core product surfaces:
-  - `Home` (dashboard + starting soon + policy overview)
-  - `Tournaments` (search + filters + tournament list)
+  - `Home` (dashboard + starting soon + deep-link quick filters)
+  - `Tournaments` (search + filters + pull-to-refresh + pagination)
   - `Chats`
   - `My Tournaments` (organizer)
 - Stack screens:
