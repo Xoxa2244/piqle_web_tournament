@@ -1,20 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { fetchFeedTournaments } from '../api/mobileData'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
+import { feedTournaments, isWebOnlyTournament, type Tournament } from '../data/mockData'
+import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
-import { feedTournaments, getManagementPolicy, type Tournament, isWebOnlyTournament } from '../data/mockData'
-import { type RootStackParamList } from '../navigation/types'
-import { fetchFeedTournaments } from '../api/mobileData'
 
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>
 
-function formatFill(tournament: Tournament) {
-  return `${tournament.participants}/${tournament.capacity} players`
+const toFormatLabel = (format: string) =>
+  format
+    .split('_')
+    .map((part) => `${part.slice(0, 1)}${part.slice(1).toLowerCase()}`)
+    .join(' ')
+
+const parseStartDate = (value: string) => {
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER
+}
+
+const getOpenSlots = (tournament: Tournament) => Math.max(0, tournament.capacity - tournament.participants)
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  )
 }
 
 export function HomeScreen() {
@@ -34,60 +52,116 @@ export function HomeScreen() {
     }
   }, [])
 
+  const stats = useMemo(() => {
+    const totalOpenSlots = tournaments.reduce((sum, tournament) => sum + getOpenSlots(tournament), 0)
+    const webOnlyCount = tournaments.filter(isWebOnlyTournament).length
+    const mobileCount = tournaments.length - webOnlyCount
+    return {
+      total: tournaments.length,
+      totalOpenSlots,
+      webOnlyCount,
+      mobileCount,
+    }
+  }, [tournaments])
+
+  const startingSoon = useMemo(
+    () => [...tournaments].sort((a, b) => parseStartDate(a.startAt) - parseStartDate(b.startAt)).slice(0, 3),
+    [tournaments]
+  )
+
+  const mobileFriendly = useMemo(() => tournaments.filter((tournament) => !isWebOnlyTournament(tournament)).slice(0, 3), [
+    tournaments,
+  ])
+
+  const webOnly = useMemo(() => tournaments.filter((tournament) => isWebOnlyTournament(tournament)).slice(0, 2), [tournaments])
+
   return (
     <AppBackground>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <Text style={styles.kicker}>Piqle Mobile</Text>
-            <Text style={styles.title}>Play everything from one pocket app</Text>
+            <Text style={styles.title}>Home</Text>
             <Text style={styles.subtitle}>
-              Register, pay, and chat in any tournament. Manage small events right from mobile.
+              Core flow: discover tournaments, open event details, and register in a few taps.
             </Text>
+            <View style={styles.sourceRow}>
+              <Badge
+                label={dataSource === 'live' ? 'Live data' : 'Demo data'}
+                tone={dataSource === 'live' ? 'success' : 'warning'}
+              />
+            </View>
           </View>
 
-          <Text style={styles.sectionTitle}>Upcoming Events</Text>
-          <View style={styles.sourceRow}>
-            <Badge label={dataSource === 'live' ? 'Live data' : 'Demo data'} tone={dataSource === 'live' ? 'success' : 'warning'} />
+          <View style={styles.statRow}>
+            <StatCard label="Total events" value={`${stats.total}`} />
+            <StatCard label="Open slots" value={`${stats.totalOpenSlots}`} />
+          </View>
+          <View style={styles.statRow}>
+            <StatCard label="Mobile admin" value={`${stats.mobileCount}`} />
+            <StatCard label="Web-only admin" value={`${stats.webOnlyCount}`} />
           </View>
 
-          {tournaments.map((tournament) => {
-            const managementPolicy = getManagementPolicy(tournament.format)
-            const webOnly = isWebOnlyTournament(tournament)
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Starting Soon</Text>
+            {startingSoon.map((tournament) => (
+              <Pressable
+                key={tournament.id}
+                style={({ pressed }) => [styles.eventRow, pressed ? styles.eventRowPressed : null]}
+                onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+              >
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventTitle}>{tournament.title}</Text>
+                  <Badge label={toFormatLabel(tournament.format)} tone="info" />
+                </View>
+                <Text style={styles.eventMeta}>{tournament.startAt}</Text>
+                <Text style={styles.eventMeta}>
+                  {tournament.club} • {tournament.city}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
 
-            return (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Mobile-Friendly Tournaments</Text>
+            {mobileFriendly.map((tournament) => (
               <Pressable
                 key={tournament.id}
                 style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
-                onPress={() =>
-                  navigation.navigate('TournamentDetails', {
-                    tournamentId: tournament.id,
-                  })
-                }
+                onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
               >
                 <View style={styles.cardTopRow}>
                   <Text style={styles.cardTitle}>{tournament.title}</Text>
-                  <Badge label={tournament.format.replace(/_/g, ' ')} tone="info" />
+                  <Badge label={`${getOpenSlots(tournament)} open`} tone="success" />
                 </View>
-
                 <Text style={styles.cardMeta}>
-                  {tournament.club} - {tournament.city}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {tournament.startAt} - {tournament.endAt}
+                  {tournament.participants}/{tournament.capacity} players • ${tournament.entryFeeUsd}
                 </Text>
                 <Text style={styles.cardDescription}>{tournament.description}</Text>
-
-                <View style={styles.badgeRow}>
-                  <Badge label={formatFill(tournament)} tone="neutral" />
-                  <Badge
-                    label={managementPolicy === 'WEB_ONLY' ? 'Managed on web' : 'Mobile management'}
-                    tone={webOnly ? 'warning' : 'success'}
-                  />
-                </View>
               </Pressable>
-            )
-          })}
+            ))}
+          </View>
+
+          {webOnly.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Large Tournaments</Text>
+              {webOnly.map((tournament) => (
+                <Pressable
+                  key={tournament.id}
+                  style={({ pressed }) => [styles.warningCard, pressed ? styles.cardPressed : null]}
+                  onPress={() => navigation.navigate('TournamentDetails', { tournamentId: tournament.id })}
+                >
+                  <View style={styles.cardTopRow}>
+                    <Text style={styles.cardTitle}>{tournament.title}</Text>
+                    <Badge label="Web admin only" tone="warning" />
+                  </View>
+                  <Text style={styles.cardMeta}>
+                    Mobile supports registration and chat. Advanced management remains in web.
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </AppBackground>
@@ -105,50 +179,104 @@ const styles = StyleSheet.create({
   },
   header: {
     marginTop: spacing.sm,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+    gap: spacing.xs,
   },
   kicker: {
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     color: colors.accent,
-    marginBottom: spacing.xs,
   },
   title: {
-    fontSize: 28,
+    fontSize: 30,
+    lineHeight: 34,
     fontWeight: '800',
     color: colors.ink,
-    lineHeight: 34,
-    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
     color: colors.muted,
-  },
-  sectionTitle: {
-    marginTop: spacing.md,
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.ink,
-    letterSpacing: 0.2,
+    fontSize: 14,
+    lineHeight: 20,
   },
   sourceRow: {
     flexDirection: 'row',
-    marginBottom: spacing.xs,
   },
-  card: {
-    backgroundColor: '#FFFFFFCC',
-    borderRadius: 18,
-    padding: spacing.md,
+  statRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.outline,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 2,
+    backgroundColor: '#FFFFFFCC',
+    padding: spacing.md,
+    gap: 4,
+  },
+  statLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statValue: {
+    color: colors.ink,
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '800',
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  eventRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.outline,
+    backgroundColor: '#FFFFFFCC',
+    padding: spacing.md,
+    gap: 2,
+  },
+  eventRowPressed: {
+    opacity: 0.86,
+  },
+  eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  eventTitle: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.ink,
+    fontWeight: '800',
+  },
+  eventMeta: {
+    color: colors.muted,
+    fontSize: 13,
+  },
+  card: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.outline,
+    backgroundColor: '#FFFFFFCC',
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  warningCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9C9B5',
+    backgroundColor: '#FFF6F0',
+    padding: spacing.md,
     gap: spacing.xs,
   },
   cardPressed: {
@@ -163,24 +291,19 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 16,
+    lineHeight: 21,
     fontWeight: '800',
     color: colors.ink,
   },
   cardMeta: {
-    color: colors.muted,
     fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
   },
   cardDescription: {
-    marginTop: spacing.xs,
     color: colors.ink,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  badgeRow: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
+    fontSize: 13,
+    lineHeight: 18,
   },
 })

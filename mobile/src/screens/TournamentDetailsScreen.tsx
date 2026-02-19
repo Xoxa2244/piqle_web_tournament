@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { fetchTournamentDetails } from '../api/mobileData'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -10,10 +11,32 @@ import { getTournamentById, isWebOnlyTournament, type Tournament } from '../data
 import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
-import { fetchTournamentDetails } from '../api/mobileData'
 
 type TournamentDetailsRoute = RouteProp<RootStackParamList, 'TournamentDetails'>
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>
+
+const toFormatLabel = (format: string) =>
+  format
+    .split('_')
+    .map((part) => `${part.slice(0, 1)}${part.slice(1).toLowerCase()}`)
+    .join(' ')
+
+const formatEntryFee = (entryFeeUsd: number) => (entryFeeUsd > 0 ? `$${entryFeeUsd}` : 'Free')
+
+const clampPercent = (value: number) => {
+  if (value < 0) return 0
+  if (value > 100) return 100
+  return value
+}
+
+function CapabilityItem({ label }: { label: string }) {
+  return (
+    <View style={styles.capabilityRow}>
+      <View style={styles.capabilityDot} />
+      <Text style={styles.capabilityText}>{label}</Text>
+    </View>
+  )
+}
 
 export function TournamentDetailsScreen() {
   const route = useRoute<TournamentDetailsRoute>()
@@ -32,6 +55,11 @@ export function TournamentDetailsScreen() {
       mounted = false
     }
   }, [route.params.tournamentId])
+
+  const fillRatio = useMemo(() => {
+    if (!tournament || tournament.capacity <= 0) return 0
+    return clampPercent(Math.round((tournament.participants / tournament.capacity) * 100))
+  }, [tournament])
 
   if (!tournament) {
     return (
@@ -54,52 +82,57 @@ export function TournamentDetailsScreen() {
           <View style={styles.heroCard}>
             <Text style={styles.heroTitle}>{tournament.title}</Text>
             <Text style={styles.heroMeta}>
-              {tournament.club} - {tournament.city}
+              {tournament.club} • {tournament.city}
             </Text>
             <View style={styles.heroBadges}>
-              <Badge label={tournament.format.replace(/_/g, ' ')} tone="info" />
-              <Badge label={dataSource === 'live' ? 'Live data' : 'Demo data'} tone={dataSource === 'live' ? 'success' : 'warning'} />
+              <Badge label={toFormatLabel(tournament.format)} tone="info" />
               <Badge
-                label={webOnly ? 'Management: web only' : 'Management: mobile allowed'}
-                tone={webOnly ? 'warning' : 'success'}
+                label={dataSource === 'live' ? 'Live data' : 'Demo data'}
+                tone={dataSource === 'live' ? 'success' : 'warning'}
               />
+              <Badge label={webOnly ? 'Web admin only' : 'Mobile admin'} tone={webOnly ? 'warning' : 'success'} />
             </View>
+          </View>
+
+          <View style={styles.block}>
+            <View style={styles.blockHeader}>
+              <Text style={styles.blockTitle}>Capacity</Text>
+              <Text style={styles.blockValue}>
+                {tournament.participants}/{tournament.capacity}
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${fillRatio}%` }]} />
+            </View>
+            <Text style={styles.smallMeta}>{fillRatio}% filled</Text>
           </View>
 
           <View style={styles.block}>
             <Text style={styles.blockTitle}>Schedule</Text>
-            <Text style={styles.blockValue}>
-              {tournament.startAt} - {tournament.endAt}
-            </Text>
-          </View>
-
-          <View style={styles.block}>
-            <Text style={styles.blockTitle}>Participants</Text>
-            <Text style={styles.blockValue}>
-              {tournament.participants}/{tournament.capacity}
-            </Text>
+            <Text style={styles.blockValue}>{tournament.startAt}</Text>
+            <Text style={styles.blockValue}>{tournament.endAt}</Text>
           </View>
 
           <View style={styles.block}>
             <Text style={styles.blockTitle}>Entry Fee</Text>
-            <Text style={styles.blockValue}>
-              {tournament.entryFeeUsd > 0 ? `$${tournament.entryFeeUsd}` : 'Free'}
-            </Text>
+            <Text style={styles.blockValue}>{formatEntryFee(tournament.entryFeeUsd)}</Text>
           </View>
 
           <View style={styles.block}>
-            <Text style={styles.blockTitle}>About</Text>
+            <Text style={styles.blockTitle}>Description</Text>
             <Text style={styles.blockText}>{tournament.description}</Text>
           </View>
 
-          {webOnly ? (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningTitle}>Advanced management is available on web only</Text>
-              <Text style={styles.warningText}>
-                You can still register, pay, and use chat from mobile for this tournament.
-              </Text>
-            </View>
-          ) : null}
+          <View style={styles.block}>
+            <Text style={styles.blockTitle}>Mobile Capabilities</Text>
+            <CapabilityItem label="Registration and payment" />
+            <CapabilityItem label="Tournament chat and event communication" />
+            {webOnly ? (
+              <CapabilityItem label="Advanced admin actions stay in web for this format" />
+            ) : (
+              <CapabilityItem label="Organizer management is allowed in mobile for this format" />
+            )}
+          </View>
 
           <View style={styles.actions}>
             <PrimaryButton
@@ -107,14 +140,14 @@ export function TournamentDetailsScreen() {
               onPress={() => navigation.navigate('Registration', { tournamentId: tournament.id })}
             />
             <PrimaryButton
-              label={webOnly ? 'Open Web Admin' : 'Open Mobile Manager'}
+              label={webOnly ? 'Open Web Admin Info' : 'Open Mobile Manager'}
               variant="outline"
               onPress={() =>
                 Alert.alert(
-                  webOnly ? 'Web Admin' : 'Mobile Manager',
+                  webOnly ? 'Web Admin Required' : 'Mobile Manager',
                   webOnly
-                    ? 'For MLP and Indy League, admin actions are handled in web.'
-                    : 'Small tournament management will be handled inside mobile screens.'
+                    ? 'For MLP and Indy League, advanced management is available only in web admin.'
+                    : 'Small tournament management flow is available in mobile.'
                 )
               }
             />
@@ -161,45 +194,68 @@ const styles = StyleSheet.create({
   block: {
     borderRadius: 16,
     padding: spacing.md,
-    backgroundColor: '#FFFFFFC7',
+    backgroundColor: '#FFFFFFCC',
     borderWidth: 1,
     borderColor: colors.outline,
+    gap: spacing.xs,
+  },
+  blockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
   },
   blockTitle: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.muted,
-    letterSpacing: 0.9,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: spacing.xs,
   },
   blockValue: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.ink,
   },
+  smallMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  progressTrack: {
+    marginTop: 2,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E7E0D2',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+  },
   blockText: {
     fontSize: 14,
     lineHeight: 21,
     color: colors.ink,
   },
-  warningBox: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E9C9B5',
-    backgroundColor: '#FFF6F0',
-    padding: spacing.md,
+  capabilityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.xs,
   },
-  warningTitle: {
-    color: colors.warning,
-    fontSize: 14,
-    fontWeight: '800',
+  capabilityDot: {
+    marginTop: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
-  warningText: {
-    color: colors.warning,
-    fontSize: 13,
-    lineHeight: 19,
+  capabilityText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.ink,
+    lineHeight: 20,
   },
   actions: {
     marginTop: spacing.xs,

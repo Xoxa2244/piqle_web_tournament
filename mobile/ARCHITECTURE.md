@@ -55,23 +55,28 @@ flowchart TD
 - API: `/api/mobile/auth/*`
 
 2. `HomeScreen`
-- Public tournament feed
+- Dashboard: stats, starting soon, mobile-friendly and web-only highlights
+- API: feed endpoints (same source as tournaments list)
+
+3. `TournamentsScreen`
+- Search + filters (policy and format)
+- Full tournament list and quick access to details
 - API first: `tournament.list`, fallback: `public.listBoards`
 
-3. `TournamentDetailsScreen`
+4. `TournamentDetailsScreen`
 - Tournament overview, format, dates, venue
 - API: `public.getTournamentById`
 
-4. `RegistrationScreen`
+5. `RegistrationScreen`
 - View seat map summary and my status
 - Register via claim slot, fallback to waitlist
 - API: `registration.getMyStatus`, `registration.getSeatMap`, `registration.claimSlot`, `registration.joinWaitlist`
 
-5. `ChatsScreen`
+6. `ChatsScreen`
 - Event chats list
 - API: `tournamentChat.listMyEventChats`
 
-6. `MyTournamentsScreen`
+7. `MyTournamentsScreen`
 - User's organizer tournaments, sign out
 - API: `tournament.list` + auth session
 

@@ -11,7 +11,7 @@ import { spacing } from '../theme/spacing'
 import { fetchMyTournaments } from '../api/mobileData'
 
 export function MyTournamentsScreen() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, status } = useAuth()
   const [tournaments, setTournaments] = useState<Tournament[]>(organizerTournaments)
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
 
@@ -34,19 +34,24 @@ export function MyTournamentsScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>My Tournaments</Text>
             <Text style={styles.subtitle}>Organizer workspace for mobile-first operations</Text>
-            <Text style={styles.userLabel}>{user?.email ?? 'Signed in'}</Text>
+            <Text style={styles.userLabel}>
+              {status === 'signed_in' ? user?.email ?? 'Signed in' : 'Guest mode: sign-in flow is temporarily deferred'}
+            </Text>
             <View style={styles.sourceRow}>
               <Badge label={dataSource === 'live' ? 'Live data' : 'Demo data'} tone={dataSource === 'live' ? 'success' : 'warning'} />
+              {status !== 'signed_in' ? <Badge label="Guest mode" tone="warning" /> : null}
             </View>
-            <View style={styles.signOutRow}>
-              <PrimaryButton
-                label="Sign out"
-                variant="outline"
-                onPress={async () => {
-                  await signOut()
-                }}
-              />
-            </View>
+            {status === 'signed_in' ? (
+              <View style={styles.signOutRow}>
+                <PrimaryButton
+                  label="Sign out"
+                  variant="outline"
+                  onPress={async () => {
+                    await signOut()
+                  }}
+                />
+              </View>
+            ) : null}
           </View>
 
           {tournaments.map((tournament) => {
@@ -125,6 +130,7 @@ const styles = StyleSheet.create({
   sourceRow: {
     marginTop: spacing.xs,
     flexDirection: 'row',
+    gap: spacing.xs,
   },
   signOutRow: {
     marginTop: spacing.xs,

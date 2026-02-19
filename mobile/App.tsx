@@ -6,7 +6,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { RootNavigator } from './src/navigation/RootNavigator'
 import { AuthProvider, useAuth } from './src/auth/AuthContext'
 import { AppBackground } from './src/components/AppBackground'
-import { AuthScreen } from './src/screens/AuthScreen'
 import { colors } from './src/theme/colors'
 
 const navigationTheme: Theme = {
@@ -47,10 +46,6 @@ function AppContent() {
         </View>
       </AppBackground>
     )
-  }
-
-  if (status === 'signed_out') {
-    return <AuthScreen />
   }
 
   return <RootNavigator />

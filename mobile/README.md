@@ -7,14 +7,16 @@ This folder contains an isolated Expo app scaffold for the mobile product.
 ## Included now
 
 - React Native + Expo project shell.
-- Real mobile sign-in flow (email + password) using dedicated mobile auth API.
+- Real mobile sign-in flow (email + password) using dedicated mobile auth API (currently not blocking app entry).
 - In-app mobile sign-up flow with OTP (request code + complete sign-up).
-- Bottom-tab navigation with 5 key product surfaces:
-  - `Home` (events feed)
-  - `Tournament Details`
-  - `Registration`
+- Bottom-tab navigation with core product surfaces:
+  - `Home` (dashboard + starting soon + policy overview)
+  - `Tournaments` (search + filters + tournament list)
   - `Chats`
   - `My Tournaments` (organizer)
+- Stack screens:
+  - `Tournament Details`
+  - `Registration`
 - Product policy mocked in UI:
   - `MLP` and `INDY_LEAGUE` => `WEB_ONLY` management
   - all other formats => `MOBILE_ALLOWED`

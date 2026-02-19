@@ -6,6 +6,7 @@ import { ChatsScreen } from '../screens/ChatsScreen'
 import { HomeScreen } from '../screens/HomeScreen'
 import { MyTournamentsScreen } from '../screens/MyTournamentsScreen'
 import { RegistrationScreen } from '../screens/RegistrationScreen'
+import { TournamentsScreen } from '../screens/TournamentsScreen'
 import { TournamentDetailsScreen } from '../screens/TournamentDetailsScreen'
 import { type MainTabParamList, type RootStackParamList } from './types'
 
@@ -39,6 +40,13 @@ function MainTabs() {
         component={HomeScreen}
         options={{
           tabBarLabel: ({ color }) => <Text style={{ color, fontWeight: '700' }}>Home</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="Tournaments"
+        component={TournamentsScreen}
+        options={{
+          tabBarLabel: ({ color }) => <Text style={{ color, fontWeight: '700' }}>Tournaments</Text>,
         }}
       />
       <Tabs.Screen
