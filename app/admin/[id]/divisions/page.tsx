@@ -30,7 +30,6 @@ import { CSS } from '@dnd-kit/utilities'
 import AddDivisionModal from '@/components/AddDivisionModal'
 import EditDivisionDrawer from '@/components/EditDivisionDrawer'
 import EditTeamModal from '@/components/EditTeamModal'
-import BoardMode from '@/components/BoardMode'
 import AddTeamModal from '@/components/AddTeamModal'
 import AddPlayerModal from '@/components/AddPlayerModal'
 import AddParticipantModal from '@/components/AddParticipantModal'
@@ -49,8 +48,6 @@ import {
   Plus,
   Search,
   Filter,
-  Grid3X3,
-  List,
   Settings,
   Copy,
   Download,
@@ -700,7 +697,6 @@ export default function DivisionsPage() {
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const [activeTeam, setActiveTeam] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'overview' | 'board'>('overview')
   const [showEditDrawer, setShowEditDrawer] = useState(false)
   const [selectedDivision, setSelectedDivision] = useState<Division | null>(null)
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
@@ -1673,26 +1669,6 @@ export default function DivisionsPage() {
                 </Button>
               ) : (
                 <>
-                  <Button
-                    variant={viewMode === 'overview' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('overview')}
-                    className="flex items-center space-x-2"
-                  >
-                    <List className="h-4 w-4" />
-                    <span>Overview</span>
-                  </Button>
-                  
-                  <Button
-                    variant={viewMode === 'board' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setViewMode('board')}
-                    className="flex items-center space-x-2"
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                    <span>Board</span>
-                  </Button>
-                  
                   <Button 
                     className="flex items-center space-x-2"
                     onClick={() => setShowAddDivisionModal(true)}
@@ -1765,7 +1741,7 @@ export default function DivisionsPage() {
               </div>
             )}
           </div>
-        ) : viewMode === 'overview' ? (
+        ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Sidebar */}
             <div className="lg:col-span-1">
@@ -1836,22 +1812,6 @@ export default function DivisionsPage() {
               </DndContext>
             </div>
           </div>
-        ) : (
-          <BoardMode
-            tournamentId={tournamentId}
-            divisions={localDivisions}
-            onTeamMove={handleTeamMove}
-            onTeamMoveToPool={handleTeamMoveToPool}
-            onEditDivision={handleEditDivision}
-            onAddTeam={handleAddTeam}
-            onDeleteDivision={handleDeleteDivision}
-            availablePlayers={availablePlayers}
-            onAddPlayerToSlot={handleAddPlayerToSlot}
-            onRemovePlayerFromSlot={handleRemovePlayerFromSlot}
-            onMovePlayerBetweenSlots={handleMovePlayerBetweenSlots}
-            waitlistEntries={waitlistEntries}
-            onOpenAssignWaitlist={handleOpenAssignWaitlist}
-          />
         )}
       </div>
       

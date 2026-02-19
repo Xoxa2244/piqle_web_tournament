@@ -918,8 +918,9 @@ export default function TournamentDetailPage() {
                 <div className="pt-4 border-t border-gray-200">
                   {(() => {
                     const divisions = (tournament?.divisions ?? []) as Array<{ id: string; name: string; teams?: unknown[] }>
-                    const effectiveDivisionId = selectedWinnersDivisionId ?? divisions[0]?.id ?? null
-                    const selectedDivision = divisions.find((d) => d.id === effectiveDivisionId)
+                    const divisionOptions = divisions.filter((d) => String(d.id || '').trim() && String(d.name || '').trim())
+                    const effectiveDivisionId = selectedWinnersDivisionId ?? divisionOptions[0]?.id ?? null
+                    const selectedDivision = divisionOptions.find((d) => d.id === effectiveDivisionId)
                     const winnersByDivision = (tournament as { winnersByDivision?: Array<{ divisionId: string; divisionName: string; first: { teamId: string; teamName: string } | null; second: { teamId: string; teamName: string } | null; third: { teamId: string; teamName: string } | null }> })?.winnersByDivision
                     const winnersForDivision = winnersByDivision?.find((w) => w.divisionId === effectiveDivisionId)
                     const hasWinners = winnersForDivision && (winnersForDivision.first || winnersForDivision.second || winnersForDivision.third)
@@ -930,22 +931,24 @@ export default function TournamentDetailPage() {
                           <Trophy className="h-5 w-5 text-amber-500" />
                           Winners
                         </p>
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
-                          <select
-                            value={effectiveDivisionId ?? ''}
-                            onChange={(e) => setSelectedWinnersDivisionId(e.target.value || null)}
-                            className="w-full max-w-xs pl-3 py-2 pr-[calc(12px+1rem)] text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center]"
-                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
-                          >
-                            {divisions.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {divisions.length === 0 ? (
+                        {divisionOptions.length > 0 ? (
+                          <div className="mb-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                            <select
+                              value={effectiveDivisionId ?? ''}
+                              onChange={(e) => setSelectedWinnersDivisionId(e.target.value || null)}
+                              className="w-full max-w-xs pl-3 py-2 pr-[calc(12px+1rem)] text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center]"
+                              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")` }}
+                            >
+                              {divisionOptions.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : null}
+                        {divisionOptions.length === 0 ? (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-6 text-center">
                             <p className="text-base font-medium text-gray-600">No divisions yet</p>
                             <p className="text-sm text-gray-500 mt-1">Add divisions to see winners</p>
