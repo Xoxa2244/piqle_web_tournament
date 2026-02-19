@@ -100,6 +100,7 @@ interface Division {
 interface BoardModeProps {
   tournamentId: string
   divisions: Division[]
+  tournamentFormat?: string
   onTeamMove: (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => Promise<void>
   onTeamMoveToPool: (teamId: string, targetPoolId: string | null) => void
   divisionStages?: Record<string, string> // divisionId -> stage
@@ -129,6 +130,7 @@ interface ActionHistory {
 export default function BoardMode({ 
   tournamentId, 
   divisions, 
+  tournamentFormat,
   onTeamMove, 
   onTeamMoveToPool, 
   divisionStages = {}, 
@@ -716,6 +718,7 @@ export default function BoardMode({
                       <DivisionColumn
                         key={division.id}
                         division={division}
+                        tournamentFormat={tournamentFormat}
                         searchQuery={searchQuery}
                         filteredTeams={filteredTeams}
                         onEditDivision={onEditDivision}
@@ -805,6 +808,7 @@ export default function BoardMode({
 // Division Column Component
 function DivisionColumn({ 
   division, 
+  tournamentFormat,
   searchQuery, 
   filteredTeams, 
   onEditDivision, 
@@ -816,6 +820,7 @@ function DivisionColumn({
   onMovePlayerBetweenSlots
 }: {
   division: Division
+  tournamentFormat?: string
   searchQuery: string
   filteredTeams: Array<{ team: Team; division: Division; pool: Pool | null }>
   onEditDivision?: (division: Division) => void
@@ -946,6 +951,7 @@ function DivisionColumn({
                 onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                 onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
                 teamKind={division.teamKind}
+                tournamentFormat={tournamentFormat}
               />
             )
           })}
@@ -972,6 +978,7 @@ function DivisionColumn({
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
                     onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
                     teamKind={division.teamKind}
+                    tournamentFormat={tournamentFormat}
                   />
                 ))}
               </SortableContext>
@@ -1001,7 +1008,8 @@ function PoolDropZone({
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
   onMovePlayerBetweenSlots,
-  teamKind
+  teamKind,
+  tournamentFormat
 }: { 
   pool: Pool
   teams: Team[]
@@ -1012,6 +1020,7 @@ function PoolDropZone({
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
   teamKind?: string
+  tournamentFormat?: string
 }) {
   const { setNodeRef } = useDroppable({
     id: `pool-${divisionId}-${pool?.id || 'unknown'}`,
@@ -1049,6 +1058,7 @@ function PoolDropZone({
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
               onMovePlayerBetweenSlots={onMovePlayerBetweenSlots}
               teamKind={teamKind}
+              tournamentFormat={tournamentFormat}
             />
           ))}
         </SortableContext>
@@ -1065,7 +1075,8 @@ function SortableTeamCard({
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
   onMovePlayerBetweenSlots,
-  teamKind
+  teamKind,
+  tournamentFormat
 }: { 
   team: Team
   highlighted: boolean
@@ -1074,6 +1085,7 @@ function SortableTeamCard({
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
   teamKind?: string
+  tournamentFormat?: string
 }) {
   const {
     attributes,
@@ -1101,6 +1113,8 @@ function SortableTeamCard({
 
   // Determine max players based on team kind
   const getMaxPlayers = (teamKind?: string) => {
+    if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') return 8
+
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
       case 'DOUBLES_2v2': return 2

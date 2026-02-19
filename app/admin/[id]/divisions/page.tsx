@@ -1121,8 +1121,9 @@ export default function DivisionsPage() {
             if (!player) return team
             
             const newTeamPlayers = [...team.teamPlayers]
-            // Add player to the specified slot
-            newTeamPlayers[slotIndex] = {
+            // Add/update player in the specified slot without creating sparse arrays.
+            const existingSlotIndex = newTeamPlayers.findIndex((tp) => tp.slotIndex === slotIndex)
+            const optimisticTeamPlayer = {
               id: `temp-${Date.now()}`, // Temporary ID for optimistic update
               role: 'player', // Default role
               createdAt: new Date().toISOString(),
@@ -1133,6 +1134,12 @@ export default function DivisionsPage() {
                 teamId: teamId,
                 teamName: team.name
               }
+            }
+
+            if (existingSlotIndex >= 0) {
+              newTeamPlayers[existingSlotIndex] = optimisticTeamPlayer
+            } else {
+              newTeamPlayers.push(optimisticTeamPlayer)
             }
             
             return {

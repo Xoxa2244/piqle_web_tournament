@@ -2,7 +2,11 @@ import { PrismaClient, Prisma } from '@prisma/client'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
-export const getTeamSlotCount = (teamKind: TeamKind) => {
+export const getTeamSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
+  if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
+    return 8
+  }
+
   switch (teamKind) {
     case 'SINGLES_1v1':
       return 1
