@@ -11,7 +11,7 @@ export const matchDayRouter = createTRPCRouter({
       date: z.string().transform((str) => new Date(str)), // ISO date string
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       // Check if tournament supports match days
       const tournament = await ctx.prisma.tournament.findUnique({
@@ -233,7 +233,7 @@ export const matchDayRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id, ctx.clientType)
 
       // Validate status transition
       if (input.status === 'FINALIZED') {
@@ -303,7 +303,7 @@ export const matchDayRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id, ctx.clientType)
 
       // Cannot delete finalized match day
       if (matchDay.status === 'FINALIZED') {

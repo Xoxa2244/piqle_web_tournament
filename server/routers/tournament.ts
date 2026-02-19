@@ -1021,7 +1021,7 @@ export const tournamentRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       // Check admin access
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.id, ctx.clientType)
 
       // Get current tournament data for validation
       const currentTournament = await ctx.prisma.tournament.findUnique({
@@ -1213,7 +1213,7 @@ export const tournamentRouter = createTRPCRouter({
     .input(z.object({ tournamentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       // Check admin access
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       // This will be implemented in M5
       // For now, just log the action

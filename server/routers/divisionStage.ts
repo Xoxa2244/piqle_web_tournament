@@ -94,7 +94,7 @@ export const divisionStageRouter = createTRPCRouter({
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       // Check admin access (only admins can transition stages)
-      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId)
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId, ctx.clientType)
 
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -386,7 +386,7 @@ export const divisionStageRouter = createTRPCRouter({
 
       // Check score entry access to division
       if (match.divisionId) {
-        await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, match.divisionId)
+        await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, match.divisionId, ctx.clientType)
       }
 
       // Check if this is an MLP tournament

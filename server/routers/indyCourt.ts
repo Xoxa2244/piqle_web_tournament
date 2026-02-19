@@ -9,7 +9,7 @@ export const indyCourtRouter = createTRPCRouter({
       tournamentId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       return ctx.prisma.court.findMany({
         where: { tournamentId: input.tournamentId },
@@ -22,7 +22,7 @@ export const indyCourtRouter = createTRPCRouter({
       tournamentId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       const existingCount = await ctx.prisma.court.count({
         where: { tournamentId: input.tournamentId },
@@ -54,7 +54,7 @@ export const indyCourtRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, court.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, court.tournamentId, ctx.clientType)
 
       return ctx.prisma.court.update({
         where: { id: input.courtId },

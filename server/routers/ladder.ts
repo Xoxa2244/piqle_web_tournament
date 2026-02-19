@@ -166,7 +166,7 @@ export const ladderRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tournament format must be ONE_DAY_LADDER' })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id, ctx.clientType)
 
       const existing = await ctx.prisma.match.findFirst({
         where: { divisionId: input.divisionId, stage: 'ROUND_ROBIN', matchDayId: null },
@@ -300,7 +300,7 @@ export const ladderRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tournament format must be ONE_DAY_LADDER' })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id, ctx.clientType)
 
       const roundAgg = await ctx.prisma.match.aggregate({
         where: { divisionId: input.divisionId, stage: 'ROUND_ROBIN', matchDayId: null },
@@ -468,7 +468,7 @@ export const ladderRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tournament format must be LADDER_LEAGUE' })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id, ctx.clientType)
 
       const existingMatches = await ctx.prisma.match.findFirst({
         where: { divisionId: input.divisionId, stage: 'ROUND_ROBIN', matchDayId: { not: null } },
@@ -682,7 +682,7 @@ export const ladderRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tournament format must be LADDER_LEAGUE' })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id, ctx.clientType)
 
       const matchDay = await ctx.prisma.matchDay.findFirst({
         where: { id: input.matchDayId, tournamentId: division.tournament.id },

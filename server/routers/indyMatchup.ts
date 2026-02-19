@@ -53,7 +53,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id, ctx.clientType)
 
       // Verify teams are in the same division
       const homeTeam = await ctx.prisma.team.findUnique({
@@ -295,7 +295,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Swap home and away teams
       const newHomeTeamId = matchup.awayTeamId
@@ -381,7 +381,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Validate: exactly 4 active players per team
       const homeTeamRosters = input.rosters.filter((r) => r.teamId === matchup.homeTeamId)
@@ -542,7 +542,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Check if matchup is READY
       if (matchup.status !== 'READY') {
@@ -671,7 +671,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, division.tournament.id, ctx.clientType)
 
       // Get all READY matchups for this division and match day
       const matchups = await ctx.prisma.indyMatchup.findMany({
@@ -831,7 +831,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, tournament.id, ctx.clientType)
 
       const matchups = await ctx.prisma.indyMatchup.findMany({
         where: {
@@ -991,7 +991,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Check if matchup is READY or IN_PROGRESS
       if (matchup.status !== 'READY' && matchup.status !== 'IN_PROGRESS') {
@@ -1215,7 +1215,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Validate: must be 6-6
       if (matchup.gamesWonHome !== 6 || matchup.gamesWonAway !== 6) {
@@ -1282,7 +1282,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       if (input.courtId) {
         const court = await ctx.prisma.court.findUnique({
@@ -1344,7 +1344,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchDay.tournament.id, ctx.clientType)
 
       const courts = await ctx.prisma.court.findMany({
         where: { tournamentId: matchDay.tournament.id },
@@ -1412,7 +1412,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Validate: all 12 games must be completed
       const incompleteGames = matchup.games.filter(
@@ -1545,7 +1545,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Verify team is part of this matchup
       if (matchup.homeTeamId !== input.teamId && matchup.awayTeamId !== input.teamId) {
@@ -1666,7 +1666,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, matchup.matchDay.tournament.id, ctx.clientType)
 
       // Cannot delete matchup if match day is finalized
       if (matchup.matchDay.status === 'FINALIZED') {
@@ -1768,4 +1768,3 @@ async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
     })
   }
 }
-

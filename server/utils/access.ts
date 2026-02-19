@@ -1,6 +1,8 @@
 import { TRPCError } from '@trpc/server'
 import type { PrismaClient } from '@prisma/client'
-import { AccessLevel } from '@prisma/client'
+import { AccessLevel, TournamentFormat } from '@prisma/client'
+
+type ClientType = 'web' | 'mobile'
 
 // Re-export for convenience
 export { AccessLevel }
@@ -10,6 +12,68 @@ export type TournamentAccess = {
   tournamentId: string
   divisionId: string | null
   accessLevel: AccessLevel
+}
+
+const isWebOnlyManagementFormat = (format: TournamentFormat) =>
+  format === TournamentFormat.MLP || format === TournamentFormat.INDY_LEAGUE
+
+const throwWebOnlyManagementError = () => {
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'WEB_ONLY_MANAGEMENT',
+  })
+}
+
+const assertMobileCanManageTournament = async (
+  prisma: PrismaClient,
+  tournamentId: string,
+  clientType: ClientType
+) => {
+  if (clientType !== 'mobile') return
+
+  const tournament = await prisma.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { format: true },
+  })
+
+  if (!tournament) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Tournament not found',
+    })
+  }
+
+  if (isWebOnlyManagementFormat(tournament.format)) {
+    throwWebOnlyManagementError()
+  }
+}
+
+const assertMobileCanManageDivision = async (
+  prisma: PrismaClient,
+  divisionId: string,
+  clientType: ClientType
+) => {
+  if (clientType !== 'mobile') return
+
+  const division = await prisma.division.findUnique({
+    where: { id: divisionId },
+    select: {
+      tournament: {
+        select: { format: true },
+      },
+    },
+  })
+
+  if (!division) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Division not found',
+    })
+  }
+
+  if (isWebOnlyManagementFormat(division.tournament.format)) {
+    throwWebOnlyManagementError()
+  }
 }
 
 /**
@@ -107,8 +171,11 @@ export async function checkDivisionAccess(
 export async function assertTournamentAdmin(
   prisma: PrismaClient,
   userId: string,
-  tournamentId: string
+  tournamentId: string,
+  clientType: ClientType = 'web'
 ): Promise<void> {
+  await assertMobileCanManageTournament(prisma, tournamentId, clientType)
+
   const { isOwner, access } = await checkTournamentAccess(prisma, userId, tournamentId)
 
   if (isOwner) {
@@ -129,8 +196,11 @@ export async function assertTournamentAdmin(
 export async function assertDivisionAdmin(
   prisma: PrismaClient,
   userId: string,
-  divisionId: string
+  divisionId: string,
+  clientType: ClientType = 'web'
 ): Promise<void> {
+  await assertMobileCanManageDivision(prisma, divisionId, clientType)
+
   const { hasAccess, accessLevel, isOwner } = await checkDivisionAccess(
     prisma,
     userId,
@@ -151,8 +221,11 @@ export async function assertDivisionAdmin(
 export async function assertDivisionScoreAccess(
   prisma: PrismaClient,
   userId: string,
-  divisionId: string
+  divisionId: string,
+  clientType: ClientType = 'web'
 ): Promise<void> {
+  await assertMobileCanManageDivision(prisma, divisionId, clientType)
+
   const { hasAccess } = await checkDivisionAccess(prisma, userId, divisionId)
 
   if (!hasAccess) {
@@ -247,4 +320,3 @@ export async function getUserDivisionIds(
 
   return specificDivisionIds
 }
-

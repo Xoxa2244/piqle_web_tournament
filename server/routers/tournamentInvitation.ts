@@ -20,7 +20,7 @@ export const tournamentInvitationRouter = createTRPCRouter({
       search: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       const participantsInTournament = await ctx.prisma.teamPlayer.findMany({
         where: { team: { division: { tournamentId: input.tournamentId } } },
@@ -81,7 +81,7 @@ export const tournamentInvitationRouter = createTRPCRouter({
       baseUrl: z.string().url().optional().nullable(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
 
       const user = await ctx.prisma.user.findUnique({
         where: { id: input.invitedUserId },
@@ -157,7 +157,7 @@ export const tournamentInvitationRouter = createTRPCRouter({
   list: tdProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, input.tournamentId, ctx.clientType)
       return ctx.prisma.tournamentInvitation.findMany({
         where: { tournamentId: input.tournamentId },
         include: {

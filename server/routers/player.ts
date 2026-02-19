@@ -517,7 +517,7 @@ export const playerRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Player is not linked to a tournament.' })
       }
 
-      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, player.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, ctx.session.user.id, player.tournamentId, ctx.clientType)
 
       if (!player.email) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Player does not have an email.' })

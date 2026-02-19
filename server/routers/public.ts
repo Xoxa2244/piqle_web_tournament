@@ -23,6 +23,7 @@ export const publicRouter = createTRPCRouter({
       startDate: true,
       endDate: true,
       entryFee: true,
+      format: true,
       publicSlug: true,
       image: true,
       user: {
@@ -115,6 +116,7 @@ export const publicRouter = createTRPCRouter({
         startDate: true,
         endDate: true,
         entryFee: true,
+        format: true,
         publicSlug: true,
         image: true,
         user: {

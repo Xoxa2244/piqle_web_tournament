@@ -596,7 +596,7 @@ export const clubTemplateRouter = createTRPCRouter({
       const userId = ctx.session.user.id
 
       // Must be a tournament admin to save its structure.
-      await assertTournamentAdmin(ctx.prisma, userId, input.tournamentId)
+      await assertTournamentAdmin(ctx.prisma, userId, input.tournamentId, ctx.clientType)
 
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.tournamentId },

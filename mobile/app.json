@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Piqle",
+    "slug": "piqle-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.piqle.mobile"
+    },
+    "android": {
+      "package": "com.piqle.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F1E8"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
