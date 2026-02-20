@@ -115,25 +115,62 @@ export default function TeamWithSlots({
   const slots = useMemo(() => {
     const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
-    // Sort teamPlayers by createdAt to ensure consistent ordering
-    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => {
-      if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
-        return a.slotIndex - b.slotIndex
-      }
-      if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
-      if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    })
-    
-    // Fill slots with existing players in sorted order
-    sortedTeamPlayers.forEach((teamPlayer, index) => {
-      const targetIndex = teamPlayer.slotIndex ?? index
-      if (targetIndex < slotCount) {
+    // Keep rendering stable: place explicit slotIndex first, then fill remaining slots.
+    const playersWithSlot = team.teamPlayers
+      .filter(
+        (teamPlayer) =>
+          teamPlayer.slotIndex !== null &&
+          teamPlayer.slotIndex !== undefined &&
+          teamPlayer.slotIndex >= 0 &&
+          teamPlayer.slotIndex < slotCount
+      )
+      .sort((a, b) => {
+        const aSlot = a.slotIndex as number
+        const bSlot = b.slotIndex as number
+        if (aSlot !== bSlot) return aSlot - bSlot
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+
+    const playersWithoutSlot = team.teamPlayers
+      .filter(
+        (teamPlayer) =>
+          teamPlayer.slotIndex === null ||
+          teamPlayer.slotIndex === undefined ||
+          teamPlayer.slotIndex < 0 ||
+          teamPlayer.slotIndex >= slotCount
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+
+    // Fill explicit slots. If data is inconsistent and slot is already occupied, fallback to auto-placement.
+    playersWithSlot.forEach((teamPlayer) => {
+      const targetIndex = teamPlayer.slotIndex as number
+      if (slotsArray[targetIndex] === null) {
         slotsArray[targetIndex] = {
           ...teamPlayer.player,
           teamPlayerId: teamPlayer.id
         }
+      } else {
+        playersWithoutSlot.push(teamPlayer)
       }
+    })
+
+    // Fill remaining empty slots for players without slotIndex.
+    let nextFreeSlot = 0
+    playersWithoutSlot.forEach((teamPlayer) => {
+      while (nextFreeSlot < slotCount && slotsArray[nextFreeSlot] !== null) {
+        nextFreeSlot += 1
+      }
+
+      if (nextFreeSlot >= slotCount) return
+
+      slotsArray[nextFreeSlot] = {
+        ...teamPlayer.player,
+        teamPlayerId: teamPlayer.id
+      }
+      nextFreeSlot += 1
     })
     
     return slotsArray
