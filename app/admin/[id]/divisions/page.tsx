@@ -1883,6 +1883,7 @@ export default function DivisionsPage() {
           }}
           onAssign={handleAssignWaitlist}
           division={selectedWaitlistDivision}
+          tournamentFormat={tournament?.format}
           waitlistEntry={selectedWaitlistEntry}
         />
       )}

@@ -382,7 +382,7 @@ export const registrationRouter = createTRPCRouter({
   claimSlot: protectedProcedure
     .input(z.object({
       teamId: z.string(),
-      slotIndex: z.number().min(0).max(3),
+      slotIndex: z.number().min(0).max(7),
     }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.$transaction(async (tx) => {
@@ -407,7 +407,10 @@ export const registrationRouter = createTRPCRouter({
         }
         await releaseExpiredUnpaidRegistrations(tx, team.division.tournamentId)
 
-        const slotCount = getTeamSlotCount(team.division.teamKind)
+        const slotCount = getTeamSlotCount(
+          team.division.teamKind,
+          team.division.tournament.format
+        )
         if (input.slotIndex >= slotCount) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid slot index' })
         }

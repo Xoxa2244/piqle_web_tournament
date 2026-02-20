@@ -25,7 +25,7 @@ export const waitlistRouter = createTRPCRouter({
     .input(z.object({
       waitlistEntryId: z.string(),
       teamId: z.string(),
-      slotIndex: z.number().min(0).max(3),
+      slotIndex: z.number().min(0).max(7),
     }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.$transaction(async (tx) => {
@@ -45,7 +45,13 @@ export const waitlistRouter = createTRPCRouter({
         const team = await tx.team.findUnique({
           where: { id: input.teamId },
           include: {
-            division: true,
+            division: {
+              include: {
+                tournament: {
+                  select: { format: true },
+                },
+              },
+            },
           },
         })
 
@@ -57,7 +63,10 @@ export const waitlistRouter = createTRPCRouter({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Team is not in the same tournament' })
         }
 
-        const slotCount = getTeamSlotCount(team.division.teamKind)
+        const slotCount = getTeamSlotCount(
+          team.division.teamKind,
+          team.division.tournament?.format
+        )
         if (input.slotIndex >= slotCount) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid slot index' })
         }

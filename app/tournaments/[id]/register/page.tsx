@@ -13,7 +13,11 @@ import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
-const getSlotCount = (teamKind: TeamKind) => {
+const getSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
+  if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
+    return 8
+  }
+
   switch (teamKind) {
     case 'SINGLES_1v1':
       return 1
@@ -383,6 +387,7 @@ export default function TournamentRegistrationPage() {
             <DivisionSeatMap
               key={division.id}
               division={division}
+              tournamentFormat={(seatMap as any)?.format}
               isRegistrationOpen={registrationOpen}
               myStatus={myStatus}
               onClaimSlot={handleClaimSlot}
@@ -422,6 +427,7 @@ export default function TournamentRegistrationPage() {
 
 function DivisionSeatMap({
   division,
+  tournamentFormat,
   isRegistrationOpen,
   myStatus,
   onClaimSlot,
@@ -432,6 +438,7 @@ function DivisionSeatMap({
   currentUserId,
 }: {
   division: any
+  tournamentFormat?: string | null
   isRegistrationOpen: boolean
   myStatus: any
   onClaimSlot: (teamId: string, slotIndex: number) => void
@@ -446,7 +453,7 @@ function DivisionSeatMap({
     { enabled: !!division.id }
   )
 
-  const slotCount = getSlotCount(division.teamKind)
+  const slotCount = getSlotCount(division.teamKind, tournamentFormat)
   const teams = division.teams as any[]
   const pools = division.pools as any[]
 
