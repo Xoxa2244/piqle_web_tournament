@@ -1,6 +1,12 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import {
+  assertDivisionAdmin,
+  assertDivisionScoreAccess,
+  checkTournamentAccess,
+} from '../utils/access'
 import { createMLPGames, calculateMLPMatchWinner } from '../utils/mlp'
 
 // Helper function to generate Round Robin for a specific set of teams
@@ -41,6 +47,47 @@ function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolI
   return rounds
 }
 
+const assertTournamentAccessByRrGroup = async (params: {
+  prisma: any
+  userId: string
+  rrGroupId: string
+  requireAdmin: boolean
+}) => {
+  const rrGroup = await params.prisma.roundRobinGroup.findUnique({
+    where: { id: params.rrGroupId },
+    select: { tournamentId: true },
+  })
+
+  if (!rrGroup) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Round Robin group not found',
+    })
+  }
+
+  const { isOwner, access } = await checkTournamentAccess(
+    params.prisma,
+    params.userId,
+    rrGroup.tournamentId
+  )
+
+  if (isOwner) {
+    return
+  }
+  if (!access) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'No access to this tournament',
+    })
+  }
+  if (params.requireAdmin && access.accessLevel !== 'ADMIN') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Admin access required',
+    })
+  }
+}
+
 export const matchRouter = createTRPCRouter({
   generateRR: tdProcedure
     .input(z.object({
@@ -48,6 +95,13 @@ export const matchRouter = createTRPCRouter({
       matchDayId: z.string().optional(), // League Round Robin: generate RR for this day only
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.divisionId,
+        ctx.clientType
+      )
+
       // Get division with teams
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -217,6 +271,13 @@ export const matchRouter = createTRPCRouter({
       matchDayId: z.string().optional(), // League Round Robin: regenerate RR for this day only
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.divisionId,
+        ctx.clientType
+      )
+
       // Get division with teams and pools
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -417,6 +478,13 @@ export const matchRouter = createTRPCRouter({
   fillRandomResults: tdProcedure
     .input(z.object({ divisionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.divisionId,
+        ctx.clientType
+      )
+
       // Get division to check tournament format
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -640,6 +708,13 @@ export const matchRouter = createTRPCRouter({
   listByDivision: protectedProcedure
     .input(z.object({ divisionId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertDivisionScoreAccess(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.divisionId,
+        ctx.clientType
+      )
+
       return ctx.prisma.match.findMany({
         where: { divisionId: input.divisionId },
         include: {
@@ -656,6 +731,13 @@ export const matchRouter = createTRPCRouter({
   listByRRGroup: protectedProcedure
     .input(z.object({ rrGroupId: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertTournamentAccessByRrGroup({
+        prisma: ctx.prisma,
+        userId: ctx.session.user.id,
+        rrGroupId: input.rrGroupId,
+        requireAdmin: false,
+      })
+
       return ctx.prisma.match.findMany({
         where: { rrGroupId: input.rrGroupId },
         include: {
@@ -676,6 +758,30 @@ export const matchRouter = createTRPCRouter({
       roundIndex: z.number(),
     }))
     .query(async ({ ctx, input }) => {
+      if (!input.divisionId && !input.rrGroupId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'divisionId or rrGroupId is required',
+        })
+      }
+
+      if (input.divisionId) {
+        await assertDivisionScoreAccess(
+          ctx.prisma,
+          ctx.session.user.id,
+          input.divisionId,
+          ctx.clientType
+        )
+      }
+      if (input.rrGroupId) {
+        await assertTournamentAccessByRrGroup({
+          prisma: ctx.prisma,
+          userId: ctx.session.user.id,
+          rrGroupId: input.rrGroupId,
+          requireAdmin: false,
+        })
+      }
+
       return ctx.prisma.match.findMany({
         where: {
           ...(input.divisionId && { divisionId: input.divisionId }),
@@ -734,6 +840,22 @@ export const matchRouter = createTRPCRouter({
 
       if (!match) {
         throw new Error('Match not found')
+      }
+
+      if (match.divisionId) {
+        await assertDivisionScoreAccess(
+          ctx.prisma,
+          ctx.session.user.id,
+          match.divisionId,
+          ctx.clientType
+        )
+      } else if (match.rrGroupId) {
+        await assertTournamentAccessByRrGroup({
+          prisma: ctx.prisma,
+          userId: ctx.session.user.id,
+          rrGroupId: match.rrGroupId,
+          requireAdmin: false,
+        })
       }
 
       const tournamentId = match.division?.tournamentId || match.rrGroup?.tournamentId
@@ -1036,6 +1158,22 @@ export const matchRouter = createTRPCRouter({
         throw new Error('Match not found')
       }
 
+      if (match.divisionId) {
+        await assertDivisionAdmin(
+          ctx.prisma,
+          ctx.session.user.id,
+          match.divisionId,
+          ctx.clientType
+        )
+      } else if (match.rrGroupId) {
+        await assertTournamentAccessByRrGroup({
+          prisma: ctx.prisma,
+          userId: ctx.session.user.id,
+          rrGroupId: match.rrGroupId,
+          requireAdmin: true,
+        })
+      }
+
       const tournamentId = match.division?.tournamentId || match.rrGroup?.tournamentId
       if (!tournamentId) {
         throw new Error('Tournament not found')
@@ -1077,6 +1215,22 @@ export const matchRouter = createTRPCRouter({
 
       if (!match) {
         throw new Error('Match not found')
+      }
+
+      if (match.divisionId) {
+        await assertDivisionAdmin(
+          ctx.prisma,
+          ctx.session.user.id,
+          match.divisionId,
+          ctx.clientType
+        )
+      } else if (match.rrGroupId) {
+        await assertTournamentAccessByRrGroup({
+          prisma: ctx.prisma,
+          userId: ctx.session.user.id,
+          rrGroupId: match.rrGroupId,
+          requireAdmin: true,
+        })
       }
 
       const tournamentId = match.division?.tournamentId || match.rrGroup?.tournamentId
@@ -1137,6 +1291,19 @@ export const matchRouter = createTRPCRouter({
       if (!match) {
         throw new Error('Match not found')
       }
+
+      if (!match.divisionId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Tiebreaker can only be saved for division matches',
+        })
+      }
+      await assertDivisionScoreAccess(
+        ctx.prisma,
+        ctx.session.user.id,
+        match.divisionId,
+        ctx.clientType
+      )
 
       // Validate it's an MLP match
       if (match.division?.tournament?.format !== 'MLP') {

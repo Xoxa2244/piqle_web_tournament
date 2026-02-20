@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '@/server/trpc'
+import { assertDivisionAdmin } from '@/server/utils/access'
 
 export const teamRouter = createTRPCRouter({
   create: tdProcedure
@@ -11,6 +12,13 @@ export const teamRouter = createTRPCRouter({
       poolId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.divisionId,
+        ctx.clientType
+      )
+
       // Get the division to access tournamentId
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -72,6 +80,21 @@ export const teamRouter = createTRPCRouter({
       if (!existingTeam) {
         throw new Error('Team not found')
       }
+
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        existingTeam.divisionId,
+        ctx.clientType
+      )
+      if (input.divisionId && input.divisionId !== existingTeam.divisionId) {
+        await assertDivisionAdmin(
+          ctx.prisma,
+          ctx.session.user.id,
+          input.divisionId,
+          ctx.clientType
+        )
+      }
       
       const team = await ctx.prisma.team.update({
         where: { id },
@@ -104,6 +127,13 @@ export const teamRouter = createTRPCRouter({
       if (!team) {
         throw new Error('Team not found')
       }
+
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        team.divisionId,
+        ctx.clientType
+      )
 
       // Delete team players first
       await ctx.prisma.teamPlayer.deleteMany({
@@ -144,6 +174,13 @@ export const teamRouter = createTRPCRouter({
       if (!team) {
         throw new Error('Team not found')
       }
+
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        team.divisionId,
+        ctx.clientType
+      )
 
       // If poolId is provided, verify it belongs to the same division
       if (input.poolId) {
@@ -199,6 +236,19 @@ export const teamRouter = createTRPCRouter({
       if (!team || !targetDivision) {
         throw new Error('Team or division not found')
       }
+
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        team.divisionId,
+        ctx.clientType
+      )
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        targetDivision.id,
+        ctx.clientType
+      )
 
       // Check if target division has capacity
       if (targetDivision.maxTeams) {

@@ -1,6 +1,14 @@
 import { z } from 'zod'
+import { TRPCError } from '@trpc/server'
 import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
+import {
+  assertDivisionAdmin,
+  assertDivisionScoreAccess,
+  assertTournamentAdmin,
+  checkTournamentAccess,
+  getUserDivisionIds,
+} from '../utils/access'
 
 export const divisionRouter = createTRPCRouter({
   create: tdProcedure
@@ -22,6 +30,13 @@ export const divisionRouter = createTRPCRouter({
       enforcement: z.enum(['INFO', 'HARD']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertTournamentAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.tournamentId,
+        ctx.clientType
+      )
+
       const { minDupr, maxDupr, minTeamDupr, maxTeamDupr, minAge, maxAge, poolCount, genders, enforcement, ...divisionData } = input
       
       const division = await ctx.prisma.division.create({
@@ -123,8 +138,34 @@ export const divisionRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const { isOwner, access } = await checkTournamentAccess(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.tournamentId
+      )
+
+      if (!isOwner && !access) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this tournament',
+        })
+      }
+
+      const accessibleDivisionIds = isOwner
+        ? null
+        : await getUserDivisionIds(ctx.prisma, ctx.session.user.id, input.tournamentId)
+
       return ctx.prisma.division.findMany({
-        where: { tournamentId: input.tournamentId },
+        where: {
+          tournamentId: input.tournamentId,
+          ...(accessibleDivisionIds
+            ? {
+                id: {
+                  in: accessibleDivisionIds,
+                },
+              }
+            : {}),
+        },
         include: {
           constraints: true,
           teams: true,
@@ -143,6 +184,13 @@ export const divisionRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
+      await assertDivisionScoreAccess(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.id,
+        ctx.clientType
+      )
+
       return ctx.prisma.division.findUnique({
         where: { id: input.id },
         include: {
@@ -178,6 +226,8 @@ export const divisionRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, minDupr, maxDupr, minAge, maxAge, poolCount, ...divisionData } = input
+
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, id, ctx.clientType)
       
       console.log('Division update input:', { id, poolCount, divisionData })
       
@@ -306,6 +356,8 @@ export const divisionRouter = createTRPCRouter({
   delete: tdProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.id, ctx.clientType)
+
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.id },
         select: { tournamentId: true },
@@ -342,6 +394,8 @@ export const divisionRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const { divisionId, ...constraintsData } = input
+
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, divisionId, ctx.clientType)
 
       const division = await ctx.prisma.division.findUnique({
         where: { id: divisionId },
@@ -381,6 +435,8 @@ export const divisionRouter = createTRPCRouter({
       divisionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId, ctx.clientType)
+
       // Get division with teams and players
       const division = await ctx.prisma.division.findUnique({
         where: { id: input.divisionId },
@@ -502,6 +558,11 @@ export const divisionRouter = createTRPCRouter({
       divisionId2: z.string(),
     }))
     .query(async ({ ctx, input }) => {
+      await Promise.all([
+        assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId1, ctx.clientType),
+        assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId2, ctx.clientType),
+      ])
+
       // Check if divisions have matches with scores entered
       const [matches1, matches2] = await Promise.all([
         ctx.prisma.match.findMany({
@@ -546,6 +607,11 @@ export const divisionRouter = createTRPCRouter({
       clearData: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
+      await Promise.all([
+        assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId1, ctx.clientType),
+        assertDivisionAdmin(ctx.prisma, ctx.session.user.id, input.divisionId2, ctx.clientType),
+      ])
+
       // Get both divisions with all related data
       const [division1, division2] = await Promise.all([
         ctx.prisma.division.findUnique({
@@ -848,6 +914,13 @@ export const divisionRouter = createTRPCRouter({
       mergedDivisionId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertDivisionAdmin(
+        ctx.prisma,
+        ctx.session.user.id,
+        input.mergedDivisionId,
+        ctx.clientType
+      )
+
       // Get merged division with all related data
       const mergedDivision = await ctx.prisma.division.findUnique({
         where: { id: input.mergedDivisionId },

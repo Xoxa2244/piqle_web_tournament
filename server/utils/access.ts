@@ -102,15 +102,22 @@ export async function checkTournamentAccess(
     return { isOwner: true, access: null }
   }
 
-  // Check TournamentAccess
-  const access = await prisma.tournamentAccess.findFirst({
+  // Check TournamentAccess and prioritize ADMIN if user has mixed grants
+  const accesses = await prisma.tournamentAccess.findMany({
     where: {
       userId,
       tournamentId,
     },
   })
 
-  return { isOwner: false, access: access as TournamentAccess | null }
+  if (accesses.length === 0) {
+    return { isOwner: false, access: null }
+  }
+
+  const prioritized =
+    accesses.find((item) => item.accessLevel === AccessLevel.ADMIN) ?? accesses[0] ?? null
+
+  return { isOwner: false, access: prioritized as TournamentAccess | null }
 }
 
 /**
