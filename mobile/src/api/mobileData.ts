@@ -45,6 +45,19 @@ export type TournamentRegistrationState = {
   ctaDisabled: boolean
 }
 
+type RegistrationStatus = 'active' | 'waitlisted' | 'none'
+type RegistrationPaymentStatus = 'PENDING' | 'PAID' | 'CANCELED' | 'FAILED' | null
+
+export type RegistrationSummary = {
+  entryFeeUsd: number
+  statusLabel: string
+  registrationStatus: RegistrationStatus
+  waitlistDivisionId: string | null
+  isPaid: boolean
+  paymentStatus: RegistrationPaymentStatus
+  canCheckout: boolean
+}
+
 type FetchTournamentFeedPageInput = {
   limit: number
   cursor?: string | null
@@ -99,6 +112,29 @@ const toEntryFeeUsd = (value: any, cents: any) => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
+
+const toRegistrationStatus = (rawStatus: unknown): RegistrationStatus => {
+  if (rawStatus === 'active') return 'active'
+  if (rawStatus === 'waitlisted' || rawStatus === 'waitlist') return 'waitlisted'
+  return 'none'
+}
+
+const toRegistrationStatusLabel = (status: RegistrationStatus) => {
+  if (status === 'active') return 'Registered'
+  if (status === 'waitlisted') return 'On waitlist'
+  return 'Not registered'
+}
+
+const toPaymentStatus = (rawStatus: unknown): RegistrationPaymentStatus => {
+  if (rawStatus === 'PENDING') return 'PENDING'
+  if (rawStatus === 'PAID') return 'PAID'
+  if (rawStatus === 'CANCELED') return 'CANCELED'
+  if (rawStatus === 'FAILED') return 'FAILED'
+  return null
+}
+
+const getErrorMessage = (error: unknown) =>
+  String((error as { message?: string } | null | undefined)?.message || '')
 
 const mapTournament = (raw: any, role: 'PLAYER' | 'ORGANIZER'): Tournament => {
   const divisionCount = Array.isArray(raw?.divisions) ? raw.divisions.length : 0
@@ -298,8 +334,9 @@ export async function fetchTournamentRegistrationState(
 ): Promise<DataResult<TournamentRegistrationState>> {
   try {
     const myStatus = await trpcClient.registration.getMyStatus.query({ tournamentId })
+    const registrationStatus = toRegistrationStatus(myStatus?.status)
 
-    if (myStatus?.status === 'active') {
+    if (registrationStatus === 'active') {
       return {
         source: 'live',
         data: {
@@ -312,7 +349,7 @@ export async function fetchTournamentRegistrationState(
       }
     }
 
-    if (myStatus?.status === 'waitlist') {
+    if (registrationStatus === 'waitlisted') {
       return {
         source: 'live',
         data: {
@@ -408,24 +445,31 @@ export async function fetchEventChatThreads(): Promise<DataResult<ChatThread[]>>
 
 export async function fetchRegistrationSummary(
   tournamentId: string
-): Promise<DataResult<{ entryFeeUsd: number; statusLabel: string }>> {
+): Promise<DataResult<RegistrationSummary>> {
   try {
     const [seatMap, myStatus] = await Promise.all([
       trpcClient.registration.getSeatMap.query({ tournamentId }),
       trpcClient.registration.getMyStatus.query({ tournamentId }),
     ])
 
-    const statusLabel =
-      myStatus?.status === 'active'
-        ? 'Registered'
-        : myStatus?.status === 'waitlist'
-          ? 'On waitlist'
-          : 'Not registered'
+    const registrationStatus = toRegistrationStatus(myStatus?.status)
+    const entryFeeUsd = toEntryFeeUsd(null, seatMap?.entryFeeCents)
+    const isPaid = registrationStatus === 'active' ? Boolean(myStatus?.isPaid) : false
+    const paymentStatus = registrationStatus === 'active' ? toPaymentStatus(myStatus?.paymentStatus) : null
+    const waitlistDivisionId =
+      registrationStatus === 'waitlisted' && typeof myStatus?.divisionId === 'string'
+        ? myStatus.divisionId
+        : null
 
     return {
       data: {
-        entryFeeUsd: toEntryFeeUsd(null, seatMap?.entryFeeCents),
-        statusLabel,
+        entryFeeUsd,
+        statusLabel: toRegistrationStatusLabel(registrationStatus),
+        registrationStatus,
+        waitlistDivisionId,
+        isPaid,
+        paymentStatus,
+        canCheckout: registrationStatus === 'active' && entryFeeUsd > 0 && !isPaid,
       },
       source: 'live',
     }
@@ -435,6 +479,11 @@ export async function fetchRegistrationSummary(
       data: {
         entryFeeUsd: fallback?.entryFeeUsd ?? 0,
         statusLabel: 'Status unavailable (sign in required)',
+        registrationStatus: 'none',
+        waitlistDivisionId: null,
+        isPaid: false,
+        paymentStatus: null,
+        canCheckout: false,
       },
       source: 'fallback',
     }
@@ -446,10 +495,11 @@ export async function fetchRegistrationStatusMessage(
 ): Promise<DataResult<string>> {
   try {
     const myStatus = await trpcClient.registration.getMyStatus.query({ tournamentId })
+    const registrationStatus = toRegistrationStatus(myStatus?.status)
     const message =
-      myStatus?.status === 'active'
+      registrationStatus === 'active'
         ? 'You are already registered.'
-        : myStatus?.status === 'waitlist'
+        : registrationStatus === 'waitlisted'
           ? 'You are on the waitlist.'
           : 'No registration found yet.'
     return { data: message, source: 'live' }
@@ -475,10 +525,11 @@ export async function submitRegistration(
 ): Promise<DataResult<string>> {
   try {
     const myStatus = await trpcClient.registration.getMyStatus.query({ tournamentId })
-    if (myStatus?.status === 'active') {
+    const registrationStatus = toRegistrationStatus(myStatus?.status)
+    if (registrationStatus === 'active') {
       return { data: 'You are already registered in this tournament.', source: 'live' }
     }
-    if (myStatus?.status === 'waitlist') {
+    if (registrationStatus === 'waitlisted') {
       return { data: 'You are already on the waitlist.', source: 'live' }
     }
 
@@ -547,5 +598,130 @@ export async function submitRegistration(
       return { data: 'Registration is currently closed.', source: 'live' }
     }
     return { data: 'Could not complete registration. Please try again.', source: 'fallback' }
+  }
+}
+
+export async function createRegistrationCheckoutSession(
+  tournamentId: string
+): Promise<DataResult<{ checkoutUrl: string | null; message: string }>> {
+  try {
+    const checkoutSession = await trpcClient.payment.createCheckoutSession.mutate({ tournamentId })
+    const checkoutUrl = typeof checkoutSession?.url === 'string' ? checkoutSession.url : null
+
+    if (!checkoutUrl) {
+      return {
+        data: {
+          checkoutUrl: null,
+          message: 'Checkout is temporarily unavailable. Please try again.',
+        },
+        source: 'fallback',
+      }
+    }
+
+    return {
+      data: {
+        checkoutUrl,
+        message: 'Checkout session is ready.',
+      },
+      source: 'live',
+    }
+  } catch (error: unknown) {
+    const message = getErrorMessage(error).toLowerCase()
+    if (message.includes('unauthorized')) {
+      return {
+        data: {
+          checkoutUrl: null,
+          message: 'Sign in required to continue to checkout.',
+        },
+        source: 'fallback',
+      }
+    }
+    if (message.includes('join a team before paying')) {
+      return {
+        data: {
+          checkoutUrl: null,
+          message: 'You need to register for a slot before checkout.',
+        },
+        source: 'live',
+      }
+    }
+    if (message.includes('already paid')) {
+      return {
+        data: {
+          checkoutUrl: null,
+          message: 'Entry fee is already paid for this tournament.',
+        },
+        source: 'live',
+      }
+    }
+    if (message.includes('entry fee is not set')) {
+      return {
+        data: {
+          checkoutUrl: null,
+          message: 'This tournament has no entry fee.',
+        },
+        source: 'live',
+      }
+    }
+    return {
+      data: {
+        checkoutUrl: null,
+        message: 'Could not create checkout session. Please try again.',
+      },
+      source: 'fallback',
+    }
+  }
+}
+
+export async function cancelTournamentRegistration(
+  tournamentId: string
+): Promise<DataResult<string>> {
+  try {
+    await trpcClient.registration.cancelRegistration.mutate({ tournamentId })
+    return {
+      data: 'Registration canceled. Your slot has been released.',
+      source: 'live',
+    }
+  } catch (error: unknown) {
+    const message = getErrorMessage(error).toLowerCase()
+    if (message.includes('unauthorized')) {
+      return { data: 'Sign in required to cancel registration.', source: 'fallback' }
+    }
+    if (message.includes('registration not found') || message.includes('player not found')) {
+      return { data: 'No active registration found.', source: 'live' }
+    }
+    return { data: 'Could not cancel registration. Please try again.', source: 'fallback' }
+  }
+}
+
+export async function leaveTournamentWaitlist(
+  tournamentId: string
+): Promise<DataResult<string>> {
+  try {
+    const myStatus = await trpcClient.registration.getMyStatus.query({ tournamentId })
+    const registrationStatus = toRegistrationStatus(myStatus?.status)
+    if (registrationStatus !== 'waitlisted') {
+      return { data: 'You are not on the waitlist.', source: 'live' }
+    }
+
+    const divisionId = typeof myStatus?.divisionId === 'string' ? myStatus.divisionId : null
+    if (!divisionId) {
+      return {
+        data: 'Could not find your waitlist entry.',
+        source: 'fallback',
+      }
+    }
+
+    await trpcClient.registration.leaveWaitlist.mutate({ divisionId })
+    return { data: 'You left the waitlist.', source: 'live' }
+  } catch (error: unknown) {
+    const message = getErrorMessage(error).toLowerCase()
+    if (message.includes('unauthorized')) {
+      return { data: 'Sign in required to manage waitlist.', source: 'fallback' }
+    }
+    if (message.includes('division not found') || message.includes('player not found')) {
+      return { data: 'Waitlist entry was not found.', source: 'live' }
+    }
+    return { data: 'Could not leave waitlist. Please try again.', source: 'fallback' }
   }
 }

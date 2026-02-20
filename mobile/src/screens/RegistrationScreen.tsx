@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type RouteProp, useRoute } from '@react-navigation/native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppBackground } from '../components/AppBackground'
@@ -10,8 +10,12 @@ import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 import {
+  cancelTournamentRegistration,
+  createRegistrationCheckoutSession,
   fetchRegistrationSummary,
+  type RegistrationSummary,
   fetchTournamentDetails,
+  leaveTournamentWaitlist,
   submitRegistration,
 } from '../api/mobileData'
 
@@ -22,30 +26,112 @@ const registrationTypes = [
   { id: 'team', label: 'Team Spot', description: 'Register your team with fixed lineup' },
 ] as const
 
+const defaultRegistrationSummary: RegistrationSummary = {
+  entryFeeUsd: 0,
+  statusLabel: 'Checking...',
+  registrationStatus: 'none',
+  waitlistDivisionId: null,
+  isPaid: false,
+  paymentStatus: null,
+  canCheckout: false,
+}
+
 export function RegistrationScreen() {
   const route = useRoute<RegistrationRoute>()
-  const [tournament, setTournament] = useState<Tournament | null>(getTournamentById(route.params.tournamentId))
+  const tournamentId = route.params.tournamentId
+  const [tournament, setTournament] = useState<Tournament | null>(getTournamentById(tournamentId))
   const [selectedType, setSelectedType] = useState<(typeof registrationTypes)[number]['id']>('individual')
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
-  const [entryFeeUsd, setEntryFeeUsd] = useState<number>(tournament?.entryFeeUsd ?? 0)
-  const [statusLabel, setStatusLabel] = useState<string>('Checking...')
+  const [registrationSummary, setRegistrationSummary] = useState<RegistrationSummary>({
+    ...defaultRegistrationSummary,
+    entryFeeUsd: tournament?.entryFeeUsd ?? 0,
+  })
+  const [isBusy, setIsBusy] = useState(false)
+
+  const refreshRegistrationSummary = useCallback(async () => {
+    const summaryResult = await fetchRegistrationSummary(tournamentId)
+    setRegistrationSummary(summaryResult.data)
+    setDataSource((currentSource) =>
+      currentSource === 'live' || summaryResult.source === 'live' ? 'live' : 'fallback'
+    )
+    return summaryResult
+  }, [tournamentId])
 
   useEffect(() => {
     let mounted = true
     Promise.all([
-      fetchTournamentDetails(route.params.tournamentId),
-      fetchRegistrationSummary(route.params.tournamentId),
+      fetchTournamentDetails(tournamentId),
+      fetchRegistrationSummary(tournamentId),
     ]).then(([detailsResult, summaryResult]) => {
       if (!mounted) return
       setTournament(detailsResult.data)
-      setDataSource(detailsResult.source)
-      setEntryFeeUsd(summaryResult.data.entryFeeUsd)
-      setStatusLabel(summaryResult.data.statusLabel)
+      setRegistrationSummary(summaryResult.data)
+      setDataSource(
+        detailsResult.source === 'live' || summaryResult.source === 'live' ? 'live' : 'fallback'
+      )
     })
     return () => {
       mounted = false
     }
-  }, [route.params.tournamentId])
+  }, [tournamentId])
+
+  const runAction = useCallback(
+    async (work: () => Promise<void>) => {
+      if (isBusy) return
+      setIsBusy(true)
+      try {
+        await work()
+      } finally {
+        setIsBusy(false)
+      }
+    },
+    [isBusy]
+  )
+
+  const handleSubmitRegistration = useCallback(() => {
+    void runAction(async () => {
+      const result = await submitRegistration(tournamentId, selectedType)
+      Alert.alert(result.source === 'live' ? 'Registration update' : 'Registration', result.data)
+      await refreshRegistrationSummary()
+    })
+  }, [refreshRegistrationSummary, runAction, selectedType, tournamentId])
+
+  const handleOpenCheckout = useCallback(() => {
+    void runAction(async () => {
+      const checkoutResult = await createRegistrationCheckoutSession(tournamentId)
+      const checkoutUrl = checkoutResult.data.checkoutUrl
+      if (!checkoutUrl) {
+        Alert.alert(checkoutResult.source === 'live' ? 'Checkout' : 'Payment', checkoutResult.data.message)
+        return
+      }
+
+      const canOpen = await Linking.canOpenURL(checkoutUrl)
+      if (!canOpen) {
+        Alert.alert('Checkout', 'Could not open checkout on this device.')
+        return
+      }
+
+      await Linking.openURL(checkoutUrl)
+      Alert.alert('Checkout', 'Secure checkout opened in your browser.')
+      await refreshRegistrationSummary()
+    })
+  }, [refreshRegistrationSummary, runAction, tournamentId])
+
+  const handleCancelRegistration = useCallback(() => {
+    void runAction(async () => {
+      const result = await cancelTournamentRegistration(tournamentId)
+      Alert.alert(result.source === 'live' ? 'Registration update' : 'Registration', result.data)
+      await refreshRegistrationSummary()
+    })
+  }, [refreshRegistrationSummary, runAction, tournamentId])
+
+  const handleLeaveWaitlist = useCallback(() => {
+    void runAction(async () => {
+      const result = await leaveTournamentWaitlist(tournamentId)
+      Alert.alert(result.source === 'live' ? 'Waitlist update' : 'Waitlist', result.data)
+      await refreshRegistrationSummary()
+    })
+  }, [refreshRegistrationSummary, runAction, tournamentId])
 
   if (!tournament) {
     return (
@@ -60,6 +146,25 @@ export function RegistrationScreen() {
   }
 
   const webOnly = isWebOnlyTournament(tournament)
+  const registrationLocked = registrationSummary.registrationStatus !== 'none'
+  const paymentLabel =
+    registrationSummary.entryFeeUsd <= 0
+      ? 'No payment needed'
+      : registrationSummary.registrationStatus !== 'active'
+        ? 'Pay after slot reservation'
+        : registrationSummary.isPaid || registrationSummary.paymentStatus === 'PAID'
+          ? 'Paid'
+          : registrationSummary.paymentStatus === 'FAILED'
+            ? 'Payment failed'
+            : registrationSummary.paymentStatus === 'CANCELED'
+              ? 'Payment canceled'
+              : 'Payment required'
+  const statusHint =
+    registrationSummary.registrationStatus === 'active'
+      ? 'You can pay now (if needed) or cancel your registration.'
+      : registrationSummary.registrationStatus === 'waitlisted'
+        ? 'You can leave the waitlist at any time.'
+        : 'Choose a registration type and reserve a slot.'
 
   return (
     <AppBackground>
@@ -69,7 +174,7 @@ export function RegistrationScreen() {
           <Text style={styles.subtitle}>{tournament.title}</Text>
           <View style={styles.badgeRow}>
             <Badge label={dataSource === 'live' ? 'Live data' : 'Demo data'} tone={dataSource === 'live' ? 'success' : 'warning'} />
-            <Badge label={statusLabel} tone="neutral" />
+            <Badge label={registrationSummary.statusLabel} tone="neutral" />
           </View>
 
           <View style={styles.panel}>
@@ -80,8 +185,13 @@ export function RegistrationScreen() {
                 return (
                   <Pressable
                     key={item.id}
+                    disabled={registrationLocked || isBusy}
                     onPress={() => setSelectedType(item.id)}
-                    style={[styles.choiceRow, selected ? styles.choiceSelected : null]}
+                    style={[
+                      styles.choiceRow,
+                      selected ? styles.choiceSelected : null,
+                      registrationLocked ? styles.choiceDisabled : null,
+                    ]}
                   >
                     <View style={styles.choiceTextWrap}>
                       <Text style={[styles.choiceLabel, selected ? styles.choiceLabelSelected : null]}>
@@ -94,13 +204,15 @@ export function RegistrationScreen() {
                 )
               })}
             </View>
+            <Text style={styles.statusHint}>{statusHint}</Text>
           </View>
 
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>Payment</Text>
             <Text style={styles.price}>
-              {entryFeeUsd > 0 ? `$${entryFeeUsd}` : 'No entry fee'}
+              {registrationSummary.entryFeeUsd > 0 ? `$${registrationSummary.entryFeeUsd}` : 'No entry fee'}
             </Text>
+            <Text style={styles.paymentStatus}>{paymentLabel}</Text>
             <Text style={styles.hint}>
               You will be redirected to secure checkout if payment is required.
             </Text>
@@ -122,22 +234,41 @@ export function RegistrationScreen() {
             </View>
           )}
 
-          <PrimaryButton
-            label="Confirm Registration"
-            onPress={async () => {
-              const result = await submitRegistration(route.params.tournamentId, selectedType)
-              Alert.alert(
-                result.source === 'live' ? 'Registration update' : 'Registration',
-                result.data
-              )
-              if (result.source === 'live') {
-                const summary = await fetchRegistrationSummary(route.params.tournamentId)
-                setEntryFeeUsd(summary.data.entryFeeUsd)
-                setStatusLabel(summary.data.statusLabel)
-                setDataSource(summary.source)
-              }
-            }}
-          />
+          <View style={styles.actionStack}>
+            {registrationSummary.registrationStatus === 'none' ? (
+              <PrimaryButton
+                label={isBusy ? 'Processing...' : 'Confirm Registration'}
+                disabled={isBusy}
+                onPress={handleSubmitRegistration}
+              />
+            ) : null}
+
+            {registrationSummary.registrationStatus === 'active' && registrationSummary.canCheckout ? (
+              <PrimaryButton
+                label={isBusy ? 'Opening Checkout...' : 'Pay Entry Fee'}
+                disabled={isBusy}
+                onPress={handleOpenCheckout}
+              />
+            ) : null}
+
+            {registrationSummary.registrationStatus === 'active' ? (
+              <PrimaryButton
+                label={isBusy ? 'Processing...' : 'Cancel Registration'}
+                variant="outline"
+                disabled={isBusy}
+                onPress={handleCancelRegistration}
+              />
+            ) : null}
+
+            {registrationSummary.registrationStatus === 'waitlisted' ? (
+              <PrimaryButton
+                label={isBusy ? 'Processing...' : 'Leave Waitlist'}
+                variant="outline"
+                disabled={isBusy}
+                onPress={handleLeaveWaitlist}
+              />
+            ) : null}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </AppBackground>
@@ -202,6 +333,9 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     backgroundColor: '#F4FBF6',
   },
+  choiceDisabled: {
+    opacity: 0.55,
+  },
   choiceTextWrap: {
     flex: 1,
   },
@@ -218,15 +352,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.muted,
   },
+  statusHint: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 18,
+  },
   price: {
     fontSize: 30,
     fontWeight: '900',
     color: colors.ink,
   },
+  paymentStatus: {
+    fontSize: 14,
+    color: colors.ink,
+    fontWeight: '700',
+  },
   hint: {
     fontSize: 13,
     color: colors.muted,
     lineHeight: 18,
+  },
+  actionStack: {
+    gap: spacing.sm,
   },
   webOnlyBox: {
     borderRadius: 14,
