@@ -140,6 +140,22 @@ export const POST = withPartnerAuth(
                       warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player updated but not added to team.`,
                     })
                   } else {
+                    const usedSlots = new Set(
+                      team.teamPlayers
+                        .map((tp) => tp.slotIndex)
+                        .filter(
+                          (slotIndex): slotIndex is number =>
+                            slotIndex !== null && slotIndex !== undefined
+                        )
+                    )
+                    let nextAvailableSlot: number | null = null
+                    for (let i = 0; i < maxPlayers; i++) {
+                      if (!usedSlots.has(i)) {
+                        nextAvailableSlot = i
+                        break
+                      }
+                    }
+
                     // Check if player is already in team
                     const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                       where: {
@@ -156,6 +172,7 @@ export const POST = withPartnerAuth(
                           teamId,
                           playerId: existingInternalId,
                           role: 'PLAYER',
+                          slotIndex: nextAvailableSlot,
                         },
                       })
                     }
@@ -255,6 +272,22 @@ export const POST = withPartnerAuth(
                       warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player created but not added to team.`,
                     })
                   } else {
+                    const usedSlots = new Set(
+                      team.teamPlayers
+                        .map((tp) => tp.slotIndex)
+                        .filter(
+                          (slotIndex): slotIndex is number =>
+                            slotIndex !== null && slotIndex !== undefined
+                        )
+                    )
+                    let nextAvailableSlot: number | null = null
+                    for (let i = 0; i < maxPlayers; i++) {
+                      if (!usedSlots.has(i)) {
+                        nextAvailableSlot = i
+                        break
+                      }
+                    }
+
                     // Check if player is already in team
                     const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                       where: {
@@ -271,6 +304,7 @@ export const POST = withPartnerAuth(
                           teamId,
                           playerId: newPlayer.id,
                           role: 'PLAYER',
+                          slotIndex: nextAvailableSlot,
                         },
                       })
                     }
@@ -361,6 +395,22 @@ export const POST = withPartnerAuth(
                     warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player created but not added to team.`,
                   })
                 } else {
+                  const usedSlots = new Set(
+                    team.teamPlayers
+                      .map((tp) => tp.slotIndex)
+                      .filter(
+                        (slotIndex): slotIndex is number =>
+                          slotIndex !== null && slotIndex !== undefined
+                      )
+                  )
+                  let nextAvailableSlot: number | null = null
+                  for (let i = 0; i < maxPlayers; i++) {
+                    if (!usedSlots.has(i)) {
+                      nextAvailableSlot = i
+                      break
+                    }
+                  }
+
                   // Check if player is already in team
                   const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                     where: {
@@ -377,6 +427,7 @@ export const POST = withPartnerAuth(
                         teamId,
                         playerId: newPlayer.id,
                         role: 'PLAYER',
+                        slotIndex: nextAvailableSlot,
                       },
                     })
                   }

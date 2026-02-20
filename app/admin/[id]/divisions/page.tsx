@@ -131,6 +131,7 @@ function WaitList({
   expandedTeams,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -144,6 +145,7 @@ function WaitList({
   expandedTeams: Set<string>
   availablePlayers: any[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleTeamExpansion: (teamId: string) => void
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
@@ -183,6 +185,7 @@ function WaitList({
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
+                tournamentFormat={tournamentFormat}
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
@@ -209,6 +212,7 @@ function PoolCard({
   expandedTeams,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -223,6 +227,7 @@ function PoolCard({
   expandedTeams: Set<string>
   availablePlayers: any[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleTeamExpansion: (teamId: string) => void
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
@@ -263,6 +268,7 @@ function PoolCard({
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
+                tournamentFormat={tournamentFormat}
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
@@ -591,6 +597,7 @@ function DivisionCard({
                     expandedTeams={expandedTeams}
                     availablePlayers={availablePlayers}
                     tournamentId={tournamentId}
+                    tournamentFormat={tournamentFormat}
                     onToggleTeamExpansion={onToggleTeamExpansion}
                     onAddPlayerToSlot={onAddPlayerToSlot}
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
@@ -617,6 +624,7 @@ function DivisionCard({
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
+                      tournamentFormat={tournamentFormat}
                       onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
@@ -639,6 +647,7 @@ function DivisionCard({
               expandedTeams={expandedTeams}
               availablePlayers={availablePlayers}
               tournamentId={tournamentId}
+              tournamentFormat={tournamentFormat}
               onToggleTeamExpansion={onToggleTeamExpansion}
               onAddPlayerToSlot={onAddPlayerToSlot}
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
@@ -1735,6 +1744,7 @@ export default function DivisionsPage() {
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
+                      tournamentFormat={tournament?.format}
                       onToggleExpansion={() => toggleTeamExpansion(team.id)}
                       onEdit={() => handleEditTeam(team)}
                       onDelete={() => handleDeleteTeam(team)}

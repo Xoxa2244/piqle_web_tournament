@@ -191,6 +191,11 @@ export default function TeamsPage() {
 
   const getMaxPlayersForTeam = (team: Team) => {
     const teamKind = team.division.teamKind
+    const tournamentFormat = tournament?.format
+    if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
+      return 8
+    }
+
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
       case 'DOUBLES_2v2': return 2
