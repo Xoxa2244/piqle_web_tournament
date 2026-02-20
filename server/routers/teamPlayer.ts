@@ -249,6 +249,15 @@ export const teamPlayerRouter = createTRPCRouter({
         include: { player: true },
       })
 
+      // Ensure player is linked to this tournament so they appear in tournament players list
+      const tournamentId = team.division.tournamentId
+      if (player.tournamentId !== tournamentId) {
+        await ctx.prisma.player.update({
+          where: { id: input.playerId },
+          data: { tournamentId },
+        })
+      }
+
       // Log the addition
       await ctx.prisma.auditLog.create({
         data: {
@@ -400,6 +409,15 @@ export const teamPlayerRouter = createTRPCRouter({
         },
         include: { player: true },
       })
+
+      // Ensure player is linked to this tournament so they appear in tournament players list
+      const tournamentId = team.division.tournamentId
+      if (player.tournamentId !== tournamentId) {
+        await ctx.prisma.player.update({
+          where: { id: input.playerId },
+          data: { tournamentId },
+        })
+      }
 
       // Validate MLP team composition after adding player
       if (team.division.tournament.format === 'MLP') {
