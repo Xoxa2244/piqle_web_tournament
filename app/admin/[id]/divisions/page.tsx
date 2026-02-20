@@ -908,7 +908,7 @@ export default function DivisionsPage() {
       // Optimistically update the UI
       optimisticRemovePlayer(variables.teamPlayerId, variables.slotIndex)
       
-      // Also optimistically update availablePlayers
+      // Also optimistically update availablePlayers so removed player appears as free agent
       const teamPlayer = localDivisions
         .flatMap(d => d.teams)
         .flatMap(t => t.teamPlayers)
@@ -921,6 +921,8 @@ export default function DivisionsPage() {
     },
     onSuccess: () => {
       refetch()
+      // Refetch available players so the removed player is in the list (free agent)
+      utils.teamPlayer.getAvailablePlayers.invalidate({ tournamentId })
     },
     onError: (error) => {
       // Rollback on error

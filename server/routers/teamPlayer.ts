@@ -240,7 +240,7 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('Player is already in this team')
       }
 
-      // Add player to team
+      // Add player to team (only creates TeamPlayer; Player record is unchanged)
       const teamPlayer = await ctx.prisma.teamPlayer.create({
         data: {
           teamId: input.teamId,
@@ -249,7 +249,7 @@ export const teamPlayerRouter = createTRPCRouter({
         include: { player: true },
       })
 
-      // Ensure player is linked to this tournament so they appear in tournament players list
+      // Ensure player is linked to this tournament so they appear in list and as free agent if later removed from team
       const tournamentId = team.division.tournamentId
       if (player.tournamentId !== tournamentId) {
         await ctx.prisma.player.update({
@@ -533,7 +533,7 @@ export const teamPlayerRouter = createTRPCRouter({
         }
       }
 
-      // Remove player from team
+      // Remove only the team assignment; Player record and tournamentId stay so they remain in tournament as free agent
       await ctx.prisma.teamPlayer.delete({
         where: { id: input.teamPlayerId },
       })

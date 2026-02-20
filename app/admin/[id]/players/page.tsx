@@ -65,7 +65,7 @@ export default function PlayersPage() {
   const [inviteSearchDebounced, setInviteSearchDebounced] = useState('')
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [rosterFilter, setRosterFilter] = useState<'active_in_team' | 'waitlist' | 'expired_unpaid' | 'all'>('all')
+  const [rosterFilter, setRosterFilter] = useState<'active_in_team' | 'waitlist' | 'no_team' | 'all'>('all')
   const [divisionFilter, setDivisionFilter] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState('')
@@ -164,9 +164,9 @@ export default function PlayersPage() {
       filtered = filtered.filter((player) => !player.isWaitlist && player.teamPlayers.length > 0)
     } else if (rosterFilter === 'waitlist') {
       filtered = filtered.filter((player) => player.isWaitlist)
-    } else if (rosterFilter === 'expired_unpaid') {
+    } else if (rosterFilter === 'no_team') {
       filtered = filtered.filter(
-        (player) => !player.isWaitlist && player.teamPlayers.length === 0 && player.isPaid !== true
+        (player) => !player.isWaitlist && player.teamPlayers.length === 0
       )
     }
 
@@ -245,10 +245,11 @@ export default function PlayersPage() {
     return player.user?.email || player.email || '—'
   }
 
-  const getListStatus = (player: Player): 'WAITLIST' | 'ACTIVE' | 'EXPIRED_UNPAID' | 'INACTIVE' => {
+  const getListStatus = (player: Player): 'WAITLIST' | 'ACTIVE' | 'NO_TEAM' | 'INACTIVE' => {
     if (player.isWaitlist) return 'WAITLIST'
     if (player.teamPlayers.length > 0) return 'ACTIVE'
-    if (player.isPaid !== true) return 'EXPIRED_UNPAID'
+    // Not in any team: show neutral "No team" (covers new players and unassigned)
+    if (player.isPaid !== true) return 'NO_TEAM'
     return 'INACTIVE'
   }
 
@@ -321,7 +322,7 @@ export default function PlayersPage() {
             {/* Roster Status Filter */}
             <select
               value={rosterFilter}
-              onChange={(e) => setRosterFilter(e.target.value as 'active_in_team' | 'waitlist' | 'expired_unpaid' | 'all')}
+              onChange={(e) => setRosterFilter(e.target.value as 'active_in_team' | 'waitlist' | 'no_team' | 'all')}
               className="pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
@@ -329,7 +330,7 @@ export default function PlayersPage() {
             >
               <option value="active_in_team">Active in team</option>
               <option value="waitlist">Waitlist</option>
-              <option value="expired_unpaid">Expired unpaid</option>
+              <option value="no_team">No team</option>
               <option value="all">All roster statuses</option>
             </select>
 
@@ -446,8 +447,8 @@ export default function PlayersPage() {
                           <Badge variant="secondary">Waitlist</Badge>
                         ) : getListStatus(player) === 'ACTIVE' ? (
                           <Badge variant="default">Active</Badge>
-                        ) : getListStatus(player) === 'EXPIRED_UNPAID' ? (
-                          <Badge variant="destructive">Expired unpaid</Badge>
+                        ) : getListStatus(player) === 'NO_TEAM' ? (
+                          <Badge variant="secondary">No team</Badge>
                         ) : (
                           <Badge variant="outline">Inactive</Badge>
                         )}
