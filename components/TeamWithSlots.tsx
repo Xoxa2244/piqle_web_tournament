@@ -11,14 +11,12 @@ import {
   User, 
   Edit, 
   Trash2, 
-  Plus,
   Star
 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import PlayerSlot from './PlayerSlot'
 import PlayerSelectionModal from './PlayerSelectionModal'
-import IndyLeagueTeamPlayers from './IndyLeagueTeamPlayers'
 import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
 
 interface Player {
@@ -103,13 +101,15 @@ export default function TeamWithSlots({
 
   // Determine number of slots based on team kind
   const slotCount = useMemo(() => {
+    if (isIndyLeague && teamKind === 'SQUAD_4v4') return 8
+
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
       case 'DOUBLES_2v2': return 2
       case 'SQUAD_4v4': return 4
       default: return 2
     }
-  }, [teamKind])
+  }, [isIndyLeague, teamKind])
 
   // Create slots array with players and teamPlayerIds
   const slots = useMemo(() => {
@@ -301,33 +301,20 @@ export default function TeamWithSlots({
         {/* Player Slots - only show for non-SINGLES or when expanded */}
         {teamKind !== 'SINGLES_1v1' && isExpanded && (
           <div className="p-2 space-y-2">
-            {isIndyLeague ? (
-              // For IndyLeague: show all players (up to 8) with letter selectors
-              <IndyLeagueTeamPlayers
+            {slots.map((player, index) => (
+              <PlayerSlot
+                key={`${team.id}-slot-${index}`}
+                slotIndex={index}
+                player={player}
+                teamKind={teamKind}
                 teamId={team.id}
-                teamPlayers={team.teamPlayers.map(tp => ({
-                  id: tp.id,
-                  player: tp.player,
-                }))}
-                tournamentId={tournamentId}
+                onAddPlayer={handleAddPlayerClick}
+                onRemovePlayer={handleRemovePlayer}
+                onMovePlayer={onMovePlayer}
+                isDragDisabled={isDragDisabled}
+                isDropTarget={dropTargetId === `player-${team.id}-slot-${index}`}
               />
-            ) : (
-              // For other formats: show slots
-              slots.map((player, index) => (
-                <PlayerSlot
-                  key={`${team.id}-slot-${index}`}
-                  slotIndex={index}
-                  player={player}
-                  teamKind={teamKind}
-                  teamId={team.id}
-                  onAddPlayer={handleAddPlayerClick}
-                  onRemovePlayer={handleRemovePlayer}
-                  onMovePlayer={onMovePlayer}
-                  isDragDisabled={isDragDisabled}
-                  isDropTarget={dropTargetId === `player-${team.id}-slot-${index}`}
-                />
-              ))
-            )}
+            ))}
           </div>
         )}
       </div>

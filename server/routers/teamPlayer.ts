@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '@/server/trpc'
 import { getTeamSlotCount, normalizeTeamSlots } from '@/server/utils/teamSlots'
 
+const getMaxPlayersForTeam = (teamKind: 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4', tournamentFormat?: string | null) =>
+  getTeamSlotCount(teamKind, tournamentFormat)
+
 export const teamPlayerRouter = createTRPCRouter({
   movePlayer: tdProcedure
     .input(z.object({
@@ -58,9 +61,10 @@ export const teamPlayerRouter = createTRPCRouter({
       }
 
       // Check target team capacity based on division team kind
-      const maxPlayers = teamPlayer.team.division.teamKind === 'SINGLES_1v1' ? 1 :
-                        teamPlayer.team.division.teamKind === 'DOUBLES_2v2' ? 2 :
-                        teamPlayer.team.division.teamKind === 'SQUAD_4v4' ? 4 : 2
+      const maxPlayers = getMaxPlayersForTeam(
+        teamPlayer.team.division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
+        targetTeam.division.tournament.format
+      )
 
       // If target team is at capacity, do a player swap
       if (targetTeam.teamPlayers.length >= maxPlayers) {
@@ -195,7 +199,13 @@ export const teamPlayerRouter = createTRPCRouter({
       const team = await ctx.prisma.team.findUnique({
         where: { id: input.teamId },
         include: { 
-          division: true,
+          division: {
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
+          },
           teamPlayers: true 
         },
       })
@@ -209,7 +219,10 @@ export const teamPlayerRouter = createTRPCRouter({
       }
 
       // Check team capacity
-      const maxPlayers = getTeamSlotCount(team.division.teamKind)
+      const maxPlayers = getMaxPlayersForTeam(
+        team.division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
+        team.division.tournament.format
+      )
 
       if (team.teamPlayers.length >= maxPlayers) {
         throw new Error(`Team is full. Maximum ${maxPlayers} players allowed.`)
@@ -296,7 +309,7 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       teamId: z.string(),
       playerId: z.string(),
-      slotIndex: z.number().min(0).max(3), // 0-3 for different team kinds
+      slotIndex: z.number().min(0).max(7), // Supports IndyLeague extended roster slots
     }))
     .mutation(async ({ ctx, input }) => {
       // Get team and player info
@@ -348,9 +361,10 @@ export const teamPlayerRouter = createTRPCRouter({
       }
 
       // Check team capacity
-      const maxPlayers = team.division.teamKind === 'SINGLES_1v1' ? 1 :
-                        team.division.teamKind === 'DOUBLES_2v2' ? 2 :
-                        team.division.teamKind === 'SQUAD_4v4' ? 4 : 2
+      const maxPlayers = getMaxPlayersForTeam(
+        team.division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
+        team.division.tournament.format
+      )
 
       if (input.slotIndex >= maxPlayers) {
         throw new Error(`Invalid slot index. Maximum ${maxPlayers} slots allowed for ${team.division.teamKind}.`)
@@ -443,7 +457,7 @@ export const teamPlayerRouter = createTRPCRouter({
   removePlayerFromSlot: tdProcedure
     .input(z.object({ 
       teamPlayerId: z.string(),
-      slotIndex: z.number().min(0).max(3)
+      slotIndex: z.number().min(0).max(7)
     }))
     .mutation(async ({ ctx, input }) => {
       const teamPlayer = await ctx.prisma.teamPlayer.findUnique({
@@ -529,8 +543,8 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       fromTeamId: z.string(),
       toTeamId: z.string(),
-      fromSlotIndex: z.number().min(0).max(3),
-      toSlotIndex: z.number().min(0).max(3),
+      fromSlotIndex: z.number().min(0).max(7),
+      toSlotIndex: z.number().min(0).max(7),
     }))
     .mutation(async ({ ctx, input }) => {
       console.log('[movePlayerBetweenSlots] Input:', input)
@@ -539,7 +553,13 @@ export const teamPlayerRouter = createTRPCRouter({
       const fromTeam = await ctx.prisma.team.findUnique({
         where: { id: input.fromTeamId },
         include: { 
-          division: true,
+          division: {
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
+          },
           teamPlayers: {
             include: { player: true },
             orderBy: { createdAt: 'asc' }
@@ -550,7 +570,13 @@ export const teamPlayerRouter = createTRPCRouter({
       const toTeam = await ctx.prisma.team.findUnique({
         where: { id: input.toTeamId },
         include: { 
-          division: true,
+          division: {
+            include: {
+              tournament: {
+                select: { format: true },
+              },
+            },
+          },
           teamPlayers: {
             include: { player: true },
             orderBy: { createdAt: 'asc' }
@@ -570,7 +596,10 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('Cannot move players between different divisions')
       }
 
-      const maxSlots = getTeamSlotCount(fromTeam.division.teamKind)
+      const maxSlots = getMaxPlayersForTeam(
+        fromTeam.division.teamKind as 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4',
+        fromTeam.division.tournament.format
+      )
       if (input.fromSlotIndex < 0 || input.fromSlotIndex >= maxSlots) {
         throw new Error(`Invalid source slot index: ${input.fromSlotIndex}`)
       }

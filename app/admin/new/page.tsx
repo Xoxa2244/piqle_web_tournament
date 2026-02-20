@@ -320,7 +320,7 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
 }
 
 const CREATE_TOURNAMENT_STEPS = [
-  { key: 'basics', title: 'Basics', description: 'Club, template, venue' },
+  { key: 'basics', title: 'Basics', description: 'Club and venue' },
   { key: 'schedule', title: 'Schedule', description: 'Dates and registration' },
   { key: 'format', title: 'Format', description: 'Structure and rules' },
   { key: 'publish', title: 'Publish', description: 'Pricing and visibility' },
@@ -368,30 +368,11 @@ function NewTournamentPageInner() {
   const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(() => (
     buildRecommendedStructure('SINGLE_ELIMINATION')
   ))
-  const [templateDraftOpen, setTemplateDraftOpen] = useState(false)
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [templateDraftForm, setTemplateDraftForm] = useState({
-    title: '',
-    startDate: '',
-    endDate: '',
-    registrationStartDate: '',
-    registrationEndDate: '',
-    entryFee: '',
-    isRecurring: false,
-    recurrenceFrequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
-    recurrenceCount: 4,
-    recurrenceWeekdays: [] as number[],
-  })
   const [seriesDraftForm, setSeriesDraftForm] = useState({
     enabled: false,
     frequency: 'WEEKLY' as 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
     count: 4,
     weekdays: [] as number[],
-  })
-  const [saveTemplateForm, setSaveTemplateForm] = useState({
-    enabled: false,
-    name: '',
-    description: '',
   })
   const [requiredErrors, setRequiredErrors] = useState({
     title: false,
@@ -416,7 +397,6 @@ function NewTournamentPageInner() {
   useEffect(() => {
     if (ENABLE_RECURRING_DRAFTS) return
     setSeriesDraftForm((prev) => (prev.enabled ? { ...prev, enabled: false } : prev))
-    setTemplateDraftForm((prev) => (prev.isRecurring ? { ...prev, isRecurring: false } : prev))
   }, [])
 
   useEffect(() => {
@@ -430,20 +410,6 @@ function NewTournamentPageInner() {
 
   const createTournamentWithStructure = trpc.tournament.createWithStructure.useMutation({
     onSuccess: async (tournament) => {
-      if (saveTemplateForm.enabled && saveTemplateForm.name.trim().length >= 2) {
-        const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
-        if (canSave) {
-          try {
-            await saveTemplateFromTournament.mutateAsync({
-              tournamentId: tournament.id,
-              name: saveTemplateForm.name.trim(),
-              description: saveTemplateForm.description.trim() ? saveTemplateForm.description.trim() : undefined,
-            })
-          } catch (err: any) {
-            alert(err?.message || 'Failed to save club template')
-          }
-        }
-      }
       router.push(`/admin/${tournament.id}`)
     },
     onError: (error) => {
@@ -455,22 +421,6 @@ function NewTournamentPageInner() {
   const createTournamentSeriesWithStructure = trpc.tournament.createSeriesWithStructure.useMutation({
     onSuccess: async (res: any) => {
       const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
-      const firstId = Array.isArray(ids) && ids.length ? String(ids[0]) : String(res?.tournamentId)
-
-      if (saveTemplateForm.enabled && saveTemplateForm.name.trim().length >= 2) {
-        const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
-        if (canSave && firstId) {
-          try {
-            await saveTemplateFromTournament.mutateAsync({
-              tournamentId: firstId,
-              name: saveTemplateForm.name.trim(),
-              description: saveTemplateForm.description.trim() ? saveTemplateForm.description.trim() : undefined,
-            })
-          } catch (err: any) {
-            alert(err?.message || 'Failed to save club template')
-          }
-        }
-      }
 
       if (Array.isArray(ids) && ids.length > 1) {
         router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
@@ -494,15 +444,6 @@ function NewTournamentPageInner() {
     [clubs, formData.clubId]
   )
   const adminClubs = useMemo(() => (clubs ?? []).filter((c) => (c as any).isAdmin), [clubs])
-
-  const { data: templates, isLoading: templatesLoading, error: templatesError } =
-    trpc.clubTemplate.list.useQuery(
-      { clubId: formData.clubId },
-      { enabled: Boolean(formData.clubId && (selectedClub as any)?.isAdmin) }
-    )
-
-  const createDraftFromTemplate = trpc.clubTemplate.createDraftFromTemplate.useMutation()
-  const saveTemplateFromTournament = trpc.clubTemplate.saveFromTournament.useMutation()
 
   const syncTimezoneFromAddress = useCallback(
     async (
@@ -1032,8 +973,7 @@ function NewTournamentPageInner() {
     ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
   const isCreating =
     createTournamentWithStructure.isPending ||
-    createTournamentSeriesWithStructure.isPending ||
-    saveTemplateFromTournament.isPending
+    createTournamentSeriesWithStructure.isPending
 
   const [createArmed, setCreateArmed] = useState(true)
 
@@ -1068,20 +1008,6 @@ function NewTournamentPageInner() {
     if (requiresPayoutsSetup) {
       alert('Connect payouts with Stripe before creating a paid tournament.')
       return
-    }
-
-    if (saveTemplateForm.enabled) {
-      const canSave = Boolean(formData.clubId && (selectedClub as any)?.isAdmin)
-      if (!canSave) {
-        alert('Select a club where you are an admin to save a club template.')
-        setStepIndex(0)
-        return
-      }
-      if (saveTemplateForm.name.trim().length < 2) {
-        alert('Template name is required (min 2 chars).')
-        setStepIndex(3)
-        return
-      }
     }
 
     const normalizedTimezone = normalizeKnownTimezone(formData.timezone) || undefined
@@ -1166,136 +1092,6 @@ function NewTournamentPageInner() {
     })
   }
 
-  const selectedTemplate = useMemo(
-    () => (templates ?? []).find((t: any) => t.id === selectedTemplateId) ?? null,
-    [templates, selectedTemplateId]
-  )
-
-  const openTemplateDraftModal = () => {
-    if (!selectedTemplateId) {
-      alert('Choose a template first')
-      return
-    }
-    const now = new Date()
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    const start = formData.startDate || today
-    const end = formData.endDate || start
-    const startWeekday = parseYmdToUtc(start)?.getUTCDay() ?? 0
-    setTemplateDraftForm({
-      title: '',
-      startDate: start,
-      endDate: end,
-      registrationStartDate: '',
-      registrationEndDate: '',
-      entryFee: formData.entryFee || '',
-      isRecurring: false,
-      recurrenceFrequency: 'WEEKLY',
-      recurrenceCount: 4,
-      recurrenceWeekdays: [startWeekday],
-    })
-    setTemplateDraftOpen(true)
-  }
-
-  const validateTemplateDraft = () => {
-    if (!templateDraftForm.startDate || !templateDraftForm.endDate) {
-      alert('Start and end dates are required')
-      return false
-    }
-    const startDate = new Date(templateDraftForm.startDate)
-    const endDate = new Date(templateDraftForm.endDate)
-    if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
-      return false
-    }
-
-    if (templateDraftForm.registrationStartDate || templateDraftForm.registrationEndDate) {
-      const registrationCutoffRaw = getRegistrationMaxDateTime(templateDraftForm.startDate)
-      const registrationCutoff = registrationCutoffRaw ? new Date(registrationCutoffRaw) : startDate
-      if (templateDraftForm.registrationStartDate && templateDraftForm.registrationEndDate) {
-        const regStartDate = new Date(templateDraftForm.registrationStartDate)
-        const regEndDate = new Date(templateDraftForm.registrationEndDate)
-        if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
-          return false
-        }
-      }
-
-      if (templateDraftForm.registrationStartDate) {
-        const regStartDate = new Date(templateDraftForm.registrationStartDate)
-        if (regStartDate > registrationCutoff) {
-          alert('Registration start date cannot be later than tournament start date')
-          return false
-        }
-      }
-
-      if (templateDraftForm.registrationEndDate) {
-        const regEndDate = new Date(templateDraftForm.registrationEndDate)
-        if (regEndDate > registrationCutoff) {
-          alert('Registration end date cannot be later than tournament start date')
-          return false
-        }
-      }
-    }
-
-    if (ENABLE_RECURRING_DRAFTS && templateDraftForm.isRecurring) {
-      const count = Number(templateDraftForm.recurrenceCount)
-      if (!Number.isFinite(count) || count < 1 || count > 12) {
-        alert('Occurrences must be between 1 and 12.')
-        return false
-      }
-
-      if (
-        (templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
-          templateDraftForm.recurrenceFrequency === 'BIWEEKLY') &&
-        (templateDraftForm.recurrenceWeekdays?.length ?? 0) < 1
-      ) {
-        alert('Pick at least one weekday for weekly recurrence.')
-        return false
-      }
-    }
-
-    return true
-  }
-
-  const templateRecurrencePreview = useMemo<
-    { items: string[] } | { error: string } | null
-  >(() => {
-    if (!ENABLE_RECURRING_DRAFTS || !templateDraftForm.isRecurring || templateDraftForm.recurrenceCount <= 1) return null
-
-    const start = parseYmdToUtc(templateDraftForm.startDate)
-    const end = parseYmdToUtc(templateDraftForm.endDate)
-    if (!start || !end) return null
-    const durationMs = end.getTime() - start.getTime()
-    if (durationMs < 0) return { error: 'End date must be on or after start date.' }
-
-    const config = {
-      frequency: templateDraftForm.recurrenceFrequency,
-      count: templateDraftForm.recurrenceCount,
-      weekdays:
-        templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
-        templateDraftForm.recurrenceFrequency === 'BIWEEKLY'
-          ? templateDraftForm.recurrenceWeekdays
-          : undefined,
-    } as const
-
-    const generated = generateRecurringStartDates(start, config)
-    if ('error' in generated) return { error: generated.error }
-
-    const items = generated.startDates.map((s) => {
-      const e = new Date(s.getTime() + durationMs)
-      return durationMs === 0 ? formatUsDateShort(s) : `${formatUsDateShort(s)} – ${formatUsDateShort(e)}`
-    })
-
-    return { items }
-  }, [
-    templateDraftForm.isRecurring,
-    templateDraftForm.recurrenceCount,
-    templateDraftForm.recurrenceFrequency,
-    templateDraftForm.recurrenceWeekdays,
-    templateDraftForm.startDate,
-    templateDraftForm.endDate,
-  ])
-
   const seriesRecurrencePreview = useMemo<
     { items: string[] } | { error: string } | null
   >(() => {
@@ -1335,77 +1131,9 @@ function NewTournamentPageInner() {
     formData.endDate,
   ])
 
-  const handleCreateFromTemplate = async () => {
-    if (!selectedTemplateId) return
-    if (!validateTemplateDraft()) return
-
-    const parsedFee = Number(templateDraftForm.entryFee)
-    const entryFeeCents =
-      Number.isFinite(parsedFee) && parsedFee > 0 ? toCents(parsedFee) : undefined
-
-    const templateRequiresPayouts =
-      (entryFeeCents ?? 0) > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
-
-    if (templateRequiresPayouts) {
-      alert('Connect payouts with Stripe before creating a paid tournament.')
-      return
-    }
-
-    try {
-      const recurrence =
-        ENABLE_RECURRING_DRAFTS && templateDraftForm.isRecurring && templateDraftForm.recurrenceCount > 1
-          ? {
-              frequency: templateDraftForm.recurrenceFrequency,
-              count: templateDraftForm.recurrenceCount,
-              weekdays:
-                templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
-                templateDraftForm.recurrenceFrequency === 'BIWEEKLY'
-                  ? templateDraftForm.recurrenceWeekdays
-                  : undefined,
-            }
-          : undefined
-
-      const templateTimezone =
-        normalizeKnownTimezone((selectedTemplate as any)?.config?.tournament?.timezone) ||
-        formData.timezone ||
-        getBrowserTimeZone()
-
-      const res = await createDraftFromTemplate.mutateAsync({
-        templateId: selectedTemplateId,
-        title: templateDraftForm.title.trim() ? templateDraftForm.title.trim() : undefined,
-        startDate:
-          toUtcIsoFromLocalInput(templateDraftForm.startDate, templateTimezone) ||
-          templateDraftForm.startDate,
-        endDate:
-          toUtcIsoFromLocalInput(templateDraftForm.endDate, templateTimezone) ||
-          templateDraftForm.endDate,
-        registrationStartDate: templateDraftForm.registrationStartDate
-          ? toUtcIsoFromLocalInput(templateDraftForm.registrationStartDate, templateTimezone) ||
-            templateDraftForm.registrationStartDate
-          : undefined,
-        registrationEndDate: templateDraftForm.registrationEndDate
-          ? toUtcIsoFromLocalInput(templateDraftForm.registrationEndDate, templateTimezone) ||
-            templateDraftForm.registrationEndDate
-          : undefined,
-        entryFeeCents,
-        recurrence,
-      })
-      setTemplateDraftOpen(false)
-      const ids = (res as any)?.tournamentIds ?? [res.tournamentId]
-      if (Array.isArray(ids) && ids.length > 1) {
-        router.push(`/admin?createdDraftIds=${encodeURIComponent(ids.join(','))}`)
-      } else {
-        router.push(`/admin/${res.tournamentId}`)
-      }
-    } catch (err: any) {
-      alert(err?.message || 'Failed to create from template')
-    }
-  }
-
   const handleClubSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value
     const selected = clubs?.find((c) => c.id === selectedId)
-    setSelectedTemplateId('')
     setFormData((prev) => {
       const next = { ...prev, clubId: selectedId }
       if (!selectedId) return next
@@ -1646,57 +1374,6 @@ function NewTournamentPageInner() {
                     Only clubs where you are an admin are shown.
                   </p>
                 </div>
-
-                {formData.clubId && (selectedClub as any)?.isAdmin ? (
-                  <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                      <Layers className="h-4 w-4" />
-                      Start from a template (optional)
-                    </div>
-                    {templatesLoading ? (
-                      <div className="text-sm text-gray-500">Loading templates…</div>
-                    ) : templatesError ? (
-                      <div className="text-sm text-red-700">
-                        {templatesError.message || 'Failed to load templates.'}
-                      </div>
-                    ) : (templates?.length ?? 0) === 0 ? (
-                      <div className="text-sm text-gray-600">
-                        No templates yet. Create a club tournament and click <span className="font-medium">Save as template</span>.
-                      </div>
-                    ) : (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <select
-                          value={selectedTemplateId}
-                          onChange={(e) => setSelectedTemplateId(e.target.value)}
-                          className="flex-1 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
-                        >
-                          <option value="">Choose template…</option>
-                          {(templates ?? []).map((t: any) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                              {t.format ? ` — ${String(t.format).replace(/_/g, ' ')}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          type="button"
-                          onClick={openTemplateDraftModal}
-                          disabled={!selectedTemplateId || createDraftFromTemplate.isPending}
-                        >
-                          Create draft
-                        </Button>
-                      </div>
-                    )}
-                    {selectedTemplate ? (
-                      <div className="text-xs text-gray-600">
-                        Selected: <span className="font-medium">{selectedTemplate.name}</span>
-                      </div>
-                    ) : null}
-                    <div className="text-xs text-gray-500">
-                      Creates a draft tournament (not public) and takes you to the admin page.
-                    </div>
-                  </div>
-                ) : null}
 
                 <div>
                   <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
@@ -2380,68 +2057,6 @@ function NewTournamentPageInner() {
                   </div>
                 ) : null}
 
-                {formData.clubId && (selectedClub as any)?.isAdmin ? (
-                  <div className="rounded-md border border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-gray-900">Club template (optional)</div>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={saveTemplateForm.enabled}
-                          onChange={(e) => {
-                            const checked = e.target.checked
-                            setSaveTemplateForm((p) => {
-                              const next = { ...p, enabled: checked }
-                              if (checked && !p.name.trim()) {
-                                next.name = formData.title.trim()
-                              }
-                              return next
-                            })
-                          }}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        Save as template
-                      </label>
-                    </div>
-
-                    {saveTemplateForm.enabled ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Template name *
-                          </label>
-                          <input
-                            type="text"
-                            value={saveTemplateForm.name}
-                            onChange={(e) => setSaveTemplateForm((p) => ({ ...p, name: e.target.value }))}
-                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                            placeholder="e.g., Weekly Open Doubles"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Template description (optional)
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={saveTemplateForm.description}
-                            onChange={(e) => setSaveTemplateForm((p) => ({ ...p, description: e.target.value }))}
-                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                            placeholder="Notes for club admins (pricing, courts, etc.)"
-                          />
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          Visible to <span className="font-medium">all admins</span> of this club.
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-gray-500">
-                        Save this configuration as a preset so club admins can create drafts in 1 click later.
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
                 {!structureDraft ? (
                   <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                     Structure is required before you can create a tournament. Go back and set it up.
@@ -2501,293 +2116,6 @@ function NewTournamentPageInner() {
           </form>
         </CardContent>
       </Card>
-
-      {/* Create Draft From Template Modal */}
-      {templateDraftOpen ? (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-in fade-in duration-300"
-          onClick={() => setTemplateDraftOpen(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 border border-gray-200 relative overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div className="min-w-0">
-                <div className="text-lg font-semibold text-gray-900 truncate">Create draft</div>
-                <div className="text-xs text-gray-500 truncate">
-                  From template: {selectedTemplate?.name || '—'}
-                </div>
-              </div>
-              <Button type="button" variant="ghost" onClick={() => setTemplateDraftOpen(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Title override (optional)
-                </label>
-                <input
-                  type="text"
-                  value={templateDraftForm.title}
-                  onChange={(e) => setTemplateDraftForm((p) => ({ ...p, title: e.target.value }))}
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                  placeholder="Leave empty to use template title"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Start Date *</label>
-                  <input
-                    type="date"
-                    value={templateDraftForm.startDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, startDate: e.target.value }))}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">End Date *</label>
-                  <input
-                    type="date"
-                    value={templateDraftForm.endDate}
-                    onChange={(e) => setTemplateDraftForm((p) => ({ ...p, endDate: e.target.value }))}
-                    min={templateDraftForm.startDate || undefined}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Registration Start (optional)</label>
-                  <QuarterHourDateTimeInput
-                    value={templateDraftForm.registrationStartDate}
-                    onChange={(nextValue) =>
-                      setTemplateDraftForm((prev) => ({
-                        ...prev,
-                        registrationStartDate: normalizeRegistrationDateTime(nextValue),
-                      }))
-                    }
-                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Registration End (optional)</label>
-                  <QuarterHourDateTimeInput
-                    value={templateDraftForm.registrationEndDate}
-                    onChange={(nextValue) =>
-                      setTemplateDraftForm((prev) => ({
-                        ...prev,
-                        registrationEndDate: normalizeRegistrationDateTime(nextValue),
-                      }))
-                    }
-                    min={templateDraftForm.registrationStartDate || undefined}
-                    max={getRegistrationMaxDateTime(templateDraftForm.startDate)}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Include hours and minutes.</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Entry Fee (optional)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={templateDraftForm.entryFee}
-                  onChange={(e) => setTemplateDraftForm((p) => ({ ...p, entryFee: e.target.value }))}
-                  className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div
-                className={
-                  ENABLE_RECURRING_DRAFTS
-                    ? 'rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3'
-                    : 'hidden'
-                }
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-gray-900">Recurring drafts (optional)</div>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={templateDraftForm.isRecurring}
-                      onChange={(e) => {
-                        const checked = e.target.checked
-                        setTemplateDraftForm((p) => {
-                          const next = { ...p, isRecurring: checked }
-                          if (checked && (p.recurrenceWeekdays?.length ?? 0) < 1) {
-                            const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
-                            next.recurrenceWeekdays = [wd]
-                          }
-                          return next
-                        })
-                      }}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    Create series
-                  </label>
-                </div>
-
-                {templateDraftForm.isRecurring ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
-                      <select
-                        value={templateDraftForm.recurrenceFrequency}
-                        onChange={(e) => {
-                          const value = e.target.value as any
-                          setTemplateDraftForm((p) => {
-                            const next = { ...p, recurrenceFrequency: value }
-                            const isWeeklyLike = value === 'WEEKLY' || value === 'BIWEEKLY'
-                            if (isWeeklyLike && (p.recurrenceWeekdays?.length ?? 0) < 1) {
-                              const wd = parseYmdToUtc(p.startDate)?.getUTCDay() ?? 0
-                              next.recurrenceWeekdays = [wd]
-                            }
-                            return next
-                          })
-                        }}
-                        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
-                      >
-                        <option value="DAILY">Daily</option>
-                        <option value="WEEKLY">Weekly</option>
-                        <option value="BIWEEKLY">Every 2 weeks</option>
-                        <option value="MONTHLY">Monthly</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Occurrences</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={12}
-                        value={templateDraftForm.recurrenceCount}
-                        onChange={(e) => {
-                          const n = Number(e.target.value)
-                          const next = Number.isFinite(n) ? Math.trunc(n) : 0
-                          setTemplateDraftForm((p) => ({ ...p, recurrenceCount: next }))
-                        }}
-                        onBlur={() => {
-                          setTemplateDraftForm((p) => {
-                            const safe = Number.isFinite(p.recurrenceCount)
-                              ? Math.max(1, Math.min(12, Math.trunc(p.recurrenceCount)))
-                              : 1
-                            return { ...p, recurrenceCount: safe }
-                          })
-                        }}
-                        className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Max 12. Includes the first draft.</p>
-                    </div>
-
-                    {(templateDraftForm.recurrenceFrequency === 'WEEKLY' ||
-                      templateDraftForm.recurrenceFrequency === 'BIWEEKLY') ? (
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Weekdays</label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { v: 0, l: 'Sun' },
-                            { v: 1, l: 'Mon' },
-                            { v: 2, l: 'Tue' },
-                            { v: 3, l: 'Wed' },
-                            { v: 4, l: 'Thu' },
-                            { v: 5, l: 'Fri' },
-                            { v: 6, l: 'Sat' },
-                          ].map((d) => {
-                            const selected = (templateDraftForm.recurrenceWeekdays ?? []).includes(d.v)
-                            return (
-                              <button
-                                key={d.v}
-                                type="button"
-                                onClick={() => {
-                                  setTemplateDraftForm((p) => {
-                                    const current = p.recurrenceWeekdays ?? []
-                                    const has = current.includes(d.v)
-                                    const nextDays = has ? current.filter((x) => x !== d.v) : [...current, d.v]
-                                    // Keep at least one day selected for weekly schedules.
-                                    if (nextDays.length < 1) return p
-                                    return { ...p, recurrenceWeekdays: nextDays.sort((a, b) => a - b) }
-                                  })
-                                }}
-                                className={`px-3 py-2 rounded-lg border text-sm ${
-                                  selected
-                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                                }`}
-                              >
-                                {d.l}
-                              </button>
-                            )
-                          })}
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500">Example: select Tue + Fri.</p>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-500">
-                    Create one draft now. You can always create more later from the same template.
-                  </div>
-                )}
-
-                {templateDraftForm.isRecurring ? (
-                  <div className="text-xs text-gray-600">
-                    This will create <span className="font-medium">{templateDraftForm.recurrenceCount}</span>{' '}
-                    draft tournaments (not public).
-                  </div>
-                ) : null}
-
-                {ENABLE_RECURRING_DRAFTS &&
-                templateDraftForm.isRecurring &&
-                templateDraftForm.recurrenceCount > 1 ? (
-                  <div className="rounded-md border border-gray-200 bg-white p-3">
-                    <div className="text-xs font-medium text-gray-900 mb-2">Preview dates</div>
-                    {templateRecurrencePreview && 'error' in templateRecurrencePreview ? (
-                      <div className="text-xs text-red-700">{templateRecurrencePreview.error}</div>
-                    ) : templateRecurrencePreview && 'items' in templateRecurrencePreview && templateRecurrencePreview.items.length ? (
-                      <ul className="max-h-40 overflow-y-auto text-xs text-gray-700 space-y-1">
-                        {templateRecurrencePreview.items.map((label, idx) => (
-                          <li key={idx} className="flex gap-2">
-                            <span className="w-5 text-gray-400">{idx + 1}.</span>
-                            <span className="flex-1">{label}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="text-xs text-gray-500">Pick dates to see a preview.</div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="p-6 pt-0 flex items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setTemplateDraftOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCreateFromTemplate}
-                disabled={createDraftFromTemplate.isPending}
-              >
-                {createDraftFromTemplate.isPending
-                  ? 'Creating…'
-                  : ENABLE_RECURRING_DRAFTS &&
-                      templateDraftForm.isRecurring &&
-                      templateDraftForm.recurrenceCount > 1
-                    ? `Create ${templateDraftForm.recurrenceCount} drafts`
-                    : 'Create draft'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* Image Cropper Modal */}
       {cropperImageSrc && (

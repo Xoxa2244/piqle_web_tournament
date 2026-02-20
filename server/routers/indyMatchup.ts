@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
-import { assertTournamentAdmin } from '../utils/access'
+import { assertDivisionScoreAccess, assertTournamentAdmin } from '../utils/access'
 import { sendPartnerWebhookForTournament } from '../utils/partnerWebhooks'
 
 // Fixed schema for 12 games
@@ -1144,16 +1144,7 @@ export const indyMatchupRouter = createTRPCRouter({
         })
       }
 
-      // Check access (tournament admin or assistant)
-      const isAdmin = game.matchup.matchDay.tournament.userId === ctx.session.user.id
-      // TODO: Check assistant access
-
-      if (!isAdmin) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You do not have permission to update this game',
-        })
-      }
+      await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, game.matchup.divisionId)
 
       // Validate: no ties allowed
       if (
@@ -1768,4 +1759,3 @@ async function checkAndUpdateMatchupStatus(prisma: any, matchupId: string) {
     })
   }
 }
-
