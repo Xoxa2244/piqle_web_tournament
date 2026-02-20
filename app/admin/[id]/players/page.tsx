@@ -65,7 +65,7 @@ export default function PlayersPage() {
   const [inviteSearchDebounced, setInviteSearchDebounced] = useState('')
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [rosterFilter, setRosterFilter] = useState<'active_in_team' | 'waitlist' | 'expired_unpaid' | 'all'>('active_in_team')
+  const [rosterFilter, setRosterFilter] = useState<'active_in_team' | 'waitlist' | 'expired_unpaid' | 'all'>('all')
   const [divisionFilter, setDivisionFilter] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState('')
