@@ -96,6 +96,7 @@ flowchart TD
 - Division-level manager with access guards
 - `ADMIN`: division/team/schedule/score operations
 - `SCORE_ONLY`: score entry only
+- Multi-game score entry supported (`match.updateGameScore` by `gameIndex`)
 - API: `division.update`, `team.create`, `team.update`, `team.delete`, `match.generateRR`, `match.regenerateRR`, `match.updateGameScore`
 
 ## Permission Matrix
@@ -115,3 +116,4 @@ flowchart TD
 
 - Current rate limit is per server instance (in-memory).
 - For distributed/production strict limits, move limiter to Redis.
+- Live API role smoke test entrypoint: `npm run test:smoke:api` (requires smoke env vars).

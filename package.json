@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
+    "test:smoke:api": "vitest run --config vitest.server.config.ts tests/server/mobile-api-smoke.live.test.ts",
     "test:e2e": "playwright test",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

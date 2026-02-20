@@ -27,18 +27,14 @@ import { useAuth } from '../auth/AuthContext'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
+import { getManagerGuardCopy, type ManagerGuardCode } from '../manager/guardCopy'
 import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 
 type DivisionManagerRoute = RouteProp<RootStackParamList, 'DivisionManager'>
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>
-type ScreenErrorCode =
-  | 'AUTH_REQUIRED'
-  | 'FORBIDDEN'
-  | 'WEB_ONLY_MANAGEMENT'
-  | 'NOT_FOUND'
-  | 'LOAD_FAILED'
+type ScreenErrorCode = ManagerGuardCode
 
 type TeamDraft = {
   name: string
@@ -46,10 +42,11 @@ type TeamDraft = {
   poolId: string
 }
 
-type ScoreDraft = {
+type GameScoreDraft = {
   scoreA: string
   scoreB: string
 }
+type ScoreDraft = Record<number, GameScoreDraft>
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   const message = String((error as any)?.message ?? '').trim()
@@ -80,7 +77,7 @@ export function DivisionManagerScreen() {
   const [screenErrorMessage, setScreenErrorMessage] = useState<string | null>(null)
   const [savingDivision, setSavingDivision] = useState(false)
   const [creatingTeam, setCreatingTeam] = useState(false)
-  const [busyMatchId, setBusyMatchId] = useState<string | null>(null)
+  const [busyScoreKey, setBusyScoreKey] = useState<string | null>(null)
   const [runningScheduler, setRunningScheduler] = useState<'generate' | 'regenerate' | null>(null)
 
   const [divisionName, setDivisionName] = useState('')
@@ -112,14 +109,47 @@ export function DivisionManagerScreen() {
 
     const nextScoreDrafts: Record<string, ScoreDraft> = {}
     nextDivision.matches.forEach((match) => {
-      const firstGame = match.games.find((game) => game.index === 0) ?? match.games[0]
-      nextScoreDrafts[match.id] = {
-        scoreA: firstGame?.scoreA == null ? '' : String(firstGame.scoreA),
-        scoreB: firstGame?.scoreB == null ? '' : String(firstGame.scoreB),
+      const indexedGames = new Map<number, { scoreA: number | null; scoreB: number | null }>()
+      match.games.forEach((game) => {
+        indexedGames.set(game.index, {
+          scoreA: game.scoreA,
+          scoreB: game.scoreB,
+        })
+      })
+
+      const expectedGameCount = Math.max(1, match.gamesCount, match.games.length)
+      const draft: ScoreDraft = {}
+      for (let gameIndex = 0; gameIndex < expectedGameCount; gameIndex += 1) {
+        const game = indexedGames.get(gameIndex)
+        draft[gameIndex] = {
+          scoreA: game?.scoreA == null ? '' : String(game.scoreA),
+          scoreB: game?.scoreB == null ? '' : String(game.scoreB),
+        }
       }
+      nextScoreDrafts[match.id] = draft
     })
     setScoreDrafts(nextScoreDrafts)
   }, [])
+
+  const updateScoreDraft = useCallback(
+    (matchId: string, gameIndex: number, patch: Partial<GameScoreDraft>) => {
+      setScoreDrafts((previous) => {
+        const previousMatchDraft = previous[matchId] || {}
+        const previousGameDraft = previousMatchDraft[gameIndex] || { scoreA: '', scoreB: '' }
+        return {
+          ...previous,
+          [matchId]: {
+            ...previousMatchDraft,
+            [gameIndex]: {
+              ...previousGameDraft,
+              ...patch,
+            },
+          },
+        }
+      })
+    },
+    []
+  )
 
   const loadDivision = useCallback(async () => {
     setLoading(true)
@@ -207,36 +237,29 @@ export function DivisionManagerScreen() {
   }
 
   if (!tournament || !division.id) {
-    const errorTitle =
-      screenErrorCode === 'AUTH_REQUIRED'
-        ? 'Sign in required'
-        : screenErrorCode === 'FORBIDDEN'
-          ? 'Access denied'
-          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
-            ? 'Web admin only'
-            : screenErrorCode === 'NOT_FOUND'
-              ? 'Division unavailable'
-              : 'Management unavailable'
-
-    const errorText =
-      screenErrorCode === 'AUTH_REQUIRED'
-        ? 'Sign in to continue with division management on mobile.'
-        : screenErrorCode === 'FORBIDDEN'
-          ? 'You do not have access to this division.'
-          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
-            ? 'MLP and Indy League tournament management is available only in web admin.'
-            : screenErrorMessage || 'Could not open division manager.'
+    const guardCopy = getManagerGuardCopy({
+      code: screenErrorCode,
+      entityLabel: 'division',
+      fallbackMessage: screenErrorMessage,
+    })
 
     return (
       <AppBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingWrap}>
-            <Text style={styles.errorTitle}>{errorTitle}</Text>
-            <Text style={styles.errorText}>{errorText}</Text>
-            {screenErrorCode === 'AUTH_REQUIRED' ? (
-              <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
-            ) : null}
-            <PrimaryButton label="Retry" onPress={() => void loadDivision()} />
+            <Text style={styles.errorTitle}>{guardCopy.title}</Text>
+            <Text style={styles.errorText}>{guardCopy.text}</Text>
+            <View style={styles.blockedActions}>
+              {guardCopy.showSignIn ? (
+                <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
+              ) : null}
+              <PrimaryButton
+                label="Back to My Tournaments"
+                variant="outline"
+                onPress={() => navigation.navigate('MainTabs', { screen: 'MyTournaments' })}
+              />
+              <PrimaryButton label="Retry" onPress={() => void loadDivision()} />
+            </View>
           </View>
         </SafeAreaView>
       </AppBackground>
@@ -574,73 +597,111 @@ export function DivisionManagerScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Score Entry</Text>
             {division.matches.map((match) => {
-              const draft = scoreDrafts[match.id] || { scoreA: '', scoreB: '' }
+              const expectedGameCount = Math.max(1, match.gamesCount, match.games.length)
+              const indexedGames = new Map<number, { scoreA: number | null; scoreB: number | null }>()
+              match.games.forEach((game) => {
+                indexedGames.set(game.index, {
+                  scoreA: game.scoreA,
+                  scoreB: game.scoreB,
+                })
+              })
+              const gameIndexes = Array.from(
+                new Set([
+                  ...Array.from({ length: expectedGameCount }, (_, index) => index),
+                  ...match.games.map((game) => game.index),
+                ])
+              ).sort((a, b) => a - b)
+
               return (
                 <View key={match.id} style={styles.itemCard}>
                   <View style={styles.matchTop}>
                     <Text style={styles.matchTitle}>
                       Round {match.roundIndex + 1} • {match.teamAName} vs {match.teamBName}
                     </Text>
-                    <Badge label={match.stage.replace(/_/g, ' ')} tone="neutral" />
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <View style={styles.halfField}>
-                      <Text style={styles.label}>{match.teamAName}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={draft.scoreA}
-                        keyboardType="number-pad"
-                        onChangeText={(value) =>
-                          setScoreDrafts((previous) => ({
-                            ...previous,
-                            [match.id]: { ...(previous[match.id] || draft), scoreA: value },
-                          }))
-                        }
-                      />
-                    </View>
-                    <View style={styles.halfField}>
-                      <Text style={styles.label}>{match.teamBName}</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={draft.scoreB}
-                        keyboardType="number-pad"
-                        onChangeText={(value) =>
-                          setScoreDrafts((previous) => ({
-                            ...previous,
-                            [match.id]: { ...(previous[match.id] || draft), scoreB: value },
-                          }))
-                        }
+                    <View style={styles.matchBadges}>
+                      <Badge label={match.stage.replace(/_/g, ' ')} tone="neutral" />
+                      <Badge
+                        label={match.locked ? 'Locked' : 'Editable'}
+                        tone={match.locked ? 'warning' : 'success'}
                       />
                     </View>
                   </View>
-                  <PrimaryButton
-                    label={busyMatchId === match.id ? 'Saving...' : 'Save Score'}
-                    disabled={busyMatchId === match.id || webOnlyFormat || !canScoreDivision}
-                    onPress={async () => {
-                      const scoreA = draft.scoreA.trim() ? Number(draft.scoreA.trim()) : null
-                      const scoreB = draft.scoreB.trim() ? Number(draft.scoreB.trim()) : null
-                      if (
-                        (scoreA !== null && !Number.isFinite(scoreA)) ||
-                        (scoreB !== null && !Number.isFinite(scoreB))
-                      ) {
-                        Alert.alert('Validation', 'Scores must be numeric values.')
-                        return
+                  {gameIndexes.map((gameIndex) => {
+                    const draft =
+                      scoreDrafts[match.id]?.[gameIndex] || {
+                        scoreA:
+                          indexedGames.get(gameIndex)?.scoreA == null
+                            ? ''
+                            : String(indexedGames.get(gameIndex)?.scoreA),
+                        scoreB:
+                          indexedGames.get(gameIndex)?.scoreB == null
+                            ? ''
+                            : String(indexedGames.get(gameIndex)?.scoreB),
                       }
-                      try {
-                        setBusyMatchId(match.id)
-                        await saveManagerMatchScore({
-                          matchId: match.id,
-                          scoreA: scoreA == null ? null : Math.max(0, Math.floor(scoreA)),
-                          scoreB: scoreB == null ? null : Math.max(0, Math.floor(scoreB)),
-                        })
-                        await loadDivision()
-                      } catch (error) {
-                        Alert.alert('Save failed', getErrorMessage(error, 'Could not save score.'))
-                      } finally {
-                        setBusyMatchId(null)
-                      }
-                    }}
-                  />
+                    const scoreKey = `${match.id}:${gameIndex}`
+                    return (
+                      <View key={scoreKey} style={styles.gameCard}>
+                        <Text style={styles.gameTitle}>Game {gameIndex + 1}</Text>
+                        <View style={styles.fieldRow}>
+                          <View style={styles.halfField}>
+                            <Text style={styles.label}>{match.teamAName}</Text>
+                            <TextInput
+                              style={styles.input}
+                              value={draft.scoreA}
+                              keyboardType="number-pad"
+                              onChangeText={(value) =>
+                                updateScoreDraft(match.id, gameIndex, {
+                                  scoreA: value,
+                                })
+                              }
+                            />
+                          </View>
+                          <View style={styles.halfField}>
+                            <Text style={styles.label}>{match.teamBName}</Text>
+                            <TextInput
+                              style={styles.input}
+                              value={draft.scoreB}
+                              keyboardType="number-pad"
+                              onChangeText={(value) =>
+                                updateScoreDraft(match.id, gameIndex, {
+                                  scoreB: value,
+                                })
+                              }
+                            />
+                          </View>
+                        </View>
+                        <PrimaryButton
+                          label={busyScoreKey === scoreKey ? 'Saving...' : `Save Game ${gameIndex + 1}`}
+                          disabled={busyScoreKey === scoreKey || webOnlyFormat || !canScoreDivision || match.locked}
+                          onPress={async () => {
+                            const scoreA = draft.scoreA.trim() ? Number(draft.scoreA.trim()) : null
+                            const scoreB = draft.scoreB.trim() ? Number(draft.scoreB.trim()) : null
+                            if (
+                              (scoreA !== null && !Number.isFinite(scoreA)) ||
+                              (scoreB !== null && !Number.isFinite(scoreB))
+                            ) {
+                              Alert.alert('Validation', 'Scores must be numeric values.')
+                              return
+                            }
+                            try {
+                              setBusyScoreKey(scoreKey)
+                              await saveManagerMatchScore({
+                                matchId: match.id,
+                                gameIndex,
+                                scoreA: scoreA == null ? null : Math.max(0, Math.floor(scoreA)),
+                                scoreB: scoreB == null ? null : Math.max(0, Math.floor(scoreB)),
+                              })
+                              await loadDivision()
+                            } catch (error) {
+                              Alert.alert('Save failed', getErrorMessage(error, 'Could not save score.'))
+                            } finally {
+                              setBusyScoreKey(null)
+                            }
+                          }}
+                        />
+                      </View>
+                    )
+                  })}
                 </View>
               )
             })}
@@ -761,11 +822,30 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: spacing.xs,
   },
+  gameCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.outline,
+    backgroundColor: '#FFFCF6',
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  gameTitle: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   matchTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: spacing.sm,
+  },
+  matchBadges: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
   },
   matchTitle: {
     flex: 1,
@@ -795,5 +875,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginBottom: spacing.sm,
+  },
+  blockedActions: {
+    width: '100%',
+    gap: spacing.xs,
   },
 })

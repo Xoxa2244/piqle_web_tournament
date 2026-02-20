@@ -86,6 +86,32 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
       return null
     }
 
+    if (args?.include?.teams && args?.include?.pools) {
+      return {
+        id,
+        name: 'Division A',
+        tournamentId: TOURNAMENT_ID,
+        pools: [
+          { id: 'pool-1', name: 'Pool 1', order: 1 },
+          { id: 'pool-2', name: 'Pool 2', order: 2 },
+        ],
+        teams: [
+          {
+            id: 'team-1',
+            teamPlayers: [{ player: { duprRating: { toNumber: () => 4.5 } } }],
+          },
+          {
+            id: 'team-2',
+            teamPlayers: [{ player: { duprRating: { toNumber: () => 4.0 } } }],
+          },
+          {
+            id: 'team-3',
+            teamPlayers: [],
+          },
+        ],
+      }
+    }
+
     if (args?.include?.pools) {
       return {
         id,
@@ -138,7 +164,12 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
       })),
     },
     divisionConstraints: {
-      upsert: vi.fn(async () => ({})),
+      upsert: vi.fn(async ({ where, create, update }: any) => ({
+        id: `constraints-${where?.divisionId ?? create?.divisionId ?? 'unknown'}`,
+        divisionId: where?.divisionId ?? create?.divisionId,
+        ...create,
+        ...update,
+      })),
     },
     tournament: {
       findUnique: tournamentFindUnique,
@@ -636,5 +667,95 @@ describe('Access guards smoke', () => {
 
     expect(prisma.division.create).not.toHaveBeenCalled()
     expect(prisma.division.delete).not.toHaveBeenCalled()
+  })
+
+  it('owner/admin can set constraints and distribute teams by dupr', async () => {
+    const ownerPrisma = createPrismaMock('OWNER', OWNER_ID)
+    const adminPrisma = createPrismaMock('ADMIN', ADMIN_ID)
+    const ownerCaller = divisionRouter.createCaller(createCtx(OWNER_ID, ownerPrisma))
+    const adminCaller = divisionRouter.createCaller(createCtx(ADMIN_ID, adminPrisma))
+
+    await expect(
+      ownerCaller.setConstraints({
+        divisionId: DIVISION_ID,
+        minDupr: 3.2,
+        maxDupr: 5.0,
+        genders: 'MIXED',
+      })
+    ).resolves.toMatchObject({
+      divisionId: DIVISION_ID,
+      genders: 'MIXED',
+    })
+    await expect(
+      ownerCaller.distributeTeamsByDupr({
+        divisionId: DIVISION_ID,
+      })
+    ).resolves.toMatchObject({
+      success: true,
+    })
+
+    await expect(
+      adminCaller.setConstraints({
+        divisionId: DIVISION_ID,
+        minDupr: 3.0,
+        maxDupr: 5.5,
+        genders: 'ANY',
+      })
+    ).resolves.toMatchObject({
+      divisionId: DIVISION_ID,
+      genders: 'ANY',
+    })
+    await expect(
+      adminCaller.distributeTeamsByDupr({
+        divisionId: DIVISION_ID,
+      })
+    ).resolves.toMatchObject({
+      success: true,
+    })
+
+    expect(ownerPrisma.team.update).toHaveBeenCalled()
+    expect(adminPrisma.team.update).toHaveBeenCalled()
+  })
+
+  it('score-only/no-access are blocked from constraints and dupr distribution', async () => {
+    const scorePrisma = createPrismaMock('SCORE_ONLY', SCORE_ID)
+    const nonePrisma = createPrismaMock('NONE', NONE_ID)
+    const scoreCaller = divisionRouter.createCaller(createCtx(SCORE_ID, scorePrisma))
+    const noneCaller = divisionRouter.createCaller(createCtx(NONE_ID, nonePrisma))
+
+    await expect(
+      scoreCaller.setConstraints({
+        divisionId: DIVISION_ID,
+        minDupr: 3.4,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+    await expect(
+      scoreCaller.distributeTeamsByDupr({
+        divisionId: DIVISION_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      noneCaller.setConstraints({
+        divisionId: DIVISION_ID,
+        minDupr: 3.4,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+    await expect(
+      noneCaller.distributeTeamsByDupr({
+        divisionId: DIVISION_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    expect(scorePrisma.team.update).not.toHaveBeenCalled()
+    expect(nonePrisma.team.update).not.toHaveBeenCalled()
   })
 })

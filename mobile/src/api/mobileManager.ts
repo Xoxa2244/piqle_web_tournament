@@ -49,6 +49,7 @@ export type ManagerMatch = {
   stage: string
   roundIndex: number
   locked: boolean
+  gamesCount: number
   teamAId: string | null
   teamBId: string | null
   teamAName: string
@@ -193,6 +194,7 @@ const toManagerTournament = (raw: any): ManagerTournament => {
             stage: String(match?.stage ?? 'ROUND_ROBIN'),
             roundIndex: Number(match?.roundIndex ?? 0),
             locked: Boolean(match?.locked),
+            gamesCount: Math.max(1, Number(match?.gamesCount ?? 1)),
             teamAId: match?.teamAId == null ? null : String(match.teamAId),
             teamBId: match?.teamBId == null ? null : String(match.teamBId),
             teamAName: String(match?.teamA?.name ?? 'TBD'),
@@ -336,12 +338,13 @@ export async function generateManagerRoundRobin(divisionId: string, mode: 'gener
 
 export async function saveManagerMatchScore(input: {
   matchId: string
+  gameIndex: number
   scoreA: number | null
   scoreB: number | null
 }) {
   return trpcClient.match.updateGameScore.mutate({
     matchId: input.matchId,
-    gameIndex: 0,
+    gameIndex: Math.max(0, Math.floor(input.gameIndex)),
     scoreA: input.scoreA,
     scoreB: input.scoreB,
   })

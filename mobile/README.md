@@ -26,6 +26,9 @@ This folder contains an isolated Expo app scaffold for the mobile product.
 - Manager access states in mobile UI:
   - signed-out users are redirected to `Auth`
   - `SCORE_ONLY` users can enter scores, but cannot edit structure/settings
+- Multi-game score entry:
+  - Division manager supports saving score per game (`Game 1`, `Game 2`, ...)
+  - Locked matches are shown as `Locked` and score save is disabled
 
 ## Run locally
 
@@ -44,6 +47,22 @@ This folder contains an isolated Expo app scaffold for the mobile product.
 2. Move rate limiting from in-memory to Redis for multi-instance deployments.
 3. Add dedicated mobile router whitelist (currently guarded by access policy).
 4. Expand organizer actions for small tournaments only.
+
+## Live API smoke (roles)
+
+Run from repo root:
+
+`npm run test:smoke:api`
+
+Required env vars:
+
+- `SMOKE_API_BASE_URL` (optional, default `http://localhost:3000`)
+- `SMOKE_DIVISION_ID`
+- `SMOKE_MATCH_ID`
+- `SMOKE_OWNER_EMAIL`, `SMOKE_OWNER_PASSWORD`
+- `SMOKE_ADMIN_EMAIL`, `SMOKE_ADMIN_PASSWORD`
+- `SMOKE_SCORE_EMAIL`, `SMOKE_SCORE_PASSWORD`
+- `SMOKE_NONE_EMAIL`, `SMOKE_NONE_PASSWORD`
 
 ## Mobile auth endpoints
 

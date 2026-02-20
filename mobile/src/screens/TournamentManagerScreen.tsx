@@ -24,6 +24,7 @@ import { useAuth } from '../auth/AuthContext'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
+import { getManagerGuardCopy, type ManagerGuardCode } from '../manager/guardCopy'
 import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
@@ -32,12 +33,7 @@ type TournamentManagerRoute = RouteProp<RootStackParamList, 'TournamentManager'>
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 type PairingMode = 'FIXED' | 'MIX_AND_MATCH'
-type ScreenErrorCode =
-  | 'AUTH_REQUIRED'
-  | 'FORBIDDEN'
-  | 'WEB_ONLY_MANAGEMENT'
-  | 'NOT_FOUND'
-  | 'LOAD_FAILED'
+type ScreenErrorCode = ManagerGuardCode
 
 const toFormatLabel = (format: string) =>
   format
@@ -167,36 +163,29 @@ export function TournamentManagerScreen() {
   }
 
   if (!tournament) {
-    const errorTitle =
-      screenErrorCode === 'AUTH_REQUIRED'
-        ? 'Sign in required'
-        : screenErrorCode === 'FORBIDDEN'
-          ? 'Access denied'
-          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
-            ? 'Web admin only'
-            : screenErrorCode === 'NOT_FOUND'
-              ? 'Tournament not found'
-              : 'Management unavailable'
-
-    const errorText =
-      screenErrorCode === 'AUTH_REQUIRED'
-        ? 'Sign in to continue with tournament management on mobile.'
-        : screenErrorCode === 'FORBIDDEN'
-          ? 'You do not have access to manage this tournament.'
-          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
-            ? 'MLP and Indy League tournament management is available only in web admin.'
-            : screenErrorMessage || 'Could not open tournament manager.'
+    const guardCopy = getManagerGuardCopy({
+      code: screenErrorCode,
+      entityLabel: 'tournament',
+      fallbackMessage: screenErrorMessage,
+    })
 
     return (
       <AppBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingWrap}>
-            <Text style={styles.errorTitle}>{errorTitle}</Text>
-            <Text style={styles.errorText}>{errorText}</Text>
-            {screenErrorCode === 'AUTH_REQUIRED' ? (
-              <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
-            ) : null}
-            <PrimaryButton label="Retry" onPress={() => void loadTournament()} />
+            <Text style={styles.errorTitle}>{guardCopy.title}</Text>
+            <Text style={styles.errorText}>{guardCopy.text}</Text>
+            <View style={styles.blockedActions}>
+              {guardCopy.showSignIn ? (
+                <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
+              ) : null}
+              <PrimaryButton
+                label="Back to My Tournaments"
+                variant="outline"
+                onPress={() => navigation.navigate('MainTabs', { screen: 'MyTournaments' })}
+              />
+              <PrimaryButton label="Retry" onPress={() => void loadTournament()} />
+            </View>
           </View>
         </SafeAreaView>
       </AppBackground>
@@ -650,5 +639,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginBottom: spacing.sm,
+  },
+  blockedActions: {
+    width: '100%',
+    gap: spacing.xs,
   },
 })
