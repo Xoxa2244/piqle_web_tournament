@@ -27,6 +27,7 @@ const mobileFeedFormatSchema = z.enum([
 ])
 
 const mobileFeedPolicySchema = z.enum(['ALL', 'MOBILE', 'WEB_ONLY'])
+const mobileFeedScopeSchema = z.enum(['UPCOMING', 'ALL'])
 
 const parseMobileFeedCursor = (rawCursor?: string | null) => {
   if (!rawCursor) return null
@@ -144,6 +145,7 @@ export const publicRouter = createTRPCRouter({
           search: z.string().trim().max(120).optional(),
           policy: mobileFeedPolicySchema.optional(),
           format: z.union([z.literal('ALL'), mobileFeedFormatSchema]).optional(),
+          scope: mobileFeedScopeSchema.optional(),
         })
         .optional()
     )
@@ -152,6 +154,7 @@ export const publicRouter = createTRPCRouter({
       const search = input?.search?.trim() ?? ''
       const policy = input?.policy ?? 'ALL'
       const format = input?.format ?? 'ALL'
+      const scope = input?.scope ?? 'UPCOMING'
       const parsedCursor = parseMobileFeedCursor(input?.cursor)
 
       const andFilters: Prisma.TournamentWhereInput[] = []
@@ -187,14 +190,22 @@ export const publicRouter = createTRPCRouter({
         })
       }
 
+      if (scope === 'UPCOMING') {
+        andFilters.push({
+          endDate: {
+            gte: new Date(),
+          },
+        })
+      }
+
       if (parsedCursor) {
         andFilters.push({
           OR: [
-            { startDate: { lt: parsedCursor.startDate } },
+            { startDate: { gt: parsedCursor.startDate } },
             {
               AND: [
                 { startDate: parsedCursor.startDate },
-                { id: { lt: parsedCursor.id } },
+                { id: { gt: parsedCursor.id } },
               ],
             },
           ],
@@ -211,7 +222,7 @@ export const publicRouter = createTRPCRouter({
       const rows = await ctx.prisma.tournament.findMany({
         where,
         take: limit + 1,
-        orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+        orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           title: true,

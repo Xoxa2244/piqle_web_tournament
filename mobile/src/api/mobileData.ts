@@ -12,6 +12,7 @@ import { trpcClient } from './trpcClient'
 export type DataSource = 'live' | 'fallback'
 export type TournamentFeedPolicy = 'ALL' | 'MOBILE' | 'WEB_ONLY'
 export type TournamentFeedFormat = 'ALL' | TournamentFormat
+export type TournamentFeedScope = 'UPCOMING' | 'ALL'
 
 type DataResult<T> = {
   data: T
@@ -24,12 +25,33 @@ export type TournamentFeedPage = {
   totalCount: number
 }
 
+export type HomeFeedSections = {
+  stats: {
+    total: number
+    mobileCount: number
+    webOnlyCount: number
+    openSlots: number
+  }
+  startingSoon: Tournament[]
+  mobileFriendly: Tournament[]
+  webOnly: Tournament[]
+}
+
+export type TournamentRegistrationState = {
+  status: 'REGISTERED' | 'WAITLIST' | 'OPEN' | 'UNAVAILABLE'
+  statusLabel: string
+  helperText: string
+  ctaLabel: string
+  ctaDisabled: boolean
+}
+
 type FetchTournamentFeedPageInput = {
   limit: number
   cursor?: string | null
   searchQuery?: string
   policy?: TournamentFeedPolicy
   format?: TournamentFeedFormat
+  scope?: TournamentFeedScope
 }
 
 const knownFormats: TournamentFormat[] = [
@@ -128,16 +150,22 @@ function parseFallbackCursor(cursor: string | null | undefined) {
   return Math.floor(value)
 }
 
-function sortByStartDateDesc(a: Tournament, b: Tournament) {
+function sortByStartDateAsc(a: Tournament, b: Tournament) {
   const aDate = Date.parse(a.startAt)
   const bDate = Date.parse(b.startAt)
   if (!Number.isFinite(aDate) && !Number.isFinite(bDate)) {
-    return b.id.localeCompare(a.id)
+    return a.id.localeCompare(b.id)
   }
   if (!Number.isFinite(aDate)) return 1
   if (!Number.isFinite(bDate)) return -1
-  if (aDate !== bDate) return bDate - aDate
-  return b.id.localeCompare(a.id)
+  if (aDate !== bDate) return aDate - bDate
+  return a.id.localeCompare(b.id)
+}
+
+function isUpcomingTournament(tournament: Tournament) {
+  const endDate = Date.parse(tournament.endAt)
+  if (!Number.isFinite(endDate)) return true
+  return endDate >= Date.now()
 }
 
 export async function fetchTournamentFeedPage(
@@ -146,6 +174,7 @@ export async function fetchTournamentFeedPage(
   const limit = Math.max(1, Math.min(30, Math.floor(input.limit || 12)))
   const policy = input.policy ?? 'ALL'
   const format = input.format ?? 'ALL'
+  const scope = input.scope ?? 'UPCOMING'
   const searchQuery = input.searchQuery?.trim() ?? ''
 
   try {
@@ -155,6 +184,7 @@ export async function fetchTournamentFeedPage(
       search: searchQuery || undefined,
       policy,
       format,
+      scope,
     })
 
     return {
@@ -167,10 +197,11 @@ export async function fetchTournamentFeedPage(
     }
   } catch {
     const filtered = [...feedTournaments]
+      .filter((tournament) => (scope === 'UPCOMING' ? isUpcomingTournament(tournament) : true))
       .filter((tournament) => isMatchByPolicy(tournament, policy))
       .filter((tournament) => isMatchByFormat(tournament, format))
       .filter((tournament) => isMatchBySearch(tournament, searchQuery))
-      .sort(sortByStartDateDesc)
+      .sort(sortByStartDateAsc)
 
     const offset = parseFallbackCursor(input.cursor)
     const items = filtered.slice(offset, offset + limit)
@@ -185,6 +216,58 @@ export async function fetchTournamentFeedPage(
       },
       source: 'fallback',
     }
+  }
+}
+
+export async function fetchHomeFeedSections(): Promise<DataResult<HomeFeedSections>> {
+  const [allResult, mobileResult, webOnlyResult] = await Promise.all([
+    fetchTournamentFeedPage({
+      limit: 8,
+      policy: 'ALL',
+      format: 'ALL',
+      scope: 'UPCOMING',
+    }),
+    fetchTournamentFeedPage({
+      limit: 3,
+      policy: 'MOBILE',
+      format: 'ALL',
+      scope: 'UPCOMING',
+    }),
+    fetchTournamentFeedPage({
+      limit: 2,
+      policy: 'WEB_ONLY',
+      format: 'ALL',
+      scope: 'UPCOMING',
+    }),
+  ])
+
+  const source: DataSource =
+    allResult.source === 'live' || mobileResult.source === 'live' || webOnlyResult.source === 'live'
+      ? 'live'
+      : 'fallback'
+
+  const uniqueVisible = new Map<string, Tournament>()
+  for (const item of [...allResult.data.items, ...mobileResult.data.items, ...webOnlyResult.data.items]) {
+    uniqueVisible.set(item.id, item)
+  }
+  const openSlots = Array.from(uniqueVisible.values()).reduce(
+    (sum, tournament) => sum + Math.max(0, tournament.capacity - tournament.participants),
+    0
+  )
+
+  return {
+    source,
+    data: {
+      stats: {
+        total: allResult.data.totalCount,
+        mobileCount: mobileResult.data.totalCount,
+        webOnlyCount: webOnlyResult.data.totalCount,
+        openSlots,
+      },
+      startingSoon: allResult.data.items.slice(0, 3),
+      mobileFriendly: mobileResult.data.items.slice(0, 3),
+      webOnly: webOnlyResult.data.items.slice(0, 2),
+    },
   }
 }
 
@@ -206,6 +289,62 @@ export async function fetchFeedTournaments(): Promise<DataResult<Tournament[]>> 
       }
     } catch {
       return { data: feedTournaments, source: 'fallback' }
+    }
+  }
+}
+
+export async function fetchTournamentRegistrationState(
+  tournamentId: string
+): Promise<DataResult<TournamentRegistrationState>> {
+  try {
+    const myStatus = await trpcClient.registration.getMyStatus.query({ tournamentId })
+
+    if (myStatus?.status === 'active') {
+      return {
+        source: 'live',
+        data: {
+          status: 'REGISTERED',
+          statusLabel: 'Registered',
+          helperText: 'You are already registered in this tournament.',
+          ctaLabel: 'View Registration',
+          ctaDisabled: false,
+        },
+      }
+    }
+
+    if (myStatus?.status === 'waitlist') {
+      return {
+        source: 'live',
+        data: {
+          status: 'WAITLIST',
+          statusLabel: 'On waitlist',
+          helperText: 'You are currently on the waitlist.',
+          ctaLabel: 'View Waitlist Status',
+          ctaDisabled: false,
+        },
+      }
+    }
+
+    return {
+      source: 'live',
+      data: {
+        status: 'OPEN',
+        statusLabel: 'Open',
+        helperText: 'Registration is open for your account.',
+        ctaLabel: 'Register Now',
+        ctaDisabled: false,
+      },
+    }
+  } catch {
+    return {
+      source: 'fallback',
+      data: {
+        status: 'UNAVAILABLE',
+        statusLabel: 'Sign-in required',
+        helperText: 'Live registration status is unavailable without sign-in.',
+        ctaLabel: 'Register Now',
+        ctaDisabled: false,
+      },
     }
   }
 }

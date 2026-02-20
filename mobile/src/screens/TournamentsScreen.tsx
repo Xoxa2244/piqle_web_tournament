@@ -42,6 +42,7 @@ type TournamentsNavigation = CompositeNavigationProp<
 type TournamentsRoute = RouteProp<MainTabParamList, 'Tournaments'>
 
 const PAGE_SIZE = 12
+const SEARCH_DEBOUNCE_MS = 350
 const SCROLL_END_THRESHOLD = 160
 
 const policyFilters: Array<{ id: PolicyFilter; label: string }> = [
@@ -78,6 +79,7 @@ export function TournamentsScreen() {
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [policyFilter, setPolicyFilter] = useState<PolicyFilter>('ALL')
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('ALL')
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -85,21 +87,34 @@ export function TournamentsScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [isInitialLoading, setIsInitialLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
 
   const requestVersionRef = useRef(0)
   const loadingMoreRef = useRef(false)
 
   useEffect(() => {
     if (!route.params) return
-    setSearchQuery(route.params.initialSearchQuery?.trim() ?? '')
+    const presetQuery = route.params.initialSearchQuery?.trim() ?? ''
+    setSearchQuery(presetQuery)
+    setDebouncedSearchQuery(presetQuery)
     setPolicyFilter(route.params.initialPolicyFilter ?? 'ALL')
     setFormatFilter(route.params.initialFormatFilter ?? 'ALL')
   }, [route.params])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim())
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery])
 
   const loadFirstPage = useCallback(
     async (mode: 'initial' | 'refresh') => {
       const version = requestVersionRef.current + 1
       requestVersionRef.current = version
+      setErrorMessage(null)
+      setLoadMoreError(null)
 
       if (mode === 'refresh') {
         setRefreshing(true)
@@ -111,9 +126,10 @@ export function TournamentsScreen() {
         const result = await fetchTournamentFeedPage({
           limit: PAGE_SIZE,
           cursor: null,
-          searchQuery,
+          searchQuery: debouncedSearchQuery,
           policy: policyFilter as TournamentFeedPolicy,
           format: formatFilter as TournamentFeedFormat,
+          scope: 'UPCOMING',
         })
 
         if (requestVersionRef.current !== version) return
@@ -122,13 +138,19 @@ export function TournamentsScreen() {
         setTournaments(result.data.items)
         setNextCursor(result.data.nextCursor)
         setTotalCount(result.data.totalCount)
+      } catch {
+        if (requestVersionRef.current !== version) return
+        setErrorMessage('Could not load tournaments. Pull to refresh or retry.')
+        setTournaments([])
+        setNextCursor(null)
+        setTotalCount(0)
       } finally {
         if (requestVersionRef.current !== version) return
         setRefreshing(false)
         setIsInitialLoading(false)
       }
     },
-    [formatFilter, policyFilter, searchQuery]
+    [debouncedSearchQuery, formatFilter, policyFilter]
   )
 
   useEffect(() => {
@@ -137,17 +159,20 @@ export function TournamentsScreen() {
 
   const loadNextPage = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current || refreshing || isInitialLoading) return
+
     loadingMoreRef.current = true
     setIsLoadingMore(true)
+    setLoadMoreError(null)
     const version = requestVersionRef.current
 
     try {
       const result = await fetchTournamentFeedPage({
         limit: PAGE_SIZE,
         cursor: nextCursor,
-        searchQuery,
+        searchQuery: debouncedSearchQuery,
         policy: policyFilter as TournamentFeedPolicy,
         format: formatFilter as TournamentFeedFormat,
+        scope: 'UPCOMING',
       })
 
       if (requestVersionRef.current !== version) return
@@ -160,11 +185,14 @@ export function TournamentsScreen() {
         const append = result.data.items.filter((item) => !seen.has(item.id))
         return [...previous, ...append]
       })
+    } catch {
+      if (requestVersionRef.current !== version) return
+      setLoadMoreError('Could not load more tournaments.')
     } finally {
       loadingMoreRef.current = false
       setIsLoadingMore(false)
     }
-  }, [formatFilter, isInitialLoading, nextCursor, policyFilter, refreshing, searchQuery])
+  }, [debouncedSearchQuery, formatFilter, isInitialLoading, nextCursor, policyFilter, refreshing])
 
   const onRefresh = useCallback(() => {
     void loadFirstPage('refresh')
@@ -217,6 +245,13 @@ export function TournamentsScreen() {
             />
           </View>
 
+          {searchQuery.trim() !== debouncedSearchQuery ? (
+            <View style={styles.searchingRow}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.searchingText}>Searching...</Text>
+            </View>
+          ) : null}
+
           <View style={styles.filterBlock}>
             <Text style={styles.filterTitle}>Policy</Text>
             <View style={styles.chipRow}>
@@ -261,10 +296,26 @@ export function TournamentsScreen() {
             </View>
           ) : null}
 
-          {!isInitialLoading && tournaments.length === 0 ? (
+          {!isInitialLoading && errorMessage && tournaments.length === 0 ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Could not load tournaments</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+              <Pressable style={styles.retryButton} onPress={() => void loadFirstPage('initial')}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!isInitialLoading && !errorMessage && tournaments.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No tournaments found</Text>
               <Text style={styles.emptyText}>Adjust search or filters to expand results.</Text>
+            </View>
+          ) : null}
+
+          {errorMessage && tournaments.length > 0 ? (
+            <View style={styles.inlineWarning}>
+              <Text style={styles.inlineWarningText}>{errorMessage}</Text>
             </View>
           ) : null}
 
@@ -302,6 +353,13 @@ export function TournamentsScreen() {
             <View style={styles.autoLoadingRow}>
               <ActivityIndicator size="small" color={colors.accent} />
               <Text style={styles.autoLoadingText}>Loading more tournaments...</Text>
+            </View>
+          ) : loadMoreError ? (
+            <View style={styles.autoLoadingRow}>
+              <Text style={styles.autoLoadingText}>{loadMoreError}</Text>
+              <Pressable style={styles.retryInlineButton} onPress={() => void loadNextPage()}>
+                <Text style={styles.retryInlineText}>Retry</Text>
+              </Pressable>
             </View>
           ) : nextCursor ? (
             <View style={styles.autoLoadingRow}>
@@ -358,6 +416,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  searchingRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  searchingText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.muted,
+  },
   filterBlock: {
     gap: spacing.xs,
   },
@@ -405,6 +474,39 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.muted,
   },
+  errorCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9C9B5',
+    backgroundColor: '#FFF6F0',
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.warning,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.warning,
+    lineHeight: 18,
+  },
+  retryButton: {
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#FFFFFFA8',
+  },
+  retryButtonText: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   empty: {
     borderRadius: 16,
     borderWidth: 1,
@@ -422,6 +524,19 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 13,
     color: colors.muted,
+  },
+  inlineWarning: {
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: '#E9C9B5',
+    backgroundColor: '#FFF6F0',
+  },
+  inlineWarningText: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '700',
   },
   card: {
     borderRadius: 18,
@@ -474,6 +589,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.muted,
+  },
+  retryInlineButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: '#FFFFFFD4',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  retryInlineText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
   },
   endText: {
     textAlign: 'center',

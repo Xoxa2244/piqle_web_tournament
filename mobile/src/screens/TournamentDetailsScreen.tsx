@@ -3,7 +3,12 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { fetchTournamentDetails } from '../api/mobileData'
+import {
+  fetchTournamentDetails,
+  fetchTournamentRegistrationState,
+  type TournamentRegistrationState,
+} from '../api/mobileData'
+import { useAuth } from '../auth/AuthContext'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -29,6 +34,14 @@ const clampPercent = (value: number) => {
   return value
 }
 
+const defaultRegistrationState: TournamentRegistrationState = {
+  status: 'UNAVAILABLE',
+  statusLabel: 'Checking status',
+  helperText: 'Loading your registration status...',
+  ctaLabel: 'Register Now',
+  ctaDisabled: false,
+}
+
 function CapabilityItem({ label }: { label: string }) {
   return (
     <View style={styles.capabilityRow}>
@@ -38,11 +51,22 @@ function CapabilityItem({ label }: { label: string }) {
   )
 }
 
+const toRegistrationBadgeTone = (status: TournamentRegistrationState['status']) => {
+  if (status === 'REGISTERED') return 'success' as const
+  if (status === 'WAITLIST') return 'warning' as const
+  if (status === 'OPEN') return 'info' as const
+  return 'neutral' as const
+}
+
 export function TournamentDetailsScreen() {
   const route = useRoute<TournamentDetailsRoute>()
   const navigation = useNavigation<RootNavigation>()
+  const { status: authStatus } = useAuth()
+
   const [tournament, setTournament] = useState<Tournament | null>(getTournamentById(route.params.tournamentId))
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
+  const [registrationSource, setRegistrationSource] = useState<'live' | 'fallback'>('fallback')
+  const [registrationState, setRegistrationState] = useState<TournamentRegistrationState>(defaultRegistrationState)
 
   useEffect(() => {
     let mounted = true
@@ -55,6 +79,19 @@ export function TournamentDetailsScreen() {
       mounted = false
     }
   }, [route.params.tournamentId])
+
+  useEffect(() => {
+    let mounted = true
+    setRegistrationState(defaultRegistrationState)
+    fetchTournamentRegistrationState(route.params.tournamentId).then((result) => {
+      if (!mounted) return
+      setRegistrationSource(result.source)
+      setRegistrationState(result.data)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [authStatus, route.params.tournamentId])
 
   const fillRatio = useMemo(() => {
     if (!tournament || tournament.capacity <= 0) return 0
@@ -108,6 +145,18 @@ export function TournamentDetailsScreen() {
           </View>
 
           <View style={styles.block}>
+            <Text style={styles.blockTitle}>My Registration</Text>
+            <View style={styles.registrationRow}>
+              <Badge label={registrationState.statusLabel} tone={toRegistrationBadgeTone(registrationState.status)} />
+              <Badge
+                label={registrationSource === 'live' ? 'Live status' : 'Guest status'}
+                tone={registrationSource === 'live' ? 'success' : 'warning'}
+              />
+            </View>
+            <Text style={styles.blockText}>{registrationState.helperText}</Text>
+          </View>
+
+          <View style={styles.block}>
             <Text style={styles.blockTitle}>Schedule</Text>
             <Text style={styles.blockValue}>{tournament.startAt}</Text>
             <Text style={styles.blockValue}>{tournament.endAt}</Text>
@@ -136,7 +185,8 @@ export function TournamentDetailsScreen() {
 
           <View style={styles.actions}>
             <PrimaryButton
-              label="Register Now"
+              label={registrationState.ctaLabel}
+              disabled={registrationState.ctaDisabled}
               onPress={() => navigation.navigate('Registration', { tournamentId: tournament.id })}
             />
             <PrimaryButton
@@ -216,6 +266,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.ink,
+  },
+  registrationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
   smallMeta: {
     fontSize: 12,

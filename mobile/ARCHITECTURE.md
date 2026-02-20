@@ -57,17 +57,19 @@ flowchart TD
 2. `HomeScreen`
 - Dashboard: stats, starting soon, mobile-friendly and web-only highlights
 - Deep-link quick filters to `TournamentsScreen` presets (`ALL`, `MOBILE`, `WEB_ONLY`)
-- API: feed endpoints (same source as tournaments list)
+- API: `public.listMobileFeed` via `fetchHomeFeedSections` (same backend source as tournaments list)
 
 3. `TournamentsScreen`
-- Search + filters (policy and format)
+- Search + filters (policy and format), debounced query
 - Pull-to-refresh + infinite scroll (auto-load on list end)
+- Loading/error/retry states
 - Full tournament list and quick access to details
 - API first: `public.listMobileFeed` (cursor pagination), fallback: local mock pagination
 
 4. `TournamentDetailsScreen`
 - Tournament overview, format, dates, venue
-- API: `public.getTournamentById`
+- Dynamic registration status + CTA state
+- API: `public.getTournamentById`, `registration.getMyStatus`
 
 5. `RegistrationScreen`
 - View seat map summary and my status
