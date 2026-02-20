@@ -13,10 +13,13 @@ This folder contains an isolated Expo app scaffold for the mobile product.
   - `Home` (server-fed dashboard + starting soon + deep-link quick filters)
   - `Tournaments` (debounced search + filters + pull-to-refresh + infinite scroll via server cursor pagination + in-memory page cache)
   - `Chats`
-  - `My Tournaments` (organizer)
+  - `My Tournaments` (organizer + entry point to mobile manager)
 - Stack screens:
   - `Tournament Details`
   - `Registration`
+  - `Tournament Manager`
+  - `Division Manager`
+  - `Auth`
 - Product policy mocked in UI:
   - `MLP` and `INDY_LEAGUE` => `WEB_ONLY` management
   - all other formats => `MOBILE_ALLOWED`

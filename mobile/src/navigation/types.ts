@@ -20,6 +20,9 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined
+  Auth: undefined
   TournamentDetails: { tournamentId: string }
   Registration: { tournamentId: string }
+  TournamentManager: { tournamentId: string }
+  DivisionManager: { tournamentId: string; divisionId: string }
 }

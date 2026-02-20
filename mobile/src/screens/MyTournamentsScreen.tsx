@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { useAuth } from '../auth/AuthContext'
 import { organizerTournaments, isWebOnlyTournament, type Tournament } from '../data/mockData'
+import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 import { fetchMyTournaments } from '../api/mobileData'
 
+type RootNavigation = NativeStackNavigationProp<RootStackParamList>
+
 export function MyTournamentsScreen() {
+  const navigation = useNavigation<RootNavigation>()
   const { user, signOut, status } = useAuth()
   const [tournaments, setTournaments] = useState<Tournament[]>(organizerTournaments)
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
@@ -51,7 +57,11 @@ export function MyTournamentsScreen() {
                   }}
                 />
               </View>
-            ) : null}
+            ) : (
+              <View style={styles.signOutRow}>
+                <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
+              </View>
+            )}
           </View>
 
           {tournaments.map((tournament) => {
@@ -82,16 +92,12 @@ export function MyTournamentsScreen() {
                   <View style={styles.actionWrap}>
                     <PrimaryButton
                       label="Manage Tournament"
-                      onPress={() =>
-                        Alert.alert('Manage', 'Next step: connect mobile manager screens for this tournament.')
-                      }
+                      onPress={() => navigation.navigate('TournamentManager', { tournamentId: tournament.id })}
                     />
                     <PrimaryButton
                       label="Score Entry"
                       variant="outline"
-                      onPress={() =>
-                        Alert.alert('Score Entry', 'Next step: connect to match/standings mutation endpoints.')
-                      }
+                      onPress={() => navigation.navigate('TournamentManager', { tournamentId: tournament.id })}
                     />
                   </View>
                 )}

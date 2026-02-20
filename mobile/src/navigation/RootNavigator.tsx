@@ -3,10 +3,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { Text } from 'react-native'
 import { colors } from '../theme/colors'
 import { ChatsScreen } from '../screens/ChatsScreen'
+import { AuthScreen } from '../screens/AuthScreen'
+import { DivisionManagerScreen } from '../screens/DivisionManagerScreen'
 import { HomeScreen } from '../screens/HomeScreen'
 import { MyTournamentsScreen } from '../screens/MyTournamentsScreen'
 import { RegistrationScreen } from '../screens/RegistrationScreen'
 import { TournamentsScreen } from '../screens/TournamentsScreen'
+import { TournamentManagerScreen } from '../screens/TournamentManagerScreen'
 import { TournamentDetailsScreen } from '../screens/TournamentDetailsScreen'
 import { type MainTabParamList, type RootStackParamList } from './types'
 
@@ -82,12 +85,23 @@ export function RootNavigator() {
       }}
     >
       <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+      <Stack.Screen name="Auth" component={AuthScreen} options={{ title: 'Sign In' }} />
       <Stack.Screen
         name="TournamentDetails"
         component={TournamentDetailsScreen}
         options={{ title: 'Event Details' }}
       />
       <Stack.Screen name="Registration" component={RegistrationScreen} options={{ title: 'Register' }} />
+      <Stack.Screen
+        name="TournamentManager"
+        component={TournamentManagerScreen}
+        options={{ title: 'Tournament Manager' }}
+      />
+      <Stack.Screen
+        name="DivisionManager"
+        component={DivisionManagerScreen}
+        options={{ title: 'Division Manager' }}
+      />
     </Stack.Navigator>
   )
 }

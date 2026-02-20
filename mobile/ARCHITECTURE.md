@@ -31,6 +31,7 @@ flowchart TD
 - tRPC client: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/trpcClient.ts`
 - Data adapters with fallback: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/mobileData.ts`
 - In-memory feed cache for fast return-to-list UX: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/tournamentFeedCache.ts`
+- Mobile manager operations: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/mobileManager.ts`
 - Auth context and token store: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/auth`
 
 3. API facade in Next.js
@@ -84,6 +85,14 @@ flowchart TD
 7. `MyTournamentsScreen`
 - User's organizer tournaments, sign out
 - API: `tournament.list` + auth session
+
+8. `TournamentManagerScreen`
+- Full small-tournament manager: tournament settings, create/delete divisions
+- API: `tournament.get`, `tournament.update`, `division.create`, `division.delete`
+
+9. `DivisionManagerScreen`
+- Division settings, team CRUD, RR generation/regeneration, score entry
+- API: `division.update`, `team.create`, `team.update`, `team.delete`, `match.generateRR`, `match.regenerateRR`, `match.updateGameScore`
 
 ## Permission Matrix
 
