@@ -9,6 +9,7 @@ type AccessRole = 'OWNER' | 'ADMIN' | 'SCORE_ONLY' | 'NONE'
 
 const TOURNAMENT_ID = 'tournament-1'
 const DIVISION_ID = 'division-1'
+const NEW_DIVISION_ID = 'division-new'
 const TEAM_ID = 'team-1'
 const MATCH_ID = 'match-1'
 const OWNER_ID = 'owner-user'
@@ -43,9 +44,41 @@ const buildAccessRows = (role: AccessRole, userId: string) => {
 }
 
 const createPrismaMock = (role: AccessRole, userId: string) => {
+  const tournamentFindUnique = vi.fn(async (args: any) => {
+    const id = args?.where?.id
+    if (id !== TOURNAMENT_ID) {
+      return null
+    }
+
+    if (args?.select?.userId && args?.select?.format) {
+      return {
+        userId: OWNER_ID,
+        format: 'ROUND_ROBIN',
+      }
+    }
+
+    if (args?.select?.userId) {
+      return {
+        userId: OWNER_ID,
+      }
+    }
+
+    if (args?.select?.format) {
+      return {
+        format: 'ROUND_ROBIN',
+      }
+    }
+
+    return {
+      id: TOURNAMENT_ID,
+      userId: OWNER_ID,
+      format: 'ROUND_ROBIN',
+    }
+  })
+
   const divisionFindUnique = vi.fn(async (args: any) => {
     const id = args?.where?.id
-    if (id !== DIVISION_ID) {
+    if (id !== DIVISION_ID && id !== NEW_DIVISION_ID) {
       return null
     }
 
@@ -55,7 +88,7 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
 
     if (args?.include?.pools) {
       return {
-        id: DIVISION_ID,
+        id,
         name: 'Division A',
         tournamentId: TOURNAMENT_ID,
         poolCount: 1,
@@ -89,15 +122,26 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
   const prisma = {
     division: {
       findUnique: divisionFindUnique,
+      create: vi.fn(async ({ data }: any) => ({
+        id: NEW_DIVISION_ID,
+        tournamentId: data.tournamentId,
+        name: data.name,
+      })),
       update: vi.fn(async ({ where, data }: any) => ({
         id: where.id,
         name: data?.name ?? 'Division A',
         poolCount: data?.poolCount ?? 1,
         tournamentId: TOURNAMENT_ID,
       })),
+      delete: vi.fn(async ({ where }: any) => ({
+        id: where.id,
+      })),
     },
     divisionConstraints: {
       upsert: vi.fn(async () => ({})),
+    },
+    tournament: {
+      findUnique: tournamentFindUnique,
     },
     tournamentAccess: {
       findMany: vi.fn(async ({ where }: any) => {
@@ -106,6 +150,7 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
         }
         return buildAccessRows(role, userId)
       }),
+      findFirst: vi.fn(async () => null),
     },
     team: {
       create: vi.fn(async ({ data }: any) => ({
@@ -174,6 +219,7 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
       update: vi.fn(async ({ where, data }: any) => ({
         id: where.id,
         winnerTeamId: data?.winnerTeamId ?? null,
+        locked: data?.locked,
       })),
     },
     game: {
@@ -412,5 +458,183 @@ describe('Access guards smoke', () => {
 
     expect(prisma.game.upsert).not.toHaveBeenCalled()
     expect(prisma.team.create).not.toHaveBeenCalled()
+  })
+
+  it('owner can create/delete division and lock/unlock match', async () => {
+    const prisma = createPrismaMock('OWNER', OWNER_ID)
+    const divisionCaller = divisionRouter.createCaller(createCtx(OWNER_ID, prisma))
+    const matchCaller = matchRouter.createCaller(createCtx(OWNER_ID, prisma))
+
+    await expect(
+      divisionCaller.create({
+        tournamentId: TOURNAMENT_ID,
+        name: 'Owner Division',
+        teamKind: 'DOUBLES_2v2',
+        pairingMode: 'FIXED',
+      })
+    ).resolves.toMatchObject({
+      id: NEW_DIVISION_ID,
+      tournamentId: TOURNAMENT_ID,
+      name: 'Owner Division',
+    })
+
+    await expect(
+      divisionCaller.delete({
+        id: DIVISION_ID,
+      })
+    ).resolves.toMatchObject({
+      id: DIVISION_ID,
+    })
+
+    await expect(
+      matchCaller.lock({
+        id: MATCH_ID,
+      })
+    ).resolves.toMatchObject({
+      id: MATCH_ID,
+      locked: true,
+    })
+
+    await expect(
+      matchCaller.unlock({
+        id: MATCH_ID,
+      })
+    ).resolves.toMatchObject({
+      id: MATCH_ID,
+      locked: false,
+    })
+  })
+
+  it('admin can create/delete division and lock/unlock match', async () => {
+    const prisma = createPrismaMock('ADMIN', ADMIN_ID)
+    const divisionCaller = divisionRouter.createCaller(createCtx(ADMIN_ID, prisma))
+    const matchCaller = matchRouter.createCaller(createCtx(ADMIN_ID, prisma))
+
+    await expect(
+      divisionCaller.create({
+        tournamentId: TOURNAMENT_ID,
+        name: 'Admin Division',
+        teamKind: 'DOUBLES_2v2',
+        pairingMode: 'FIXED',
+      })
+    ).resolves.toMatchObject({
+      id: NEW_DIVISION_ID,
+      tournamentId: TOURNAMENT_ID,
+      name: 'Admin Division',
+    })
+
+    await expect(
+      divisionCaller.delete({
+        id: DIVISION_ID,
+      })
+    ).resolves.toMatchObject({
+      id: DIVISION_ID,
+    })
+
+    await expect(
+      matchCaller.lock({
+        id: MATCH_ID,
+      })
+    ).resolves.toMatchObject({
+      id: MATCH_ID,
+      locked: true,
+    })
+
+    await expect(
+      matchCaller.unlock({
+        id: MATCH_ID,
+      })
+    ).resolves.toMatchObject({
+      id: MATCH_ID,
+      locked: false,
+    })
+  })
+
+  it('score-only user is blocked from division create/delete and lock/unlock', async () => {
+    const prisma = createPrismaMock('SCORE_ONLY', SCORE_ID)
+    const divisionCaller = divisionRouter.createCaller(createCtx(SCORE_ID, prisma))
+    const matchCaller = matchRouter.createCaller(createCtx(SCORE_ID, prisma))
+
+    await expect(
+      divisionCaller.create({
+        tournamentId: TOURNAMENT_ID,
+        name: 'Should fail',
+        teamKind: 'DOUBLES_2v2',
+        pairingMode: 'FIXED',
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      divisionCaller.delete({
+        id: DIVISION_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      matchCaller.lock({
+        id: MATCH_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      matchCaller.unlock({
+        id: MATCH_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    expect(prisma.division.create).not.toHaveBeenCalled()
+    expect(prisma.division.delete).not.toHaveBeenCalled()
+  })
+
+  it('no-access user is blocked from admin-only division and lock actions', async () => {
+    const prisma = createPrismaMock('NONE', NONE_ID)
+    const divisionCaller = divisionRouter.createCaller(createCtx(NONE_ID, prisma))
+    const matchCaller = matchRouter.createCaller(createCtx(NONE_ID, prisma))
+
+    await expect(
+      divisionCaller.create({
+        tournamentId: TOURNAMENT_ID,
+        name: 'Should fail',
+        teamKind: 'DOUBLES_2v2',
+        pairingMode: 'FIXED',
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      divisionCaller.delete({
+        id: DIVISION_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      matchCaller.lock({
+        id: MATCH_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    await expect(
+      matchCaller.unlock({
+        id: MATCH_ID,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    expect(prisma.division.create).not.toHaveBeenCalled()
+    expect(prisma.division.delete).not.toHaveBeenCalled()
   })
 })
