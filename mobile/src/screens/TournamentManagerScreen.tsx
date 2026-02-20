@@ -20,6 +20,7 @@ import {
   updateManagerTournamentSettings,
   type ManagerTournament,
 } from '../api/mobileManager'
+import { useAuth } from '../auth/AuthContext'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -31,6 +32,12 @@ type TournamentManagerRoute = RouteProp<RootStackParamList, 'TournamentManager'>
 type RootNavigation = NativeStackNavigationProp<RootStackParamList>
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 type PairingMode = 'FIXED' | 'MIX_AND_MATCH'
+type ScreenErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'FORBIDDEN'
+  | 'WEB_ONLY_MANAGEMENT'
+  | 'NOT_FOUND'
+  | 'LOAD_FAILED'
 
 const toFormatLabel = (format: string) =>
   format
@@ -47,12 +54,14 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export function TournamentManagerScreen() {
   const route = useRoute<TournamentManagerRoute>()
   const navigation = useNavigation<RootNavigation>()
+  const { status } = useAuth()
 
   const [tournament, setTournament] = useState<ManagerTournament | null>(null)
   const [loading, setLoading] = useState(true)
   const [savingSettings, setSavingSettings] = useState(false)
   const [creatingDivision, setCreatingDivision] = useState(false)
-  const [screenError, setScreenError] = useState<string | null>(null)
+  const [screenErrorCode, setScreenErrorCode] = useState<ScreenErrorCode | null>(null)
+  const [screenErrorMessage, setScreenErrorMessage] = useState<string | null>(null)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -72,16 +81,50 @@ export function TournamentManagerScreen() {
 
   const loadTournament = useCallback(async () => {
     setLoading(true)
-    setScreenError(null)
+    setScreenErrorCode(null)
+    setScreenErrorMessage(null)
+
+    if (status !== 'signed_in') {
+      setTournament(null)
+      setScreenErrorCode('AUTH_REQUIRED')
+      setScreenErrorMessage('Sign in to use tournament management from mobile.')
+      setLoading(false)
+      return
+    }
+
     const result = await fetchManagerTournament(route.params.tournamentId)
     if (!result.data) {
       setTournament(null)
-      setScreenError('Could not load tournament management data. Sign-in may be required.')
+      switch (result.errorCode) {
+        case 'UNAUTHORIZED':
+          setScreenErrorCode('AUTH_REQUIRED')
+          break
+        case 'FORBIDDEN':
+          setScreenErrorCode('FORBIDDEN')
+          break
+        case 'WEB_ONLY_MANAGEMENT':
+          setScreenErrorCode('WEB_ONLY_MANAGEMENT')
+          break
+        case 'NOT_FOUND':
+          setScreenErrorCode('NOT_FOUND')
+          break
+        default:
+          setScreenErrorCode('LOAD_FAILED')
+      }
+      setScreenErrorMessage(result.errorMessage || 'Could not load tournament manager.')
       setLoading(false)
       return
     }
 
     const current = result.data
+    if (current.access.accessLevel === 'NONE') {
+      setTournament(null)
+      setScreenErrorCode('FORBIDDEN')
+      setScreenErrorMessage('You do not have tournament management access.')
+      setLoading(false)
+      return
+    }
+
     setTournament(current)
     setTitle(current.title)
     setDescription(current.description)
@@ -93,7 +136,7 @@ export function TournamentManagerScreen() {
     setIsPublicBoardEnabled(current.isPublicBoardEnabled)
     setAllowDuprSubmission(current.allowDuprSubmission)
     setLoading(false)
-  }, [route.params.tournamentId])
+  }, [route.params.tournamentId, status])
 
   useEffect(() => {
     void loadTournament()
@@ -103,6 +146,10 @@ export function TournamentManagerScreen() {
     () => tournament?.format === 'MLP' || tournament?.format === 'INDY_LEAGUE',
     [tournament?.format]
   )
+  const canAdminTournament = tournament?.access.accessLevel === 'ADMIN'
+  const canScoreTournament =
+    tournament?.access.accessLevel === 'ADMIN' || tournament?.access.accessLevel === 'SCORE_ONLY'
+  const adminActionsDisabled = webOnly || !canAdminTournament
 
   const divisionCount = tournament?.divisions.length ?? 0
 
@@ -120,14 +167,35 @@ export function TournamentManagerScreen() {
   }
 
   if (!tournament) {
+    const errorTitle =
+      screenErrorCode === 'AUTH_REQUIRED'
+        ? 'Sign in required'
+        : screenErrorCode === 'FORBIDDEN'
+          ? 'Access denied'
+          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
+            ? 'Web admin only'
+            : screenErrorCode === 'NOT_FOUND'
+              ? 'Tournament not found'
+              : 'Management unavailable'
+
+    const errorText =
+      screenErrorCode === 'AUTH_REQUIRED'
+        ? 'Sign in to continue with tournament management on mobile.'
+        : screenErrorCode === 'FORBIDDEN'
+          ? 'You do not have access to manage this tournament.'
+          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
+            ? 'MLP and Indy League tournament management is available only in web admin.'
+            : screenErrorMessage || 'Could not open tournament manager.'
+
     return (
       <AppBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingWrap}>
-            <Text style={styles.errorTitle}>Management unavailable</Text>
-            <Text style={styles.errorText}>
-              {screenError || 'Could not open tournament manager.'}
-            </Text>
+            <Text style={styles.errorTitle}>{errorTitle}</Text>
+            <Text style={styles.errorText}>{errorText}</Text>
+            {screenErrorCode === 'AUTH_REQUIRED' ? (
+              <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
+            ) : null}
             <PrimaryButton label="Retry" onPress={() => void loadTournament()} />
           </View>
         </SafeAreaView>
@@ -144,11 +212,20 @@ export function TournamentManagerScreen() {
             <View style={styles.badgesRow}>
               <Badge label={toFormatLabel(tournament.format)} tone="info" />
               <Badge label={webOnly ? 'Web only admin' : 'Mobile admin'} tone={webOnly ? 'warning' : 'success'} />
+              <Badge
+                label={canAdminTournament ? 'Admin access' : 'Score-only access'}
+                tone={canAdminTournament ? 'success' : 'info'}
+              />
               <Badge label={`${divisionCount} divisions`} tone="neutral" />
             </View>
             {webOnly ? (
               <Text style={styles.warningText}>
                 This format is web-only for management. Mobile manager is available for small tournament formats.
+              </Text>
+            ) : null}
+            {!webOnly && !canAdminTournament ? (
+              <Text style={styles.warningText}>
+                Score-only access: tournament settings and division structure are read-only.
               </Text>
             ) : null}
           </View>
@@ -214,7 +291,7 @@ export function TournamentManagerScreen() {
 
             <PrimaryButton
               label={savingSettings ? 'Saving...' : 'Save Settings'}
-              disabled={savingSettings || webOnly}
+              disabled={savingSettings || adminActionsDisabled}
               onPress={async () => {
                 if (!title.trim()) {
                   Alert.alert('Validation', 'Title is required.')
@@ -320,7 +397,7 @@ export function TournamentManagerScreen() {
 
             <PrimaryButton
               label={creatingDivision ? 'Creating...' : 'Create Division'}
-              disabled={creatingDivision || webOnly}
+              disabled={creatingDivision || adminActionsDisabled}
               onPress={async () => {
                 if (!newDivisionName.trim()) {
                   Alert.alert('Validation', 'Division name is required.')
@@ -370,6 +447,7 @@ export function TournamentManagerScreen() {
                 <View style={styles.divisionActions}>
                   <PrimaryButton
                     label="Open Division Manager"
+                    disabled={!canScoreTournament || webOnly}
                     onPress={() =>
                       navigation.navigate('DivisionManager', {
                         tournamentId: tournament.id,
@@ -380,7 +458,7 @@ export function TournamentManagerScreen() {
                   <PrimaryButton
                     label="Delete Division"
                     variant="outline"
-                    disabled={webOnly}
+                    disabled={adminActionsDisabled}
                     onPress={() => {
                       Alert.alert('Delete division', `Delete "${division.name}"?`, [
                         { text: 'Cancel', style: 'cancel' },

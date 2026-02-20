@@ -364,10 +364,20 @@ export async function fetchTournamentDetails(tournamentId: string): Promise<Data
 export async function fetchMyTournaments(): Promise<DataResult<Tournament[]>> {
   try {
     const tournaments = await trpcClient.tournament.list.query()
+    const sorted = [...(tournaments as any[])].sort((a, b) => {
+      const aOwner = Boolean(a?.isOwner)
+      const bOwner = Boolean(b?.isOwner)
+      if (aOwner !== bOwner) return aOwner ? -1 : 1
+      const aCreated = Date.parse(String(a?.createdAt ?? ''))
+      const bCreated = Date.parse(String(b?.createdAt ?? ''))
+      if (Number.isFinite(aCreated) && Number.isFinite(bCreated) && aCreated !== bCreated) {
+        return bCreated - aCreated
+      }
+      return String(a?.id ?? '').localeCompare(String(b?.id ?? ''))
+    })
+
     return {
-      data: (tournaments as any[])
-        .filter((item) => Boolean(item?.isOwner))
-        .map((item) => mapTournament(item, 'ORGANIZER')),
+      data: sorted.map((item) => mapTournament(item, 'ORGANIZER')),
       source: 'live',
     }
   } catch {

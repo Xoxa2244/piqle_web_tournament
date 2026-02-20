@@ -9,7 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { type RouteProp, useRoute } from '@react-navigation/native'
+import { type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
+import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   createManagerTeam,
@@ -22,6 +23,7 @@ import {
   type ManagerDivision,
   type ManagerTournament,
 } from '../api/mobileManager'
+import { useAuth } from '../auth/AuthContext'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { PrimaryButton } from '../components/PrimaryButton'
@@ -30,6 +32,13 @@ import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 
 type DivisionManagerRoute = RouteProp<RootStackParamList, 'DivisionManager'>
+type RootNavigation = NativeStackNavigationProp<RootStackParamList>
+type ScreenErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'FORBIDDEN'
+  | 'WEB_ONLY_MANAGEMENT'
+  | 'NOT_FOUND'
+  | 'LOAD_FAILED'
 
 type TeamDraft = {
   name: string
@@ -62,10 +71,13 @@ const emptyDivisionFallback: ManagerDivision = {
 
 export function DivisionManagerScreen() {
   const route = useRoute<DivisionManagerRoute>()
+  const navigation = useNavigation<RootNavigation>()
+  const { status } = useAuth()
   const [tournament, setTournament] = useState<ManagerTournament | null>(null)
   const [division, setDivision] = useState<ManagerDivision>(emptyDivisionFallback)
   const [loading, setLoading] = useState(true)
-  const [screenError, setScreenError] = useState<string | null>(null)
+  const [screenErrorCode, setScreenErrorCode] = useState<ScreenErrorCode | null>(null)
+  const [screenErrorMessage, setScreenErrorMessage] = useState<string | null>(null)
   const [savingDivision, setSavingDivision] = useState(false)
   const [creatingTeam, setCreatingTeam] = useState(false)
   const [busyMatchId, setBusyMatchId] = useState<string | null>(null)
@@ -111,12 +123,44 @@ export function DivisionManagerScreen() {
 
   const loadDivision = useCallback(async () => {
     setLoading(true)
-    setScreenError(null)
+    setScreenErrorCode(null)
+    setScreenErrorMessage(null)
+
+    if (status !== 'signed_in') {
+      setScreenErrorCode('AUTH_REQUIRED')
+      setScreenErrorMessage('Sign in to use division manager from mobile.')
+      setLoading(false)
+      return
+    }
+
     const result = await fetchManagerTournament(route.params.tournamentId)
     const nextTournament = result.data
 
     if (!nextTournament) {
-      setScreenError('Could not load division manager. Sign-in may be required.')
+      switch (result.errorCode) {
+        case 'UNAUTHORIZED':
+          setScreenErrorCode('AUTH_REQUIRED')
+          break
+        case 'FORBIDDEN':
+          setScreenErrorCode('FORBIDDEN')
+          break
+        case 'WEB_ONLY_MANAGEMENT':
+          setScreenErrorCode('WEB_ONLY_MANAGEMENT')
+          break
+        case 'NOT_FOUND':
+          setScreenErrorCode('NOT_FOUND')
+          break
+        default:
+          setScreenErrorCode('LOAD_FAILED')
+      }
+      setScreenErrorMessage(result.errorMessage || 'Could not load division manager.')
+      setLoading(false)
+      return
+    }
+
+    if (nextTournament.access.accessLevel === 'NONE') {
+      setScreenErrorCode('FORBIDDEN')
+      setScreenErrorMessage('You do not have access to this tournament.')
       setLoading(false)
       return
     }
@@ -124,7 +168,8 @@ export function DivisionManagerScreen() {
     const nextDivision = nextTournament.divisions.find((item) => item.id === route.params.divisionId)
     if (!nextDivision) {
       setTournament(nextTournament)
-      setScreenError('Division not found.')
+      setScreenErrorCode('NOT_FOUND')
+      setScreenErrorMessage('Division not found or not available for your access level.')
       setLoading(false)
       return
     }
@@ -137,11 +182,16 @@ export function DivisionManagerScreen() {
     setNewTeamPoolId(nextDivision.pools[0]?.id ?? '')
     hydrateDraftsFromDivision(nextDivision)
     setLoading(false)
-  }, [hydrateDraftsFromDivision, route.params.divisionId, route.params.tournamentId])
+  }, [hydrateDraftsFromDivision, route.params.divisionId, route.params.tournamentId, status])
 
   useEffect(() => {
     void loadDivision()
   }, [loadDivision])
+
+  const accessLevel = tournament?.access.accessLevel ?? 'NONE'
+  const canAdminDivision = accessLevel === 'ADMIN'
+  const canScoreDivision = accessLevel === 'ADMIN' || accessLevel === 'SCORE_ONLY'
+  const adminActionsDisabled = webOnlyFormat || !canAdminDivision
 
   if (loading) {
     return (
@@ -157,12 +207,35 @@ export function DivisionManagerScreen() {
   }
 
   if (!tournament || !division.id) {
+    const errorTitle =
+      screenErrorCode === 'AUTH_REQUIRED'
+        ? 'Sign in required'
+        : screenErrorCode === 'FORBIDDEN'
+          ? 'Access denied'
+          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
+            ? 'Web admin only'
+            : screenErrorCode === 'NOT_FOUND'
+              ? 'Division unavailable'
+              : 'Management unavailable'
+
+    const errorText =
+      screenErrorCode === 'AUTH_REQUIRED'
+        ? 'Sign in to continue with division management on mobile.'
+        : screenErrorCode === 'FORBIDDEN'
+          ? 'You do not have access to this division.'
+          : screenErrorCode === 'WEB_ONLY_MANAGEMENT'
+            ? 'MLP and Indy League tournament management is available only in web admin.'
+            : screenErrorMessage || 'Could not open division manager.'
+
     return (
       <AppBackground>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.loadingWrap}>
-            <Text style={styles.errorTitle}>Management unavailable</Text>
-            <Text style={styles.errorText}>{screenError || 'Could not open division manager.'}</Text>
+            <Text style={styles.errorTitle}>{errorTitle}</Text>
+            <Text style={styles.errorText}>{errorText}</Text>
+            {screenErrorCode === 'AUTH_REQUIRED' ? (
+              <PrimaryButton label="Sign in" onPress={() => navigation.navigate('Auth')} />
+            ) : null}
             <PrimaryButton label="Retry" onPress={() => void loadDivision()} />
           </View>
         </SafeAreaView>
@@ -178,11 +251,20 @@ export function DivisionManagerScreen() {
             <Text style={styles.title}>{division.name}</Text>
             <View style={styles.badgesRow}>
               <Badge label={division.teamKind.replace(/_/g, ' ')} tone="info" />
+              <Badge
+                label={canAdminDivision ? 'Admin access' : 'Score-only access'}
+                tone={canAdminDivision ? 'success' : 'info'}
+              />
               <Badge label={`${division.teams.length} teams`} tone="neutral" />
               <Badge label={`${division.matches.length} matches`} tone="neutral" />
             </View>
             {webOnlyFormat ? (
               <Text style={styles.warningText}>Management for this tournament format is web-only.</Text>
+            ) : null}
+            {!webOnlyFormat && !canAdminDivision ? (
+              <Text style={styles.warningText}>
+                Score-only access: settings, team management, and scheduling are read-only.
+              </Text>
             ) : null}
           </View>
 
@@ -214,7 +296,7 @@ export function DivisionManagerScreen() {
             </View>
             <PrimaryButton
               label={savingDivision ? 'Saving...' : 'Save Division'}
-              disabled={savingDivision || webOnlyFormat}
+              disabled={savingDivision || adminActionsDisabled}
               onPress={async () => {
                 if (!divisionName.trim()) {
                   Alert.alert('Validation', 'Division name is required.')
@@ -247,7 +329,7 @@ export function DivisionManagerScreen() {
             <View style={styles.rowActions}>
               <PrimaryButton
                 label={runningScheduler === 'generate' ? 'Generating...' : 'Generate Round Robin'}
-                disabled={runningScheduler !== null || webOnlyFormat}
+                disabled={runningScheduler !== null || adminActionsDisabled}
                 onPress={async () => {
                   try {
                     setRunningScheduler('generate')
@@ -264,7 +346,7 @@ export function DivisionManagerScreen() {
               <PrimaryButton
                 label={runningScheduler === 'regenerate' ? 'Regenerating...' : 'Regenerate'}
                 variant="outline"
-                disabled={runningScheduler !== null || webOnlyFormat}
+                disabled={runningScheduler !== null || adminActionsDisabled}
                 onPress={() => {
                   Alert.alert('Regenerate Round Robin', 'This will recreate RR matches for this division. Continue?', [
                     { text: 'Cancel', style: 'cancel' },
@@ -329,7 +411,7 @@ export function DivisionManagerScreen() {
             </View>
             <PrimaryButton
               label={creatingTeam ? 'Creating...' : 'Create Team'}
-              disabled={creatingTeam || webOnlyFormat}
+              disabled={creatingTeam || adminActionsDisabled}
               onPress={async () => {
                 if (!newTeamName.trim()) {
                   Alert.alert('Validation', 'Team name is required.')
@@ -445,7 +527,7 @@ export function DivisionManagerScreen() {
                   <View style={styles.rowActions}>
                     <PrimaryButton
                       label="Save Team"
-                      disabled={webOnlyFormat}
+                      disabled={adminActionsDisabled}
                       onPress={async () => {
                         try {
                           const seedValue = draft.seed.trim() ? Number(draft.seed.trim()) : null
@@ -464,7 +546,7 @@ export function DivisionManagerScreen() {
                     <PrimaryButton
                       label="Delete Team"
                       variant="outline"
-                      disabled={webOnlyFormat}
+                      disabled={adminActionsDisabled}
                       onPress={() =>
                         Alert.alert('Delete team', `Delete "${team.name}"?`, [
                           { text: 'Cancel', style: 'cancel' },
@@ -533,7 +615,7 @@ export function DivisionManagerScreen() {
                   </View>
                   <PrimaryButton
                     label={busyMatchId === match.id ? 'Saving...' : 'Save Score'}
-                    disabled={busyMatchId === match.id || webOnlyFormat}
+                    disabled={busyMatchId === match.id || webOnlyFormat || !canScoreDivision}
                     onPress={async () => {
                       const scoreA = draft.scoreA.trim() ? Number(draft.scoreA.trim()) : null
                       const scoreB = draft.scoreB.trim() ? Number(draft.scoreB.trim()) : null

@@ -39,9 +39,9 @@ export function MyTournamentsScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <Text style={styles.title}>My Tournaments</Text>
-            <Text style={styles.subtitle}>Organizer workspace for mobile-first operations</Text>
+            <Text style={styles.subtitle}>Organizer and assistant workspace for mobile operations</Text>
             <Text style={styles.userLabel}>
-              {status === 'signed_in' ? user?.email ?? 'Signed in' : 'Guest mode: sign-in flow is temporarily deferred'}
+              {status === 'signed_in' ? user?.email ?? 'Signed in' : 'Guest mode: sign in to manage tournaments'}
             </Text>
             <View style={styles.sourceRow}>
               <Badge label={dataSource === 'live' ? 'Live data' : 'Demo data'} tone={dataSource === 'live' ? 'success' : 'warning'} />
@@ -91,13 +91,21 @@ export function MyTournamentsScreen() {
                 ) : (
                   <View style={styles.actionWrap}>
                     <PrimaryButton
-                      label="Manage Tournament"
-                      onPress={() => navigation.navigate('TournamentManager', { tournamentId: tournament.id })}
+                      label={status === 'signed_in' ? 'Manage Tournament' : 'Sign in to Manage'}
+                      onPress={() =>
+                        status === 'signed_in'
+                          ? navigation.navigate('TournamentManager', { tournamentId: tournament.id })
+                          : navigation.navigate('Auth')
+                      }
                     />
                     <PrimaryButton
-                      label="Score Entry"
+                      label={status === 'signed_in' ? 'Score Entry' : 'Sign in for Score Entry'}
                       variant="outline"
-                      onPress={() => navigation.navigate('TournamentManager', { tournamentId: tournament.id })}
+                      onPress={() =>
+                        status === 'signed_in'
+                          ? navigation.navigate('TournamentManager', { tournamentId: tournament.id })
+                          : navigation.navigate('Auth')
+                      }
                     />
                   </View>
                 )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Platform,
@@ -9,11 +9,14 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppBackground } from '../components/AppBackground'
 import { PrimaryButton } from '../components/PrimaryButton'
 import { useAuth } from '../auth/AuthContext'
 import { completeSignupWithOtp, requestSignupCode } from '../auth/mobileAuthApi'
+import { type RootStackParamList } from '../navigation/types'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 
@@ -43,7 +46,8 @@ const mapAuthError = (message: string) => {
 }
 
 export function AuthScreen() {
-  const { signIn } = useAuth()
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
+  const { signIn, status } = useAuth()
   const [mode, setMode] = useState<AuthMode>('signin')
   const [signupStep, setSignupStep] = useState<SignupStep>('email')
   const [email, setEmail] = useState('')
@@ -63,6 +67,15 @@ export function AuthScreen() {
     setPassword('')
     setConfirmPassword('')
   }
+
+  useEffect(() => {
+    if (status !== 'signed_in') return
+    if (navigation.canGoBack()) {
+      navigation.goBack()
+      return
+    }
+    navigation.navigate('MainTabs', { screen: 'MyTournaments' })
+  }, [navigation, status])
 
   return (
     <AppBackground>

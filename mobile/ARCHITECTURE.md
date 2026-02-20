@@ -83,15 +83,19 @@ flowchart TD
 - API: `tournamentChat.listMyEventChats`
 
 7. `MyTournamentsScreen`
-- User's organizer tournaments, sign out
+- User's organizer/assistant tournaments, sign in/out, manager entrypoint
 - API: `tournament.list` + auth session
 
 8. `TournamentManagerScreen`
-- Full small-tournament manager: tournament settings, create/delete divisions
+- Tournament-level manager with access guards
+- `ADMIN`: settings + division structure edits
+- `SCORE_ONLY`: read-only tournament info + division navigation for score entry
 - API: `tournament.get`, `tournament.update`, `division.create`, `division.delete`
 
 9. `DivisionManagerScreen`
-- Division settings, team CRUD, RR generation/regeneration, score entry
+- Division-level manager with access guards
+- `ADMIN`: division/team/schedule/score operations
+- `SCORE_ONLY`: score entry only
 - API: `division.update`, `team.create`, `team.update`, `team.delete`, `match.generateRR`, `match.regenerateRR`, `match.updateGameScore`
 
 ## Permission Matrix
@@ -102,6 +106,10 @@ flowchart TD
 - Large tournaments (`MLP`, `INDY_LEAGUE`):
   - mobile: registration-only and read-only flows
   - web: full management only
+- Access levels for mobile manager:
+  - `ADMIN`: full small-tournament management in mobile
+  - `SCORE_ONLY`: score entry only (no structural/config changes)
+  - signed out / no access: blocked with explicit `Auth` or denied state
 
 ## Notes
 

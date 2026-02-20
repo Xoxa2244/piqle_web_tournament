@@ -2,10 +2,25 @@ import { type TournamentFormat } from '../data/mockData'
 import { trpcClient } from './trpcClient'
 
 export type ManagerDataSource = 'live' | 'fallback'
+export type ManagerErrorCode =
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'WEB_ONLY_MANAGEMENT'
+  | 'NOT_FOUND'
+  | 'UNKNOWN'
 
 type ManagerResult<T> = {
   data: T
   source: ManagerDataSource
+  errorCode?: ManagerErrorCode
+  errorMessage?: string
+}
+
+export type ManagerAccessLevel = 'ADMIN' | 'SCORE_ONLY' | 'NONE'
+
+export type ManagerTournamentAccess = {
+  isOwner: boolean
+  accessLevel: ManagerAccessLevel
 }
 
 export type ManagerPool = {
@@ -65,6 +80,7 @@ export type ManagerTournament = {
   entryFeeCents: number
   isPublicBoardEnabled: boolean
   allowDuprSubmission: boolean
+  access: ManagerTournamentAccess
   divisions: ManagerDivision[]
 }
 
@@ -94,8 +110,38 @@ const toIsoString = (value: unknown) => {
   return date.toISOString()
 }
 
+const normalizeAccessLevel = (value: unknown): ManagerAccessLevel => {
+  if (value === 'ADMIN') return 'ADMIN'
+  if (value === 'SCORE_ONLY') return 'SCORE_ONLY'
+  return 'NONE'
+}
+
+const parseManagerError = (error: unknown): { code: ManagerErrorCode; message: string } => {
+  const message = String((error as any)?.message ?? 'Unknown manager error')
+  const trpcCode = String((error as any)?.data?.code ?? (error as any)?.shape?.data?.code ?? '')
+
+  if (message.includes('WEB_ONLY_MANAGEMENT')) {
+    return { code: 'WEB_ONLY_MANAGEMENT', message }
+  }
+  if (trpcCode === 'UNAUTHORIZED') {
+    return { code: 'UNAUTHORIZED', message }
+  }
+  if (trpcCode === 'FORBIDDEN') {
+    return { code: 'FORBIDDEN', message }
+  }
+  if (trpcCode === 'NOT_FOUND') {
+    return { code: 'NOT_FOUND', message }
+  }
+  return { code: 'UNKNOWN', message }
+}
+
 const toManagerTournament = (raw: any): ManagerTournament => {
   const divisions = Array.isArray(raw?.divisions) ? raw.divisions : []
+  const isOwner = Boolean(raw?.userAccessInfo?.isOwner)
+  const accessLevel = isOwner
+    ? 'ADMIN'
+    : normalizeAccessLevel(raw?.userAccessInfo?.accessLevel)
+
   return {
     id: String(raw?.id ?? ''),
     title: String(raw?.title ?? 'Untitled tournament'),
@@ -111,6 +157,10 @@ const toManagerTournament = (raw: any): ManagerTournament => {
         : Math.max(0, Math.round(Number(raw?.entryFee ?? 0) * 100)),
     isPublicBoardEnabled: Boolean(raw?.isPublicBoardEnabled),
     allowDuprSubmission: Boolean(raw?.allowDuprSubmission),
+    access: {
+      isOwner,
+      accessLevel,
+    },
     divisions: divisions.map((division: any) => {
       const pools = Array.isArray(division?.pools) ? division.pools : []
       const teams = Array.isArray(division?.teams) ? division.teams : []
@@ -172,10 +222,13 @@ export async function fetchManagerTournament(
       data: tournament ? toManagerTournament(tournament) : null,
       source: 'live',
     }
-  } catch {
+  } catch (error) {
+    const parsed = parseManagerError(error)
     return {
       data: null,
       source: 'fallback',
+      errorCode: parsed.code,
+      errorMessage: parsed.message,
     }
   }
 }
