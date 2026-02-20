@@ -3,11 +3,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { divisionRouter } from '@/server/routers/division'
 import { matchRouter } from '@/server/routers/match'
+import { teamRouter } from '@/server/routers/team'
 
 type AccessRole = 'OWNER' | 'ADMIN' | 'SCORE_ONLY' | 'NONE'
 
 const TOURNAMENT_ID = 'tournament-1'
 const DIVISION_ID = 'division-1'
+const TEAM_ID = 'team-1'
+const MATCH_ID = 'match-1'
 const OWNER_ID = 'owner-user'
 const ADMIN_ID = 'admin-user'
 const SCORE_ID = 'score-user'
@@ -46,6 +49,10 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
       return null
     }
 
+    if (args?.include?.matches) {
+      return null
+    }
+
     if (args?.include?.pools) {
       return {
         id: DIVISION_ID,
@@ -53,6 +60,21 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
         tournamentId: TOURNAMENT_ID,
         poolCount: 1,
         pools: [{ id: 'pool-1', name: 'Pool 1', order: 1 }],
+      }
+    }
+
+    if (args?.select?.tournament?.select?.userId) {
+      return {
+        tournamentId: TOURNAMENT_ID,
+        tournament: {
+          userId: OWNER_ID,
+        },
+      }
+    }
+
+    if (args?.select?.tournamentId) {
+      return {
+        tournamentId: TOURNAMENT_ID,
       }
     }
 
@@ -85,8 +107,83 @@ const createPrismaMock = (role: AccessRole, userId: string) => {
         return buildAccessRows(role, userId)
       }),
     },
+    team: {
+      create: vi.fn(async ({ data }: any) => ({
+        id: TEAM_ID,
+        divisionId: data.divisionId,
+        name: data.name,
+      })),
+      findUnique: vi.fn(async ({ where }: any) => {
+        if (where?.id !== TEAM_ID) {
+          return null
+        }
+        return {
+          id: TEAM_ID,
+          name: 'Team A',
+          divisionId: DIVISION_ID,
+          division: {
+            id: DIVISION_ID,
+            name: 'Division A',
+            tournamentId: TOURNAMENT_ID,
+          },
+        }
+      }),
+      update: vi.fn(async ({ where, data }: any) => ({
+        id: where.id,
+        divisionId: data?.divisionId ?? DIVISION_ID,
+        name: data?.name ?? 'Team A',
+      })),
+      delete: vi.fn(async ({ where }: any) => ({
+        id: where.id,
+      })),
+    },
+    teamPlayer: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    },
     match: {
       findMany: vi.fn(async () => []),
+      findUnique: vi.fn(async ({ where }: any) => {
+        if (where?.id !== MATCH_ID) {
+          return null
+        }
+        return {
+          id: MATCH_ID,
+          divisionId: DIVISION_ID,
+          rrGroupId: null,
+          division: {
+            tournamentId: TOURNAMENT_ID,
+            tournament: {
+              format: 'ROUND_ROBIN',
+            },
+          },
+          rrGroup: null,
+          games: [
+            {
+              id: 'existing-game',
+              index: 0,
+              scoreA: null,
+              scoreB: null,
+              winner: null,
+            },
+          ],
+          teamA: { id: 'team-a' },
+          teamB: { id: 'team-b' },
+          tiebreaker: null,
+        }
+      }),
+      update: vi.fn(async ({ where, data }: any) => ({
+        id: where.id,
+        winnerTeamId: data?.winnerTeamId ?? null,
+      })),
+    },
+    game: {
+      upsert: vi.fn(async ({ where, create, update }: any) => ({
+        id: `upserted-${where?.matchId_index?.matchId}-${where?.matchId_index?.index}`,
+        index: where?.matchId_index?.index ?? 0,
+        scoreA: update?.scoreA ?? create?.scoreA ?? null,
+        scoreB: update?.scoreB ?? create?.scoreB ?? null,
+        winner: update?.winner ?? create?.winner ?? null,
+      })),
     },
     auditLog: {
       create: vi.fn(async () => ({ id: 'audit-1' })),
@@ -200,5 +297,120 @@ describe('Access guards smoke', () => {
     })
 
     expect(prisma.match.findMany).not.toHaveBeenCalled()
+  })
+
+  it('owner can update game score and create team', async () => {
+    const prisma = createPrismaMock('OWNER', OWNER_ID)
+    const matchCaller = matchRouter.createCaller(createCtx(OWNER_ID, prisma))
+    const teamCaller = teamRouter.createCaller(createCtx(OWNER_ID, prisma))
+
+    await expect(
+      matchCaller.updateGameScore({
+        matchId: MATCH_ID,
+        gameIndex: 0,
+        scoreA: 11,
+        scoreB: 7,
+      })
+    ).resolves.toMatchObject({
+      id: `upserted-${MATCH_ID}-0`,
+      scoreA: 11,
+      scoreB: 7,
+    })
+
+    await expect(
+      teamCaller.create({
+        divisionId: DIVISION_ID,
+        name: 'Created by owner',
+      })
+    ).resolves.toMatchObject({
+      id: TEAM_ID,
+      divisionId: DIVISION_ID,
+    })
+  })
+
+  it('admin can update score and update team', async () => {
+    const prisma = createPrismaMock('ADMIN', ADMIN_ID)
+    const matchCaller = matchRouter.createCaller(createCtx(ADMIN_ID, prisma))
+    const teamCaller = teamRouter.createCaller(createCtx(ADMIN_ID, prisma))
+
+    await expect(
+      matchCaller.updateGameScore({
+        matchId: MATCH_ID,
+        gameIndex: 0,
+        scoreA: 9,
+        scoreB: 11,
+      })
+    ).resolves.toMatchObject({
+      id: `upserted-${MATCH_ID}-0`,
+      scoreA: 9,
+      scoreB: 11,
+    })
+
+    await expect(
+      teamCaller.update({
+        id: TEAM_ID,
+        name: 'Renamed by admin',
+      })
+    ).resolves.toMatchObject({
+      id: TEAM_ID,
+      name: 'Renamed by admin',
+    })
+  })
+
+  it('score-only user can update game score but cannot create team', async () => {
+    const prisma = createPrismaMock('SCORE_ONLY', SCORE_ID)
+    const matchCaller = matchRouter.createCaller(createCtx(SCORE_ID, prisma))
+    const teamCaller = teamRouter.createCaller(createCtx(SCORE_ID, prisma))
+
+    await expect(
+      matchCaller.updateGameScore({
+        matchId: MATCH_ID,
+        gameIndex: 0,
+        scoreA: 11,
+        scoreB: 3,
+      })
+    ).resolves.toMatchObject({
+      id: `upserted-${MATCH_ID}-0`,
+      scoreA: 11,
+      scoreB: 3,
+    })
+
+    await expect(
+      teamCaller.create({
+        divisionId: DIVISION_ID,
+        name: 'Should fail',
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+    expect(prisma.team.create).not.toHaveBeenCalled()
+  })
+
+  it('no-access user is blocked from score update and team create', async () => {
+    const prisma = createPrismaMock('NONE', NONE_ID)
+    const matchCaller = matchRouter.createCaller(createCtx(NONE_ID, prisma))
+    const teamCaller = teamRouter.createCaller(createCtx(NONE_ID, prisma))
+
+    await expect(
+      matchCaller.updateGameScore({
+        matchId: MATCH_ID,
+        gameIndex: 0,
+        scoreA: 8,
+        scoreB: 11,
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+    await expect(
+      teamCaller.create({
+        divisionId: DIVISION_ID,
+        name: 'Should fail',
+      })
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+
+    expect(prisma.game.upsert).not.toHaveBeenCalled()
+    expect(prisma.team.create).not.toHaveBeenCalled()
   })
 })
