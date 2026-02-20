@@ -176,6 +176,18 @@ export default function TeamWithSlots({
     return slotsArray
   }, [team.teamPlayers, slotCount])
 
+  // If teamPlayers contain more records than we can place into visible slots,
+  // keep them visible in a fallback list instead of silently hiding them.
+  const unplacedTeamPlayers = useMemo(() => {
+    const placedTeamPlayerIds = new Set(
+      slots
+        .map((slot) => slot?.teamPlayerId)
+        .filter((id): id is string => Boolean(id))
+    )
+
+    return team.teamPlayers.filter((teamPlayer) => !placedTeamPlayerIds.has(teamPlayer.id))
+  }, [slots, team.teamPlayers])
+
   const filledSlots = slots.filter(slot => slot !== null).length
   // Use getTeamDisplayName to show player names for SINGLES_1v1, team names for others
   const teamName = getTeamDisplayName(team, teamKind)
@@ -311,6 +323,11 @@ export default function TeamWithSlots({
                 {filledSlots}/{slotCount}
               </Badge>
             )}
+            {unplacedTeamPlayers.length > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                +{unplacedTeamPlayers.length} unplaced
+              </Badge>
+            )}
             
             {/* Edit button - hide for SINGLES_1v1 */}
             {teamKind !== 'SINGLES_1v1' && (
@@ -352,6 +369,21 @@ export default function TeamWithSlots({
                 isDropTarget={dropTargetId === `player-${team.id}-slot-${index}`}
               />
             ))}
+
+            {unplacedTeamPlayers.length > 0 && (
+              <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2">
+                <div className="text-xs font-medium text-amber-800">
+                  Players without visible slot ({unplacedTeamPlayers.length})
+                </div>
+                <div className="mt-1 space-y-1">
+                  {unplacedTeamPlayers.map((teamPlayer) => (
+                    <div key={teamPlayer.id} className="text-xs text-amber-900">
+                      {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
