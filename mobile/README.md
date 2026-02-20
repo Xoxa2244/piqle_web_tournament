@@ -11,7 +11,7 @@ This folder contains an isolated Expo app scaffold for the mobile product.
 - In-app mobile sign-up flow with OTP (request code + complete sign-up).
 - Bottom-tab navigation with core product surfaces:
   - `Home` (dashboard + starting soon + deep-link quick filters)
-  - `Tournaments` (search + filters + pull-to-refresh + infinite scroll)
+  - `Tournaments` (search + filters + pull-to-refresh + infinite scroll via server cursor pagination)
   - `Chats`
   - `My Tournaments` (organizer)
 - Stack screens:

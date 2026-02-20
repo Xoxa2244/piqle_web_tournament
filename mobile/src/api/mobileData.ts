@@ -10,10 +10,26 @@ import {
 import { trpcClient } from './trpcClient'
 
 export type DataSource = 'live' | 'fallback'
+export type TournamentFeedPolicy = 'ALL' | 'MOBILE' | 'WEB_ONLY'
+export type TournamentFeedFormat = 'ALL' | TournamentFormat
 
 type DataResult<T> = {
   data: T
   source: DataSource
+}
+
+export type TournamentFeedPage = {
+  items: Tournament[]
+  nextCursor: string | null
+  totalCount: number
+}
+
+type FetchTournamentFeedPageInput = {
+  limit: number
+  cursor?: string | null
+  searchQuery?: string
+  policy?: TournamentFeedPolicy
+  format?: TournamentFeedFormat
 }
 
 const knownFormats: TournamentFormat[] = [
@@ -83,6 +99,92 @@ const mapTournament = (raw: any, role: 'PLAYER' | 'ORGANIZER'): Tournament => {
     description: String(raw?.description ?? 'No description yet.'),
     chatCount: 0,
     role,
+  }
+}
+
+function isMatchByPolicy(tournament: Tournament, policy: TournamentFeedPolicy) {
+  if (policy === 'ALL') return true
+  const webOnly = tournament.format === 'MLP' || tournament.format === 'INDY_LEAGUE'
+  return policy === 'WEB_ONLY' ? webOnly : !webOnly
+}
+
+function isMatchBySearch(tournament: Tournament, rawQuery: string) {
+  const query = rawQuery.trim().toLowerCase()
+  if (!query) return true
+  return [tournament.title, tournament.club, tournament.city, tournament.description, tournament.format]
+    .join(' ')
+    .toLowerCase()
+    .includes(query)
+}
+
+function isMatchByFormat(tournament: Tournament, formatFilter: TournamentFeedFormat) {
+  if (formatFilter === 'ALL') return true
+  return tournament.format === formatFilter
+}
+
+function parseFallbackCursor(cursor: string | null | undefined) {
+  const value = Number(cursor)
+  if (!Number.isFinite(value) || value < 0) return 0
+  return Math.floor(value)
+}
+
+function sortByStartDateDesc(a: Tournament, b: Tournament) {
+  const aDate = Date.parse(a.startAt)
+  const bDate = Date.parse(b.startAt)
+  if (!Number.isFinite(aDate) && !Number.isFinite(bDate)) {
+    return b.id.localeCompare(a.id)
+  }
+  if (!Number.isFinite(aDate)) return 1
+  if (!Number.isFinite(bDate)) return -1
+  if (aDate !== bDate) return bDate - aDate
+  return b.id.localeCompare(a.id)
+}
+
+export async function fetchTournamentFeedPage(
+  input: FetchTournamentFeedPageInput
+): Promise<DataResult<TournamentFeedPage>> {
+  const limit = Math.max(1, Math.min(30, Math.floor(input.limit || 12)))
+  const policy = input.policy ?? 'ALL'
+  const format = input.format ?? 'ALL'
+  const searchQuery = input.searchQuery?.trim() ?? ''
+
+  try {
+    const payload = await trpcClient.public.listMobileFeed.query({
+      limit,
+      cursor: input.cursor ?? undefined,
+      search: searchQuery || undefined,
+      policy,
+      format,
+    })
+
+    return {
+      data: {
+        items: (payload?.items ?? []).map((item: any) => mapTournament(item, 'PLAYER')),
+        nextCursor: payload?.nextCursor ?? null,
+        totalCount: Number(payload?.totalCount ?? 0),
+      },
+      source: 'live',
+    }
+  } catch {
+    const filtered = [...feedTournaments]
+      .filter((tournament) => isMatchByPolicy(tournament, policy))
+      .filter((tournament) => isMatchByFormat(tournament, format))
+      .filter((tournament) => isMatchBySearch(tournament, searchQuery))
+      .sort(sortByStartDateDesc)
+
+    const offset = parseFallbackCursor(input.cursor)
+    const items = filtered.slice(offset, offset + limit)
+    const nextOffset = offset + items.length
+    const nextCursor = nextOffset < filtered.length ? String(nextOffset) : null
+
+    return {
+      data: {
+        items,
+        nextCursor,
+        totalCount: filtered.length,
+      },
+      source: 'fallback',
+    }
   }
 }
 

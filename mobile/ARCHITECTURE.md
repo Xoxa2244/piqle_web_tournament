@@ -63,7 +63,7 @@ flowchart TD
 - Search + filters (policy and format)
 - Pull-to-refresh + infinite scroll (auto-load on list end)
 - Full tournament list and quick access to details
-- API first: `tournament.list`, fallback: `public.listBoards`
+- API first: `public.listMobileFeed` (cursor pagination), fallback: local mock pagination
 
 4. `TournamentDetailsScreen`
 - Tournament overview, format, dates, venue

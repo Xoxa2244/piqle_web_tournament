@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -15,10 +15,14 @@ import { type BottomTabNavigationProp } from '@react-navigation/bottom-tabs'
 import { type CompositeNavigationProp, type RouteProp, useNavigation, useRoute } from '@react-navigation/native'
 import { type NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { fetchFeedTournaments } from '../api/mobileData'
+import {
+  fetchTournamentFeedPage,
+  type TournamentFeedFormat,
+  type TournamentFeedPolicy,
+} from '../api/mobileData'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
-import { feedTournaments, isWebOnlyTournament, type Tournament, type TournamentFormat } from '../data/mockData'
+import { isWebOnlyTournament, type Tournament } from '../data/mockData'
 import {
   type MainTabParamList,
   type RootStackParamList,
@@ -37,7 +41,7 @@ type TournamentsNavigation = CompositeNavigationProp<
 >
 type TournamentsRoute = RouteProp<MainTabParamList, 'Tournaments'>
 
-const PAGE_SIZE = 6
+const PAGE_SIZE = 12
 const SCROLL_END_THRESHOLD = 160
 
 const policyFilters: Array<{ id: PolicyFilter; label: string }> = [
@@ -46,135 +50,137 @@ const policyFilters: Array<{ id: PolicyFilter; label: string }> = [
   { id: 'WEB_ONLY', label: 'Web only admin' },
 ]
 
+const formatFilters: FormatFilter[] = [
+  'ALL',
+  'SINGLE_ELIMINATION',
+  'ROUND_ROBIN',
+  'MLP',
+  'INDY_LEAGUE',
+  'LEAGUE_ROUND_ROBIN',
+  'ONE_DAY_LADDER',
+  'LADDER_LEAGUE',
+]
+
 const toFormatLabel = (format: string) =>
   format
     .split('_')
     .map((part) => `${part.slice(0, 1)}${part.slice(1).toLowerCase()}`)
     .join(' ')
 
-const parseStartDate = (value: string) => {
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER
-}
-
 const formatEntryFee = (entryFeeUsd: number) => (entryFeeUsd > 0 ? `$${entryFeeUsd}` : 'Free')
 
 const getOpenSlots = (tournament: Tournament) => Math.max(0, tournament.capacity - tournament.participants)
 
-function isMatchByPolicy(tournament: Tournament, policyFilter: PolicyFilter) {
-  if (policyFilter === 'ALL') return true
-  const webOnly = isWebOnlyTournament(tournament)
-  return policyFilter === 'WEB_ONLY' ? webOnly : !webOnly
-}
-
-function isMatchBySearch(tournament: Tournament, searchQuery: string) {
-  const query = searchQuery.trim().toLowerCase()
-  if (!query) return true
-  return [tournament.title, tournament.club, tournament.city, toFormatLabel(tournament.format)]
-    .join(' ')
-    .toLowerCase()
-    .includes(query)
-}
-
-function isMatchByFormat(tournament: Tournament, formatFilter: FormatFilter) {
-  if (formatFilter === 'ALL') return true
-  return tournament.format === formatFilter
-}
-
 export function TournamentsScreen() {
   const navigation = useNavigation<TournamentsNavigation>()
   const route = useRoute<TournamentsRoute>()
-  const [tournaments, setTournaments] = useState<Tournament[]>(feedTournaments)
+
+  const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback')
   const [searchQuery, setSearchQuery] = useState('')
   const [policyFilter, setPolicyFilter] = useState<PolicyFilter>('ALL')
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('ALL')
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [totalCount, setTotalCount] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
-  const [isAutoLoading, setIsAutoLoading] = useState(false)
-  const autoLoadLockRef = useRef(false)
+  const [isInitialLoading, setIsInitialLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  const loadTournaments = useCallback(async (mode: 'initial' | 'refresh') => {
-    if (mode === 'refresh') {
-      setRefreshing(true)
-    }
-    try {
-      const result = await fetchFeedTournaments()
-      setTournaments(result.data)
-      setDataSource(result.source)
-    } finally {
-      if (mode === 'refresh') {
-        setRefreshing(false)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadTournaments('initial')
-  }, [loadTournaments])
+  const requestVersionRef = useRef(0)
+  const loadingMoreRef = useRef(false)
 
   useEffect(() => {
     if (!route.params) return
     setSearchQuery(route.params.initialSearchQuery?.trim() ?? '')
     setPolicyFilter(route.params.initialPolicyFilter ?? 'ALL')
     setFormatFilter(route.params.initialFormatFilter ?? 'ALL')
-    setVisibleCount(PAGE_SIZE)
   }, [route.params])
 
+  const loadFirstPage = useCallback(
+    async (mode: 'initial' | 'refresh') => {
+      const version = requestVersionRef.current + 1
+      requestVersionRef.current = version
+
+      if (mode === 'refresh') {
+        setRefreshing(true)
+      } else {
+        setIsInitialLoading(true)
+      }
+
+      try {
+        const result = await fetchTournamentFeedPage({
+          limit: PAGE_SIZE,
+          cursor: null,
+          searchQuery,
+          policy: policyFilter as TournamentFeedPolicy,
+          format: formatFilter as TournamentFeedFormat,
+        })
+
+        if (requestVersionRef.current !== version) return
+
+        setDataSource(result.source)
+        setTournaments(result.data.items)
+        setNextCursor(result.data.nextCursor)
+        setTotalCount(result.data.totalCount)
+      } finally {
+        if (requestVersionRef.current !== version) return
+        setRefreshing(false)
+        setIsInitialLoading(false)
+      }
+    },
+    [formatFilter, policyFilter, searchQuery]
+  )
+
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE)
-  }, [searchQuery, policyFilter, formatFilter])
+    void loadFirstPage('initial')
+  }, [loadFirstPage])
+
+  const loadNextPage = useCallback(async () => {
+    if (!nextCursor || loadingMoreRef.current || refreshing || isInitialLoading) return
+    loadingMoreRef.current = true
+    setIsLoadingMore(true)
+    const version = requestVersionRef.current
+
+    try {
+      const result = await fetchTournamentFeedPage({
+        limit: PAGE_SIZE,
+        cursor: nextCursor,
+        searchQuery,
+        policy: policyFilter as TournamentFeedPolicy,
+        format: formatFilter as TournamentFeedFormat,
+      })
+
+      if (requestVersionRef.current !== version) return
+
+      setDataSource(result.source)
+      setNextCursor(result.data.nextCursor)
+      setTotalCount(result.data.totalCount)
+      setTournaments((previous) => {
+        const seen = new Set(previous.map((item) => item.id))
+        const append = result.data.items.filter((item) => !seen.has(item.id))
+        return [...previous, ...append]
+      })
+    } finally {
+      loadingMoreRef.current = false
+      setIsLoadingMore(false)
+    }
+  }, [formatFilter, isInitialLoading, nextCursor, policyFilter, refreshing, searchQuery])
 
   const onRefresh = useCallback(() => {
-    void loadTournaments('refresh')
-  }, [loadTournaments])
-
-  const formatFilters = useMemo(() => {
-    const formats = new Set<TournamentFormat>()
-    tournaments.forEach((tournament) => formats.add(tournament.format))
-    return ['ALL', ...Array.from(formats).sort()] as FormatFilter[]
-  }, [tournaments])
-
-  const filteredTournaments = useMemo(
-    () =>
-      tournaments
-        .filter((tournament) => isMatchByPolicy(tournament, policyFilter))
-        .filter((tournament) => isMatchByFormat(tournament, formatFilter))
-        .filter((tournament) => isMatchBySearch(tournament, searchQuery))
-        .sort((a, b) => parseStartDate(a.startAt) - parseStartDate(b.startAt)),
-    [formatFilter, policyFilter, searchQuery, tournaments]
-  )
-
-  const visibleTournaments = useMemo(
-    () => filteredTournaments.slice(0, visibleCount),
-    [filteredTournaments, visibleCount]
-  )
-  const hasMore = visibleTournaments.length < filteredTournaments.length
-
-  useEffect(() => {
-    autoLoadLockRef.current = false
-    setIsAutoLoading(false)
-  }, [visibleCount, filteredTournaments.length])
-
-  const loadNextPage = useCallback(() => {
-    if (!hasMore) return
-    setVisibleCount((previousCount) => Math.min(previousCount + PAGE_SIZE, filteredTournaments.length))
-  }, [filteredTournaments.length, hasMore])
+    void loadFirstPage('refresh')
+  }, [loadFirstPage])
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (!hasMore || autoLoadLockRef.current) return
+      if (!nextCursor || isInitialLoading || refreshing || loadingMoreRef.current) return
 
       const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent
       const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - SCROLL_END_THRESHOLD
-
       if (!nearBottom) return
 
-      autoLoadLockRef.current = true
-      setIsAutoLoading(true)
-      loadNextPage()
+      void loadNextPage()
     },
-    [hasMore, loadNextPage]
+    [isInitialLoading, loadNextPage, nextCursor, refreshing]
   )
 
   return (
@@ -191,7 +197,7 @@ export function TournamentsScreen() {
             <Text style={styles.title}>Tournaments</Text>
             <Text style={styles.subtitle}>Find events, filter by access policy, and jump into registration.</Text>
             <View style={styles.metaRow}>
-              <Badge label={`${visibleTournaments.length}/${filteredTournaments.length} shown`} tone="neutral" />
+              <Badge label={`${tournaments.length}/${Math.max(totalCount, tournaments.length)} loaded`} tone="neutral" />
               <Badge
                 label={dataSource === 'live' ? 'Live data' : 'Demo data'}
                 tone={dataSource === 'live' ? 'success' : 'warning'}
@@ -248,14 +254,21 @@ export function TournamentsScreen() {
             </ScrollView>
           </View>
 
-          {filteredTournaments.length === 0 ? (
+          {isInitialLoading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.loadingText}>Loading tournaments...</Text>
+            </View>
+          ) : null}
+
+          {!isInitialLoading && tournaments.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No tournaments found</Text>
               <Text style={styles.emptyText}>Adjust search or filters to expand results.</Text>
             </View>
           ) : null}
 
-          {visibleTournaments.map((tournament) => {
+          {tournaments.map((tournament) => {
             const webOnly = isWebOnlyTournament(tournament)
             const openSlots = getOpenSlots(tournament)
 
@@ -285,16 +298,16 @@ export function TournamentsScreen() {
             )
           })}
 
-          {hasMore ? (
+          {isLoadingMore ? (
             <View style={styles.autoLoadingRow}>
-              {isAutoLoading ? <ActivityIndicator size="small" color={colors.accent} /> : null}
-              <Text style={styles.autoLoadingText}>
-                {isAutoLoading
-                  ? 'Loading more tournaments...'
-                  : `${filteredTournaments.length - visibleTournaments.length} more tournaments`}
-              </Text>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.autoLoadingText}>Loading more tournaments...</Text>
             </View>
-          ) : filteredTournaments.length > 0 ? (
+          ) : nextCursor ? (
+            <View style={styles.autoLoadingRow}>
+              <Text style={styles.autoLoadingText}>Scroll down to load more</Text>
+            </View>
+          ) : tournaments.length > 0 ? (
             <Text style={styles.endText}>End of results</Text>
           ) : null}
         </ScrollView>
@@ -379,6 +392,18 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.accent,
+  },
+  loadingRow: {
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.muted,
   },
   empty: {
     borderRadius: 16,

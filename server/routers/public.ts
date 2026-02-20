@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, publicProcedure } from '../trpc'
 import { getTeamDisplayName } from '../utils/teamDisplay'
 
@@ -11,6 +12,36 @@ const hasMissingTournamentOptionalColumns = (error: unknown) => {
     message.includes('registration_end_date')
   )
 }
+
+const mobileWebOnlyFormats = ['MLP', 'INDY_LEAGUE'] as const
+const mobileFeedCursorSeparator = '::'
+
+const mobileFeedFormatSchema = z.enum([
+  'SINGLE_ELIMINATION',
+  'ROUND_ROBIN',
+  'MLP',
+  'INDY_LEAGUE',
+  'LEAGUE_ROUND_ROBIN',
+  'ONE_DAY_LADDER',
+  'LADDER_LEAGUE',
+])
+
+const mobileFeedPolicySchema = z.enum(['ALL', 'MOBILE', 'WEB_ONLY'])
+
+const parseMobileFeedCursor = (rawCursor?: string | null) => {
+  if (!rawCursor) return null
+  const [rawDate, id] = rawCursor.split(mobileFeedCursorSeparator)
+  if (!rawDate || !id) return null
+  const parsedDate = new Date(rawDate)
+  if (Number.isNaN(parsedDate.getTime())) return null
+  return {
+    id,
+    startDate: parsedDate,
+  }
+}
+
+const encodeMobileFeedCursor = (params: { id: string; startDate: Date }) =>
+  `${params.startDate.toISOString()}${mobileFeedCursorSeparator}${params.id}`
 
 export const publicRouter = createTRPCRouter({
   listBoards: publicProcedure.query(async ({ ctx }) => {
@@ -103,6 +134,125 @@ export const publicRouter = createTRPCRouter({
     // Remove tournamentRatings from response (we already calculated karma)
     return tournamentsWithKarma.map(({ tournamentRatings, ...tournament }) => tournament)
   }),
+
+  listMobileFeed: publicProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().int().min(1).max(30).optional(),
+          cursor: z.string().optional(),
+          search: z.string().trim().max(120).optional(),
+          policy: mobileFeedPolicySchema.optional(),
+          format: z.union([z.literal('ALL'), mobileFeedFormatSchema]).optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? 12
+      const search = input?.search?.trim() ?? ''
+      const policy = input?.policy ?? 'ALL'
+      const format = input?.format ?? 'ALL'
+      const parsedCursor = parseMobileFeedCursor(input?.cursor)
+
+      const andFilters: Prisma.TournamentWhereInput[] = []
+
+      if (search.length > 0) {
+        andFilters.push({
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { venueName: { contains: search, mode: 'insensitive' } },
+            { venueAddress: { contains: search, mode: 'insensitive' } },
+          ],
+        })
+      }
+
+      if (policy === 'MOBILE') {
+        andFilters.push({
+          format: {
+            notIn: [...mobileWebOnlyFormats],
+          },
+        })
+      } else if (policy === 'WEB_ONLY') {
+        andFilters.push({
+          format: {
+            in: [...mobileWebOnlyFormats],
+          },
+        })
+      }
+
+      if (format !== 'ALL') {
+        andFilters.push({
+          format,
+        })
+      }
+
+      if (parsedCursor) {
+        andFilters.push({
+          OR: [
+            { startDate: { lt: parsedCursor.startDate } },
+            {
+              AND: [
+                { startDate: parsedCursor.startDate },
+                { id: { lt: parsedCursor.id } },
+              ],
+            },
+          ],
+        })
+      }
+
+      const where: Prisma.TournamentWhereInput = {
+        isPublicBoardEnabled: true,
+        ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+      }
+
+      const totalCount = await ctx.prisma.tournament.count({ where })
+
+      const rows = await ctx.prisma.tournament.findMany({
+        where,
+        take: limit + 1,
+        orderBy: [{ startDate: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          venueName: true,
+          venueAddress: true,
+          startDate: true,
+          endDate: true,
+          entryFee: true,
+          format: true,
+          image: true,
+          divisions: {
+            select: {
+              id: true,
+            },
+          },
+          club: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      })
+
+      const hasMore = rows.length > limit
+      const items = hasMore ? rows.slice(0, limit) : rows
+      const lastItem = items[items.length - 1]
+      const nextCursor =
+        hasMore && lastItem
+          ? encodeMobileFeedCursor({
+              id: lastItem.id,
+              startDate: lastItem.startDate,
+            })
+          : null
+
+      return {
+        items,
+        nextCursor,
+        totalCount,
+      }
+    }),
 
   getBoardById: publicProcedure
     .input(z.object({ id: z.string() }))
