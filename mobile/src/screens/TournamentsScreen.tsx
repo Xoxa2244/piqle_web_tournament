@@ -20,6 +20,11 @@ import {
   type TournamentFeedFormat,
   type TournamentFeedPolicy,
 } from '../api/mobileData'
+import {
+  buildTournamentFeedCacheKey,
+  getTournamentFeedCacheEntry,
+  setTournamentFeedCacheEntry,
+} from '../api/tournamentFeedCache'
 import { AppBackground } from '../components/AppBackground'
 import { Badge } from '../components/Badge'
 import { isWebOnlyTournament, type Tournament } from '../data/mockData'
@@ -92,6 +97,13 @@ export function TournamentsScreen() {
 
   const requestVersionRef = useRef(0)
   const loadingMoreRef = useRef(false)
+  const feedScope = 'UPCOMING' as const
+  const feedCacheKey = buildTournamentFeedCacheKey({
+    searchQuery: debouncedSearchQuery,
+    policy: policyFilter as TournamentFeedPolicy,
+    format: formatFilter as TournamentFeedFormat,
+    scope: feedScope,
+  })
 
   useEffect(() => {
     if (!route.params) return
@@ -111,6 +123,22 @@ export function TournamentsScreen() {
 
   const loadFirstPage = useCallback(
     async (mode: 'initial' | 'refresh') => {
+      if (mode === 'initial') {
+        const cached = getTournamentFeedCacheEntry(feedCacheKey)
+        if (cached) {
+          requestVersionRef.current += 1
+          setErrorMessage(null)
+          setLoadMoreError(null)
+          setDataSource(cached.dataSource)
+          setTournaments(cached.items)
+          setNextCursor(cached.nextCursor)
+          setTotalCount(cached.totalCount)
+          setRefreshing(false)
+          setIsInitialLoading(false)
+          return
+        }
+      }
+
       const version = requestVersionRef.current + 1
       requestVersionRef.current = version
       setErrorMessage(null)
@@ -129,7 +157,7 @@ export function TournamentsScreen() {
           searchQuery: debouncedSearchQuery,
           policy: policyFilter as TournamentFeedPolicy,
           format: formatFilter as TournamentFeedFormat,
-          scope: 'UPCOMING',
+          scope: feedScope,
         })
 
         if (requestVersionRef.current !== version) return
@@ -138,6 +166,12 @@ export function TournamentsScreen() {
         setTournaments(result.data.items)
         setNextCursor(result.data.nextCursor)
         setTotalCount(result.data.totalCount)
+        setTournamentFeedCacheEntry(feedCacheKey, {
+          items: result.data.items,
+          nextCursor: result.data.nextCursor,
+          totalCount: result.data.totalCount,
+          dataSource: result.source,
+        })
       } catch {
         if (requestVersionRef.current !== version) return
         setErrorMessage('Could not load tournaments. Pull to refresh or retry.')
@@ -150,7 +184,7 @@ export function TournamentsScreen() {
         setIsInitialLoading(false)
       }
     },
-    [debouncedSearchQuery, formatFilter, policyFilter]
+    [debouncedSearchQuery, feedCacheKey, feedScope, formatFilter, policyFilter]
   )
 
   useEffect(() => {
@@ -172,7 +206,7 @@ export function TournamentsScreen() {
         searchQuery: debouncedSearchQuery,
         policy: policyFilter as TournamentFeedPolicy,
         format: formatFilter as TournamentFeedFormat,
-        scope: 'UPCOMING',
+        scope: feedScope,
       })
 
       if (requestVersionRef.current !== version) return
@@ -180,10 +214,15 @@ export function TournamentsScreen() {
       setDataSource(result.source)
       setNextCursor(result.data.nextCursor)
       setTotalCount(result.data.totalCount)
-      setTournaments((previous) => {
-        const seen = new Set(previous.map((item) => item.id))
-        const append = result.data.items.filter((item) => !seen.has(item.id))
-        return [...previous, ...append]
+      const seen = new Set(tournaments.map((item) => item.id))
+      const append = result.data.items.filter((item) => !seen.has(item.id))
+      const merged = [...tournaments, ...append]
+      setTournaments(merged)
+      setTournamentFeedCacheEntry(feedCacheKey, {
+        items: merged,
+        nextCursor: result.data.nextCursor,
+        totalCount: result.data.totalCount,
+        dataSource: result.source,
       })
     } catch {
       if (requestVersionRef.current !== version) return
@@ -192,7 +231,17 @@ export function TournamentsScreen() {
       loadingMoreRef.current = false
       setIsLoadingMore(false)
     }
-  }, [debouncedSearchQuery, formatFilter, isInitialLoading, nextCursor, policyFilter, refreshing])
+  }, [
+    debouncedSearchQuery,
+    feedCacheKey,
+    feedScope,
+    formatFilter,
+    isInitialLoading,
+    nextCursor,
+    policyFilter,
+    refreshing,
+    tournaments,
+  ])
 
   const onRefresh = useCallback(() => {
     void loadFirstPage('refresh')

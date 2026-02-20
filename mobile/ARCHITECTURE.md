@@ -30,6 +30,7 @@ flowchart TD
 2. Mobile data/auth client
 - tRPC client: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/trpcClient.ts`
 - Data adapters with fallback: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/mobileData.ts`
+- In-memory feed cache for fast return-to-list UX: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/api/tournamentFeedCache.ts`
 - Auth context and token store: `/Users/vasilykozlov/Documents/GitHub/piqle_web_tournament/mobile/src/auth`
 
 3. API facade in Next.js
