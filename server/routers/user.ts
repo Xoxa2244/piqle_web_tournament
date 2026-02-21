@@ -176,6 +176,13 @@ export const userRouter = createTRPCRouter({
           duprRatingSingles: true,
           duprRatingDoubles: true,
           role: true,
+          _count: {
+            select: {
+              clubFollows: true,
+              players: true,
+              tournaments: true,
+            },
+          },
         },
       })
 
@@ -183,9 +190,13 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
+      const { _count, ...rest } = user
       return {
-        ...user,
+        ...rest,
         duprLinked: !!user.duprId,
+        clubsJoinedCount: _count.clubFollows,
+        tournamentsPlayedCount: _count.players,
+        tournamentsCreatedCount: _count.tournaments,
       }
     }),
 

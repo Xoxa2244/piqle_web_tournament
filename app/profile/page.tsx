@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw, Unlink } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw, Unlink, Users, Trophy, Medal } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
@@ -347,9 +347,15 @@ export default function ProfilePage() {
   const hasValidAvatar = currentAvatar && currentAvatar.trim() !== '' && 
     (currentAvatar.startsWith('http') || currentAvatar.startsWith('data:'))
 
+  const singles = formatDuprRating(profile.duprRatingSingles)
+  const doubles = formatDuprRating(profile.duprRatingDoubles)
+  const clubsCount = (profile as any).clubsJoinedCount ?? 0
+  const playedCount = (profile as any).tournamentsPlayedCount ?? 0
+  const createdCount = (profile as any).tournamentsCreatedCount ?? 0
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-2xl mx-auto px-4">
+      <div className="max-w-5xl mx-auto px-4">
         {/* Back Button */}
         <button
           type="button"
@@ -377,6 +383,8 @@ export default function ProfilePage() {
           )}
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
@@ -639,6 +647,48 @@ export default function ProfilePage() {
             )}
           </div>
         </Card>
+          </div>
+
+          {/* Правая колонка: рейтинги и статистика как на карточках /players */}
+          <div className="space-y-4">
+            <Card className="p-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-4">Stats</h2>
+              <div className="grid grid-cols-2 gap-2 text-xs mb-4">
+                <div className="rounded-md border bg-gray-50 p-2">
+                  <div className="text-muted-foreground">Singles</div>
+                  <div className="text-sm font-medium text-gray-900">{singles ?? '—'}</div>
+                </div>
+                <div className="rounded-md border bg-gray-50 p-2">
+                  <div className="text-muted-foreground">Doubles</div>
+                  <div className="text-sm font-medium text-gray-900">{doubles ?? '—'}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{clubsCount}</div>
+                  <div className="text-muted-foreground">clubs</div>
+                </div>
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Trophy className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{playedCount}</div>
+                  <div className="text-muted-foreground">played</div>
+                </div>
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Medal className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{createdCount}</div>
+                  <div className="text-muted-foreground">created</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
 
         {/* Avatar Cropper Modal */}
         {cropperImageSrc && (
