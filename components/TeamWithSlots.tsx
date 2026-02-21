@@ -193,6 +193,8 @@ export default function TeamWithSlots({
   }, [slots, team.teamPlayers])
 
   const filledSlots = slots.filter(slot => slot !== null).length
+  // In header show n/32 for Indy League (max roster) even when we display fewer slot boxes
+  const rosterCapForHeader = isIndyLeague && teamKind === 'SQUAD_4v4' ? 32 : slotCount
   // Use getTeamDisplayName to show player names for SINGLES_1v1, team names for others
   const teamName = getTeamDisplayName(team, teamKind)
 
@@ -324,7 +326,7 @@ export default function TeamWithSlots({
             ) : (
               <Badge variant="outline" className="text-xs">
                 <Users className="h-3 w-3 mr-1" />
-                {filledSlots}/{slotCount}
+                {filledSlots}/{rosterCapForHeader}
               </Badge>
             )}
             {unplacedTeamPlayers.length > 0 && (
