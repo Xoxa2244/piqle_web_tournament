@@ -363,9 +363,12 @@ export default function ClubDetailPage() {
 
   return (
     <>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="space-y-3">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div
+        className="mx-auto flex max-w-7xl flex-col overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
+        style={{ height: 'calc(100vh - 4rem)' }}
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+          <div className="flex shrink-0 flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="flex items-start gap-3">
                 <ClubLogo name={club.name} logoUrl={club.logoUrl} />
@@ -536,8 +539,8 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px]">
-          <div className="space-y-4 min-w-0">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[1fr_480px]">
+          <div className="min-h-0 min-w-0 overflow-y-auto space-y-4">
             {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
                 clubId={club.id}
@@ -780,7 +783,7 @@ export default function ClubDetailPage() {
             </Tabs>
           </div>
 
-          <div className="space-y-4 min-w-0">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -1724,14 +1727,14 @@ function ClubChatCard({
   }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
-    <Card className="flex flex-col min-h-[calc(100vh-128px)]">
-      <CardHeader>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
           Club chat
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
         {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
@@ -1879,7 +1882,7 @@ function ClubChatCard({
             </div>
           )
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
