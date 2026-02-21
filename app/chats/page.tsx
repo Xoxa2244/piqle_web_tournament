@@ -406,7 +406,10 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-128px)] max-w-7xl flex-col overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+    <div
+      className="mx-auto flex max-w-7xl flex-col overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
+      style={{ height: 'calc(100vh - 4rem)' }}
+    >
       <div className="shrink-0 space-y-1">
         <h1 className="text-2xl font-semibold">Chats</h1>
         <p className="text-sm text-muted-foreground">
@@ -414,7 +417,7 @@ export default function ChatsPage() {
         </p>
       </div>
 
-      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
         <TabsList className="grid w-full shrink-0 grid-cols-2 md:w-[420px]">
           <TabsTrigger value="clubs">
             Club chats {(clubs?.length ?? 0) > 0 ? `(${clubs?.length ?? 0})` : ''}
