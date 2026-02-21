@@ -530,9 +530,9 @@ export default function ClubDetailPage() {
                   <Megaphone className="h-4 w-4" />
                   Announcements
                 </TabsTrigger>
-                <TabsTrigger value="chat" className="gap-2">
-                  <MessageCircle className="h-4 w-4" />
-                  Club chat
+                <TabsTrigger value="members" className="gap-2">
+                  <Users className="h-4 w-4" />
+                  Members
                 </TabsTrigger>
               </TabsList>
 
@@ -616,14 +616,6 @@ export default function ClubDetailPage() {
                 </Tabs>
               </CardContent>
             </Card>
-
-            {club.isAdmin || club.isFollowing ? (
-              <ClubMembersAdminCard
-                clubId={club.id}
-                canModerate={club.isAdmin}
-                currentUserId={session?.user?.id}
-              />
-            ) : null}
               </TabsContent>
 
               <TabsContent value="announcements" className="mt-0">
@@ -738,7 +730,25 @@ export default function ClubDetailPage() {
             </Card>
               </TabsContent>
 
-              <TabsContent value="chat" className="mt-0">
+              <TabsContent value="members" className="mt-0">
+            {club.isAdmin || club.isFollowing ? (
+              <ClubMembersAdminCard
+                clubId={club.id}
+                canModerate={club.isAdmin}
+                currentUserId={session?.user?.id}
+              />
+            ) : (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">
+                  Join the club to see members.
+                </CardContent>
+              </Card>
+            )}
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <div className="space-y-4">
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -750,30 +760,6 @@ export default function ClubDetailPage() {
               currentUserId={session?.user?.id}
               onJoinToggle={handleToggleFollow}
             />
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Booking</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {canBook ? (
-                  <a href={bookingUrl} target="_blank" rel="noreferrer" className="block">
-                    <Button variant="outline" className="w-full gap-2">
-                      <ExternalLink className="h-4 w-4" />
-                      {bookingButtonLabel}
-                    </Button>
-                  </a>
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    Online booking is not configured for this club yet.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
