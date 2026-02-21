@@ -207,60 +207,67 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
-      </div>
-
-      <div className="bg-white border-b mb-6">
-        <div className="flex flex-wrap items-center gap-4 pb-3">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setOwnershipFilter('my')}
-              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
-                ownershipFilter === 'my'
-                  ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              My tournaments
-            </button>
-            <button
-              onClick={() => setOwnershipFilter('shared')}
-              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
-                ownershipFilter === 'shared'
-                  ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Shared with me
-            </button>
-          </div>
-          <div className="flex items-center gap-4 ml-auto">
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-              <Checkbox
-                checked={filterUpcoming}
-                onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
-              />
-              <span>Upcoming</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-              <Checkbox
-                checked={filterInProgress}
-                onCheckedChange={(checked) => setFilterInProgress(checked === true)}
-              />
-              <span>In progress</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-              <Checkbox
-                checked={filterPast}
-                onCheckedChange={(checked) => setFilterPast(checked === true)}
-              />
-              <span>Past</span>
-            </label>
+    <div className="min-h-screen bg-gray-50">
+      {/* Page Header: title + filters — белая плашка на всю ширину как на главной */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Tournament Management</h1>
+              <p className="text-gray-600 mt-2">Manage your tournaments</p>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-4 pb-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setOwnershipFilter('my')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    ownershipFilter === 'my'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  My tournaments
+                </button>
+                <button
+                  onClick={() => setOwnershipFilter('shared')}
+                  className={`px-4 py-2 font-medium text-sm transition-colors rounded-t ${
+                    ownershipFilter === 'shared'
+                      ? 'text-blue-600 border-b-2 border-blue-600 -mb-[1px]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Shared with me
+                </button>
+              </div>
+              <div className="flex items-center gap-4 ml-auto">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterUpcoming}
+                    onCheckedChange={(checked) => setFilterUpcoming(checked === true)}
+                  />
+                  <span>Upcoming</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterInProgress}
+                    onCheckedChange={(checked) => setFilterInProgress(checked === true)}
+                  />
+                  <span>In progress</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <Checkbox
+                    checked={filterPast}
+                    onCheckedChange={(checked) => setFilterPast(checked === true)}
+                  />
+                  <span>Past</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
       {/* Created Drafts Modal (from recurring template creation) */}
       {createdDraftIds.length ? (
@@ -401,7 +408,7 @@ export default function AdminPage() {
                 )}
 
                 {/* Start–End one line + divisions + entry fee with icons */}
-                <div className="space-y-2 text-sm text-gray-600">
+                <div className="mt-3 space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Calendar className="h-4 w-4 mr-2 flex-shrink-0 text-gray-500" />
                     <span>
@@ -572,6 +579,7 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

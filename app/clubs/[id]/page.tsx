@@ -811,7 +811,7 @@ export default function ClubDetailPage() {
           onClick={() => setInviteOpen(false)}
         >
           <div
-            className="relative bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-4 pt-12"
+            className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 pt-12"
             onClick={(e) => e.stopPropagation()}
           >
             <Button
