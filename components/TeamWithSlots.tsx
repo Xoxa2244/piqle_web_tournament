@@ -99,9 +99,13 @@ export default function TeamWithSlots({
     transition,
   }
 
-  // Determine number of slots based on team kind
+  // Determine number of slots based on team kind.
+  // Indy League: show 8 slots until team has 8 players; then show players + 1 empty slot (max 32).
   const slotCount = useMemo(() => {
-    if (isIndyLeague && teamKind === 'SQUAD_4v4') return 32
+    if (isIndyLeague && teamKind === 'SQUAD_4v4') {
+      const n = team.teamPlayers.length
+      return n < 8 ? 8 : Math.min(32, n + 1)
+    }
 
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
@@ -109,7 +113,7 @@ export default function TeamWithSlots({
       case 'SQUAD_4v4': return 4
       default: return 2
     }
-  }, [isIndyLeague, teamKind])
+  }, [isIndyLeague, teamKind, team.teamPlayers.length])
 
   // Create slots array with players and teamPlayerIds
   const slots = useMemo(() => {
