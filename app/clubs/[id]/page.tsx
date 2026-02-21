@@ -782,7 +782,7 @@ export default function ClubDetailPage() {
 
           <div
             className="sticky top-16 flex min-h-0 w-full min-w-0 flex-col overflow-hidden lg:w-[480px]"
-            style={{ height: 'calc(100vh - 4rem)', maxHeight: 'calc(100vh - 4rem)', boxSizing: 'border-box' }}
+            style={{ height: 'calc(100vh - 6rem)', maxHeight: 'calc(100vh - 6rem)', boxSizing: 'border-box' }}
           >
             <ClubChatCard
               clubId={club.id}
