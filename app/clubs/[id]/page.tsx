@@ -341,6 +341,21 @@ export default function ClubDetailPage() {
     }
   }
 
+  useLayoutEffect(() => {
+    if (!club?.description) {
+      setDescriptionOverflows(false)
+      return
+    }
+    if (descriptionExpanded) {
+      setDescriptionOverflows(true)
+      return
+    }
+    const el = descriptionRef.current
+    if (!el) return
+    const overflow = el.scrollHeight > el.clientHeight
+    setDescriptionOverflows(overflow)
+  }, [club?.description, descriptionExpanded])
+
   if (isLoading) {
     return (
       <div className="space-y-6 px-6 py-8">
@@ -360,21 +375,6 @@ export default function ClubDetailPage() {
       </div>
     )
   }
-
-  useLayoutEffect(() => {
-    if (!club?.description) {
-      setDescriptionOverflows(false)
-      return
-    }
-    if (descriptionExpanded) {
-      setDescriptionOverflows(true)
-      return
-    }
-    const el = descriptionRef.current
-    if (!el) return
-    const overflow = el.scrollHeight > el.clientHeight
-    setDescriptionOverflows(overflow)
-  }, [club?.description, descriptionExpanded])
 
   return (
     <>
