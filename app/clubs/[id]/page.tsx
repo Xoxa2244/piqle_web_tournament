@@ -399,7 +399,8 @@ export default function ClubDetailPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
               {(club as any).isBanned ? (
                 <Button variant="secondary" className="gap-2" disabled title="You are banned from this club">
                   <Ban className="h-4 w-4" />
@@ -477,11 +478,6 @@ export default function ClubDetailPage() {
                   >
                     <Share2 className="h-4 w-4" />
                   </Button>
-                  <Button asChild size="icon" title="Create tournament" className="bg-blue-600 hover:bg-blue-700 text-white">
-                    <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
-                      <Plus className="h-4 w-4" />
-                    </Link>
-                  </Button>
                 </>
               ) : null}
 
@@ -498,6 +494,15 @@ export default function ClubDetailPage() {
                     {bookingButtonLabel}
                   </Button>
                 </a>
+              ) : null}
+              </div>
+              {club.isAdmin ? (
+                <Button asChild className="gap-2 bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto">
+                  <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
+                    <Plus className="h-4 w-4" />
+                    Create Tournament
+                  </Link>
+                </Button>
               ) : null}
             </div>
           </div>
