@@ -538,16 +538,6 @@ export default function ClubDetailPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px] lg:items-start">
           <div className="space-y-4 min-w-0">
-            {inviteOpen && (club.isFollowing || club.isAdmin) ? (
-              <ClubInviteCard
-                clubId={club.id}
-                clubName={club.name}
-                isLoggedIn={isLoggedIn}
-                canEmailInvite={club.isAdmin}
-                onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
-              />
-            ) : null}
-
             <Tabs defaultValue="upcoming" className="w-full">
               <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="upcoming" className="gap-2">
@@ -813,6 +803,37 @@ export default function ClubDetailPage() {
         }}
         clubId={editClubModalOpen ? clubId : null}
       />
+
+      {/* Invite Modal */}
+      {inviteOpen && (club.isFollowing || club.isAdmin) && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setInviteOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-4 pt-12"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 rounded-full"
+              onClick={() => setInviteOpen(false)}
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <ClubInviteCard
+              clubId={club.id}
+              clubName={club.name}
+              isLoggedIn={isLoggedIn}
+              canEmailInvite={club.isAdmin}
+              onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Delete Club Modal */}
       {deleteClubOpen && (
