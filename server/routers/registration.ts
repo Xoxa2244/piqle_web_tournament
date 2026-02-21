@@ -346,6 +346,7 @@ export const registrationRouter = createTRPCRouter({
             slotIndex: activeTeamPlayer.slotIndex,
             teamName: activeTeamPlayer.team.name,
             divisionName: activeTeamPlayer.team.division.name,
+            isPaid: Boolean(player.isPaid),
           }
           continue
         }

@@ -701,6 +701,8 @@ function HomePageContent() {
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                       const registrationOpen = isRegistrationOpen(tournament)
+                      const isPaidTournament = !!(tournament.entryFee && parseFloat(String(tournament.entryFee)) > 0)
+                      const isActiveUnpaid = status === 'active' && isPaidTournament && !registrationStatuses?.[tournament.id]?.isPaid
                       const label =
                         status === 'active'
                           ? 'Cancel Registration'
@@ -709,35 +711,47 @@ function HomePageContent() {
                           : 'Join Tournament'
 
                       return (
-                        <Button
-                          className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-                          variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
-                          disabled={!registrationOpen}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (!session) {
-                              router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
-                              return
-                            }
-                            if (status === 'active') {
-                              setCancelModalTournament({
-                                tournamentId: tournament.id,
-                                isPaid: !!(tournament.entryFee && parseFloat(String(tournament.entryFee)) > 0),
-                              })
-                              return
-                            }
-                            if (status === 'waitlisted') {
-                              const divisionId = registrationStatuses?.[tournament.id]?.divisionId
-                              if (divisionId && confirm('Leave waitlist?')) {
-                                leaveWaitlist.mutate({ divisionId })
+                        <div className="flex flex-col gap-2">
+                          {isActiveUnpaid && (
+                            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" asChild>
+                              <Link
+                                href={`/tournaments/${tournament.id}/register`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Pay Now ${tournament.entryFee != null ? Number(tournament.entryFee).toFixed(2) : '0.00'}
+                              </Link>
+                            </Button>
+                          )}
+                          <Button
+                            className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                            variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
+                            disabled={!registrationOpen}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!session) {
+                                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                                return
                               }
-                              return
-                            }
-                            router.push(`/tournaments/${tournament.id}/register`)
-                          }}
-                        >
-                          {label}
-                        </Button>
+                              if (status === 'active') {
+                                setCancelModalTournament({
+                                  tournamentId: tournament.id,
+                                  isPaid: isPaidTournament,
+                                })
+                                return
+                              }
+                              if (status === 'waitlisted') {
+                                const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                                if (divisionId && confirm('Leave waitlist?')) {
+                                  leaveWaitlist.mutate({ divisionId })
+                                }
+                                return
+                              }
+                              router.push(`/tournaments/${tournament.id}/register`)
+                            }}
+                          >
+                            {label}
+                          </Button>
+                        </div>
                       )
                     })()}
                   </div>
