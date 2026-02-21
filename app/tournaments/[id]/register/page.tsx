@@ -504,9 +504,9 @@ function DivisionSeatMap({
   const isAlreadyActive = myStatus?.status === 'active'
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-stretch">
       {/* Division card */}
-      <Card>
+      <Card className="flex flex-col min-h-0">
         <CardHeader>
           <CardTitle>{division.name}</CardTitle>
           {hasAvailableSlots && !isActiveInDivision && (
@@ -519,44 +519,47 @@ function DivisionSeatMap({
             </p>
           )}
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 flex-1">
           {pools.length > 0 ? (
-            pools.map((pool) => {
+            pools.map((pool, poolIndex) => {
               const isCollapsed = collapsedPoolIds.has(pool.id)
               return (
-                <div key={pool.id} className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => togglePool(pool.id)}
-                    className={cn(
-                      'w-full flex items-center justify-between gap-2 text-left font-medium text-gray-700',
-                      'py-1.5 pr-2 rounded-md hover:bg-gray-50 transition-colors',
-                      'text-base'
+                <div key={pool.id}>
+                  {poolIndex > 0 && <div className="border-t border-gray-200 pt-4 mt-4" />}
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => togglePool(pool.id)}
+                      className={cn(
+                        'w-full flex items-center justify-between gap-2 text-left font-medium text-gray-700',
+                        'py-1.5 pr-2 rounded-md hover:bg-gray-50 transition-colors',
+                        'text-base'
+                      )}
+                    >
+                      <span>{pool.name}</span>
+                      <ChevronDown
+                        className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isCollapsed && '-rotate-90')}
+                        aria-hidden
+                      />
+                    </button>
+                    {!isCollapsed && (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {teams.filter(team => team.poolId === pool.id).map((team) => (
+                          <TeamCard
+                            key={team.id}
+                            team={team}
+                            slots={slotsByTeam[team.id]}
+                            isRegistrationOpen={isRegistrationOpen}
+                            onClaimSlot={onClaimSlot}
+                            entryFeeCents={entryFeeCents}
+                            isPaidTournament={isPaidTournament}
+                            currentUserId={currentUserId}
+                            isAlreadyActive={isAlreadyActive}
+                          />
+                        ))}
+                      </div>
                     )}
-                  >
-                    <span>{pool.name}</span>
-                    <ChevronDown
-                      className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isCollapsed && '-rotate-90')}
-                      aria-hidden
-                    />
-                  </button>
-                  {!isCollapsed && (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {teams.filter(team => team.poolId === pool.id).map((team) => (
-                        <TeamCard
-                          key={team.id}
-                          team={team}
-                          slots={slotsByTeam[team.id]}
-                          isRegistrationOpen={isRegistrationOpen}
-                          onClaimSlot={onClaimSlot}
-                          entryFeeCents={entryFeeCents}
-                          isPaidTournament={isPaidTournament}
-                          currentUserId={currentUserId}
-                          isAlreadyActive={isAlreadyActive}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  </div>
                 </div>
               )
             })
@@ -601,12 +604,12 @@ function DivisionSeatMap({
         </CardContent>
       </Card>
 
-      {/* Waitlist card - separate block on the right */}
-      <Card className="h-fit">
+      {/* Waitlist card - full height on the right */}
+      <Card className="flex flex-col min-h-0 h-full">
         <CardHeader>
           <CardTitle className="text-base">Waitlist</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 flex-1">
           {waitlistEntries && waitlistEntries.length > 0 ? (
             <div className="space-y-1 text-sm text-gray-700">
               {waitlistEntries.map((entry: any, index: number) => (
