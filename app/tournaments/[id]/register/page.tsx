@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -286,10 +288,12 @@ export default function TournamentRegistrationPage() {
                   : formatUsDateTimeShort(seatMap.startDate, { timeZone: seatMap.timezone })}
               </span>
             </div>
-            <Badge variant="outline">Time zone: {getTimezoneLabel(seatMap.timezone)}</Badge>
-            <Badge variant={registrationOpen ? 'default' : 'secondary'}>
-              {registrationOpen ? 'Registration Open' : 'Registration Closed'}
-            </Badge>
+            <div className="flex flex-wrap gap-4">
+              <Badge variant="outline">Time zone: {getTimezoneLabel(seatMap.timezone)}</Badge>
+              <Badge variant={registrationOpen ? 'default' : 'secondary'}>
+                {registrationOpen ? 'Registration Open' : 'Registration Closed'}
+              </Badge>
+            </div>
             {isPaidTournament && !payoutsActive && (
               <div className="rounded-md border border-yellow-200 bg-yellow-50 p-2 text-yellow-800">
                 Payments are not enabled yet; contact the organizer if checkout fails.
@@ -457,6 +461,16 @@ function DivisionSeatMap({
   const teams = division.teams as any[]
   const pools = division.pools as any[]
 
+  const [collapsedPoolIds, setCollapsedPoolIds] = useState<Set<string>>(new Set())
+  const togglePool = (poolId: string) => {
+    setCollapsedPoolIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(poolId)) next.delete(poolId)
+      else next.add(poolId)
+      return next
+    })
+  }
+
   const slotsByTeam = useMemo(() => {
     return teams.reduce<Record<string, any[]>>((acc, team) => {
       const slots = new Array(slotCount).fill(null)
@@ -494,13 +508,53 @@ function DivisionSeatMap({
       <CardHeader>
         <CardTitle>{division.name}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {pools.length > 0 ? (
-          pools.map((pool) => (
-            <div key={pool.id} className="space-y-2">
-              <div className="text-sm font-medium text-gray-700">{pool.name}</div>
+      <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-6 lg:gap-6">
+          {/* Left: pools / teams */}
+          <div className="space-y-4 min-w-0">
+            {pools.length > 0 ? (
+              pools.map((pool) => {
+                const isCollapsed = collapsedPoolIds.has(pool.id)
+                return (
+                  <div key={pool.id} className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => togglePool(pool.id)}
+                      className={cn(
+                        'w-full flex items-center justify-between gap-2 text-left font-medium text-gray-700',
+                        'py-1.5 pr-2 rounded-md hover:bg-gray-50 transition-colors',
+                        'text-base'
+                      )}
+                    >
+                      <span>{pool.name}</span>
+                      <ChevronDown
+                        className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isCollapsed && '-rotate-90')}
+                        aria-hidden
+                      />
+                    </button>
+                    {!isCollapsed && (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {teams.filter(team => team.poolId === pool.id).map((team) => (
+                          <TeamCard
+                            key={team.id}
+                            team={team}
+                            slots={slotsByTeam[team.id]}
+                            isRegistrationOpen={isRegistrationOpen}
+                            onClaimSlot={onClaimSlot}
+                            entryFeeCents={entryFeeCents}
+                            isPaidTournament={isPaidTournament}
+                            currentUserId={currentUserId}
+                            isAlreadyActive={isAlreadyActive}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                {teams.filter(team => team.poolId === pool.id).map((team) => (
+                {teams.map((team) => (
                   <TeamCard
                     key={team.id}
                     team={team}
@@ -514,88 +568,74 @@ function DivisionSeatMap({
                   />
                 ))}
               </div>
-            </div>
-          ))
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {teams.map((team) => (
-              <TeamCard
-                key={team.id}
-                team={team}
-                slots={slotsByTeam[team.id]}
-                isRegistrationOpen={isRegistrationOpen}
-                onClaimSlot={onClaimSlot}
-                entryFeeCents={entryFeeCents}
-                isPaidTournament={isPaidTournament}
-                currentUserId={currentUserId}
-                isAlreadyActive={isAlreadyActive}
-              />
-            ))}
-          </div>
-        )}
+            )}
 
-        {pools.length > 0 && teams.some(team => !team.poolId) && (
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-700">Unassigned Teams</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {teams.filter(team => !team.poolId).map((team) => (
-                <TeamCard
-                  key={team.id}
-                  team={team}
-                  slots={slotsByTeam[team.id]}
-                  isRegistrationOpen={isRegistrationOpen}
-                  onClaimSlot={onClaimSlot}
-                  entryFeeCents={entryFeeCents}
-                  isPaidTournament={isPaidTournament}
-                  currentUserId={currentUserId}
-                  isAlreadyActive={isAlreadyActive}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="border-t pt-4">
-          <div className="text-sm font-medium text-gray-700 mb-2">Waitlist</div>
-          {waitlistEntries && waitlistEntries.length > 0 ? (
-            <div className="space-y-1 text-sm text-gray-700">
-              {waitlistEntries.map((entry: any, index: number) => (
-                <div key={entry.id}>
-                  {index + 1}. {entry.player.firstName} {entry.player.lastName}
+            {pools.length > 0 && teams.some(team => !team.poolId) && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-700">Unassigned Teams</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {teams.filter(team => !team.poolId).map((team) => (
+                    <TeamCard
+                      key={team.id}
+                      team={team}
+                      slots={slotsByTeam[team.id]}
+                      isRegistrationOpen={isRegistrationOpen}
+                      onClaimSlot={onClaimSlot}
+                      entryFeeCents={entryFeeCents}
+                      isPaidTournament={isPaidTournament}
+                      currentUserId={currentUserId}
+                      isAlreadyActive={isAlreadyActive}
+                    />
+                  ))}
                 </div>
-              ))}
+              </div>
+            )}
+
+            {hasAvailableSlots && !isActiveInDivision && (
+              <div className="text-sm text-gray-500">
+                {isPaidTournament
+                  ? ENABLE_DEFERRED_PAYMENTS
+                    ? 'Select a slot to join. Payment is completed after joining.'
+                    : 'Select a slot to join and continue to payment.'
+                  : 'Select a slot to join this division.'}
+              </div>
+            )}
+          </div>
+
+          {/* Right: waitlist + join CTA */}
+          <div className="lg:border-l lg:pl-6 lg:pt-0 pt-4 border-t lg:border-t-0 space-y-4 flex-shrink-0">
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">Waitlist</div>
+              {waitlistEntries && waitlistEntries.length > 0 ? (
+                <div className="space-y-1 text-sm text-gray-700">
+                  {waitlistEntries.map((entry: any, index: number) => (
+                    <div key={entry.id}>
+                      {index + 1}. {entry.player.firstName} {entry.player.lastName}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">No one on the waitlist.</div>
+              )}
+              {isWaitlistedInDivision && (
+                <div className="mt-3">
+                  <Button onClick={onLeaveWaitlist} variant="outline">
+                    Leave Waitlist
+                  </Button>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="text-sm text-gray-500">No one on the waitlist.</div>
-          )}
-          {isWaitlistedInDivision && (
-            <div className="mt-3">
-              <Button onClick={onLeaveWaitlist} variant="outline">
-                Leave Waitlist
-              </Button>
-            </div>
-          )}
+
+            {!hasAvailableSlots && !isWaitlistedInDivision && (
+              <div>
+                <div className="text-sm text-gray-600 mb-2">There are no available spots at the moment.</div>
+                <Button onClick={onJoinWaitlist} disabled={!isRegistrationOpen}>
+                  Join Waitlist
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
-
-        {!hasAvailableSlots && !isWaitlistedInDivision && (
-          <div className="border-t pt-4">
-            <div className="text-sm text-gray-600 mb-2">There are no available spots at the moment.</div>
-            <Button onClick={onJoinWaitlist} disabled={!isRegistrationOpen}>
-              Join Waitlist
-            </Button>
-          </div>
-        )}
-
-        {hasAvailableSlots && !isActiveInDivision && (
-          <div className="text-sm text-gray-500">
-            {isPaidTournament
-              ? ENABLE_DEFERRED_PAYMENTS
-                ? 'Select a slot to join. Payment is completed after joining.'
-                : 'Select a slot to join and continue to payment.'
-              : 'Select a slot to join this division.'}
-          </div>
-        )}
-
       </CardContent>
     </Card>
   )
@@ -654,11 +694,7 @@ function TeamCard({
               disabled={disableJoin}
               onClick={() => onClaimSlot(team.id, index)}
             >
-              {isPaidTournament
-                ? ENABLE_DEFERRED_PAYMENTS
-                  ? `Join — then pay $${fromCents(entryFeeCents).toFixed(2)}`
-                  : `Join & pay — $${fromCents(entryFeeCents).toFixed(2)}`
-                : `Join — slot #${index + 1}`}
+              {`Join – Slot #${index + 1} — ${isPaidTournament ? `$${fromCents(entryFeeCents).toFixed(2)}` : 'Free'}`}
             </button>
           )
         })}
