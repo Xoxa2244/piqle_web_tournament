@@ -37,7 +37,7 @@ import BracketModal from '@/components/BracketModal'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
 
 // Helper function to check roster changes (moved outside component to avoid React hooks issues)
 const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
@@ -379,10 +379,8 @@ function DivisionStageManagementContent() {
     })
   }
 
-  // Format date helper
-  const formatDate = (date: Date | string) => {
-    return formatUsDateShort(date)
-  }
+  // Format match day date in UTC so it does not shift by timezone
+  const formatDate = (date: Date | string) => formatMatchDayDate(date)
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -1761,7 +1759,7 @@ function DivisionStageManagementContent() {
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
                     <option key={day.id} value={day.id}>
-                      {formatUsDateShort(day.date)}
+                      {formatMatchDayDate(day.date)}
                     </option>
                   ))}
                 </select>

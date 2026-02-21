@@ -22,7 +22,7 @@ import BracketPyramid from '@/components/BracketPyramid'
 import BracketPyramidNew from '@/components/BracketPyramidNew'
 import BracketModal from '@/components/BracketModal'
 import { getTeamDisplayName } from '@/lib/utils'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
 
 interface TeamStanding {
   teamId: string
@@ -258,7 +258,7 @@ export default function PublicCoursePage() {
               >
                 {indyMatchDays.map((day) => (
                   <option key={day.id} value={day.id}>
-                    {formatUsDateShort(day.date)}
+                    {formatMatchDayDate(day.date)}
                   </option>
                 ))}
               </select>
