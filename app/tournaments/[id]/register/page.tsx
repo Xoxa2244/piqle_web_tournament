@@ -12,6 +12,7 @@ import { fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import CancelRegistrationModal from '@/components/CancelRegistrationModal'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -427,42 +428,13 @@ export default function TournamentRegistrationPage() {
         </div>
       </div>
 
-      {/* Cancel registration confirmation modal */}
-      {showCancelModal && (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50"
-          onClick={() => setShowCancelModal(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel registration?</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              You will be removed from this tournament and your spot will become available to others.
-            </p>
-            {isPaidTournament && (
-              <p className="text-gray-600 text-sm mb-6">
-                If you paid an entry fee, a refund will be issued according to the tournament&apos;s refund policy.
-                The refund may take 5–10 business days (or longer, depending on your bank or card issuer) to appear on your statement.
-              </p>
-            )}
-            {!isPaidTournament && <div className="mb-6" />}
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setShowCancelModal(false)}>
-                Keep registration
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => void handleCancel()}
-                disabled={cancelRegistrationMutation.isPending}
-              >
-                {cancelRegistrationMutation.isPending ? 'Cancelling…' : 'Yes, cancel registration'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CancelRegistrationModal
+        open={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={handleCancel}
+        isPending={cancelRegistrationMutation.isPending}
+        isPaidTournament={isPaidTournament}
+      />
     </div>
   )
 }
@@ -705,11 +677,17 @@ function TeamCard({
           if (slot) {
             const isMe = slot.player?.userId && slot.player.userId === currentUserId
             return (
-              <div key={index} className="flex items-center justify-between text-sm text-gray-700 bg-gray-50 rounded px-2 py-1">
+              <div
+                key={index}
+                className={cn(
+                  'flex items-center justify-between text-sm rounded px-2 py-1',
+                  isMe ? 'bg-green-100 text-green-900' : 'text-gray-700 bg-gray-50'
+                )}
+              >
                 <span>
                   {slot.player.firstName} {slot.player.lastName}
                 </span>
-                {isMe && <Badge variant="secondary">You</Badge>}
+                {isMe && <Badge variant="secondary" className="bg-green-200 text-green-900 hover:bg-green-200">You</Badge>}
               </div>
             )
           }

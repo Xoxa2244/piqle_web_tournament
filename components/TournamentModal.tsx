@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import ComplaintModal from '@/components/ComplaintModal'
+import CancelRegistrationModal from '@/components/CancelRegistrationModal'
 
 function TournamentImagePlaceholder({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const [showFallback, setShowFallback] = useState(true)
@@ -171,6 +172,7 @@ export default function TournamentModal({
     authorName: string
     authorEmail: string
   } | null>(null)
+  const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false)
 
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
     { id: tournamentId! },
@@ -400,9 +402,7 @@ export default function TournamentModal({
                         return
                       }
                       if (status === 'active') {
-                        if (confirm('Cancel registration?')) {
-                          cancelRegistration.mutate({ tournamentId: tournament.id })
-                        }
+                        setShowCancelRegistrationModal(true)
                         return
                       }
                       if (status === 'waitlisted') {
@@ -767,6 +767,17 @@ export default function TournamentModal({
           </div>
         </div>
       </div>
+
+      <CancelRegistrationModal
+        open={showCancelRegistrationModal}
+        onClose={() => setShowCancelRegistrationModal(false)}
+        onConfirm={() => {
+          cancelRegistration.mutate({ tournamentId: tournament.id })
+          setShowCancelRegistrationModal(false)
+        }}
+        isPending={cancelRegistration.isPending}
+        isPaidTournament={entryFeeNum > 0}
+      />
 
       {reportCommentModal && tournamentId && (
         <ComplaintModal

@@ -16,6 +16,7 @@ import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import TournamentModal from '@/components/TournamentModal'
+import CancelRegistrationModal from '@/components/CancelRegistrationModal'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TournamentsMapContent } from '@/components/TournamentsMapContent'
 
@@ -95,6 +96,7 @@ function HomePageContent() {
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterType>('all')
   const [mapFocusTournamentId, setMapFocusTournamentId] = useState<string | null>(null)
+  const [cancelModalTournament, setCancelModalTournament] = useState<{ tournamentId: string; isPaid: boolean } | null>(null)
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
@@ -718,9 +720,10 @@ function HomePageContent() {
                               return
                             }
                             if (status === 'active') {
-                              if (confirm('Cancel registration?')) {
-                                cancelRegistration.mutate({ tournamentId: tournament.id })
-                              }
+                              setCancelModalTournament({
+                                tournamentId: tournament.id,
+                                isPaid: !!(tournament.entryFee && parseFloat(String(tournament.entryFee)) > 0),
+                              })
                               return
                             }
                             if (status === 'waitlisted') {
@@ -761,6 +764,18 @@ function HomePageContent() {
           </div>
         )}
       </div>
+
+      <CancelRegistrationModal
+        open={!!cancelModalTournament}
+        onClose={() => setCancelModalTournament(null)}
+        onConfirm={() => {
+          if (!cancelModalTournament) return
+          cancelRegistration.mutate({ tournamentId: cancelModalTournament.tournamentId })
+          setCancelModalTournament(null)
+        }}
+        isPending={cancelRegistration.isPending}
+        isPaidTournament={cancelModalTournament?.isPaid ?? false}
+      />
 
       <TournamentModal
         tournamentId={selectedTournament}
