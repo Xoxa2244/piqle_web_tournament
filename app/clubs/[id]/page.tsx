@@ -537,7 +537,7 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_minmax(calc((100%-1rem)/3+200px),1fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px]">
           <div className="space-y-4 min-w-0">
             {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard

@@ -125,6 +125,7 @@ export default function ChatsPage() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [activeDivisionId, setActiveDivisionId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!clubs || clubs.length === 0) {
@@ -209,8 +210,20 @@ export default function ChatsPage() {
   )
 
   useEffect(() => {
-    if (isArchivedEventSelected) setArchiveOpen(true)
-  }, [isArchivedEventSelected])
+    if (isArchivedEventSelected) {
+      setArchiveOpen(true)
+      if (activeEventId) setExpandedArchiveEventIds((prev) => new Set(prev).add(activeEventId))
+    }
+  }, [isArchivedEventSelected, activeEventId])
+
+  const toggleArchiveEventExpanded = (eventId: string) => {
+    setExpandedArchiveEventIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
 
   const renderEventListItem = (event: any) => {
     const eventActive = event.id === activeEventId && !activeDivisionId
@@ -283,6 +296,87 @@ export default function ChatsPage() {
     )
   }
 
+  const renderArchivedEventItem = (event: any) => {
+    const eventActive = event.id === activeEventId && !activeDivisionId
+    const hasDivisions = event.divisions.length > 0
+    const isExpanded = expandedArchiveEventIds.has(event.id)
+
+    return (
+      <div key={event.id} className="rounded-lg border border-gray-200 bg-white p-2">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveEventId(event.id)
+            setActiveDivisionId(null)
+            if (hasDivisions) toggleArchiveEventExpanded(event.id)
+          }}
+          className={cn(
+            'flex w-full items-center justify-between gap-2 rounded-md p-2 text-left transition-colors',
+            eventActive ? 'bg-blue-50 text-blue-900' : 'hover:bg-gray-50'
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{event.title}</div>
+            {event.unreadCount > 0 ? (
+              <div className="mt-1">
+                <Badge className="bg-red-600 hover:bg-red-600">
+                  {event.unreadCount > 99 ? '99+' : event.unreadCount} unread
+                </Badge>
+              </div>
+            ) : null}
+            <div className="mt-1 text-xs text-muted-foreground">
+              {formatUsDateTimeShort(event.startDate, { timeZone: event.timezone })} ·{' '}
+              {getTimezoneLabel(event.timezone)}
+            </div>
+            {event.club?.name ? (
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3 shrink-0" />
+                <span className="truncate">{event.club.name}</span>
+              </div>
+            ) : null}
+          </div>
+          {hasDivisions ? (
+            <ChevronRight
+              className={cn('h-4 w-4 shrink-0 transition-transform text-muted-foreground', isExpanded ? 'rotate-90' : 'rotate-0')}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+
+        {hasDivisions && isExpanded ? (
+          <div className="ml-2 mt-1 space-y-1 border-l border-gray-200 pl-2">
+            {event.divisions.map((division: any) => {
+              const divisionActive = event.id === activeEventId && division.id === activeDivisionId
+              return (
+                <button
+                  key={division.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveEventId(event.id)
+                    setActiveDivisionId(division.id)
+                  }}
+                  className={cn(
+                    'w-full rounded-md px-2 py-1 text-left text-xs transition-colors',
+                    divisionActive ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <span>{division.name}</span>
+                    {division.unreadCount > 0 ? (
+                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {division.unreadCount > 99 ? '99+' : division.unreadCount}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   if (status === 'loading') {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -312,7 +406,7 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col h-[calc(100vh-128px)] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto flex h-[calc(100vh-128px)] max-w-7xl flex-col overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
       <div className="shrink-0 space-y-1">
         <h1 className="text-2xl font-semibold">Chats</h1>
         <p className="text-sm text-muted-foreground">
@@ -320,7 +414,7 @@ export default function ChatsPage() {
         </p>
       </div>
 
-      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-4 flex min-h-0 flex-1 flex-col">
+      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
         <TabsList className="grid w-full shrink-0 grid-cols-2 md:w-[420px]">
           <TabsTrigger value="clubs">
             Club chats {(clubs?.length ?? 0) > 0 ? `(${clubs?.length ?? 0})` : ''}
@@ -330,13 +424,13 @@ export default function ChatsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="clubs" className="mt-4 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
-              <CardHeader>
+        <TabsContent value="clubs" className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-3">
+            <Card className="flex min-h-0 flex-col overflow-hidden lg:col-span-1">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-base">Your club chats</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="min-h-0 overflow-y-auto space-y-2">
                 {clubsLoading ? (
                   <div className="text-sm text-muted-foreground">Loading clubs…</div>
                 ) : !clubs || clubs.length === 0 ? (
@@ -392,7 +486,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="flex min-h-0 flex-col lg:col-span-2">
+            <div className="flex min-h-0 flex-col overflow-hidden lg:col-span-2">
               {selectedClub ? (
                 <ClubChatPanel
                   clubId={selectedClub.id}
@@ -411,13 +505,13 @@ export default function ChatsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="events" className="mt-4 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
-              <CardHeader>
+        <TabsContent value="events" className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-3">
+            <Card className="flex min-h-0 flex-col overflow-hidden lg:col-span-1">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-base">Event chats</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="min-h-0 overflow-y-auto space-y-2">
                 {eventsLoading ? (
                   <div className="text-sm text-muted-foreground">Loading events…</div>
                 ) : !events || events.length === 0 ? (
@@ -452,7 +546,7 @@ export default function ChatsPage() {
                             className={cn('h-4 w-4 transition-transform', archiveOpen ? 'rotate-90' : 'rotate-0')}
                           />
                         </button>
-                        {archiveOpen ? archivedEventChats.map((event) => renderEventListItem(event)) : null}
+                        {archiveOpen ? archivedEventChats.map((event) => renderArchivedEventItem(event)) : null}
                       </div>
                     ) : null}
                   </div>
@@ -460,7 +554,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="flex min-h-0 flex-col lg:col-span-2">
+            <div className="flex min-h-0 flex-col overflow-hidden lg:col-span-2">
               {!selectedEvent ? (
                 <Card>
                   <CardContent className="py-10 text-sm text-muted-foreground">
@@ -551,7 +645,7 @@ function ClubChatPanel({
   }
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
@@ -736,7 +830,7 @@ function TournamentChatPanel({
   }
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarDays className="h-4 w-4" />
@@ -939,7 +1033,7 @@ function DivisionChatPanel({
   }
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
