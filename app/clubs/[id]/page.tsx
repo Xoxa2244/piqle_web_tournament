@@ -18,7 +18,7 @@ import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 
@@ -160,6 +160,7 @@ export default function ClubDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   const bookingUrl = (club?.courtReserveUrl ?? '').trim()
   const canBook = Boolean(bookingUrl)
@@ -331,11 +332,7 @@ export default function ClubDetailPage() {
 
   if (error || !club) {
     return (
-      <div className="space-y-6 px-6 py-8">
-        <Link href="/clubs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-gray-900">
-          <ArrowLeft className="h-4 w-4" />
-          Back to clubs
-        </Link>
+      <div className="space-y-6 px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <CardContent className="py-8 text-sm text-muted-foreground">
             {error?.message || 'Club not found.'}
@@ -345,15 +342,12 @@ export default function ClubDetailPage() {
     )
   }
 
+  const descriptionLong = (club?.description?.length ?? 0) > 200
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="space-y-3">
-          <Link href="/clubs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-gray-900">
-            <ArrowLeft className="h-4 w-4" />
-            Back to clubs
-          </Link>
-
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="flex items-start gap-3">
@@ -381,7 +375,25 @@ export default function ClubDetailPage() {
                     </span>
                   </div>
                   {club.description ? (
-                    <p className="text-sm text-gray-700 max-w-2xl whitespace-pre-wrap">{club.description}</p>
+                    <div className="max-w-2xl">
+                      <p
+                        className={cn(
+                          'text-sm text-gray-700 whitespace-pre-wrap',
+                          !descriptionExpanded && descriptionLong && 'line-clamp-3'
+                        )}
+                      >
+                        {club.description}
+                      </p>
+                      {descriptionLong ? (
+                        <button
+                          type="button"
+                          className="text-sm text-blue-600 hover:underline mt-0.5"
+                          onClick={() => setDescriptionExpanded((v) => !v)}
+                        >
+                          {descriptionExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -451,18 +463,31 @@ export default function ClubDetailPage() {
               )}
 
               {club.isAdmin ? (
-                <Button asChild variant="outline" className="gap-2">
-                  <Link href={`/clubs/${clubId}/edit`}>
-                    <Pencil className="h-4 w-4" />
-                    Edit club
-                  </Link>
-                </Button>
+                <>
+                  <Button asChild variant="outline" size="icon" title="Edit club">
+                    <Link href={`/clubs/${clubId}/edit`}>
+                      <Pencil className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Invite"
+                    onClick={() => setInviteOpen((v) => !v)}
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                  <Button asChild size="icon" title="Create tournament" className="bg-blue-600 hover:bg-blue-700 text-white">
+                    <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
+                      <Plus className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </>
               ) : null}
 
-              {club.isFollowing || club.isAdmin ? (
-                <Button variant="outline" className="gap-2" onClick={() => setInviteOpen((v) => !v)}>
+              {club.isFollowing && !club.isAdmin ? (
+                <Button variant="outline" size="icon" title="Invite" onClick={() => setInviteOpen((v) => !v)}>
                   <Share2 className="h-4 w-4" />
-                  Invite
                 </Button>
               ) : null}
 
@@ -508,19 +533,11 @@ export default function ClubDetailPage() {
 
               <TabsContent value="upcoming" className="space-y-4 mt-0">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   Upcoming events
                 </CardTitle>
-                {club.isAdmin ? (
-                  <Button asChild size="sm" variant="outline" className="gap-2">
-                    <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
-                      <Plus className="h-4 w-4" />
-                      Create tournament
-                    </Link>
-                  </Button>
-                ) : null}
               </CardHeader>
               <CardContent className="space-y-3">
                 <Tabs defaultValue="list">
