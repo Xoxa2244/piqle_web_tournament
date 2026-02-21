@@ -537,8 +537,8 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_minmax(calc((100%-1rem)/3+200px),1fr)]">
+          <div className="space-y-4 min-w-0">
             {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
                 clubId={club.id}
@@ -781,7 +781,7 @@ export default function ClubDetailPage() {
             </Tabs>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -1895,12 +1895,13 @@ function ClubChatCard({
             />
             <Button
               type="button"
-              className="gap-2"
+              size="icon"
+              className="shrink-0"
               disabled={!draft.trim() || sendMessage.isPending}
               onClick={handleSend}
+              title="Send"
             >
               <Send className="h-4 w-4" />
-              Send
             </Button>
           </div>
         )}

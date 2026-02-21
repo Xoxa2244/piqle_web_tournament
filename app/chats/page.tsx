@@ -312,16 +312,16 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="space-y-1">
+    <div className="mx-auto flex max-w-7xl flex-col h-[calc(100vh-128px)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="shrink-0 space-y-1">
         <h1 className="text-2xl font-semibold">Chats</h1>
         <p className="text-sm text-muted-foreground">
           One place for club chats and event chats.
         </p>
       </div>
 
-      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')}>
-        <TabsList className="grid w-full grid-cols-2 md:w-[420px]">
+      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-4 flex min-h-0 flex-1 flex-col">
+        <TabsList className="grid w-full shrink-0 grid-cols-2 md:w-[420px]">
           <TabsTrigger value="clubs">
             Club chats {(clubs?.length ?? 0) > 0 ? `(${clubs?.length ?? 0})` : ''}
           </TabsTrigger>
@@ -330,8 +330,8 @@ export default function ChatsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="clubs" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <TabsContent value="clubs" className="mt-4 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">
               <CardHeader>
                 <CardTitle className="text-base">Your club chats</CardTitle>
@@ -392,7 +392,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="lg:col-span-2 min-h-[calc(100vh-128px)]">
+            <div className="flex min-h-0 flex-col lg:col-span-2">
               {selectedClub ? (
                 <ClubChatPanel
                   clubId={selectedClub.id}
@@ -411,8 +411,8 @@ export default function ChatsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="events" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <TabsContent value="events" className="mt-4 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">
               <CardHeader>
                 <CardTitle className="text-base">Event chats</CardTitle>
@@ -460,7 +460,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="lg:col-span-2 min-h-[calc(100vh-128px)]">
+            <div className="flex min-h-0 flex-col lg:col-span-2">
               {!selectedEvent ? (
                 <Card>
                   <CardContent className="py-10 text-sm text-muted-foreground">
@@ -551,8 +551,8 @@ function ClubChatPanel({
   }
 
   return (
-    <Card className="flex flex-col min-h-[calc(100vh-128px)]">
-      <CardHeader className="space-y-2">
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
           {clubName} · Club chat
@@ -648,7 +648,7 @@ function ClubChatPanel({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -661,9 +661,8 @@ function ClubChatPanel({
               }
             }}
           />
-          <Button type="button" className="gap-2 shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+          <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
             <Send className="h-4 w-4" />
-            Send
           </Button>
         </div>
       </CardContent>
@@ -737,8 +736,8 @@ function TournamentChatPanel({
   }
 
   return (
-    <Card className="flex flex-col min-h-[calc(100vh-128px)]">
-      <CardHeader className="space-y-2">
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarDays className="h-4 w-4" />
           {tournamentName} · Event chat
@@ -843,7 +842,7 @@ function TournamentChatPanel({
             </div>
 
             {canPost ? (
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <Input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -856,9 +855,8 @@ function TournamentChatPanel({
                     }
                   }}
                 />
-                <Button type="button" className="gap-2 shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+                <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
                   <Send className="h-4 w-4" />
-                  Send
                 </Button>
               </div>
             ) : (
@@ -941,8 +939,8 @@ function DivisionChatPanel({
   }
 
   return (
-    <Card className="flex flex-col min-h-[calc(100vh-128px)]">
-      <CardHeader className="space-y-2">
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
           {eventName} · {divisionName} chat
@@ -1047,7 +1045,7 @@ function DivisionChatPanel({
             </div>
 
             {canPost ? (
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <Input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -1060,9 +1058,8 @@ function DivisionChatPanel({
                     }
                   }}
                 />
-                <Button type="button" className="gap-2 shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+                <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
                   <Send className="h-4 w-4" />
-                  Send
                 </Button>
               </div>
             ) : (
