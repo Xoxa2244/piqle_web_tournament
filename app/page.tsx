@@ -713,7 +713,7 @@ function HomePageContent() {
                       return (
                         <div className="flex flex-col gap-2">
                           {isActiveUnpaid && (
-                            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" asChild>
+                            <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white" asChild>
                               <Link
                                 href={`/tournaments/${tournament.id}/register`}
                                 onClick={(e) => e.stopPropagation()}

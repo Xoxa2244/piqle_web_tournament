@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -24,6 +24,7 @@ import {
   Trash2,
   AlertTriangle,
   ClipboardList,
+  ChevronRight,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import ComplaintModal from '@/components/ComplaintModal'
@@ -176,6 +177,8 @@ export default function TournamentModal({
   } | null>(null)
   const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
+  const [highlightMySlot, setHighlightMySlot] = useState(false)
+  const mySlotRowRef = useRef<HTMLDivElement>(null)
 
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
     { id: tournamentId! },
@@ -398,9 +401,9 @@ export default function TournamentModal({
                       ? 'Leave Waitlist'
                       : 'Join Tournament'
                 return (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {isActiveUnpaid && (
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" asChild>
+                      <Button className="bg-gray-900 hover:bg-gray-800 text-white" asChild>
                         <Link
                           href={`/tournaments/${tournament.id}/register`}
                           onClick={(e) => e.stopPropagation()}
@@ -443,6 +446,7 @@ export default function TournamentModal({
                 )
               })()}
               <button
+                type="button"
                 onClick={() => {
                   resetModalState()
                   onClose()
@@ -503,15 +507,6 @@ export default function TournamentModal({
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
                     </span>
                   </div>
-                  {registrationStatuses?.[tournament.id]?.status === 'active' &&
-                    (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string }).divisionName &&
-                    (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (
-                    <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900">
-                      <span className="font-medium">You&apos;re registered:</span>{' '}
-                      {(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} ·{' '}
-                      {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
-                    </div>
-                  )}
                   {tournament.description && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
@@ -603,7 +598,7 @@ export default function TournamentModal({
                       )}
                     </div>
                   </div>
-                  {divisions.length > 0 && !seatMap && (
+                  {divisions.length > 0 && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions</h3>
                       <div className="flex flex-wrap gap-2">
@@ -615,108 +610,6 @@ export default function TournamentModal({
                       </div>
                     </div>
                   )}
-                  {seatMap?.divisions && session?.user?.id && (() => {
-                    const myTeamId = (registrationStatuses?.[tournament.id] as { teamId?: string } | undefined)?.teamId
-                    return (
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions & teams</h3>
-                        <div className="space-y-3">
-                          {seatMap.divisions.map((div: { id: string; name: string; pools: { id: string; name: string }[]; teams: { id: string; name: string; poolId: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }[] }) => (
-                            <div key={div.id} className="space-y-1">
-                              <div className="text-sm font-medium text-gray-700">{div.name}</div>
-                              {div.pools?.length > 0
-                                ? div.pools.map((pool: { id: string; name: string }) => {
-                                    const poolTeams = (div.teams ?? []).filter((t: { poolId: string }) => t.poolId === pool.id)
-                                    return (
-                                      <div key={pool.id} className="pl-2 space-y-1">
-                                        <div className="text-xs text-gray-500">{pool.name}</div>
-                                        {poolTeams.map((team: { id: string; name: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }) => {
-                                          const isMyTeam = team.id === myTeamId
-                                          const isExpanded = expandedTeamId === team.id
-                                          const sortedSlots = [...(team.teamPlayers ?? [])].sort((a, b) => a.slotIndex - b.slotIndex)
-                                          return (
-                                            <div key={team.id} className="rounded-md border border-gray-200 overflow-hidden">
-                                              <button
-                                                type="button"
-                                                onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
-                                                className={cn(
-                                                  'w-full flex items-center justify-between text-left text-sm px-2 py-1.5',
-                                                  isMyTeam ? 'bg-green-100 text-green-900' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'
-                                                )}
-                                              >
-                                                <span>{team.name}</span>
-                                                <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isExpanded && 'rotate-180')} />
-                                              </button>
-                                              {isExpanded && (
-                                                <div className="border-t border-gray-200 bg-white divide-y divide-gray-100">
-                                                  {sortedSlots.map((tp: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }) => {
-                                                    const isMe = tp.player?.userId === session?.user?.id
-                                                    return (
-                                                      <div
-                                                        key={tp.slotIndex}
-                                                        className={cn(
-                                                          'flex items-center justify-between text-sm px-2 py-1',
-                                                          isMe ? 'bg-green-100 text-green-900' : 'text-gray-700'
-                                                        )}
-                                                      >
-                                                        <span>{tp.player?.firstName} {tp.player?.lastName}</span>
-                                                        {isMe && <Badge variant="secondary" className="bg-green-200 text-green-900">You</Badge>}
-                                                      </div>
-                                                    )
-                                                  })}
-                                                </div>
-                                              )}
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    )
-                                  })
-                                : (div.teams ?? []).map((team: { id: string; name: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }) => {
-                                    const isMyTeam = team.id === myTeamId
-                                    const isExpanded = expandedTeamId === team.id
-                                    const sortedSlots = [...(team.teamPlayers ?? [])].sort((a, b) => a.slotIndex - b.slotIndex)
-                                    return (
-                                      <div key={team.id} className="rounded-md border border-gray-200 overflow-hidden">
-                                        <button
-                                          type="button"
-                                          onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
-                                          className={cn(
-                                            'w-full flex items-center justify-between text-left text-sm px-2 py-1.5',
-                                            isMyTeam ? 'bg-green-100 text-green-900' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'
-                                          )}
-                                        >
-                                          <span>{team.name}</span>
-                                          <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isExpanded && 'rotate-180')} />
-                                        </button>
-                                        {isExpanded && (
-                                          <div className="border-t border-gray-200 bg-white divide-y divide-gray-100">
-                                            {sortedSlots.map((tp: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }) => {
-                                              const isMe = tp.player?.userId === session?.user?.id
-                                              return (
-                                                <div
-                                                  key={tp.slotIndex}
-                                                  className={cn(
-                                                    'flex items-center justify-between text-sm px-2 py-1',
-                                                    isMe ? 'bg-green-100 text-green-900' : 'text-gray-700'
-                                                  )}
-                                                >
-                                                  <span>{tp.player?.firstName} {tp.player?.lastName}</span>
-                                                  {isMe && <Badge variant="secondary" className="bg-green-200 text-green-900">You</Badge>}
-                                                </div>
-                                              )
-                                            })}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )
-                                  })}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()}
                   {(tournament as { user?: { id: string; name?: string | null; image?: string | null; email?: string | null } }).user && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
@@ -890,12 +783,153 @@ export default function TournamentModal({
             )}
 
             {modalTab === 'view-results' && (
-              <div className="flex-1 min-h-0 flex flex-col">
-                <iframe
-                  src={`/scoreboard/${tournament.id}/embed`}
-                  title="Dashboard"
-                  className="w-full flex-1 min-h-[60vh] border-0"
-                />
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div className="flex-shrink-0 overflow-y-auto p-6 space-y-4 border-b border-gray-200">
+                  {registrationStatuses?.[tournament.id]?.status === 'active' &&
+                    (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string; teamId?: string }).divisionName &&
+                    (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (() => {
+                    const myTeamId = (registrationStatuses[tournament.id] as { teamId?: string }).teamId
+                    const scrollToMyTeam = () => {
+                      if (!myTeamId) return
+                      setExpandedTeamId(myTeamId)
+                      setHighlightMySlot(true)
+                      setTimeout(() => {
+                        document.getElementById(`team-${myTeamId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                        setTimeout(() => {
+                          mySlotRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                        }, 200)
+                      }, 100)
+                      setTimeout(() => setHighlightMySlot(false), 2000)
+                    }
+                    return (
+                    <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900 flex items-center justify-between gap-2">
+                      <span className="font-medium">You&apos;re registered:</span>{' '}
+                      <span>{(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} · </span>
+                      <button
+                        type="button"
+                        onClick={scrollToMyTeam}
+                        className="inline-flex items-center gap-1 font-medium text-green-800 hover:text-green-950 hover:underline"
+                      >
+                        {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    )
+                  })()}
+                  {seatMap?.divisions && session?.user?.id && (() => {
+                    const myTeamId = (registrationStatuses?.[tournament.id] as { teamId?: string } | undefined)?.teamId
+                    return (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Divisions & teams</h3>
+                        <div className="space-y-3">
+                          {seatMap.divisions.map((div: { id: string; name: string; pools: { id: string; name: string }[]; teams: { id: string; name: string; poolId: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }[] }) => (
+                            <div key={div.id} className="space-y-1">
+                              <div className="text-sm font-medium text-gray-700">{div.name}</div>
+                              {div.pools?.length > 0
+                                ? div.pools.map((pool: { id: string; name: string }) => {
+                                    const poolTeams = (div.teams ?? []).filter((t: { poolId: string }) => t.poolId === pool.id)
+                                    return (
+                                      <div key={pool.id} className="pl-2 space-y-1">
+                                        <div className="text-xs text-gray-500">{pool.name}</div>
+                                        {poolTeams.map((team: { id: string; name: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }) => {
+                                          const isMyTeam = team.id === myTeamId
+                                          const isExpanded = expandedTeamId === team.id
+                                          const sortedSlots = [...(team.teamPlayers ?? [])].sort((a, b) => a.slotIndex - b.slotIndex)
+                                          return (
+                                            <div key={team.id} id={`team-${team.id}`} className="rounded-md border border-gray-200 overflow-hidden scroll-mt-4">
+                                              <button
+                                                type="button"
+                                                onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
+                                                className={cn(
+                                                  'w-full flex items-center justify-between text-left text-sm px-2 py-1.5',
+                                                  isMyTeam ? 'bg-green-100 text-green-900' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'
+                                                )}
+                                              >
+                                                <span>{team.name}</span>
+                                                <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isExpanded && 'rotate-180')} />
+                                              </button>
+                                              {isExpanded && (
+                                                <div className="border-t border-gray-200 bg-white divide-y divide-gray-100">
+                                                  {sortedSlots.map((tp: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }) => {
+                                                    const isMe = tp.player?.userId === session?.user?.id
+                                                    return (
+                                                      <div
+                                                        key={tp.slotIndex}
+                                                        ref={isMe ? mySlotRowRef : undefined}
+                                                        className={cn(
+                                                          'flex items-center gap-2 text-sm px-2 py-1',
+                                                          isMe ? 'bg-green-100 text-green-900' : 'text-gray-700',
+                                                          isMe && highlightMySlot && 'ring-2 ring-green-500 ring-offset-1'
+                                                        )}
+                                                      >
+                                                        <span>{tp.player?.firstName} {tp.player?.lastName}</span>
+                                                        {isMe && <Badge variant="secondary" className="bg-green-200 text-green-900">You</Badge>}
+                                                      </div>
+                                                    )
+                                                  })}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )
+                                  })
+                                : (div.teams ?? []).map((team: { id: string; name: string; teamPlayers: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }[] }) => {
+                                    const isMyTeam = team.id === myTeamId
+                                    const isExpanded = expandedTeamId === team.id
+                                    const sortedSlots = [...(team.teamPlayers ?? [])].sort((a, b) => a.slotIndex - b.slotIndex)
+                                    return (
+                                      <div key={team.id} id={`team-${team.id}`} className="rounded-md border border-gray-200 overflow-hidden scroll-mt-4">
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
+                                          className={cn(
+                                            'w-full flex items-center justify-between text-left text-sm px-2 py-1.5',
+                                            isMyTeam ? 'bg-green-100 text-green-900' : 'bg-gray-50 text-gray-800 hover:bg-gray-100'
+                                          )}
+                                        >
+                                          <span>{team.name}</span>
+                                          <ChevronDown className={cn('h-4 w-4 flex-shrink-0 text-gray-500 transition-transform', isExpanded && 'rotate-180')} />
+                                        </button>
+                                        {isExpanded && (
+                                          <div className="border-t border-gray-200 bg-white divide-y divide-gray-100">
+                                            {sortedSlots.map((tp: { slotIndex: number; player: { userId: string; firstName: string; lastName: string } }) => {
+                                              const isMe = tp.player?.userId === session?.user?.id
+                                              return (
+                                                <div
+                                                  key={tp.slotIndex}
+                                                  ref={isMe ? mySlotRowRef : undefined}
+                                                  className={cn(
+                                                    'flex items-center gap-2 text-sm px-2 py-1',
+                                                    isMe ? 'bg-green-100 text-green-900' : 'text-gray-700',
+                                                    isMe && highlightMySlot && 'ring-2 ring-green-500 ring-offset-1'
+                                                  )}
+                                                >
+                                                  <span>{tp.player?.firstName} {tp.player?.lastName}</span>
+                                                  {isMe && <Badge variant="secondary" className="bg-green-200 text-green-900">You</Badge>}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <iframe
+                    src={`/scoreboard/${tournament.id}/embed`}
+                    title="Dashboard"
+                    className="w-full flex-1 min-h-[60vh] border-0"
+                  />
+                </div>
               </div>
             )}
           </div>

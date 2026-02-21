@@ -680,7 +680,7 @@ function TeamCard({
               <div
                 key={index}
                 className={cn(
-                  'flex items-center justify-between text-sm rounded px-2 py-1',
+                  'flex items-center gap-2 text-sm rounded px-2 py-1',
                   isMe ? 'bg-green-100 text-green-900' : 'text-gray-700 bg-gray-50'
                 )}
               >
