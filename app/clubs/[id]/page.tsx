@@ -536,7 +536,7 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px] lg:items-start">
           <div className="space-y-4 min-w-0">
             {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
@@ -781,8 +781,8 @@ export default function ClubDetailPage() {
           </div>
 
           <div
-            className="sticky top-16 self-start w-full min-w-0"
-            style={{ height: 'calc(100vh - 4rem)' }}
+            className="sticky top-16 flex min-h-0 w-full min-w-0 flex-col overflow-hidden"
+            style={{ height: 'calc(100vh - 4rem)', maxHeight: 'calc(100vh - 4rem)' }}
           >
             <ClubChatCard
               clubId={club.id}
