@@ -1,8 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useMemo, useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +14,7 @@ import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import TournamentModal from '@/components/TournamentModal'
+import CreateClubModal from '@/components/CreateClubModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +30,12 @@ export default function ClubsPage() {
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') setCreateClubModalOpen(true)
+  }, [searchParams])
 
   const listInput = useMemo(() => {
     const trimmed = query.trim()
@@ -166,16 +172,6 @@ export default function ClubsPage() {
                 ) : (
                   <Badge variant="outline">Free</Badge>
                 )}
-                <Button
-                  size="sm"
-                  className="ml-auto bg-gray-900 hover:bg-gray-800 text-white"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setSelectedTournamentId(club.nextTournament!.id)
-                  }}
-                >
-                  View Event
-                </Button>
               </div>
             </div>
           ) : (
@@ -183,34 +179,23 @@ export default function ClubsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <Link href={`/clubs/${club.id}`} className="flex-1" onClick={(e) => e.stopPropagation()}>
-            <Button variant="outline" className="w-full">
-              View
-            </Button>
-          </Link>
-          {club.isAdmin ? (
-            <Button variant="secondary" className="flex-1" disabled>
-              Admin
-            </Button>
-          ) : (
+        {!club.isAdmin && (
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <Button
               variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
-              className={`flex-1 ${!club.isFollowing && !club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+              className={`w-full ${!club.isFollowing && !club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
               onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
             >
-              {club.isFollowing
-                ? 'Joined'
-                : club.isJoinPending
-                  ? 'Cancel'
-                  : club.joinPolicy === 'APPROVAL'
-                    ? 'Request to the club'
-                    : 'Join the club'}
+              {club.isJoinPending
+                ? 'Cancel'
+                : club.joinPolicy === 'APPROVAL'
+                  ? 'Request to the club'
+                  : 'Join the club'}
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -225,12 +210,10 @@ export default function ClubsPage() {
           </p>
         </div>
         {isLoggedIn ? (
-          <Link href="/clubs/new">
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create club
-            </Button>
-          </Link>
+          <Button className="gap-2" onClick={() => setCreateClubModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create club
+          </Button>
         ) : null}
       </div>
 
@@ -248,8 +231,8 @@ export default function ClubsPage() {
               className="pl-10"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1 min-w-[120px]">
               <label className="text-sm font-medium text-gray-700">Type</label>
               <select
                 value={kind}
@@ -264,53 +247,33 @@ export default function ClubsPage() {
                 <option value="COMMUNITY">Community/coach</option>
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1 min-w-[120px]">
               <label className="text-sm font-medium text-gray-700">City</label>
               <Input
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="e.g., Carmel"
+                className="h-10"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1 min-w-[80px]">
               <label className="text-sm font-medium text-gray-700">State</label>
               <Input
                 value={stateCode}
                 onChange={(e) => setStateCode(e.target.value)}
                 onBlur={() => setStateCode((v) => v.trim().toUpperCase())}
                 placeholder="e.g., IN"
+                className="h-10"
               />
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-gray-700 pb-2.5">
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
             </label>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-gray-700 pb-2.5">
               <Checkbox checked={hasUpcomingEvents} onCheckedChange={(v) => setHasUpcomingEvents(Boolean(v))} />
               Has upcoming events
             </label>
-
-            {query.trim() || kind || city.trim() || stateCode.trim() || hasBooking || hasUpcomingEvents ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => {
-                  setQuery('')
-                  setKind('')
-                  setCity('')
-                  setStateCode('')
-                  setHasBooking(false)
-                  setHasUpcomingEvents(false)
-                }}
-              >
-                Clear
-              </Button>
-            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -350,6 +313,14 @@ export default function ClubsPage() {
       <TournamentModal
         tournamentId={selectedTournamentId}
         onClose={() => setSelectedTournamentId(null)}
+      />
+      <CreateClubModal
+        isOpen={createClubModalOpen}
+        onClose={() => setCreateClubModalOpen(false)}
+        onSuccess={(club) => {
+          utils.club.list.invalidate()
+          router.push(`/clubs/${club.id}`)
+        }}
       />
     </div>
   )
