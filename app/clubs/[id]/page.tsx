@@ -123,8 +123,28 @@ export default function ClubDetailPage() {
   const { data: club, isLoading, error } = trpc.club.get.useQuery({ id: clubId }, { enabled: !!clubId })
   const utils = trpc.useUtils()
 
-  const toggleFollow = trpc.club.toggleFollow.useMutation()
-  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
+  const toggleFollow = trpc.club.toggleFollow.useMutation({
+    onSuccess: (data) => {
+      if (data.status === 'pending') {
+        toast({ description: 'Request sent.', variant: 'success' })
+      } else if (data.status === 'joined') {
+        toast({ description: 'You joined the club.', variant: 'success' })
+      } else if (data.status === 'left') {
+        toast({ description: 'You left the club.', variant: 'success' })
+      }
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
+  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
+    onSuccess: () => {
+      toast({ description: 'Join request cancelled.', variant: 'success' })
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
@@ -188,16 +208,8 @@ export default function ClubDetailPage() {
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)
       return
     }
-    try {
-      await toggleFollow.mutateAsync({ clubId })
-      await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
-    } catch (err: any) {
-      toast({
-        title: 'Failed',
-        description: err?.message || 'Could not update membership. Try again.',
-        variant: 'destructive',
-      })
-    }
+    await toggleFollow.mutateAsync({ clubId })
+    await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
   }
 
   const handleConfirmLeave = async () => {
@@ -215,7 +227,6 @@ export default function ClubDetailPage() {
         utils.club.listMembers.invalidate({ clubId }),
       ])
       setLeaveOpen(false)
-      toast({ title: 'Left club', description: 'You left this club.' })
     } catch (err: any) {
       toast({
         title: 'Failed to leave',
