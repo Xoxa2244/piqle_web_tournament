@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -174,6 +174,8 @@ export default function ClubDetailPage() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [descriptionOverflows, setDescriptionOverflows] = useState(false)
+  const descriptionRef = useRef<HTMLParagraphElement>(null)
   const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
   const [editClubModalOpen, setEditClubModalOpen] = useState(false)
   const [deleteClubOpen, setDeleteClubOpen] = useState(false)
@@ -359,7 +361,20 @@ export default function ClubDetailPage() {
     )
   }
 
-  const descriptionLong = (club?.description?.length ?? 0) > 200
+  useLayoutEffect(() => {
+    if (!club?.description) {
+      setDescriptionOverflows(false)
+      return
+    }
+    if (descriptionExpanded) {
+      setDescriptionOverflows(true)
+      return
+    }
+    const el = descriptionRef.current
+    if (!el) return
+    const overflow = el.scrollHeight > el.clientHeight
+    setDescriptionOverflows(overflow)
+  }, [club?.description, descriptionExpanded])
 
   return (
     <>
@@ -394,20 +409,21 @@ export default function ClubDetailPage() {
                   {club.description ? (
                     <div className="max-w-2xl">
                       <p
+                        ref={descriptionRef}
                         className={cn(
                           'text-sm text-gray-700 whitespace-pre-wrap',
-                          !descriptionExpanded && descriptionLong && 'line-clamp-3'
+                          !descriptionExpanded && 'line-clamp-3'
                         )}
                       >
                         {club.description}
                       </p>
-                      {descriptionLong ? (
+                      {descriptionOverflows ? (
                         <button
                           type="button"
                           className="text-sm text-blue-600 hover:underline mt-0.5"
                           onClick={() => setDescriptionExpanded((v) => !v)}
                         >
-                          {descriptionExpanded ? 'Show less' : 'Show more'}
+                          {descriptionExpanded ? 'Свернуть' : 'Раскрыть'}
                         </button>
                       ) : null}
                     </div>
@@ -772,7 +788,7 @@ export default function ClubDetailPage() {
 
           <div
             className="sticky top-16 flex min-h-0 w-full min-w-0 flex-col overflow-hidden lg:w-[480px]"
-            style={{ height: 'calc(100vh - 14rem)', maxHeight: 'calc(100vh - 14rem)', boxSizing: 'border-box' }}
+            style={{ height: 'calc(100vh - 15rem)', maxHeight: 'calc(100vh - 15rem)', boxSizing: 'border-box' }}
           >
             <ClubChatCard
               clubId={club.id}
