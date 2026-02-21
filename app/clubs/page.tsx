@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { Suspense, useMemo, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
@@ -18,8 +18,9 @@ import CreateClubModal from '@/components/CreateClubModal'
 
 export const dynamic = 'force-dynamic'
 
-export default function ClubsPage() {
+function ClubsPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
 
@@ -30,7 +31,6 @@ export default function ClubsPage() {
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
-  const searchParams = useSearchParams()
   const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
 
   useEffect(() => {
@@ -323,5 +323,19 @@ export default function ClubsPage() {
         }}
       />
     </div>
+  )
+}
+
+export default function ClubsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        </div>
+      }
+    >
+      <ClubsPageContent />
+    </Suspense>
   )
 }
