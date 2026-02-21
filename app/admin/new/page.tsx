@@ -79,6 +79,12 @@ const getBrowserTimeZone = () => {
   }
 }
 
+const SELECT_ARROW_STYLE = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+} as const
+const SELECT_ARROW_CLASS =
+  'appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center] pr-[calc(12px+1rem)]'
+
 const resolveTimeZoneFromLatLng = async (lat: number, lng: number, googleApi?: any) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
@@ -142,6 +148,36 @@ const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
     label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
   }
 })
+
+const TIME_12H_OPTIONS = Array.from({ length: 12 * 4 }, (_, idx) => {
+  const hour12 = idx < 4 ? 12 : Math.floor((idx - 4) / 4) + 1
+  const minutes = (idx % 4) * REGISTRATION_TIME_STEP_MINUTES
+  return { value: `${pad2(hour12)}:${pad2(minutes)}`, label: `${pad2(hour12)}:${pad2(minutes)}` }
+})
+
+const getTime12AndPeriodFrom24h = (hhmm24: string): { time12: string; period: 'AM' | 'PM' } => {
+  const [h, m] = (hhmm24 || '00:00').split(':').map(Number)
+  const hours24 = Number.isFinite(h) ? h % 24 : 0
+  const minutes = Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0
+  const snapped = Math.round(minutes / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const mins = Math.min(45, snapped)
+  const hours12 = hours24 % 12 || 12
+  return {
+    time12: `${pad2(hours12)}:${pad2(mins)}`,
+    period: hours24 >= 12 ? 'PM' : 'AM',
+  }
+}
+
+const time12AndPeriodTo24h = (time12: string, period: 'AM' | 'PM'): string => {
+  const [h, m] = (time12 || '12:00').split(':').map(Number)
+  const hours12 = Number.isFinite(h) ? h : 12
+  const minutes = Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0
+  const snapped = Math.round(minutes / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const mins = Math.min(45, snapped)
+  let hours24 = hours12 % 12
+  if (period === 'PM') hours24 += 12
+  return `${pad2(hours24)}:${pad2(mins)}`
+}
 
 const getDatePartFromDateTimeLocal = (value?: string | null) => {
   const raw = String(value || '').trim()
@@ -233,35 +269,72 @@ function QuarterHourDateTimeInput({
     onChange(`${baseDate}T${normalized}`)
   }
 
+  const { time12, period } = getTime12AndPeriodFrom24h(datePart ? (normalizedTime || '00:00') : '00:00')
+
+  const handleTime12Change = (nextTime12: string) => {
+    const next24 = time12AndPeriodTo24h(nextTime12, period)
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${next24}`)
+  }
+  const handlePeriodChange = (nextPeriod: 'AM' | 'PM') => {
+    const next24 = time12AndPeriodTo24h(time12, nextPeriod)
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${next24}`)
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      <input
-        type="date"
-        id={id}
-        name={name ? `${name}Date` : undefined}
-        value={datePart}
-        min={minDate || undefined}
-        max={maxDate || undefined}
-        onChange={(e) => handleDateChange(e.target.value)}
-        disabled={disabled}
-        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-      />
-      <select
-        name={name ? `${name}Time` : undefined}
-        value={datePart ? (normalizedTime || '00:00') : ''}
-        onChange={(e) => handleTimeChange(e.target.value)}
-        disabled={disabled}
-        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
-      >
-        <option value="" disabled>
-          Select time
-        </option>
-        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
+      <div className="relative w-full min-w-0">
+        <input
+          type="date"
+          id={id}
+          name={name ? `${name}Date` : undefined}
+          value={datePart}
+          min={minDate || undefined}
+          max={maxDate || undefined}
+          onChange={(e) => handleDateChange(e.target.value)}
+          disabled={disabled}
+          className="w-full min-w-0 pl-3 py-2 pr-[48px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:w-6 [&::-webkit-calendar-picker-indicator]:h-6"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-gray-500" aria-hidden>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </span>
+      </div>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <select
+          name={name ? `${name}Time` : undefined}
+          value={datePart ? time12 : ''}
+          onChange={(e) => handleTime12Change(e.target.value)}
+          disabled={disabled}
+          className={`w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+          style={SELECT_ARROW_STYLE}
+        >
+          <option value="" disabled>
+            Select time
           </option>
-        ))}
-      </select>
+          {TIME_12H_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <select
+          name={name ? `${name}Period` : undefined}
+          value={datePart ? period : 'AM'}
+          onChange={(e) => handlePeriodChange(e.target.value as 'AM' | 'PM')}
+          disabled={disabled}
+          className={`w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+          style={SELECT_ARROW_STYLE}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+      </div>
     </div>
   )
 }
@@ -1358,7 +1431,8 @@ function NewTournamentPageInner() {
                     name="clubId"
                     value={formData.clubId}
                     onChange={handleClubSelect}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
                     <option value="">No club (custom venue)</option>
                     {(adminClubs ?? []).map((club: any) => (
@@ -1528,7 +1602,8 @@ function NewTournamentPageInner() {
                     name="timezone"
                     value={formData.timezone}
                     onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
                     {timezoneOptions.map((tz) => (
                       <option key={tz.value} value={tz.value}>
@@ -1561,7 +1636,7 @@ function NewTournamentPageInner() {
                               return next
                             })
                           }}
-                          className="h-4 w-4 rounded border-gray-300"
+                          className="h-6 w-6 rounded border-gray-300"
                         />
                         Create series
                       </label>
@@ -1585,7 +1660,8 @@ function NewTournamentPageInner() {
                                 return next
                               })
                             }}
-                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                            className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                            style={SELECT_ARROW_STYLE}
                           >
                             <option value="DAILY">Daily</option>
                             <option value="WEEKLY">Weekly</option>
@@ -1707,7 +1783,8 @@ function NewTournamentPageInner() {
                     name="format"
                     value={formData.format}
                     onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
                     <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
                     <option value="ROUND_ROBIN">Round Robin</option>
@@ -1761,7 +1838,7 @@ function NewTournamentPageInner() {
                     name="allowDuprSubmission"
                     checked={formData.allowDuprSubmission}
                     onChange={handleChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-6 w-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="allowDuprSubmission" className="ml-2 block text-sm text-gray-700">
                     Allow sending results to DUPR
@@ -1957,7 +2034,8 @@ function NewTournamentPageInner() {
                       name="paymentTiming"
                       value={formData.paymentTiming}
                       onChange={handleChange}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                      className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                     >
                       <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
                       <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
@@ -2022,7 +2100,7 @@ function NewTournamentPageInner() {
                         checked={isSeries ? false : formData.isPublicBoardEnabled}
                         onChange={handleChange}
                         disabled={isSeries}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-6 w-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
                         Enable public results board

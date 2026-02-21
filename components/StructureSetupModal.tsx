@@ -426,6 +426,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.individualDupr.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -485,6 +486,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.teamDupr.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -544,6 +546,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.gender.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -593,6 +596,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.age.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
