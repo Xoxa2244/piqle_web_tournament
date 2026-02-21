@@ -33,6 +33,7 @@ function ClubsPageContent() {
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
   const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
+  const [cancelRequestClubId, setCancelRequestClubId] = useState<string | null>(null)
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setCreateClubModalOpen(true)
@@ -67,8 +68,11 @@ function ClubsPageContent() {
     },
   })
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       toast({ description: 'Join request cancelled.', variant: 'success' })
+      utils.club.list.invalidate()
+      utils.club.get.invalidate({ id: variables.clubId })
+      setCancelRequestClubId(null)
     },
     onError: (e) => {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
@@ -88,14 +92,17 @@ function ClubsPageContent() {
     ])
   }
 
-  const onCancelJoin = async (clubId: string) => {
+  const onCancelJoinClick = (clubId: string) => {
     if (!isLoggedIn) {
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent('/clubs')}`)
       return
     }
-    if (!confirm('Cancel your join request?')) return
-    await cancelJoinRequest.mutateAsync({ clubId })
-    await Promise.all([utils.club.list.invalidate(), utils.club.get.invalidate({ id: clubId })])
+    setCancelRequestClubId(clubId)
+  }
+
+  const confirmCancelRequest = () => {
+    if (!cancelRequestClubId) return
+    cancelJoinRequest.mutate({ clubId: cancelRequestClubId })
   }
 
   const followingClubs = useMemo(() => {
@@ -204,13 +211,13 @@ function ClubsPageContent() {
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <Button
               variant={club.isJoinPending ? 'outline' : 'default'}
-              className={`w-full ${!club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-              onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
+              className={`w-full ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              onClick={() => (club.isJoinPending ? onCancelJoinClick(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
             >
               {club.isJoinPending
-                ? 'Cancel'
+                ? 'Cancel request'
                 : club.joinPolicy === 'APPROVAL'
                   ? 'Request to the club'
                   : 'Join the club'}
@@ -343,6 +350,41 @@ function ClubsPageContent() {
           router.push(`/clubs/${club.id}`)
         }}
       />
+
+      {cancelRequestClubId ? (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setCancelRequestClubId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Cancel request?</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              Cancel your join request for this club?
+            </p>
+            <div className="flex gap-2 mt-6">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setCancelRequestClubId(null)}
+                disabled={cancelJoinRequest.isPending}
+              >
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={confirmCancelRequest}
+                disabled={cancelJoinRequest.isPending}
+              >
+                {cancelJoinRequest.isPending ? 'Cancelling…' : 'Cancel request'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
