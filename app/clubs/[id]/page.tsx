@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -173,9 +173,7 @@ export default function ClubDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
-  const [descriptionOverflows, setDescriptionOverflows] = useState(false)
-  const descriptionRef = useRef<HTMLParagraphElement>(null)
+  const [descriptionModalOpen, setDescriptionModalOpen] = useState(false)
   const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
   const [editClubModalOpen, setEditClubModalOpen] = useState(false)
   const [deleteClubOpen, setDeleteClubOpen] = useState(false)
@@ -341,21 +339,6 @@ export default function ClubDetailPage() {
     }
   }
 
-  useLayoutEffect(() => {
-    if (!club?.description) {
-      setDescriptionOverflows(false)
-      return
-    }
-    if (descriptionExpanded) {
-      setDescriptionOverflows(true)
-      return
-    }
-    const el = descriptionRef.current
-    if (!el) return
-    const overflow = el.scrollHeight > el.clientHeight
-    setDescriptionOverflows(overflow)
-  }, [club?.description, descriptionExpanded])
-
   if (isLoading) {
     return (
       <div className="space-y-6 px-6 py-8">
@@ -408,24 +391,14 @@ export default function ClubDetailPage() {
                   </div>
                   {club.description ? (
                     <div className="max-w-2xl">
-                      <p
-                        ref={descriptionRef}
-                        className={cn(
-                          'text-sm text-gray-700 whitespace-pre-wrap',
-                          !descriptionExpanded && 'line-clamp-3'
-                        )}
+                      <p className="text-sm text-gray-700 truncate">{club.description}</p>
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 hover:underline mt-0.5"
+                        onClick={() => setDescriptionModalOpen(true)}
                       >
-                        {club.description}
-                      </p>
-                      {descriptionOverflows ? (
-                        <button
-                          type="button"
-                          className="text-sm text-blue-600 hover:underline mt-0.5"
-                          onClick={() => setDescriptionExpanded((v) => !v)}
-                        >
-                          {descriptionExpanded ? 'Свернуть' : 'Раскрыть'}
-                        </button>
-                      ) : null}
+                        Show full description
+                      </button>
                     </div>
                   ) : null}
                 </div>
@@ -819,6 +792,32 @@ export default function ClubDetailPage() {
         }}
         clubId={editClubModalOpen ? clubId : null}
       />
+
+      {/* Full description modal */}
+      {descriptionModalOpen && club.description ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setDescriptionModalOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 rounded-full"
+              onClick={() => setDescriptionModalOpen(false)}
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <h3 className="text-lg font-semibold text-gray-900 pr-10">{club.name}</h3>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-3">{club.description}</p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Invite Modal */}
       {inviteOpen && (club.isFollowing || club.isAdmin) && (
