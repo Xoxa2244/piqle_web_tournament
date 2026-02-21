@@ -38,6 +38,7 @@ import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
 import { formatUsDateShort } from '@/lib/dateFormat'
+import { toast } from '@/components/ui/use-toast'
 
 // Helper function to check roster changes (moved outside component to avoid React hooks issues)
 const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
@@ -313,7 +314,7 @@ function DivisionStageManagementContent() {
         delete newState[variables.gameId]
         return newState
       })
-      alert('Error updating score: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating score: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -323,7 +324,7 @@ function DivisionStageManagementContent() {
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error updating tie-break: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating tie-break: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -331,10 +332,10 @@ function DivisionStageManagementContent() {
   const generateGamesForTournament = trpc.indyMatchup.generateGamesForTournament.useMutation({
     onSuccess: (result) => {
       refetchMatchups()
-      alert(`Games generated: ${result.generated}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`)
+      toast({ description: `Games generated: ${result.generated}. Skipped: ${result.skipped}. Errors: ${result.errors}`, variant: 'success' })
     },
     onError: (error) => {
-      alert('Error generating games: ' + error.message)
+      toast({ title: 'Error', description: 'Error generating games: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -343,11 +344,11 @@ function DivisionStageManagementContent() {
     onSuccess: () => {
       refetchMatchups()
       if (!suppressRegenerateAlertRef.current) {
-        alert('Games regenerated successfully. All scores for this matchup have been reset.')
+        toast({ description: 'Games regenerated successfully. All scores for this matchup have been reset.', variant: 'success' })
       }
     },
     onError: (error) => {
-      alert('Error regenerating games: ' + error.message)
+      toast({ title: 'Error', description: 'Error regenerating games: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -434,7 +435,7 @@ function DivisionStageManagementContent() {
     },
     onError: (error) => {
       console.error('regeneratePlayInMutation error:', error)
-      alert(`Error regenerating Play-In: ${error.message}`)
+      toast({ title: 'Error', description: `Error regenerating Play-In: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -457,7 +458,7 @@ function DivisionStageManagementContent() {
     },
     onError: (error) => {
       console.error('regenerateRRMutation error:', error)
-      alert(`Error regenerating RR: ${error.message}`)
+      toast({ title: 'Error', description: `Error regenerating RR: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -725,7 +726,7 @@ function DivisionStageManagementContent() {
       refetchTournament()
     } catch (error: any) {
       console.error('Error uploading to DUPR:', error)
-      alert(`Error: ${error.message || 'Failed to upload to DUPR'}`)
+      toast({ title: 'Error', description: error.message || 'Failed to upload to DUPR', variant: 'destructive' })
     } finally {
       setIsUploadingToDupr(false)
     }
@@ -756,7 +757,7 @@ function DivisionStageManagementContent() {
   const handleGenerateRR = () => {
     if (!selectedDivisionId) return
     if (isLeagueRoundRobin && !selectedMatchDayId) {
-      alert('Please select a match day first to generate Round Robin for that day.')
+      toast({ description: 'Please select a match day first to generate Round Robin for that day.', variant: 'destructive' })
       return
     }
     generateRRMutation.mutate({
@@ -1423,7 +1424,7 @@ function DivisionStageManagementContent() {
                           <Button
                             onClick={async () => {
                               if (!hasGames) {
-                                alert('No games to regenerate for this division. Use "Generate All Games" above first.')
+                                toast({ description: 'No games to regenerate for this division. Use "Generate All Games" above first.', variant: 'destructive' })
                                 return
                               }
                               if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
@@ -1436,9 +1437,9 @@ function DivisionStageManagementContent() {
                                     )
                                   )
                                   refetchMatchups()
-                                  alert(`Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`)
+                                  toast({ description: `Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`, variant: 'success' })
                                 } catch (error: any) {
-                                  alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
+                                  toast({ title: 'Error', description: 'Error regenerating games: ' + (error?.message || 'Unknown error'), variant: 'destructive' })
                                 } finally {
                                   suppressRegenerateAlertRef.current = false
                                 }

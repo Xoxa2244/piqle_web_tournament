@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -80,7 +81,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error creating matchup: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating matchup: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -89,7 +90,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error swapping teams: ' + error.message)
+      toast({ title: 'Error', description: 'Error swapping teams: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -98,7 +99,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error deleting matchup: ' + error.message)
+      toast({ title: 'Error', description: 'Error deleting matchup: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -106,22 +107,22 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: (data) => {
       refetchMatchups()
       if (data.updated === 0) {
-        alert('No matchups to assign courts to.')
+        toast({ description: 'No matchups to assign courts to.', variant: 'destructive' })
       }
     },
     onError: (error) => {
-      alert('Error assigning courts: ' + error.message)
+      toast({ title: 'Error', description: 'Error assigning courts: ' + error.message, variant: 'destructive' })
     },
   })
 
   const handleCreate = () => {
     if (!selectedDivisionId || !selectedHomeTeamId || !selectedAwayTeamId) {
-      alert('Please select division and both teams')
+      toast({ description: 'Please select division and both teams', variant: 'destructive' })
       return
     }
 
     if (selectedHomeTeamId === selectedAwayTeamId) {
-      alert('Home and away teams cannot be the same')
+      toast({ description: 'Home and away teams cannot be the same', variant: 'destructive' })
       return
     }
 

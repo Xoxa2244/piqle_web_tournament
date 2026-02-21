@@ -9,6 +9,7 @@ import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/use-toast'
 
 export default function AppHeader() {
   const { data: session, status } = useSession()
@@ -37,7 +38,7 @@ export default function AppHeader() {
       setShowSearchDropdown(false)
     },
     onError: (error) => {
-      alert(`Error: ${error.message}`)
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
     },
   })
 

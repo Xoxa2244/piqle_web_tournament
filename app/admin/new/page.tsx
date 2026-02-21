@@ -16,6 +16,7 @@ import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { guessTimeZoneFromLocation, toUtcDateFromLocalInput, toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { normalizeKnownTimezone } from '@/lib/timezoneList'
+import { toast } from '@/components/ui/use-toast'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -323,7 +324,7 @@ function QuarterHourDateTimeInput({
             </option>
           ))}
         </select>
-        <div className="flex rounded-md border border-gray-300 overflow-hidden bg-gray-100">
+        <div className="flex w-[90px] rounded-md border border-gray-300 overflow-hidden bg-gray-100">
           <input type="hidden" name={name ? `${name}Period` : undefined} value={datePart ? period : 'AM'} readOnly />
           <button
             type="button"
@@ -495,7 +496,7 @@ function NewTournamentPageInner() {
     },
     onError: (error) => {
       console.error('Error creating tournament structure:', error)
-      alert('Error creating tournament structure: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating tournament structure: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -511,7 +512,7 @@ function NewTournamentPageInner() {
     },
     onError: (error) => {
       console.error('Error creating tournament series:', error)
-      alert('Error creating tournament series: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating tournament series: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -642,18 +643,18 @@ function NewTournamentPageInner() {
     setRequiredErrors(nextErrors)
 
     if (nextErrors.title || nextErrors.startDate || nextErrors.endDate) {
-      alert('Please fill in required fields')
+      toast({ description: 'Please fill in required fields', variant: 'destructive' })
       return false
     }
 
     const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
     const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
     if (!startDate || !endDate) {
-      alert('Invalid date/time value')
+      toast({ description: 'Invalid date/time value', variant: 'destructive' })
       return false
     }
     if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
+      toast({ description: 'End date cannot be earlier than start date', variant: 'destructive' })
       return false
     }
 
@@ -663,18 +664,18 @@ function NewTournamentPageInner() {
         ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
         : startDate
       if (!registrationCutoffDate) {
-        alert('Invalid date/time value')
+        toast({ description: 'Invalid date/time value', variant: 'destructive' })
         return false
       }
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regStartDate || !regEndDate) {
-          alert('Invalid registration date/time value')
+          toast({ description: 'Invalid registration date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
+          toast({ description: 'Registration end date cannot be earlier than registration start date', variant: 'destructive' })
           return false
         }
       }
@@ -682,11 +683,11 @@ function NewTournamentPageInner() {
       if (formData.registrationStartDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         if (!regStartDate) {
-          alert('Invalid registration start date/time value')
+          toast({ description: 'Invalid registration start date/time value', variant: 'destructive' })
           return false
         }
         if (regStartDate > registrationCutoffDate) {
-          alert('Registration start date cannot be later than tournament start date')
+          toast({ description: 'Registration start date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -694,11 +695,11 @@ function NewTournamentPageInner() {
       if (formData.registrationEndDate) {
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regEndDate) {
-          alert('Invalid registration end date/time value')
+          toast({ description: 'Invalid registration end date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate > registrationCutoffDate) {
-          alert('Registration end date cannot be later than tournament start date')
+          toast({ description: 'Registration end date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -714,7 +715,7 @@ function NewTournamentPageInner() {
     const titleOk = Boolean(formData.title.trim())
     setRequiredErrors((prev) => ({ ...prev, title: !titleOk }))
     if (!titleOk) {
-      alert('Tournament name is required')
+      toast({ description: 'Tournament name is required', variant: 'destructive' })
       return false
     }
     return true
@@ -725,18 +726,18 @@ function NewTournamentPageInner() {
     const endOk = Boolean(formData.endDate)
     setRequiredErrors((prev) => ({ ...prev, startDate: !startOk, endDate: !endOk }))
     if (!startOk || !endOk) {
-      alert('Start and end dates are required')
+      toast({ description: 'Start and end dates are required', variant: 'destructive' })
       return false
     }
 
     const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
     const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
     if (!startDate || !endDate) {
-      alert('Invalid date/time value')
+      toast({ description: 'Invalid date/time value', variant: 'destructive' })
       return false
     }
     if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
+      toast({ description: 'End date cannot be earlier than start date', variant: 'destructive' })
       return false
     }
 
@@ -746,18 +747,18 @@ function NewTournamentPageInner() {
         ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
         : startDate
       if (!registrationCutoffDate) {
-        alert('Invalid date/time value')
+        toast({ description: 'Invalid date/time value', variant: 'destructive' })
         return false
       }
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regStartDate || !regEndDate) {
-          alert('Invalid registration date/time value')
+          toast({ description: 'Invalid registration date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
+          toast({ description: 'Registration end date cannot be earlier than registration start date', variant: 'destructive' })
           return false
         }
       }
@@ -765,11 +766,11 @@ function NewTournamentPageInner() {
       if (formData.registrationStartDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         if (!regStartDate) {
-          alert('Invalid registration start date/time value')
+          toast({ description: 'Invalid registration start date/time value', variant: 'destructive' })
           return false
         }
         if (regStartDate > registrationCutoffDate) {
-          alert('Registration start date cannot be later than tournament start date')
+          toast({ description: 'Registration start date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -777,11 +778,11 @@ function NewTournamentPageInner() {
       if (formData.registrationEndDate) {
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regEndDate) {
-          alert('Invalid registration end date/time value')
+          toast({ description: 'Invalid registration end date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate > registrationCutoffDate) {
-          alert('Registration end date cannot be later than tournament start date')
+          toast({ description: 'Registration end date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -790,7 +791,7 @@ function NewTournamentPageInner() {
     if (ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled) {
       const count = Number(seriesDraftForm.count)
       if (!Number.isFinite(count) || count < 2 || count > 12) {
-        alert('Occurrences must be between 2 and 12.')
+        toast({ description: 'Occurrences must be between 2 and 12.', variant: 'destructive' })
         return false
       }
 
@@ -798,7 +799,7 @@ function NewTournamentPageInner() {
         (seriesDraftForm.frequency === 'WEEKLY' || seriesDraftForm.frequency === 'BIWEEKLY') &&
         (seriesDraftForm.weekdays?.length ?? 0) < 1
       ) {
-        alert('Pick at least one weekday for weekly recurrence.')
+        toast({ description: 'Pick at least one weekday for weekly recurrence.', variant: 'destructive' })
         return false
       }
     }
@@ -808,7 +809,7 @@ function NewTournamentPageInner() {
 
   const validateFormatStep = () => {
     if (!structureDraft) {
-      alert('Set up structure (divisions / team counts) before continuing.')
+      toast({ description: 'Set up structure (divisions / team counts) before continuing.', variant: 'destructive' })
       setShowStructureModal(true)
       return false
     }
@@ -831,12 +832,12 @@ function NewTournamentPageInner() {
     if (structureDraft.mode === 'WITH_DIVISIONS') {
       const invalidTeams = divisions.find((d) => !Number.isFinite(d.teamCount) || d.teamCount < 2)
       if (invalidTeams) {
-        alert('Teams in each division must be 2 or more.')
+        toast({ description: 'Teams in each division must be 2 or more.', variant: 'destructive' })
         return false
       }
       const invalidPools = divisions.find((d) => !Number.isFinite(d.poolCount) || d.poolCount < 1)
       if (invalidPools) {
-        alert('Pools in each division must be 1 or more.')
+        toast({ description: 'Pools in each division must be 1 or more.', variant: 'destructive' })
         return false
       }
     }
@@ -844,7 +845,7 @@ function NewTournamentPageInner() {
     if (isLadder) {
       const hasSingles = divisions.some((d) => d.playersPerTeam === 1)
       if (hasSingles) {
-        alert('Ladder formats currently require teams (not 1v1). Choose doubles or squad.')
+        toast({ description: 'Ladder formats currently require teams (not 1v1). Choose doubles or squad.', variant: 'destructive' })
         return false
       }
     }
@@ -852,7 +853,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'ONE_DAY_LADDER') {
       const odd = divisions.find((d) => (d.teamCount ?? 0) % 2 !== 0)
       if (odd) {
-        alert('One-day ladder requires an even number of teams per division.')
+        toast({ description: 'One-day ladder requires an even number of teams per division.', variant: 'destructive' })
         return false
       }
     }
@@ -860,7 +861,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'LADDER_LEAGUE') {
       const bad = divisions.find((d) => (d.teamCount ?? 0) % 4 !== 0)
       if (bad) {
-        alert('Ladder league requires the number of teams to be a multiple of 4 per division.')
+        toast({ description: 'Ladder league requires the number of teams to be a multiple of 4 per division.', variant: 'destructive' })
         return false
       }
     }
@@ -868,7 +869,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'MLP') {
       const bad = divisions.find((d) => d.playersPerTeam !== 4)
       if (bad) {
-        alert('MiLP format requires 4-player teams.')
+        toast({ description: 'MiLP format requires 4-player teams.', variant: 'destructive' })
         return false
       }
     }
@@ -1024,7 +1025,7 @@ function NewTournamentPageInner() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to start Stripe onboarding')
+      toast({ title: 'Error', description: error.message || 'Failed to start Stripe onboarding', variant: 'destructive' })
     }
   }
 
@@ -1087,7 +1088,7 @@ function NewTournamentPageInner() {
       return
     }
     if (requiresPayoutsSetup) {
-      alert('Connect payouts with Stripe before creating a paid tournament.')
+      toast({ description: 'Connect payouts with Stripe before creating a paid tournament.', variant: 'destructive' })
       return
     }
 
@@ -1290,13 +1291,13 @@ function NewTournamentPageInner() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -1308,7 +1309,7 @@ function NewTournamentPageInner() {
       setShowCropper(true)
     } catch (error) {
       console.error('Error resizing image:', error)
-      alert('Failed to process image. Please try again.')
+      toast({ description: 'Failed to process image. Please try again.', variant: 'destructive' })
     }
   }
 
@@ -1353,7 +1354,7 @@ function NewTournamentPageInner() {
       }
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload image. Please try again.')
+      toast({ description: 'Failed to upload image. Please try again.', variant: 'destructive' })
       setImagePreview(null)
     } finally {
       setIsUploadingImage(false)

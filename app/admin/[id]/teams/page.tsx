@@ -21,6 +21,7 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import AddTeamModal from '@/components/AddTeamModal'
 import EditTeamModal from '@/components/EditTeamModal'
+import { toast } from '@/components/ui/use-toast'
 interface Player {
   id: string
   firstName: string
@@ -120,7 +121,7 @@ export default function TeamsPage() {
     },
     onError: (error) => {
       console.error('Failed to delete team:', error)
-      alert('Error deleting team')
+      toast({ title: 'Error', description: 'Error deleting team', variant: 'destructive' })
     }
   })
 

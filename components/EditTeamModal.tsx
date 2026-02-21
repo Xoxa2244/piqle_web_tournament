@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, Save, Trash2 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Division {
   id: string
@@ -63,7 +64,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     },
     onError: (error) => {
       console.error('Failed to update team:', error)
-      alert(`Error updating team: ${error.message}`)
+      toast({ title: 'Error', description: `Error updating team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -76,7 +77,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     },
     onError: (error) => {
       console.error('Failed to delete team:', error)
-      alert(`Error deleting team: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -89,12 +90,12 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     if (!team) return
     
     if (!teamName.trim()) {
-      alert('Enter team name')
+      toast({ description: 'Enter team name', variant: 'destructive' })
       return
     }
 
     if (!selectedDivisionId) {
-      alert('Select division')
+      toast({ description: 'Select division', variant: 'destructive' })
       return
     }
 

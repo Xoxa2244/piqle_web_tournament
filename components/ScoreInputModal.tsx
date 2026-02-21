@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { HelpCircle } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 import PlayersWithoutDuprModal from './PlayersWithoutDuprModal'
 
 interface Player {
@@ -113,7 +114,7 @@ export default function ScoreInputModal({
     const scoreBValue = parseInt(scoreB)
     
     if (isNaN(scoreAValue) || isNaN(scoreBValue) || scoreAValue < 0 || scoreBValue < 0) {
-      alert('Please enter valid scores (non-negative numbers)')
+      toast({ description: 'Please enter valid scores (non-negative numbers)', variant: 'destructive' })
       return
     }
 

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/use-toast'
 
 export const dynamic = 'force-dynamic'
 
@@ -480,7 +481,7 @@ function ClubChatPanel({
   const sendMessage = trpc.clubChat.send.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.clubChat.list.invalidate({ clubId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -515,7 +516,7 @@ function ClubChatPanel({
     try {
       await sendMessage.mutateAsync({ clubId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 
@@ -639,7 +640,7 @@ function TournamentChatPanel({
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.tournamentChat.listTournament.invalidate({ tournamentId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -674,7 +675,7 @@ function TournamentChatPanel({
     try {
       await sendMessage.mutateAsync({ tournamentId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 
@@ -815,7 +816,7 @@ function DivisionChatPanel({
   const sendMessage = trpc.tournamentChat.sendDivision.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.tournamentChat.listDivision.invalidate({ divisionId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -850,7 +851,7 @@ function DivisionChatPanel({
     try {
       await sendMessage.mutateAsync({ divisionId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 

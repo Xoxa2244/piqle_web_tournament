@@ -15,6 +15,7 @@ import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
 import DUPRLoginModal from '@/components/DUPRLoginModal'
 import { formatDuprRating } from '@/lib/utils'
+import { toast } from '@/components/ui/use-toast'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -104,7 +105,7 @@ export default function ProfilePage() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to start Stripe onboarding')
+      toast({ title: 'Error', description: error.message || 'Failed to start Stripe onboarding', variant: 'destructive' })
     }
   }
 
@@ -146,7 +147,7 @@ export default function ProfilePage() {
       setShowDUPRModal(false)
     } catch (error) {
       console.error('Error linking DUPR:', error)
-      alert('Failed to link DUPR account. Please try again.')
+      toast({ description: 'Failed to link DUPR account. Please try again.', variant: 'destructive' })
     } finally {
       setIsLinkingDUPR(false)
     }
@@ -171,7 +172,7 @@ export default function ProfilePage() {
       await refetch()
     } catch (error: any) {
       console.error('Error refreshing ratings:', error)
-      alert(error.message || 'Failed to refresh DUPR ratings. Please try again.')
+      toast({ title: 'Error', description: error.message || 'Failed to refresh DUPR ratings. Please try again.', variant: 'destructive' })
     } finally {
       setIsRefreshingRatings(false)
     }
@@ -200,7 +201,7 @@ export default function ProfilePage() {
       await refetch()
     } catch (error: any) {
       console.error('Error unlinking DUPR:', error)
-      alert(error.message || 'Failed to unlink DUPR account. Please try again.')
+      toast({ title: 'Error', description: error.message || 'Failed to unlink DUPR account. Please try again.', variant: 'destructive' })
     } finally {
       setIsUnlinkingDUPR(false)
     }
@@ -253,13 +254,13 @@ export default function ProfilePage() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -303,7 +304,7 @@ export default function ProfilePage() {
       URL.revokeObjectURL(croppedImageUrl)
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload avatar. Please try again.')
+      toast({ description: 'Failed to upload avatar. Please try again.', variant: 'destructive' })
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)

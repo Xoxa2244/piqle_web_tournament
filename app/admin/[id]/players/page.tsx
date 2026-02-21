@@ -19,6 +19,7 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
 import { formatDuprRating } from '@/lib/utils'
+import { toast } from '@/components/ui/use-toast'
 
 interface Player {
   id: string
@@ -98,7 +99,7 @@ export default function PlayersPage() {
     },
     onError: (error) => {
       console.error('Failed to delete player:', error)
-      alert('Error deleting player')
+      toast({ title: 'Error', description: 'Error deleting player', variant: 'destructive' })
     }
   })
 
@@ -117,16 +118,16 @@ export default function PlayersPage() {
       refetchEligibleUsers()
     },
     onError: (e) => {
-      alert(e.message)
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
     },
   })
 
   const inviteByEmailMutation = trpc.player.inviteByEmail.useMutation({
     onSuccess: () => {
-      alert('Invitation sent.')
+      toast({ description: 'Invitation sent.', variant: 'success' })
     },
     onError: (e) => {
-      alert(e.message)
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
     },
   })
 

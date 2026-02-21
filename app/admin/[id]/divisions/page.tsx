@@ -38,6 +38,7 @@ import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import WaitlistAssignModal from '@/components/WaitlistAssignModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import { toast } from '@/components/ui/use-toast'
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -741,7 +742,7 @@ export default function DivisionsPage() {
 
   const handlePublicScoreboardClick = () => {
     if (!tournament?.isPublicBoardEnabled) {
-      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      toast({ description: 'Public Scoreboard is not available. Please enable it in tournament settings.', variant: 'destructive' })
       return
     }
     router.push(`/scoreboard/${tournamentId}`)
@@ -833,7 +834,7 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Error moving team: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -844,7 +845,7 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       console.error('moveToPool error:', error)
-      alert(`Error moving team: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -853,37 +854,37 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Error updating division: ${error.message}`)
+      toast({ title: 'Error', description: `Error updating division: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const distributeTeamsMutation = trpc.division.distributeTeamsByDupr.useMutation({
     onSuccess: (result) => {
       refetch()
-      alert(`Successfully distributed teams!\n\nTeams with DUPR ratings: ${result.teamsWithRatings}\nTeams without ratings: ${result.teamsWithoutRatings}`)
+      toast({ description: `Successfully distributed teams! Teams with DUPR: ${result.teamsWithRatings}, without: ${result.teamsWithoutRatings}`, variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error distributing teams: ${error.message}`)
+      toast({ title: 'Error', description: `Error distributing teams: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const deleteDivisionMutation = trpc.division.delete.useMutation({
     onSuccess: () => {
       refetch()
-      alert('Division deleted successfully! All players are now free agents.')
+      toast({ description: 'Division deleted successfully! All players are now free agents.', variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error deleting division: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting division: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const deleteTeamMutation = trpc.team.delete.useMutation({
     onSuccess: () => {
       refetch()
-      alert('Team deleted successfully!')
+      toast({ description: 'Team deleted successfully!', variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error deleting team: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -899,7 +900,7 @@ export default function DivisionsPage() {
     onError: (error) => {
       // Rollback on error
       refetch()
-      alert(`Error adding player: ${error.message}`)
+      toast({ title: 'Error', description: `Error adding player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -927,7 +928,7 @@ export default function DivisionsPage() {
     onError: (error) => {
       // Rollback on error
       refetch()
-      alert(`Error removing player: ${error.message}`)
+      toast({ title: 'Error', description: `Error removing player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -949,7 +950,7 @@ export default function DivisionsPage() {
       } else {
         refetch()
       }
-      alert(`Error moving player: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -959,7 +960,7 @@ export default function DivisionsPage() {
       utils.waitlist.listByTournament.invalidate({ tournamentId })
     },
     onError: (error) => {
-      alert(`Error assigning waitlist player: ${error.message}`)
+      toast({ title: 'Error', description: `Error assigning waitlist player: ${error.message}`, variant: 'destructive' })
     },
   })
 

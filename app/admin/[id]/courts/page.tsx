@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Save } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function CourtsPage({ params }: { params: Promise<{ id: string }> }) {
   const [tournamentId, setTournamentId] = useState<string>('')
   const [editingCourtId, setEditingCourtId] = useState<string | null>(null)
@@ -31,7 +32,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
       refetchCourts()
     },
     onError: (error) => {
-      alert('Error creating court: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating court: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -42,7 +43,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
       refetchCourts()
     },
     onError: (error) => {
-      alert('Error updating court: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating court: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -80,7 +81,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
 
   const handleSave = () => {
     if (!editingCourtId || !editingName.trim()) {
-      alert('Please enter a court name')
+      toast({ description: 'Please enter a court name', variant: 'destructive' })
       return
     }
 

@@ -8,6 +8,7 @@ import { formatUsDateShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { toast } from '@/components/ui/use-toast'
 
 type Seeding = 'BY_SEED' | 'RANDOM'
 
@@ -64,7 +65,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
       await refetchTournament()
       await refetchOneDay()
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const oneDayAdvance = trpc.ladder.oneDayAdvanceRound.useMutation({
@@ -72,7 +73,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
       await refetchTournament()
       await refetchOneDay()
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const { data: matchDays, refetch: refetchMatchDays } = trpc.matchDay.list.useQuery(
@@ -87,7 +88,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
       await refetchMatchDays()
       setSelectedMatchDayId(day.id)
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const orderedMatchDays = useMemo(() => {
@@ -117,14 +118,14 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
       await refetchTournament()
       await refetchLeague()
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const generateRR = trpc.match.generateRR.useMutation({
     onSuccess: async () => {
       await refetchLeague()
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const closeWeek = trpc.ladder.leagueCloseWeek.useMutation({
@@ -132,7 +133,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
       await refetchLeague()
       await refetchMatchDays()
     },
-    onError: (e) => alert(e.message),
+    onError: (e) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   })
 
   const scoreInputHref = useMemo(() => {
@@ -615,7 +616,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        if (!newWeekDate) return alert('Pick a date')
+                        if (!newWeekDate) return (toast({ description: 'Pick a date', variant: 'destructive' }), undefined)
                         createMatchDay.mutate({ tournamentId, date: newWeekDate })
                       }}
                       disabled={createMatchDay.isPending}
@@ -645,7 +646,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      if (leagueGenerateBlockedReason) return alert(leagueGenerateBlockedReason)
+                      if (leagueGenerateBlockedReason) return (toast({ description: leagueGenerateBlockedReason, variant: 'destructive' }), undefined)
                       generateRR.mutate({ divisionId: selectedDivisionId, matchDayId: selectedMatchDayId })
                     }}
                     disabled={generateRR.isPending || Boolean(leagueGenerateBlockedReason)}
@@ -663,7 +664,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                   <Button
                     variant="destructive"
                     onClick={() => {
-                      if (leagueCloseBlockedReason) return alert(leagueCloseBlockedReason)
+                      if (leagueCloseBlockedReason) return (toast({ description: leagueCloseBlockedReason, variant: 'destructive' }), undefined)
                       if (!confirm('Close this week and promote/demote teams?')) return
                       closeWeek.mutate({ divisionId: selectedDivisionId, matchDayId: selectedMatchDayId })
                     }}

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Eye, Ban } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 
@@ -61,7 +62,7 @@ export default function SuperAdminPlayersPage() {
 
   const setUserActive = trpc.superadmin.setUserActive.useMutation({
     onSuccess: () => refetch(),
-    onError: (err) => alert(err.message || 'Failed to update user'),
+    onError: (err) => toast({ title: 'Error', description: err.message || 'Failed to update user', variant: 'destructive' }),
   })
 
   if (!isAuthenticated) {

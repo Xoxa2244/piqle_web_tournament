@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
 import { X, GitMerge, AlertCircle } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 import type { Division } from '@prisma/client'
 
 interface MergeDivisionModalProps {
@@ -49,7 +50,7 @@ export default function MergeDivisionModal({
       setSelectedDivisionId('')
     },
     onError: (error) => {
-      alert(`Error merging divisions: ${error.message}`)
+      toast({ title: 'Error', description: `Error merging divisions: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -57,24 +58,24 @@ export default function MergeDivisionModal({
     e.preventDefault()
     
     if (!selectedDivisionId) {
-      alert('Please select a division to merge with')
+      toast({ description: 'Please select a division to merge with', variant: 'destructive' })
       return
     }
 
     const targetDivision = mergeableDivisions.find(d => d.id === selectedDivisionId)
     if (!targetDivision) {
-      alert('Selected division not found')
+      toast({ description: 'Selected division not found', variant: 'destructive' })
       return
     }
 
     // Validate compatibility
     if (sourceDivision.teamKind !== targetDivision.teamKind) {
-      alert(`Cannot merge: ${sourceDivision.name} has team kind ${sourceDivision.teamKind} but ${targetDivision.name} has ${targetDivision.teamKind}`)
+      toast({ description: `Cannot merge: ${sourceDivision.name} has team kind ${sourceDivision.teamKind} but ${targetDivision.name} has ${targetDivision.teamKind}`, variant: 'destructive' })
       return
     }
 
     if (sourceDivision.pairingMode !== targetDivision.pairingMode) {
-      alert(`Cannot merge: ${sourceDivision.name} has pairing mode ${sourceDivision.pairingMode} but ${targetDivision.name} has ${targetDivision.pairingMode}`)
+      toast({ description: `Cannot merge: ${sourceDivision.name} has pairing mode ${sourceDivision.pairingMode} but ${targetDivision.name} has ${targetDivision.pairingMode}`, variant: 'destructive' })
       return
     }
 

@@ -6,6 +6,7 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { toast } from '@/components/ui/use-toast'
 
 export default function ImportPage() {
   const params = useParams()
@@ -19,20 +20,20 @@ export default function ImportPage() {
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   const resetTournament = trpc.import.resetTournament.useMutation({
     onSuccess: () => {
-      alert('Tournament reset! All data deleted.')
+      toast({ description: 'Tournament reset! All data deleted.', variant: 'success' })
       window.location.reload()
     },
     onError: (error) => {
-      alert(`Error resetting tournament: ${error.message}`)
+      toast({ title: 'Error', description: `Error resetting tournament: ${error.message}`, variant: 'destructive' })
     }
   })
   const importCSV = trpc.import.importCSV.useMutation({
     onSuccess: (data) => {
-      alert(`Import completed! Created ${data.divisions} divisions and ${data.teams} teams.`)
+      toast({ description: `Import completed! Created ${data.divisions} divisions and ${data.teams} teams.`, variant: 'success' })
       window.location.reload()
     },
     onError: (error) => {
-      alert(`Import error: ${error.message}`)
+      toast({ title: 'Error', description: `Import error: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -41,13 +42,13 @@ export default function ImportPage() {
     if (file && file.type === 'text/csv') {
       setCsvFile(file)
     } else {
-      alert('Please select a CSV file')
+      toast({ description: 'Please select a CSV file', variant: 'destructive' })
     }
   }
 
   const handleImport = async () => {
     if (!csvFile) {
-      alert('Please select a CSV file')
+      toast({ description: 'Please select a CSV file', variant: 'destructive' })
       return
     }
 
@@ -61,7 +62,7 @@ export default function ImportPage() {
         csvData: base64Data
       })
     } catch (error) {
-      alert(`Error reading file: ${error}`)
+      toast({ title: 'Error', description: `Error reading file: ${error}`, variant: 'destructive' })
     } finally {
       setIsImporting(false)
     }

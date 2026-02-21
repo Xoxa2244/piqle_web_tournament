@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, UserPlus } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Team {
   id: string
@@ -58,7 +59,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     },
     onError: (error) => {
       console.error('Failed to create participant:', error)
-      alert(`Error creating participant: ${error.message}`)
+      toast({ title: 'Error', description: `Error creating participant: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -71,7 +72,7 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     },
     onError: (error) => {
       console.error('Failed to add to team:', error)
-      alert(`Error adding to team: ${error.message}`)
+      toast({ title: 'Error', description: `Error adding to team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -80,12 +81,12 @@ export default function AddParticipantModal({ tournamentId, teams = [], isOpen, 
     e.preventDefault()
     
     if (!firstName.trim() || !lastName.trim()) {
-      alert('Enter participant name and surname')
+      toast({ description: 'Enter participant name and surname', variant: 'destructive' })
       return
     }
 
     if (isMLP && (!gender || gender === 'X')) {
-      alert('Gender (M or F) is required for players in MLP tournaments')
+      toast({ description: 'Gender (M or F) is required for players in MLP tournaments', variant: 'destructive' })
       return
     }
 

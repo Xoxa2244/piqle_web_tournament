@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 import { formatDuprRating } from '@/lib/utils'
 
 interface Division {
@@ -67,7 +68,7 @@ export default function AddPlayerModal({
           console.error('Failed to delete team after error:', deleteError)
         }
       }
-      alert(`Error adding player to team: ${error.message}`)
+      toast({ title: 'Error', description: `Error adding player to team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -104,7 +105,7 @@ export default function AddPlayerModal({
     },
     onError: (error) => {
       console.error('Failed to create team:', error)
-      alert(`Error creating team: ${error.message}`)
+      toast({ title: 'Error', description: `Error creating team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -113,7 +114,7 @@ export default function AddPlayerModal({
     e.preventDefault()
     
     if (!selectedPlayerId) {
-      alert('Select a player')
+      toast({ description: 'Select a player', variant: 'destructive' })
       return
     }
 

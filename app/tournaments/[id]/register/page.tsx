@@ -13,6 +13,7 @@ import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import CancelRegistrationModal from '@/components/CancelRegistrationModal'
+import { toast } from '@/components/ui/use-toast'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -94,7 +95,7 @@ export default function TournamentRegistrationPage() {
       try {
         await acceptInvitationMutation.mutateAsync({ invitationId })
       } catch (error: any) {
-        alert(error.message || 'Failed to process invitation')
+        toast({ title: 'Error', description: error.message || 'Failed to process invitation', variant: 'destructive' })
       } finally {
         router.replace(`/tournaments/${tournamentId}/register`)
       }
@@ -108,7 +109,7 @@ export default function TournamentRegistrationPage() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     if (params.get('card') === 'saved') {
-      alert('Card saved. If still unpaid, we will auto-charge it at the payment deadline.')
+      toast({ description: 'Card saved. If still unpaid, we will auto-charge it at the payment deadline.', variant: 'success' })
       params.delete('card')
       const next = params.toString()
       const nextUrl = `${window.location.pathname}${next ? `?${next}` : ''}`
@@ -138,7 +139,7 @@ export default function TournamentRegistrationPage() {
       if (isPaidTournament) {
         if (!ENABLE_DEFERRED_PAYMENTS) {
           if (!payoutsActive) {
-            alert('You are registered. Payments are not enabled yet; contact the organizer.')
+            toast({ description: 'You are registered. Payments are not enabled yet; contact the organizer.', variant: 'success' })
             return
           }
           await handlePayNow({ teamId, slotIndex })
@@ -148,16 +149,17 @@ export default function TournamentRegistrationPage() {
           result?.paymentDueAt
             ? formatUsDateTimeShort(result.paymentDueAt, { timeZone: seatMap?.timezone })
             : null
-        alert(
-          dueText
+        toast({
+          description: dueText
             ? `You are registered. Complete payment by ${dueText}.`
-            : 'You are registered. Complete payment to keep your spot.'
-        )
+            : 'You are registered. Complete payment to keep your spot.',
+          variant: 'success',
+        })
       } else {
-        alert('You are registered!')
+        toast({ description: 'You are registered!', variant: 'success' })
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to claim slot')
+      toast({ title: 'Error', description: error.message || 'Failed to claim slot', variant: 'destructive' })
     }
   }
 
@@ -191,7 +193,7 @@ export default function TournamentRegistrationPage() {
       }
       throw new Error('Checkout session URL missing')
     } catch (error: any) {
-      alert(error.message || 'Failed to start payment')
+      toast({ title: 'Error', description: error.message || 'Failed to start payment', variant: 'destructive' })
     }
   }
 
@@ -215,7 +217,7 @@ export default function TournamentRegistrationPage() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to save card')
+      toast({ title: 'Error', description: error.message || 'Failed to save card', variant: 'destructive' })
     } finally {
       setSaveCardLoading(false)
     }
@@ -230,7 +232,7 @@ export default function TournamentRegistrationPage() {
         utils.registration.getSeatMap.invalidate({ tournamentId }),
       ])
     } catch (error: any) {
-      alert(error.message || 'Failed to cancel registration')
+      toast({ title: 'Error', description: error.message || 'Failed to cancel registration', variant: 'destructive' })
     }
   }
 
@@ -407,7 +409,7 @@ export default function TournamentRegistrationPage() {
                     utils.registration.getWaitlist.invalidate({ divisionId: division.id }),
                   ])
                 } catch (error: any) {
-                  alert(error.message || 'Failed to join waitlist')
+                  toast({ title: 'Error', description: error.message || 'Failed to join waitlist', variant: 'destructive' })
                 }
               }}
               onLeaveWaitlist={async () => {
@@ -419,7 +421,7 @@ export default function TournamentRegistrationPage() {
                     utils.registration.getWaitlist.invalidate({ divisionId: division.id }),
                   ])
                 } catch (error: any) {
-                  alert(error.message || 'Failed to leave waitlist')
+                  toast({ title: 'Error', description: error.message || 'Failed to leave waitlist', variant: 'destructive' })
                 }
               }}
               currentUserId={session?.user?.id}

@@ -35,6 +35,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 // Helper function to resize image on client side
 function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -388,7 +389,7 @@ export default function TournamentDetailPage() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to start Stripe onboarding')
+      toast({ title: 'Error', description: error.message || 'Failed to start Stripe onboarding', variant: 'destructive' })
     }
   }
 
@@ -435,7 +436,7 @@ export default function TournamentDetailPage() {
     },
     onError: (error) => {
       console.error('Error updating tournament:', error)
-      alert('Error updating tournament: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating tournament: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -459,7 +460,7 @@ export default function TournamentDetailPage() {
 
   const handleCreateDivision = () => {
     if (!divisionForm.name.trim()) {
-      alert('Please enter division name')
+      toast({ description: 'Please enter division name', variant: 'destructive' })
       return
     }
     createDivision.mutate({
@@ -478,7 +479,7 @@ export default function TournamentDetailPage() {
 
   const handlePublicScoreboardClick = () => {
     if (!tournament?.isPublicBoardEnabled) {
-      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      toast({ description: 'Public Scoreboard is not available. Please enable it in tournament settings.', variant: 'destructive' })
       return
     }
     window.location.href = `/scoreboard/${tournamentId}`
@@ -521,11 +522,11 @@ export default function TournamentDetailPage() {
 
   const handleTournamentSubmit = () => {
     if (!tournamentForm.title || !tournamentForm.startDate || !tournamentForm.endDate) {
-      alert('Please fill in required fields')
+      toast({ description: 'Please fill in required fields', variant: 'destructive' })
       return
     }
     if (requiresPayoutsSetup) {
-      alert('Connect payouts with Stripe before setting a paid entry fee.')
+      toast({ description: 'Connect payouts with Stripe before setting a paid entry fee.', variant: 'destructive' })
       return
     }
 
@@ -535,7 +536,7 @@ export default function TournamentDetailPage() {
     
     // End date cannot be earlier than start date
     if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
+      toast({ description: 'End date cannot be earlier than start date', variant: 'destructive' })
       return
     }
 
@@ -549,7 +550,7 @@ export default function TournamentDetailPage() {
         
         // Registration end date cannot be earlier than registration start date
         if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
+          toast({ description: 'Registration end date cannot be earlier than registration start date', variant: 'destructive' })
           return
         }
       }
@@ -558,7 +559,7 @@ export default function TournamentDetailPage() {
         const regStartDate = new Date(tournamentForm.registrationStartDate)
         // Registration start date cannot be later than tournament start date
         if (regStartDate > registrationCutoff) {
-          alert('Registration start date cannot be later than tournament start date')
+          toast({ description: 'Registration start date cannot be later than tournament start date', variant: 'destructive' })
           return
         }
       }
@@ -567,7 +568,7 @@ export default function TournamentDetailPage() {
         const regEndDate = new Date(tournamentForm.registrationEndDate)
         // Registration end date cannot be later than tournament start date
         if (regEndDate > registrationCutoff) {
-          alert('Registration end date cannot be later than tournament start date')
+          toast({ description: 'Registration end date cannot be later than tournament start date', variant: 'destructive' })
           return
         }
       }
@@ -617,13 +618,13 @@ export default function TournamentDetailPage() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -635,7 +636,7 @@ export default function TournamentDetailPage() {
       setShowCropper(true)
     } catch (error) {
       console.error('Error resizing image:', error)
-      alert('Failed to process image. Please try again.')
+      toast({ description: 'Failed to process image. Please try again.', variant: 'destructive' })
     }
   }
 
@@ -680,7 +681,7 @@ export default function TournamentDetailPage() {
       }
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload image. Please try again.')
+      toast({ description: 'Failed to upload image. Please try again.', variant: 'destructive' })
       setImagePreview(null)
     } finally {
       setIsUploadingImage(false)

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Calendar, Trash2, Edit, Upload } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function MatchDaysPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -61,7 +62,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       refetchMatchDays()
     },
     onError: (error) => {
-      alert('Error creating match day: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating match day: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -72,7 +73,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       refetchMatchDays()
     },
     onError: (error) => {
-      alert('Error deleting match day: ' + error.message)
+      toast({ title: 'Error', description: 'Error deleting match day: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -81,13 +82,13 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       refetchMatchDays()
     },
     onError: (error) => {
-      alert('Error updating status: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating status: ' + error.message, variant: 'destructive' })
     },
   })
 
   const handleCreate = () => {
     if (!newDate) {
-      alert('Please select a date')
+      toast({ description: 'Please select a date', variant: 'destructive' })
       return
     }
 
@@ -143,15 +144,15 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
 
   const handleCsvImport = async () => {
     if (!csvFile) {
-      alert('Please select a CSV file')
+      toast({ description: 'Please select a CSV file', variant: 'destructive' })
       return
     }
     if (!divisions || divisions.length === 0) {
-      alert('No divisions found. Please create divisions first.')
+      toast({ description: 'No divisions found. Please create divisions first.', variant: 'destructive' })
       return
     }
     if (!matchDays) {
-      alert('Match days data is not loaded yet.')
+      toast({ description: 'Match days data is not loaded yet.', variant: 'destructive' })
       return
     }
 
@@ -240,12 +241,12 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
       setCsvFile(null)
 
       if (errors.length > 0) {
-        alert(`Import completed with warnings:\n${errors.join('\n')}`)
+        toast({ description: `Import completed with warnings: ${errors.join('; ')}`, variant: 'success' })
       } else {
-        alert(`Import completed. Matchups created: ${createdMatchups}`)
+        toast({ description: `Import completed. Matchups created: ${createdMatchups}`, variant: 'success' })
       }
     } catch (error: any) {
-      alert(error?.message || 'CSV import failed')
+      toast({ title: 'Error', description: error?.message || 'CSV import failed', variant: 'destructive' })
     } finally {
       setIsImporting(false)
     }
