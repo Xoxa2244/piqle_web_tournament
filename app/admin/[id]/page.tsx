@@ -379,8 +379,12 @@ export default function TournamentDetailPage() {
 
   const handleConnectStripe = async () => {
     try {
+      // Return to this tournament's admin page after Stripe onboarding (preserve query e.g. edit=1)
+      const returnTo = `${window.location.origin}/admin/${tournamentId}${window.location.search || ''}`
       const response = await fetch('/api/stripe/create-account-link', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl: returnTo, refreshUrl: returnTo }),
       })
       const payload = await response.json()
       if (!response.ok || !payload?.url) {

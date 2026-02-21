@@ -934,8 +934,12 @@ function NewTournamentPageInner() {
 
   const handleConnectStripe = async () => {
     try {
+      // Return to this page after Stripe onboarding (preserve query e.g. clubId)
+      const returnTo = `${window.location.origin}/admin/new${window.location.search || ''}`
       const response = await fetch('/api/stripe/create-account-link', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl: returnTo, refreshUrl: returnTo }),
       })
       const payload = await response.json()
       if (!response.ok || !payload?.url) {
