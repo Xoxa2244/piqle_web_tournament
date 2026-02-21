@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Settings, Bell } from 'lucide-react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
@@ -20,6 +20,7 @@ export default function AppHeader() {
   const [burgerOpen, setBurgerOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const burgerRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -50,6 +51,7 @@ export default function AppHeader() {
       const target = event.target as Node
       if (searchRef.current && !searchRef.current.contains(target)) {
         setShowSearchDropdown(false)
+        setSearchExpanded(false)
       }
       if (burgerRef.current && burgerOpen && !burgerRef.current.contains(target)) {
         setBurgerOpen(false)
@@ -136,21 +138,16 @@ export default function AppHeader() {
                   Clubs
                 </Link>
                 <Link
-                  href="/chats"
-                  className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  <span>Chats</span>
-                  {isLoggedIn && unreadChatsCount > 0 ? (
-                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white leading-none">
-                      {unreadChatsCount > 99 ? '99+' : unreadChatsCount}
-                    </span>
-                  ) : null}
-                </Link>
-                <Link
                   href="/players"
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
                   Players
+                </Link>
+                <Link
+                  href="/admin"
+                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
+                >
+                  Tournament Management
                 </Link>
               </nav>
             </div>
@@ -167,70 +164,84 @@ export default function AppHeader() {
                 </Button>
               </Link>
 
-              {/* Search - desktop only */}
-              <div ref={searchRef} className="relative w-[300px] hidden lg:block ml-6 mr-[44px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Find Tournament"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => searchQuery.length >= 2 && setShowSearchDropdown(true)}
-                  className="pl-10 pr-4"
-                />
-              </div>
-              {showSearchDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
-                  {!isLoggedIn ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">
-                      Sign in to search tournaments
+              {/* Search - desktop: icon that expands to input on click */}
+              <div ref={searchRef} className="relative hidden lg:flex items-center ml-6">
+                <div className="flex items-center overflow-hidden">
+                  {searchExpanded ? (
+                    <div className="relative flex items-center w-[280px] animate-in fade-in duration-200">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <Input
+                        type="text"
+                        placeholder="Find Tournament"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => searchQuery.length >= 2 && setShowSearchDropdown(true)}
+                        className="pl-10 pr-4 flex-1"
+                        autoFocus
+                      />
                     </div>
-                  ) : !searchResults ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>
-                  ) : searchResults.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500 text-sm">No tournaments found</div>
                   ) : (
-                    <div className="py-2">
-                      {searchResults.map((tournament: any) => (
-                        <div
-                          key={tournament.id}
-                          className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex justify-between items-start gap-4">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-gray-900 truncate">{tournament.title}</h3>
-                              {tournament.description && (
-                                <div
-                                  className="text-xs text-gray-600 line-clamp-2 mt-0.5"
-                                  dangerouslySetInnerHTML={{
-                                    __html: formatDescription(tournament.description),
-                                  }}
-                                />
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                requestAccessMutation.mutate({ tournamentId: tournament.id })
-                              }}
-                              disabled={requestAccessMutation.isPending}
-                              className="flex-shrink-0"
-                            >
-                              {requestAccessMutation.isPending ? 'Requesting...' : 'Request Access'}
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSearchExpanded(true)}
+                      className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200"
+                      aria-label="Search tournaments"
+                    >
+                      <Search className="h-5 w-5" />
+                    </button>
                   )}
                 </div>
-              )}
-            </div>
+                {showSearchDropdown && searchExpanded && (
+                  <div className="absolute left-0 right-0 top-full mt-1 ml-0 mr-0 max-w-[280px] bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
+                    {!isLoggedIn ? (
+                      <div className="p-4 text-center text-gray-500 text-sm">
+                        Sign in to search tournaments
+                      </div>
+                    ) : !searchResults ? (
+                      <div className="p-4 text-center text-gray-500 text-sm">Searching...</div>
+                    ) : searchResults.length === 0 ? (
+                      <div className="p-4 text-center text-gray-500 text-sm">No tournaments found</div>
+                    ) : (
+                      <div className="py-2">
+                        {searchResults.map((tournament: any) => (
+                          <div
+                            key={tournament.id}
+                            className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-start gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-medium text-gray-900 truncate">{tournament.title}</h3>
+                                {tournament.description && (
+                                  <div
+                                    className="text-xs text-gray-600 line-clamp-2 mt-0.5"
+                                    dangerouslySetInnerHTML={{
+                                      __html: formatDescription(tournament.description),
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  requestAccessMutation.mutate({ tournamentId: tournament.id })
+                                }}
+                                disabled={requestAccessMutation.isPending}
+                                className="flex-shrink-0"
+                              >
+                                {requestAccessMutation.isPending ? 'Requesting...' : 'Request Access'}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Notifications (desktop) */}
               {isLoggedIn ? (
-                <div ref={notificationsRef} className="hidden lg:block relative ml-6">
+                <div ref={notificationsRef} className="hidden lg:block relative ml-4">
                   <button
                     type="button"
                     onClick={() => setNotificationsOpen((o) => !o)}
@@ -273,6 +284,22 @@ export default function AppHeader() {
                 </div>
               ) : null}
 
+              {/* Chats - icon with unread badge (desktop), right of notifications */}
+              {isLoggedIn ? (
+                <Link
+                  href="/chats"
+                  className="hidden lg:flex relative p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200 ml-1"
+                  aria-label="Chats"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  {unreadChatsCount > 0 ? (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      {unreadChatsCount > 99 ? '99+' : unreadChatsCount}
+                    </span>
+                  ) : null}
+                </Link>
+              ) : null}
+
               {/* User block: dropdown (desktop) */}
               <div ref={userMenuRef} className="hidden lg:block relative ml-3">
                 {isLoggedIn ? (
@@ -312,14 +339,6 @@ export default function AppHeader() {
                         >
                           <UserIcon className="h-4 w-4 text-gray-500" />
                           My Profile
-                        </Link>
-                        <Link
-                          href="/admin"
-                          className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <Settings className="h-4 w-4 text-gray-500" />
-                          Tournament Management
                         </Link>
                         <button
                           type="button"
