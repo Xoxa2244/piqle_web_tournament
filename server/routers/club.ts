@@ -917,6 +917,26 @@ export const clubRouter = createTRPCRouter({
     }
   }),
 
+  delete: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can delete this club' })
+      }
+
+      await ctx.prisma.club.delete({
+        where: { id: input.clubId },
+      })
+
+      return { success: true }
+    }),
+
   createAnnouncement: protectedProcedure
     .input(
       z.object({

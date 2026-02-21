@@ -139,6 +139,17 @@ export default function ClubDetailPage() {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
     },
   })
+  const deleteClub = trpc.club.delete.useMutation({
+    onSuccess: () => {
+      toast({ title: 'Club deleted', description: 'The club has been permanently deleted.', variant: 'success' })
+      setDeleteClubOpen(false)
+      setDeleteClubConfirmText('')
+      router.push('/clubs')
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
     onSuccess: () => {
       toast({ description: 'Join request cancelled.', variant: 'success' })
@@ -165,6 +176,8 @@ export default function ClubDetailPage() {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
   const [editClubModalOpen, setEditClubModalOpen] = useState(false)
+  const [deleteClubOpen, setDeleteClubOpen] = useState(false)
+  const [deleteClubConfirmText, setDeleteClubConfirmText] = useState('')
 
   const bookingUrl = (club?.courtReserveUrl ?? '').trim()
   const canBook = Boolean(bookingUrl)
@@ -485,6 +498,15 @@ export default function ClubDetailPage() {
                   >
                     <Share2 className="h-4 w-4" />
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Delete club"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    onClick={() => setDeleteClubOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </>
               ) : null}
 
@@ -576,7 +598,7 @@ export default function ClubDetailPage() {
                       tournaments.map((tournament) => (
                         <div
                           key={tournament.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50"
                         >
                           <button
                             type="button"
@@ -789,6 +811,46 @@ export default function ClubDetailPage() {
         }}
         clubId={editClubModalOpen ? clubId : null}
       />
+
+      {/* Delete Club Modal */}
+      {deleteClubOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setDeleteClubOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete club</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              This will permanently delete the club <span className="font-medium">{club.name}</span>, all its data (members, announcements, chat), and unlink any tournaments created for this club. This action cannot be undone.
+            </p>
+            <p className="text-sm text-gray-700 mb-2">
+              Type <span className="font-mono font-semibold">DELETE</span> to confirm:
+            </p>
+            <Input
+              value={deleteClubConfirmText}
+              onChange={(e) => setDeleteClubConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono mb-6"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => { setDeleteClubOpen(false); setDeleteClubConfirmText('') }} disabled={deleteClub.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteClub.mutate({ clubId })}
+                disabled={deleteClubConfirmText !== 'DELETE' || deleteClub.isPending}
+              >
+                {deleteClub.isPending ? 'Deleting…' : 'Delete club'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Leave Club Confirmation Modal */}
       {leaveOpen && (
