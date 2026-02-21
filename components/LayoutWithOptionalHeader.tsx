@@ -13,8 +13,6 @@ export default function LayoutWithOptionalHeader({
   const pathname = usePathname()
   const isEmbed = pathname ? EMBED_PATH_REGEX.test(pathname) : false
   const isChatsPage = pathname === '/chats'
-  const isClubPage = pathname?.match(/^\/clubs\/[^/]+$/)
-  const isFullHeightPage = isChatsPage || isClubPage
 
   if (isEmbed) {
     return <main className="min-h-screen">{children}</main>
@@ -24,7 +22,7 @@ export default function LayoutWithOptionalHeader({
     <>
       <AppHeader />
       <main
-        className={isFullHeightPage ? 'h-screen overflow-hidden pt-16' : 'pt-16 min-h-screen'}
+        className={isChatsPage ? 'h-screen overflow-hidden pt-16' : 'pt-16 min-h-screen'}
       >
         {children}
       </main>

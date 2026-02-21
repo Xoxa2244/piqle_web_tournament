@@ -363,12 +363,9 @@ export default function ClubDetailPage() {
 
   return (
     <>
-      <div
-        className="mx-auto flex max-w-7xl flex-col overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
-        style={{ height: 'calc(100vh - 4rem)' }}
-      >
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
-          <div className="flex shrink-0 flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="space-y-3">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="flex items-start gap-3">
                 <ClubLogo name={club.name} logoUrl={club.logoUrl} />
@@ -539,8 +536,8 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[1fr_480px]">
-          <div className="min-h-0 min-w-0 overflow-y-auto space-y-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px]">
+          <div className="space-y-4 min-w-0">
             {inviteOpen && (club.isFollowing || club.isAdmin) ? (
               <ClubInviteCard
                 clubId={club.id}
@@ -783,7 +780,10 @@ export default function ClubDetailPage() {
             </Tabs>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <div
+            className="sticky top-16 self-start w-full min-w-0"
+            style={{ height: 'calc(100vh - 4rem)' }}
+          >
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -1728,13 +1728,13 @@ function ClubChatCard({
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-      <CardHeader className="shrink-0">
+      <CardHeader className="shrink-0 py-3 px-4">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
           Club chat
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 pt-0">
         {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
@@ -1743,9 +1743,9 @@ function ClubChatCard({
         ) : null}
 
         {canView ? (
-          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
+          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 px-2 py-1.5 space-y-1">
             {!isLoading && (!messages || messages.length === 0) ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+              <div className="py-4 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
             ) : (() => {
               const todayKey = toLocalYmd(new Date())
               const yesterday = new Date()
@@ -1767,9 +1767,9 @@ function ClubChatCard({
                 groups[groups.length - 1]!.list.push(m)
               }
               return (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {groups.map((g) => (
-                    <div key={g.dateKey} className="space-y-1.5">
+                    <div key={g.dateKey} className="space-y-1">
                       <div className="text-center">
                         <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
                           {g.dateLabel}
