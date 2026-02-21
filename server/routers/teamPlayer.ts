@@ -318,7 +318,7 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       teamId: z.string(),
       playerId: z.string(),
-      slotIndex: z.number().min(0).max(7), // Supports IndyLeague extended roster slots
+      slotIndex: z.number().min(0).max(31), // Indy League up to 32 roster spots; other formats validated by getMaxPlayersForTeam
     }))
     .mutation(async ({ ctx, input }) => {
       // Get team and player info
@@ -475,7 +475,7 @@ export const teamPlayerRouter = createTRPCRouter({
   removePlayerFromSlot: tdProcedure
     .input(z.object({ 
       teamPlayerId: z.string(),
-      slotIndex: z.number().min(0).max(7)
+      slotIndex: z.number().min(0).max(31)
     }))
     .mutation(async ({ ctx, input }) => {
       const teamPlayer = await ctx.prisma.teamPlayer.findUnique({
@@ -561,8 +561,8 @@ export const teamPlayerRouter = createTRPCRouter({
     .input(z.object({
       fromTeamId: z.string(),
       toTeamId: z.string(),
-      fromSlotIndex: z.number().min(0).max(7),
-      toSlotIndex: z.number().min(0).max(7),
+      fromSlotIndex: z.number().min(0).max(31),
+      toSlotIndex: z.number().min(0).max(31),
     }))
     .mutation(async ({ ctx, input }) => {
       console.log('[movePlayerBetweenSlots] Input:', input)

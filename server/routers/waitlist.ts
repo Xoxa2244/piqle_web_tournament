@@ -25,7 +25,7 @@ export const waitlistRouter = createTRPCRouter({
     .input(z.object({
       waitlistEntryId: z.string(),
       teamId: z.string(),
-      slotIndex: z.number().min(0).max(7),
+      slotIndex: z.number().min(0).max(31),
     }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.$transaction(async (tx) => {

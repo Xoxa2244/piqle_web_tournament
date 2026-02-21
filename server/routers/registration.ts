@@ -382,7 +382,7 @@ export const registrationRouter = createTRPCRouter({
   claimSlot: protectedProcedure
     .input(z.object({
       teamId: z.string(),
-      slotIndex: z.number().min(0).max(7),
+      slotIndex: z.number().min(0).max(31),
     }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.$transaction(async (tx) => {

@@ -101,7 +101,7 @@ export default function TeamWithSlots({
 
   // Determine number of slots based on team kind
   const slotCount = useMemo(() => {
-    if (isIndyLeague && teamKind === 'SQUAD_4v4') return 8
+    if (isIndyLeague && teamKind === 'SQUAD_4v4') return 32
 
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
