@@ -496,15 +496,6 @@ export default function TournamentModal({
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
                     </span>
                   </div>
-                  {registrationStatuses?.[tournament.id]?.status === 'active' &&
-                    (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string }).divisionName &&
-                    (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (
-                    <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900 text-left">
-                      <span className="font-medium">You&apos;re registered:</span>{' '}
-                      {(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} ·{' '}
-                      {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
-                    </div>
-                  )}
                   {tournament.description && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
@@ -782,11 +773,32 @@ export default function TournamentModal({
 
             {modalTab === 'view-results' && (
               <div className="flex-1 min-h-0 flex flex-col">
-                <iframe
-                  src={`/scoreboard/${tournament.id}/embed`}
-                  title="Dashboard"
-                  className="w-full flex-1 min-h-[60vh] border-0"
-                />
+                {registrationStatuses?.[tournament.id]?.status === 'active' &&
+                  (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string; divisionId?: string; teamId?: string }).divisionName &&
+                  (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (
+                  <div className="flex-shrink-0 px-6 pt-4 pb-2 border-b border-gray-200">
+                    <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900 text-left">
+                      <span className="font-medium">You&apos;re registered:</span>{' '}
+                      {(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} ·{' '}
+                      {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 min-h-0">
+                  <iframe
+                    src={(() => {
+                      const divId = (registrationStatuses?.[tournament.id] as { divisionId?: string } | undefined)?.divisionId
+                      const teamId = (registrationStatuses?.[tournament.id] as { teamId?: string } | undefined)?.teamId
+                      const params = new URLSearchParams()
+                      if (divId) params.set('divisionId', divId)
+                      if (teamId) params.set('teamId', teamId)
+                      const q = params.toString()
+                      return `/scoreboard/${tournament.id}/embed${q ? `?${q}` : ''}`
+                    })()}
+                    title="Dashboard"
+                    className="w-full h-full min-h-[60vh] border-0"
+                  />
+                </div>
               </div>
             )}
           </div>

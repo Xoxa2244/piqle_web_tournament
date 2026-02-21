@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
-import { useParams, usePathname, useRouter } from 'next/navigation'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,9 +63,12 @@ export default function PublicCoursePage() {
   const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const isEmbed = pathname?.includes('/embed') ?? false
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
+  const highlightTeamId = searchParams.get('teamId') || null
+  const initialDivisionDone = useRef(false)
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
@@ -78,14 +81,21 @@ export default function PublicCoursePage() {
     { enabled: !!tournamentId }
   )
 
-  // Set first division as default
   const divisions = tournament?.divisions as any[]
   const currentDivision = divisions?.find((d: any) => d.id === selectedDivisionId) || 
                          divisions?.[0]
-  
-  if (currentDivision && !selectedDivisionId) {
-    setSelectedDivisionId(currentDivision.id)
-  }
+
+  // Initial division once: from URL (embed) or first division
+  useEffect(() => {
+    if (!divisions?.length || initialDivisionDone.current) return
+    initialDivisionDone.current = true
+    const fromUrl = searchParams.get('divisionId')
+    if (fromUrl && divisions.some((d: any) => d.id === fromUrl)) {
+      setSelectedDivisionId(fromUrl)
+    } else {
+      setSelectedDivisionId(divisions[0].id)
+    }
+  }, [divisions, searchParams])
 
   // Reset expanded team when switching division
   useEffect(() => {
@@ -587,7 +597,7 @@ export default function PublicCoursePage() {
                           <tbody>
                             {standings.map((team: TeamStanding) => (
                               <React.Fragment key={team.teamId}>
-                                <tr className="border-b hover:bg-gray-50">
+                                <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-100' : 'hover:bg-gray-50'}`}>
                                   <td className="py-2 font-medium">{team.rank}</td>
                                   <td className="py-2 font-medium">
                                     {is1v1 ? (
@@ -616,7 +626,7 @@ export default function PublicCoursePage() {
                                   </td>
                                 </tr>
                                 {!is1v1 && expandedTeamId === team.teamId && (
-                                  <tr key={`${team.teamId}-roster`} className="border-b bg-gray-50/70">
+                                  <tr key={`${team.teamId}-roster`} className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-50' : 'bg-gray-50/70'}`}>
                                     <td colSpan={7} className="py-2 px-4">
                                       <div className="text-sm text-gray-600 pl-6 space-y-0.5">
                                         {getTeamRoster(team.teamId).map((name, idx) => (
@@ -808,7 +818,7 @@ export default function PublicCoursePage() {
                           <tbody>
                             {standings.map((team: TeamStanding) => (
                               <React.Fragment key={team.teamId}>
-                                <tr className="border-b hover:bg-gray-50">
+                                <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-100' : 'hover:bg-gray-50'}`}>
                                   <td className="py-2 font-medium">{team.rank}</td>
                                   <td className="py-2 font-medium">
                                     {is1v1 ? (
@@ -837,7 +847,7 @@ export default function PublicCoursePage() {
                                   </td>
                                 </tr>
                                 {!is1v1 && expandedTeamId === team.teamId && (
-                                  <tr className="border-b bg-gray-50/70">
+                                  <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-50' : 'bg-gray-50/70'}`}>
                                     <td colSpan={7} className="py-2 px-4">
                                       <div className="text-sm text-gray-600 pl-6 space-y-0.5">
                                         {getTeamRoster(team.teamId).map((name, idx) => (
