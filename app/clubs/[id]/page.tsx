@@ -21,6 +21,8 @@ import { cn } from '@/lib/utils'
 import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
+import TournamentModal from '@/components/TournamentModal'
+import CreateClubModal from '@/components/CreateClubModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -161,6 +163,8 @@ export default function ClubDetailPage() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
+  const [editClubModalOpen, setEditClubModalOpen] = useState(false)
 
   const bookingUrl = (club?.courtReserveUrl ?? '').trim()
   const canBook = Boolean(bookingUrl)
@@ -465,10 +469,13 @@ export default function ClubDetailPage() {
 
               {club.isAdmin ? (
                 <>
-                  <Button asChild variant="outline" size="icon" title="Edit club">
-                    <Link href={`/clubs/${clubId}/edit`}>
-                      <Pencil className="h-4 w-4" />
-                    </Link>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Edit club"
+                    onClick={() => setEditClubModalOpen(true)}
+                  >
+                    <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="outline"
@@ -571,7 +578,11 @@ export default function ClubDetailPage() {
                           key={tournament.id}
                           className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3"
                         >
-                          <div className="min-w-0">
+                          <button
+                            type="button"
+                            className="min-w-0 text-left hover:opacity-90 transition-opacity"
+                            onClick={() => setModalTournamentId(tournament.id)}
+                          >
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
                               {formatEventDateTimeRange(
@@ -587,7 +598,7 @@ export default function ClubDetailPage() {
                                 <Badge variant="outline">Free</Badge>
                               )}
                             </div>
-                          </div>
+                          </button>
                           <div className="flex items-center gap-2">
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
@@ -763,6 +774,21 @@ export default function ClubDetailPage() {
           </div>
         </div>
       </div>
+
+      <TournamentModal
+        tournamentId={modalTournamentId}
+        onClose={() => setModalTournamentId(null)}
+      />
+
+      <CreateClubModal
+        isOpen={editClubModalOpen}
+        onClose={() => setEditClubModalOpen(false)}
+        onSuccess={() => {
+          utils.club.get.invalidate({ id: clubId })
+          setEditClubModalOpen(false)
+        }}
+        clubId={editClubModalOpen ? clubId : null}
+      />
 
       {/* Leave Club Confirmation Modal */}
       {leaveOpen && (

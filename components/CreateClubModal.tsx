@@ -40,6 +40,8 @@ export type CreateClubModalProps = {
   isOpen: boolean
   onClose: () => void
   onSuccess: (club: { id: string }) => void
+  /** When set, modal works in edit mode: loads club and updates on submit */
+  clubId?: string | null
 }
 
 const initialForm = {
@@ -56,8 +58,15 @@ const initialForm = {
   bookingRequestEmail: '',
 }
 
-export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateClubModalProps) {
+export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: CreateClubModalProps) {
   const { toast } = useToast()
+  const isEdit = Boolean(isOpen && clubId)
+
+  const { data: club, isLoading: clubLoading } = trpc.club.get.useQuery(
+    { id: clubId! },
+    { enabled: isEdit }
+  )
+
   const createClub = trpc.club.create.useMutation({
     onSuccess: (club) => {
       toast({ title: 'Club created', description: 'You are now an admin of this club.' })
@@ -66,6 +75,17 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
     },
     onError: (err) => {
       toast({ title: 'Failed to create club', description: err.message, variant: 'destructive' })
+    },
+  })
+
+  const updateClub = trpc.club.update.useMutation({
+    onSuccess: (_, variables) => {
+      toast({ title: 'Club updated', description: 'Changes were saved.' })
+      onSuccess({ id: variables.id })
+      onClose()
+    },
+    onError: (err) => {
+      toast({ title: 'Failed to update club', description: err.message, variant: 'destructive' })
     },
   })
 
@@ -133,6 +153,24 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
     }
   }, [isOpen])
 
+  useEffect(() => {
+    if (!isEdit || !club) return
+    setForm({
+      name: club.name || '',
+      kind: club.kind || 'VENUE',
+      joinPolicy: ((club as any).joinPolicy || 'OPEN') as 'OPEN' | 'APPROVAL',
+      description: club.description || '',
+      logoUrl: club.logoUrl || '',
+      address: club.address || '',
+      city: club.city || '',
+      state: club.state || '',
+      country: club.country || 'United States',
+      courtReserveUrl: club.courtReserveUrl || '',
+      bookingRequestEmail: (club as any).bookingRequestEmail || '',
+    })
+    setAddressSelected(Boolean(club.address))
+  }, [isEdit, club])
+
   const handleAddressBlur = async () => {
     const rawValue = addressInputRef.current?.value ?? form.address
     const value = rawValue.trim()
@@ -169,19 +207,36 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    createClub.mutate({
-      name: form.name,
-      kind: form.kind,
-      joinPolicy: form.joinPolicy,
-      description: form.description || undefined,
-      logoUrl: form.logoUrl || undefined,
-      address: form.address || undefined,
-      city: form.city || undefined,
-      state: form.state || undefined,
-      country: form.country || undefined,
-      courtReserveUrl: form.courtReserveUrl || undefined,
-      bookingRequestEmail: form.bookingRequestEmail || undefined,
-    })
+    if (isEdit && clubId) {
+      updateClub.mutate({
+        id: clubId,
+        name: form.name,
+        kind: form.kind,
+        joinPolicy: form.joinPolicy,
+        description: form.description || undefined,
+        logoUrl: form.logoUrl || undefined,
+        address: form.address || undefined,
+        city: form.city || undefined,
+        state: form.state || undefined,
+        country: form.country || undefined,
+        courtReserveUrl: form.courtReserveUrl || undefined,
+        bookingRequestEmail: form.bookingRequestEmail || undefined,
+      })
+    } else {
+      createClub.mutate({
+        name: form.name,
+        kind: form.kind,
+        joinPolicy: form.joinPolicy,
+        description: form.description || undefined,
+        logoUrl: form.logoUrl || undefined,
+        address: form.address || undefined,
+        city: form.city || undefined,
+        state: form.state || undefined,
+        country: form.country || undefined,
+        courtReserveUrl: form.courtReserveUrl || undefined,
+        bookingRequestEmail: form.bookingRequestEmail || undefined,
+      })
+    }
   }
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,6 +291,16 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
 
   if (!isOpen) return null
 
+  const modalTitle = isEdit ? 'Edit club' : 'Create club'
+  const modalDescription = isEdit
+    ? 'Update your club profile and booking details.'
+    : 'Create a club/organization to host tournaments and announcements.'
+  const submitLabel = isEdit
+    ? (updateClub.isPending ? 'Saving…' : 'Save changes')
+    : (createClub.isPending ? 'Creating…' : 'Create club')
+  const submitDisabled = isEdit ? updateClub.isPending : createClub.isPending
+  const formDisabled = isEdit && clubLoading
+
   return (
     <>
       <div
@@ -248,9 +313,9 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
         >
           <div className="p-6 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-xl font-semibold">Create club</h2>
+              <h2 className="text-xl font-semibold">{modalTitle}</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Create a club/organization to host tournaments and announcements.
+                {modalDescription}
               </p>
             </div>
             <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close">
@@ -258,6 +323,9 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
+            {formDisabled ? (
+              <div className="text-sm text-muted-foreground py-8">Loading club…</div>
+            ) : (
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="create-club-name">Name</Label>
@@ -422,10 +490,11 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess }: CreateCl
                   Not used yet (request is stored in Piqle); will be used for email forwarding later.
                 </p>
               </div>
-              <Button type="submit" disabled={createClub.isPending} className="w-full">
-                {createClub.isPending ? 'Creating…' : 'Create club'}
+              <Button type="submit" disabled={submitDisabled} className="w-full">
+                {submitLabel}
               </Button>
             </form>
+            )}
           </div>
         </div>
       </div>
