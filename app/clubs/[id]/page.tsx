@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
-import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort, formatUsTimeShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { toUtcIsoFromLocalInput } from '@/lib/timezone'
@@ -1725,14 +1725,14 @@ function ClubChatCard({
   }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
-    <Card>
+    <Card className="flex flex-col min-h-[calc(100vh-128px)]">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
           Club chat
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
         {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
@@ -1741,55 +1741,107 @@ function ClubChatCard({
         ) : null}
 
         {canView ? (
-          <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-md border bg-white">
+          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
             {!isLoading && (!messages || messages.length === 0) ? (
-              <div className="p-3 text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
-            ) : (
-              <div className="divide-y">
-                {(messages ?? []).map((m: any) => {
-                  const isMine = currentUserId && m.userId === currentUserId
-                  const canDelete = Boolean(isAdmin || isMine)
-
-                  return (
-                    <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {m.createdAt ? formatUsDateTimeShort(m.createdAt) : ''}
-                          </div>
-                          {isMine ? <Badge variant="secondary">You</Badge> : null}
-                        </div>
-                        <div
-                          className={cn(
-                            'mt-1 text-sm whitespace-pre-wrap break-words',
-                            m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700'
-                          )}
-                        >
-                          {m.isDeleted ? 'Message removed' : m.text}
-                        </div>
+              <div className="py-6 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+            ) : (() => {
+              const todayKey = toLocalYmd(new Date())
+              const yesterday = new Date()
+              yesterday.setDate(yesterday.getDate() - 1)
+              const yesterdayKey = toLocalYmd(yesterday)
+              const groups: { dateKey: string; dateLabel: string; list: any[] }[] = []
+              let currentKey = ''
+              for (const m of messages ?? []) {
+                const d = m.createdAt ? new Date(m.createdAt) : new Date()
+                const key = toLocalYmd(d)
+                if (key !== currentKey) {
+                  currentKey = key
+                  groups.push({
+                    dateKey: key,
+                    dateLabel: key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatUsDateShort(d),
+                    list: [],
+                  })
+                }
+                groups[groups.length - 1]!.list.push(m)
+              }
+              return (
+                <div className="space-y-3">
+                  {groups.map((g) => (
+                    <div key={g.dateKey} className="space-y-1.5">
+                      <div className="text-center">
+                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
+                          {g.dateLabel}
+                        </span>
                       </div>
-
-                      {canDelete && !m.isDeleted ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          disabled={deleteMessage.isPending}
-                          onClick={async () => {
-                            if (!confirm('Delete this message?')) return
-                            await deleteMessage.mutateAsync({ messageId: m.id })
-                          }}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
+                      {g.list.map((m: any) => {
+                        const isMine = currentUserId && m.userId === currentUserId
+                        const canDelete = Boolean(isAdmin || isMine)
+                        return (
+                          <div
+                            key={m.id}
+                            className={cn(
+                              'flex items-end gap-1.5',
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row'
+                            )}
+                          >
+                            {!isMine ? (
+                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
+                                {m.user?.image ? (
+                                  <Image src={m.user.image} alt="" fill className="object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                            <div
+                              className={cn(
+                                'group relative max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
+                                isMine
+                                  ? 'rounded-br-md bg-blue-600 text-white'
+                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
+                              )}
+                            >
+                              {!isMine ? (
+                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
+                                  {m.user?.name || 'User'}
+                                </div>
+                              ) : null}
+                              <div className={cn(m.isDeleted && 'italic text-inherit opacity-80')}>
+                                {m.isDeleted ? 'Message removed' : m.text}
+                              </div>
+                              <div className={cn(
+                                'text-[10px] mt-1',
+                                isMine ? 'text-blue-100' : 'text-gray-500'
+                              )}>
+                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
+                              </div>
+                            </div>
+                            {isMine && canDelete && !m.isDeleted ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
+                                disabled={deleteMessage.isPending}
+                                onClick={async () => {
+                                  if (!confirm('Delete this message?')) return
+                                  await deleteMessage.mutateAsync({ messageId: m.id })
+                                }}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         ) : (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
@@ -1828,13 +1880,12 @@ function ClubChatCard({
             </div>
           )
         ) : (
-          <div className="flex items-end gap-2">
-            <Textarea
+          <div className="flex items-center gap-2">
+            <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write a message…"
-              rows={2}
-              className="flex-1"
+              placeholder="Message…"
+              className="flex-1 min-w-0"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()

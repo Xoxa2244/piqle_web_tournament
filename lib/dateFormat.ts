@@ -18,6 +18,11 @@ const usDateTimeShortFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 })
 
+const usTimeShortFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
 const usDateTimeFormatterByTimezone = new Map<string, Intl.DateTimeFormat>()
 const usDateFormatterByTimezone = new Map<string, Intl.DateTimeFormat>()
 
@@ -107,4 +112,12 @@ export const formatUsDateTimeShort = (
   const date = getDate(value)
   if (!date) return ''
   return getUsDateTimeFormatter(opts?.timeZone).format(date)
+}
+
+export const formatUsTimeShort = (
+  value: Date | string | number | null | undefined
+) => {
+  const date = getDate(value)
+  if (!date) return ''
+  return usTimeShortFormatter.format(date)
 }
