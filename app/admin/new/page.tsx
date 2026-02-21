@@ -323,17 +323,25 @@ function QuarterHourDateTimeInput({
             </option>
           ))}
         </select>
-        <select
-          name={name ? `${name}Period` : undefined}
-          value={datePart ? period : 'AM'}
-          onChange={(e) => handlePeriodChange(e.target.value as 'AM' | 'PM')}
-          disabled={disabled}
-          className={`w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
-          style={SELECT_ARROW_STYLE}
-        >
-          <option value="AM">AM</option>
-          <option value="PM">PM</option>
-        </select>
+        <div className="flex rounded-md border border-gray-300 overflow-hidden bg-gray-100">
+          <input type="hidden" name={name ? `${name}Period` : undefined} value={datePart ? period : 'AM'} readOnly />
+          <button
+            type="button"
+            onClick={() => !disabled && handlePeriodChange('AM')}
+            disabled={disabled}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${period === 'AM' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            AM
+          </button>
+          <button
+            type="button"
+            onClick={() => !disabled && handlePeriodChange('PM')}
+            disabled={disabled}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${period === 'PM' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            PM
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -92,6 +92,12 @@ const parseIntegerOrDefault = (value: string, fallback: number) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
+const SELECT_ARROW_CLASS =
+  'appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center] pr-[calc(12px+1rem)]'
+const SELECT_ARROW_STYLE = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+} as const
+
 const getNumberOrDefault = (value: string, fallback: number) => {
   if (!value.trim()) return fallback
   const parsed = Number(value)
@@ -580,7 +586,8 @@ export default function StructureSetupModal({
                             }))
                           }
                           disabled={!division.constraints.gender.enabled}
-                          className={`w-full border border-slate-200 rounded-lg px-3 py-2 ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
+                          className={`w-full border border-slate-200 rounded-lg pl-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS} ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
+                          style={SELECT_ARROW_STYLE}
                         >
                           <option value="ANY">Any</option>
                           <option value="MEN">Men</option>
