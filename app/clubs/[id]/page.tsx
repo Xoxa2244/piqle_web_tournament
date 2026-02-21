@@ -780,10 +780,7 @@ export default function ClubDetailPage() {
             </Tabs>
           </div>
 
-          <div
-            className="sticky top-16 flex min-h-0 w-full min-w-0 flex-col overflow-hidden"
-            style={{ height: 'calc(100vh - 4rem)', maxHeight: 'calc(100vh - 4rem)' }}
-          >
+          <div className="sticky top-16 flex h-[calc(100vh-4rem)] min-h-0 w-full min-w-0 flex-col overflow-hidden lg:w-[480px]">
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -1727,7 +1724,7 @@ function ClubChatCard({
   }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <CardHeader className="shrink-0 py-3 px-4">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
