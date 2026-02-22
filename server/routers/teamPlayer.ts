@@ -347,16 +347,25 @@ export const teamPlayerRouter = createTRPCRouter({
         throw new Error('Team or player not found')
       }
 
-      // Check if player is already in this tournament
+      const isIndyLeague = team.division.tournament.format === 'INDY_LEAGUE'
+
+      // Indy League allows the same player in multiple divisions, but not twice in the same division.
       const existingTeamPlayer = await ctx.prisma.teamPlayer.findFirst({
-        where: {
-          playerId: input.playerId,
-          team: {
-            division: {
-              tournamentId: team.division.tournamentId
+        where: isIndyLeague
+          ? {
+              playerId: input.playerId,
+              team: {
+                divisionId: team.divisionId,
+              },
             }
-          }
-        },
+          : {
+              playerId: input.playerId,
+              team: {
+                division: {
+                  tournamentId: team.division.tournamentId,
+                },
+              },
+            },
         include: { team: { include: { division: true } } }
       })
 
@@ -797,7 +806,16 @@ export const teamPlayerRouter = createTRPCRouter({
       divisionId: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      // Get all active players in tournament who are not already assigned to teams
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: { format: true },
+      })
+
+      const isIndyDivisionScoped =
+        tournament?.format === 'INDY_LEAGUE' && Boolean(input.divisionId)
+
+      // Default behavior: free agents only (no team assignments in this tournament).
+      // Indy League (with divisionId): allow players assigned in other divisions, but not in this division.
       const players = await ctx.prisma.player.findMany({
         where: {
           tournamentId: input.tournamentId,
@@ -808,7 +826,22 @@ export const teamPlayerRouter = createTRPCRouter({
             },
           },
           teamPlayers: {
-            none: {} // No team assignments
+            none: isIndyDivisionScoped
+              ? {
+                  team: {
+                    division: {
+                      tournamentId: input.tournamentId,
+                      id: input.divisionId!,
+                    },
+                  },
+                }
+              : {
+                  team: {
+                    division: {
+                      tournamentId: input.tournamentId,
+                    },
+                  },
+                }
           }
         },
         orderBy: [

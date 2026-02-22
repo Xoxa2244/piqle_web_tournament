@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -54,6 +55,7 @@ interface TeamWithSlotsProps {
   isExpanded: boolean
   availablePlayers: Player[]
   tournamentId: string
+  divisionId?: string
   tournamentFormat?: string
   onToggleExpansion: () => void
   onEdit: () => void
@@ -71,6 +73,7 @@ export default function TeamWithSlots({
   isExpanded,
   availablePlayers,
   tournamentId,
+  divisionId,
   tournamentFormat,
   onToggleExpansion,
   onEdit,
@@ -84,6 +87,13 @@ export default function TeamWithSlots({
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
+
+  const { data: indyDivisionAvailablePlayers } = trpc.teamPlayer.getAvailablePlayers.useQuery(
+    { tournamentId, divisionId },
+    {
+      enabled: isIndyLeague && showPlayerSelection && !!tournamentId && !!divisionId,
+    }
+  )
 
   const {
     attributes,
@@ -238,6 +248,11 @@ export default function TeamWithSlots({
     setSelectedSlotIndex(slotIndex)
     setShowPlayerSelection(true)
   }
+
+  const playerSelectionOptions =
+    isIndyLeague && divisionId
+      ? (indyDivisionAvailablePlayers ?? availablePlayers)
+      : availablePlayers
 
   const handleRemovePlayer = (slotIndex: number) => {
     const player = slots[slotIndex]
@@ -402,7 +417,7 @@ export default function TeamWithSlots({
           setSelectedSlotIndex(null)
         }}
         onSelectPlayer={handlePlayerSelect}
-        availablePlayers={availablePlayers}
+        availablePlayers={playerSelectionOptions}
         tournamentId={tournamentId}
       />
     </>
