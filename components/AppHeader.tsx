@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
 
 export default function AppHeader() {
+  const router = useRouter()
   const { data: session, status } = useSession()
   const [avatarError, setAvatarError] = useState(false)
   const [logoError, setLogoError] = useState(false)
@@ -296,22 +298,34 @@ export default function AppHeader() {
                         <div className="px-3 py-6 text-center text-sm text-gray-500">No notifications yet.</div>
                       ) : (
                         <div className="max-h-80 overflow-y-auto">
-                          {notifications.map((n: any) => (
-                            <Link
-                              key={n.id}
-                              href={n.targetUrl || '/'}
-                              className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => {
-                                if (n.type === 'CLUB_JOIN_REQUEST' && n.clubId) {
-                                  markClubJoinRequestSeen.mutate({ clubId: n.clubId })
-                                }
-                                setNotificationsOpen(false)
-                              }}
-                            >
-                              <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
-                              {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
-                            </Link>
-                          ))}
+                          {notifications.map((n: any) =>
+                            n.type === 'CLUB_JOIN_REQUEST' && n.clubId ? (
+                              <button
+                                key={n.id}
+                                type="button"
+                                className="block w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                onClick={async () => {
+                                  setNotificationsOpen(false)
+                                  await markClubJoinRequestSeen.mutateAsync({ clubId: n.clubId })
+                                  router.push(n.targetUrl || '/')
+                                }}
+                                disabled={markClubJoinRequestSeen.isPending}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
+                                {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
+                              </button>
+                            ) : (
+                              <Link
+                                key={n.id}
+                                href={n.targetUrl || '/'}
+                                className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => setNotificationsOpen(false)}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
+                                {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
+                              </Link>
+                            )
+                          )}
                         </div>
                       )}
                     </div>
