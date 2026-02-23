@@ -423,21 +423,6 @@ export default function SuperAdminTournamentPage() {
             </Link>
           )}
 
-          {tournament.isPublicBoardEnabled && tournament.publicSlug && (
-            <Link href={`/t/${tournament.publicSlug}`} target="_blank">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
-                    <Globe className="w-8 h-8 text-cyan-600" />
-                    <div>
-                      <h3 className="font-semibold text-slate-900">Public Board</h3>
-                      <p className="text-sm text-slate-600">View public scoreboard</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          )}
         </div>
 
         {/* Divisions List */}

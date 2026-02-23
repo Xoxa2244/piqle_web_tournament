@@ -607,11 +607,6 @@ export default function ClubDetailPage() {
                                   : 'Join'}
                               </Button>
                             </Link>
-                            {tournament.publicSlug ? (
-                              <Link href={`/t/${tournament.publicSlug}`}>
-                                <Button variant="outline">Public board</Button>
-                              </Link>
-                            ) : null}
                           </div>
                         </div>
                       ))
@@ -1392,13 +1387,6 @@ function ClubEventsCalendar({
                         {isPaid ? 'Join & Pay' : 'Join'}
                       </Button>
                     </Link>
-                    {tournament.publicSlug ? (
-                      <Link href={`/t/${tournament.publicSlug}`}>
-                        <Button size="sm" variant="outline">
-                          Public board
-                        </Button>
-                      </Link>
-                    ) : null}
                   </div>
                 </div>
               )
