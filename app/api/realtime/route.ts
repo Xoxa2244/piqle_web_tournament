@@ -31,7 +31,7 @@ export async function GET() {
         } catch {
           cleanup?.()
         }
-      }, 25_000)
+      }, 10_000)
 
       cleanup = () => {
         clearInterval(interval)

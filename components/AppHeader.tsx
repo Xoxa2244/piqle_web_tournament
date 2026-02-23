@@ -70,7 +70,7 @@ export default function AppHeader() {
 
   const { data: notificationsData } = trpc.notification.list.useQuery(
     { limit: 20 },
-    { enabled: status === 'authenticated', refetchInterval: 15_000 }
+    { enabled: status === 'authenticated', refetchInterval: 5_000 }
   )
   const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
     onSuccess: () => utils.notification.list.invalidate({ limit: 20 }),
@@ -119,11 +119,11 @@ export default function AppHeader() {
 
   const { data: myChatClubs } = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isLoggedIn,
-    refetchInterval: 15_000,
+    refetchInterval: 5_000,
   })
   const { data: myEventChats } = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: isLoggedIn,
-    refetchInterval: 15_000,
+    refetchInterval: 5_000,
   })
 
   const unreadChatsCount = useMemo(() => {
