@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { normalizeTextForSpam, sanitizeChatText } from '../utils/chatModeration'
+import { pushToUsers } from '@/lib/realtime'
 
 type ChatMembership = {
   canView: boolean
@@ -657,6 +658,34 @@ export const tournamentChatRouter = createTRPCRouter({
         },
       })
 
+      const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+        ctx.prisma.tournament.findUnique({
+          where: { id: input.tournamentId },
+          select: { userId: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: { tournamentId: input.tournamentId, accessLevel: 'ADMIN' },
+          select: { userId: true },
+        }),
+        ctx.prisma.teamPlayer.findMany({
+          where: { team: { division: { tournamentId: input.tournamentId } } },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+        ctx.prisma.waitlistEntry.findMany({
+          where: { tournamentId: input.tournamentId, status: 'ACTIVE' },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+      ])
+      const recipientIds = [
+        ...(owner?.userId ? [owner.userId] : []),
+        ...(accessAdmins?.map((a) => a.userId) ?? []),
+        ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+        ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+      ].filter((id): id is string => id != null && id !== userId)
+      pushToUsers([...new Set(recipientIds)], { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+
       return {
         ...mapMessage(message),
         text: message.text,
@@ -792,6 +821,40 @@ export const tournamentChatRouter = createTRPCRouter({
           },
         },
       })
+
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        select: { tournamentId: true },
+      })
+      if (division?.tournamentId) {
+        const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+          ctx.prisma.tournament.findUnique({
+            where: { id: division.tournamentId },
+            select: { userId: true },
+          }),
+          ctx.prisma.tournamentAccess.findMany({
+            where: { tournamentId: division.tournamentId, accessLevel: 'ADMIN' },
+            select: { userId: true },
+          }),
+          ctx.prisma.teamPlayer.findMany({
+            where: { team: { divisionId: input.divisionId } },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+          ctx.prisma.waitlistEntry.findMany({
+            where: { tournamentId: division.tournamentId, status: 'ACTIVE' },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+        ])
+        const recipientIds = [
+          ...(owner?.userId ? [owner.userId] : []),
+          ...(accessAdmins?.map((a) => a.userId) ?? []),
+          ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+          ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+        ].filter((id): id is string => id != null && id !== userId)
+        pushToUsers([...new Set(recipientIds)], { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      }
 
       return {
         ...mapMessage(message),

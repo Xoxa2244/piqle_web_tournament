@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { normalizeTextForSpam, sanitizeChatText } from '../utils/chatModeration'
+import { pushToUsers } from '@/lib/realtime'
 
 const isMissingDbRelation = (err: any, relationName: string) => {
   const msg = String(err?.message ?? '').toLowerCase()
@@ -267,6 +268,21 @@ export const clubChatRouter = createTRPCRouter({
           },
         },
       })
+
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+      ])
+      const recipientIds = [...new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])].filter(
+        (id) => id !== userId
+      )
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
 
       return {
         id: message.id,

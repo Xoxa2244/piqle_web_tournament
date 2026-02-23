@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
+
+type RealtimeEvent = { type: 'invalidate'; keys: string[] }
 import { formatDescription } from '@/lib/formatDescription'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,10 +29,32 @@ export default function AppHeader() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notificationsRef = useRef<HTMLDivElement>(null)
 
+  const utils = trpc.useUtils()
+
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
     { query: searchQuery },
     { enabled: !!session && searchQuery.length >= 2 }
   )
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const es = new EventSource('/api/realtime')
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as RealtimeEvent
+        if (event.type === 'invalidate' && Array.isArray(event.keys)) {
+          event.keys.forEach((key) => {
+            if (key === 'notification.list') utils.notification.list.invalidate({ limit: 20 })
+            if (key === 'club.listMyChatClubs') utils.club.listMyChatClubs.invalidate()
+            if (key === 'tournamentChat.listMyEventChats') utils.tournamentChat.listMyEventChats.invalidate()
+          })
+        }
+      } catch (_) {
+        // ignore parse errors
+      }
+    }
+    return () => es.close()
+  }, [status, utils])
 
   const requestAccessMutation = trpc.tournamentAccess.requestAccess.useMutation({
     onSuccess: () => {
@@ -44,7 +68,7 @@ export default function AppHeader() {
 
   const { data: notificationsData } = trpc.notification.list.useQuery(
     { limit: 20 },
-    { enabled: status === 'authenticated' }
+    { enabled: status === 'authenticated', refetchInterval: 15_000 }
   )
 
   useEffect(() => {
@@ -90,9 +114,11 @@ export default function AppHeader() {
 
   const { data: myChatClubs } = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isLoggedIn,
+    refetchInterval: 15_000,
   })
   const { data: myEventChats } = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: isLoggedIn,
+    refetchInterval: 15_000,
   })
 
   const unreadChatsCount = useMemo(() => {
