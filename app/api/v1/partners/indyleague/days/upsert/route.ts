@@ -3,6 +3,7 @@ import { withPartnerAuth } from '@/server/utils/partnerApiMiddleware'
 import { prisma } from '@/lib/prisma'
 import { setExternalIdMapping, getInternalId } from '@/server/utils/externalIdMapping'
 import { sendPartnerWebhookForPartner } from '@/server/utils/partnerWebhooks'
+import { parseDateOnlyAsUtc } from '@/lib/dateFormat'
 import { z } from 'zod'
 
 const upsertDaysSchema = z.object({
@@ -47,8 +48,8 @@ export const POST = withPartnerAuth(
 
     for (const day of validated.days) {
       try {
-        const date = new Date(day.date)
-        date.setHours(0, 0, 0, 0)
+        // Store as UTC midnight so the calendar date is the same for everyone (no timezone shift)
+        const date = parseDateOnlyAsUtc(day.date)
 
         // Check if day with this date already exists for this tournament
         const existingDayByDate = await prisma.matchDay.findFirst({

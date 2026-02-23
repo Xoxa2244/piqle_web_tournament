@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -558,7 +558,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                 <span>Ladder League</span>
                 {leagueStatus?.matchDay ? (
                   <Badge variant="secondary">
-                    Week: {formatUsDateShort(leagueStatus.matchDay.date)}
+                    Week: {formatMatchDayDate(leagueStatus.matchDay.date)}
                   </Badge>
                 ) : (
                   <Badge variant="secondary">No weeks yet</Badge>
@@ -598,7 +598,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                   >
                     {orderedMatchDays.map((d: any) => (
                       <option key={d.id} value={d.id}>
-                        {formatUsDateShort(d.date)} ({d.status})
+                        {formatMatchDayDate(d.date)} ({d.status})
                       </option>
                     ))}
                   </select>

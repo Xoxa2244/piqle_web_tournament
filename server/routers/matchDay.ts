@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
 import { sendPartnerWebhookForTournament } from '../utils/partnerWebhooks'
+import { parseDateOnlyAsUtc } from '@/lib/dateFormat'
 
 export const matchDayRouter = createTRPCRouter({
   create: tdProcedure
@@ -30,8 +31,11 @@ export const matchDayRouter = createTRPCRouter({
         })
       }
 
-      const matchDate = new Date(input.date)
-      matchDate.setHours(0, 0, 0, 0)
+      // Store as UTC midnight so the calendar date is the same for everyone (no timezone shift)
+      const dateStr = input.date instanceof Date
+        ? input.date.toISOString().split('T')[0]
+        : String(input.date).split('T')[0]
+      const matchDate = parseDateOnlyAsUtc(dateStr)
 
       // Check if match day with this date already exists for this tournament
       const existingMatchDay = await ctx.prisma.matchDay.findFirst({

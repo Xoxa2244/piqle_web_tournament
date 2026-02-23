@@ -183,6 +183,7 @@ function WaitList({
                 key={team.id}
                 team={team}
                 teamKind={division.teamKind as any}
+                divisionId={division.id}
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
@@ -266,6 +267,7 @@ function PoolCard({
                 key={team.id}
                 team={team}
                 teamKind={division.teamKind as any}
+                divisionId={division.id}
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
@@ -567,6 +569,7 @@ function DivisionCard({
                       key={team.id}
                       team={team}
                       teamKind={division.teamKind as any}
+                      divisionId={division.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
@@ -622,6 +625,7 @@ function DivisionCard({
                       key={team.id}
                       team={team}
                       teamKind={division.teamKind as any}
+                      divisionId={division.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
@@ -923,7 +927,7 @@ export default function DivisionsPage() {
     onSuccess: () => {
       refetch()
       // Refetch available players so the removed player is in the list (free agent)
-      utils.teamPlayer.getAvailablePlayers.invalidate({ tournamentId })
+      utils.teamPlayer.getAvailablePlayers.invalidate()
     },
     onError: (error) => {
       // Rollback on error
@@ -1744,6 +1748,7 @@ export default function DivisionsPage() {
                       key={team.id}
                       team={team}
                       teamKind={activeDivision.teamKind as any}
+                      divisionId={activeDivision.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}

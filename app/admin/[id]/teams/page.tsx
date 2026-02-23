@@ -194,7 +194,7 @@ export default function TeamsPage() {
     const teamKind = team.division.teamKind
     const tournamentFormat = tournament?.format
     if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
-      return 8
+      return 32
     }
 
     switch (teamKind) {
