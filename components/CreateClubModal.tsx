@@ -36,6 +36,36 @@ const extractAddressDetails = (place: any): AddressDetails | null => {
   }
 }
 
+/** Parse TRPC/Zod validation error into user-friendly message and field errors */
+function parseValidationError(message: string): { userMessage: string; fieldErrors: Record<string, string> } {
+  const fieldErrors: Record<string, string> = {}
+  let userMessage = message
+  try {
+    const parsed = JSON.parse(message) as unknown
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const first = parsed[0] as { message?: string; path?: string[] }
+      const msg = typeof first?.message === 'string' ? first.message : message
+      const path = Array.isArray(first?.path) ? first.path : []
+      const field = path[0]
+      if (field && typeof field === 'string') {
+        if (msg.includes('at least 2 character')) {
+          fieldErrors[field] = 'Enter at least 2 characters'
+          userMessage = field === 'name' ? 'Club name must be at least 2 characters.' : 'Please fix the errors in the form.'
+        } else {
+          fieldErrors[field] = msg
+          userMessage = 'Please fix the errors in the form.'
+        }
+      }
+    }
+  } catch {
+    if (message.includes('at least 2 character') && message.includes('name')) {
+      userMessage = 'Club name must be at least 2 characters.'
+      fieldErrors['name'] = 'Enter at least 2 characters'
+    }
+  }
+  return { userMessage, fieldErrors }
+}
+
 export type CreateClubModalProps = {
   isOpen: boolean
   onClose: () => void
@@ -67,25 +97,38 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
     { enabled: isEdit }
   )
 
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
   const createClub = trpc.club.create.useMutation({
     onSuccess: (club) => {
+      setFormError(null)
+      setFieldErrors({})
       toast({ title: 'Club created', description: 'You are now an admin of this club.' })
       onSuccess(club)
       onClose()
     },
     onError: (err) => {
-      toast({ title: 'Failed to create club', description: err.message, variant: 'destructive' })
+      const { userMessage, fieldErrors: nextFieldErrors } = parseValidationError(err.message)
+      setFormError(userMessage)
+      setFieldErrors(nextFieldErrors)
+      toast({ title: 'Failed to create club', description: userMessage, variant: 'destructive' })
     },
   })
 
   const updateClub = trpc.club.update.useMutation({
     onSuccess: (_, variables) => {
+      setFormError(null)
+      setFieldErrors({})
       toast({ title: 'Club updated', description: 'Changes were saved.' })
       onSuccess({ id: variables.id })
       onClose()
     },
     onError: (err) => {
-      toast({ title: 'Failed to update club', description: err.message, variant: 'destructive' })
+      const { userMessage, fieldErrors: nextFieldErrors } = parseValidationError(err.message)
+      setFormError(userMessage)
+      setFieldErrors(nextFieldErrors)
+      toast({ title: 'Failed to update club', description: userMessage, variant: 'destructive' })
     },
   })
 
@@ -150,6 +193,8 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
       setForm(initialForm)
       setAddressError(null)
       setAddressSelected(false)
+      setFormError(null)
+      setFieldErrors({})
     }
   }, [isOpen])
 
@@ -327,15 +372,31 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
               <div className="text-sm text-muted-foreground py-8">Loading club…</div>
             ) : (
             <form onSubmit={submit} className="space-y-4">
+              {formError ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {formError}
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="create-club-name">Name</Label>
                 <Input
                   id="create-club-name"
                   value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, name: e.target.value }))
+                    if (fieldErrors.name) setFieldErrors((p) => { const next = { ...p }; delete next.name; return next })
+                  }}
                   placeholder="e.g., Chicago Pickleball Center"
                   required
+                  className={fieldErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  aria-invalid={Boolean(fieldErrors.name)}
+                  aria-describedby={fieldErrors.name ? 'create-club-name-error' : undefined}
                 />
+                {fieldErrors.name ? (
+                  <p id="create-club-name-error" className="text-sm text-red-600">
+                    {fieldErrors.name}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>Club logo (optional)</Label>
