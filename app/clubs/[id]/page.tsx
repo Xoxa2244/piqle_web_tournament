@@ -576,13 +576,18 @@ export default function ClubDetailPage() {
                       tournaments.map((tournament) => (
                         <div
                           key={tournament.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50"
+                          role="button"
+                          tabIndex={0}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                          onClick={() => setModalTournamentId(tournament.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setModalTournamentId(tournament.id)
+                            }
+                          }}
                         >
-                          <button
-                            type="button"
-                            className="min-w-0 text-left hover:opacity-90 transition-opacity"
-                            onClick={() => setModalTournamentId(tournament.id)}
-                          >
+                          <div className="min-w-0 text-left">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
                               {formatEventDateTimeRange(
@@ -598,8 +603,8 @@ export default function ClubDetailPage() {
                                 <Badge variant="outline">Free</Badge>
                               )}
                             </div>
-                          </button>
-                          <div className="flex items-center gap-2">
+                          </div>
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
                                 {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
