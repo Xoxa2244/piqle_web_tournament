@@ -622,6 +622,7 @@ export default function ClubDetailPage() {
                     <ClubEventsCalendar
                       tournaments={tournaments}
                       eventsByDay={eventsByDay}
+                      onTournamentClick={setModalTournamentId}
                     />
                   </TabsContent>
                 </Tabs>
@@ -948,6 +949,7 @@ export default function ClubDetailPage() {
 function ClubEventsCalendar({
   tournaments,
   eventsByDay,
+  onTournamentClick,
 }: {
   tournaments: Array<{
     id: string
@@ -963,6 +965,7 @@ function ClubEventsCalendar({
     duprLabel?: string | null
   }>
   eventsByDay: Map<string, any[]>
+  onTournamentClick?: (tournamentId: string) => void
 }) {
   const now = new Date()
   const initialBase = tournaments[0] ? new Date(tournaments[0].startDate) : now
@@ -1188,15 +1191,18 @@ function ClubEventsCalendar({
                         const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
 
                         return ev?.id ? (
-                          <Link
+                          <button
                             key={ev.id}
-                            href={`/tournaments/${ev.id}/register`}
-                            className="block rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open registration"
+                            type="button"
+                            className="block w-full rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100 text-left"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onTournamentClick?.(ev.id)
+                            }}
+                            title="View tournament"
                           >
                             {label}
-                          </Link>
+                          </button>
                         ) : (
                           <div key={String(ev?.title ?? Math.random())} className="text-[10px] text-blue-800 truncate">
                             {label}
@@ -1294,14 +1300,20 @@ function ClubEventsCalendar({
                         const showGender = t.genderLabel && t.genderLabel !== 'Any'
 
                         return (
-                          <div key={t.id} className="rounded-md border bg-white p-2">
-                            <Link
-                              href={`/tournaments/${t.id}/register`}
-                              className="text-xs font-semibold text-gray-900 hover:underline block truncate"
-                              title="Open registration"
-                            >
-                              {t.title}
-                            </Link>
+                          <div
+                            key={t.id}
+                            role="button"
+                            tabIndex={0}
+                            className="rounded-md border bg-white p-2 cursor-pointer transition-colors hover:bg-gray-50"
+                            onClick={() => onTournamentClick?.(t.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                onTournamentClick?.(t.id)
+                              }
+                            }}
+                          >
+                            <div className="text-xs font-semibold text-gray-900 truncate">{t.title}</div>
                             <div className="mt-1 text-[11px] text-muted-foreground">{timeLabel}</div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                               {isPaid ? (
@@ -1357,15 +1369,21 @@ function ClubEventsCalendar({
                 tournament.timezone
               )
               return (
-                <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
+                <div
+                  key={tournament.id}
+                  role="button"
+                  tabIndex={0}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2 cursor-pointer transition-colors hover:bg-gray-100"
+                  onClick={() => onTournamentClick?.(tournament.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onTournamentClick?.(tournament.id)
+                    }
+                  }}
+                >
                   <div className="min-w-0">
-                    <Link
-                      href={`/tournaments/${tournament.id}/register`}
-                      className="text-sm font-medium text-gray-900 truncate hover:underline block"
-                      title="Open registration"
-                    >
-                      {tournament.title}
-                    </Link>
+                    <div className="text-sm font-medium text-gray-900 truncate">{tournament.title}</div>
                     <div className="text-xs text-muted-foreground">
                       {timeLabel}
                     </div>
@@ -1386,7 +1404,7 @@ function ClubEventsCalendar({
                       {tournament.duprLabel ? <Badge variant="outline">{tournament.duprLabel}</Badge> : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
                         {isPaid ? 'Join & Pay' : 'Join'}
@@ -1399,6 +1417,56 @@ function ClubEventsCalendar({
           </div>
         )}
       </div>
+
+      {tournaments.length > 0 ? (
+        <div className="space-y-3">
+          <div className="text-sm font-medium text-gray-900">Upcoming events</div>
+          <div className="space-y-3">
+            {tournaments.map((tournament) => (
+              <div
+                key={tournament.id}
+                role="button"
+                tabIndex={0}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                onClick={() => onTournamentClick?.(tournament.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onTournamentClick?.(tournament.id)
+                  }
+                }}
+              >
+                <div className="min-w-0 text-left">
+                  <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {formatEventDateTimeRange(
+                      tournament.startDate,
+                      tournament.endDate,
+                      tournament.timezone
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
+                      <Badge variant="secondary">Paid</Badge>
+                    ) : (
+                      <Badge variant="outline">Free</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Link href={`/tournaments/${tournament.id}/register`}>
+                    <Button>
+                      {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
+                        ? `Join & Pay — $${fromCents(tournament.entryFeeCents).toFixed(2)}`
+                        : 'Join'}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
