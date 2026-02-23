@@ -77,23 +77,28 @@ export const notificationRouter = createTRPCRouter({
       const clubIds = adminClubs.map((a) => a.clubId)
       if (clubIds.length > 0) {
         try {
-          const [requestsByClub, seenByClub] = await Promise.all([
+          const [requestsByClub, clubs] = await Promise.all([
             ctx.prisma.clubJoinRequest.groupBy({
               by: ['clubId'],
               where: { clubId: { in: clubIds } },
               _count: { id: true },
               _max: { createdAt: true },
             }),
-            ctx.prisma.clubJoinRequestSeen.findMany({
-              where: { userId, clubId: { in: clubIds } },
-              select: { clubId: true, seenAt: true },
+            ctx.prisma.club.findMany({
+              where: { id: { in: clubIds } },
+              select: { id: true, name: true },
             }),
           ])
-          const seenMap = new Map(seenByClub.map((s) => [s.clubId, s.seenAt]))
-          const clubs = await ctx.prisma.club.findMany({
-            where: { id: { in: clubIds } },
-            select: { id: true, name: true },
-          })
+          let seenMap = new Map<string, Date>()
+          try {
+            const seenByClub = await ctx.prisma.clubJoinRequestSeen.findMany({
+              where: { userId, clubId: { in: clubIds } },
+              select: { clubId: true, seenAt: true },
+            })
+            seenMap = new Map(seenByClub.map((s) => [s.clubId, s.seenAt]))
+          } catch (errSeen) {
+            if (!isMissingDbRelation(errSeen, 'club_join_request_seen')) throw errSeen
+          }
           const clubByNameId = new Map(clubs.map((c) => [c.id, c]))
           for (const r of requestsByClub) {
             if (r._count.id === 0 || !r._max.createdAt) continue
@@ -114,7 +119,7 @@ export const notificationRouter = createTRPCRouter({
             })
           }
         } catch (err) {
-          if (!isMissingDbRelation(err, 'club_join_request_seen')) throw err
+          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
         }
       }
 
