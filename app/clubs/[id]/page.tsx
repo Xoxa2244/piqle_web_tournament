@@ -1373,7 +1373,7 @@ function ClubEventsCalendar({
                   key={tournament.id}
                   role="button"
                   tabIndex={0}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2 cursor-pointer transition-colors hover:bg-gray-100"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
                   onClick={() => onTournamentClick?.(tournament.id)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -1382,18 +1382,18 @@ function ClubEventsCalendar({
                     }
                   }}
                 >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">{tournament.title}</div>
-                    <div className="text-xs text-muted-foreground">
+                  <div className="min-w-0 text-left">
+                    <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
+                    <div className="text-sm text-muted-foreground">
                       {timeLabel}
                     </div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="flex items-center gap-2 mt-1">
                       {isPaid ? (
                         <Badge variant="secondary">${fromCents(fee).toFixed(2)}</Badge>
                       ) : (
                         <Badge variant="outline">Free</Badge>
                       )}
-                      <Badge variant="outline">{typeLabel}</Badge>
+                      {typeLabel ? <Badge variant="outline">{typeLabel}</Badge> : null}
                       {occupancy ? (
                         <Badge variant="secondary" className="gap-1">
                           <Users className="h-3 w-3" />
@@ -1407,7 +1407,7 @@ function ClubEventsCalendar({
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
-                        {isPaid ? 'Join & Pay' : 'Join'}
+                        {isPaid ? `Join & Pay — $${fromCents(fee).toFixed(2)}` : 'Join'}
                       </Button>
                     </Link>
                   </div>
@@ -1417,56 +1417,6 @@ function ClubEventsCalendar({
           </div>
         )}
       </div>
-
-      {tournaments.length > 0 ? (
-        <div className="space-y-3">
-          <div className="text-sm font-medium text-gray-900">Upcoming events</div>
-          <div className="space-y-3">
-            {tournaments.map((tournament) => (
-              <div
-                key={tournament.id}
-                role="button"
-                tabIndex={0}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
-                onClick={() => onTournamentClick?.(tournament.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onTournamentClick?.(tournament.id)
-                  }
-                }}
-              >
-                <div className="min-w-0 text-left">
-                  <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {formatEventDateTimeRange(
-                      tournament.startDate,
-                      tournament.endDate,
-                      tournament.timezone
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0 ? (
-                      <Badge variant="secondary">Paid</Badge>
-                    ) : (
-                      <Badge variant="outline">Free</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/tournaments/${tournament.id}/register`}>
-                    <Button>
-                      {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
-                        ? `Join & Pay — $${fromCents(tournament.entryFeeCents).toFixed(2)}`
-                        : 'Join'}
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }
