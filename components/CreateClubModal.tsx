@@ -48,19 +48,23 @@ function parseValidationError(message: string): { userMessage: string; fieldErro
       const path = Array.isArray(first?.path) ? first.path : []
       const field = path[0]
       if (field && typeof field === 'string') {
-        if (msg.includes('at least 2 character')) {
+        if (msg.includes('Required') || msg.toLowerCase().includes('required')) {
+          fieldErrors[field] = field === 'name' ? 'Name is required' : msg
+        } else if (msg.includes('at least 2 character')) {
           fieldErrors[field] = 'Enter at least 2 characters'
-          userMessage = field === 'name' ? 'Club name must be at least 2 characters.' : 'Please fix the errors in the form.'
         } else {
           fieldErrors[field] = msg
-          userMessage = 'Please fix the errors in the form.'
         }
+        userMessage = 'Please fix the errors in the form.'
       }
     }
   } catch {
-    if (message.includes('at least 2 character') && message.includes('name')) {
-      userMessage = 'Club name must be at least 2 characters.'
+    if (message.includes('Required') || message.toLowerCase().includes('required')) {
+      fieldErrors['name'] = 'Name is required'
+      userMessage = 'Please fix the errors in the form.'
+    } else if (message.includes('at least 2 character') && message.includes('name')) {
       fieldErrors['name'] = 'Enter at least 2 characters'
+      userMessage = 'Please fix the errors in the form.'
     }
   }
   return { userMessage, fieldErrors }
@@ -97,12 +101,10 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
     { enabled: isEdit }
   )
 
-  const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const createClub = trpc.club.create.useMutation({
     onSuccess: (club) => {
-      setFormError(null)
       setFieldErrors({})
       toast({ title: 'Club created', description: 'You are now an admin of this club.' })
       onSuccess(club)
@@ -110,7 +112,6 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
     },
     onError: (err) => {
       const { userMessage, fieldErrors: nextFieldErrors } = parseValidationError(err.message)
-      setFormError(userMessage)
       setFieldErrors(nextFieldErrors)
       toast({ title: 'Failed to create club', description: userMessage, variant: 'destructive' })
     },
@@ -118,7 +119,6 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
 
   const updateClub = trpc.club.update.useMutation({
     onSuccess: (_, variables) => {
-      setFormError(null)
       setFieldErrors({})
       toast({ title: 'Club updated', description: 'Changes were saved.' })
       onSuccess({ id: variables.id })
@@ -126,7 +126,6 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
     },
     onError: (err) => {
       const { userMessage, fieldErrors: nextFieldErrors } = parseValidationError(err.message)
-      setFormError(userMessage)
       setFieldErrors(nextFieldErrors)
       toast({ title: 'Failed to update club', description: userMessage, variant: 'destructive' })
     },
@@ -193,7 +192,6 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
       setForm(initialForm)
       setAddressError(null)
       setAddressSelected(false)
-      setFormError(null)
       setFieldErrors({})
     }
   }, [isOpen])
@@ -252,7 +250,19 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isEdit) {
+      const nameTrimmed = form.name.trim()
+      if (!nameTrimmed) {
+        setFieldErrors((p) => ({ ...p, name: 'Name is required' }))
+        return
+      }
+    }
     if (isEdit && clubId) {
+      const nameTrimmed = form.name.trim()
+      if (!nameTrimmed) {
+        setFieldErrors((p) => ({ ...p, name: 'Name is required' }))
+        return
+      }
       updateClub.mutate({
         id: clubId,
         name: form.name,
@@ -372,11 +382,6 @@ export default function CreateClubModal({ isOpen, onClose, onSuccess, clubId }: 
               <div className="text-sm text-muted-foreground py-8">Loading club…</div>
             ) : (
             <form onSubmit={submit} className="space-y-4">
-              {formError ? (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                  {formError}
-                </div>
-              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="create-club-name">Name</Label>
                 <Input
