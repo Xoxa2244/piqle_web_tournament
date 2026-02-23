@@ -684,7 +684,7 @@ export const tournamentChatRouter = createTRPCRouter({
         ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
         ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
       ].filter((id): id is string => id != null && id !== userId)
-      pushToUsers([...new Set(recipientIds)], { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
 
       return {
         ...mapMessage(message),
@@ -853,7 +853,7 @@ export const tournamentChatRouter = createTRPCRouter({
           ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
           ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
         ].filter((id): id is string => id != null && id !== userId)
-        pushToUsers([...new Set(recipientIds)], { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
       }
 
       return {

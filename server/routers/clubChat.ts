@@ -279,9 +279,9 @@ export const clubChatRouter = createTRPCRouter({
           select: { userId: true },
         }),
       ])
-      const recipientIds = [...new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])].filter(
-        (id) => id !== userId
-      )
+      const recipientIds = Array.from(
+        new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
+      ).filter((id) => id !== userId)
       pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
 
       return {
