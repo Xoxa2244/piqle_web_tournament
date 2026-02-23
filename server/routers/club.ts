@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { getTeamSlotCount } from '../utils/teamSlots'
+import { pushToUsers } from '@/lib/realtime'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
 
@@ -666,25 +667,30 @@ export const clubRouter = createTRPCRouter({
         }
       })
 
-      const bookingRequests = isAdmin
-        ? await ctx.prisma.clubBookingRequest.findMany({
-            where: { clubId: input.id },
-            orderBy: { createdAt: 'desc' },
-            take: 30,
-            select: {
-              id: true,
-              requesterName: true,
-              requesterEmail: true,
-              requesterPhone: true,
-              desiredStart: true,
-              durationMinutes: true,
-              playersCount: true,
-              message: true,
-              status: true,
-              createdAt: true,
-            },
-          })
-        : []
+      const [bookingRequests, pendingJoinRequestCount] = await Promise.all([
+        isAdmin
+          ? ctx.prisma.clubBookingRequest.findMany({
+              where: { clubId: input.id },
+              orderBy: { createdAt: 'desc' },
+              take: 30,
+              select: {
+                id: true,
+                requesterName: true,
+                requesterEmail: true,
+                requesterPhone: true,
+                desiredStart: true,
+                durationMinutes: true,
+                playersCount: true,
+                message: true,
+                status: true,
+                createdAt: true,
+              },
+            })
+          : [],
+        isAdmin
+          ? ctx.prisma.clubJoinRequest.count({ where: { clubId: input.id } }).catch(() => 0)
+          : 0,
+      ])
 
       return {
         ...club,
@@ -696,6 +702,7 @@ export const clubRouter = createTRPCRouter({
         isAdmin,
         bookingRequests,
         isBanned,
+        pendingJoinRequestCount: isAdmin ? pendingJoinRequestCount : 0,
       }
     }),
 
@@ -782,6 +789,13 @@ export const clubRouter = createTRPCRouter({
           }
           throw err
         }
+
+        const admins = await ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        })
+        const adminIds = admins.map((a) => a.userId).filter((id) => id !== userId)
+        pushToUsers(adminIds, { type: 'invalidate', keys: ['notification.list'] })
 
         return { isFollowing: false, isJoinPending: true, status: 'pending' as const }
       }

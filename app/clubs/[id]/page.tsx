@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,7 +116,12 @@ const buildMonthGrid = (month: Date) => {
 export default function ClubDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
+  const tabFromUrl = searchParams.get('tab')
+  const [clubTab, setClubTab] = useState<'upcoming' | 'announcements' | 'members'>(() =>
+    tabFromUrl === 'members' || tabFromUrl === 'announcements' ? tabFromUrl : 'upcoming'
+  )
 
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
@@ -158,9 +163,24 @@ export default function ClubDetailPage() {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
     },
   })
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: () => utils.notification.list.invalidate(),
+  })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
+
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t === 'members' || t === 'announcements') setClubTab(t)
+    else if (t !== 'upcoming') setClubTab('upcoming')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (clubTab === 'members' && club?.isAdmin && clubId) {
+      markClubJoinRequestSeen.mutate({ clubId })
+    }
+  }, [clubTab, club?.isAdmin, clubId])
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
@@ -527,7 +547,20 @@ export default function ClubDetailPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px] lg:items-start">
           <div className="space-y-4 min-w-0">
-            <Tabs defaultValue="upcoming" className="w-full">
+            <Tabs
+              value={clubTab}
+              onValueChange={(v) => {
+                const tab = v as 'upcoming' | 'announcements' | 'members'
+                setClubTab(tab)
+                const url = new URL(window.location.href)
+                url.searchParams.set('tab', tab)
+                router.replace(url.pathname + url.search)
+                if (tab === 'members' && club?.isAdmin && clubId) {
+                  markClubJoinRequestSeen.mutate({ clubId })
+                }
+              }}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="upcoming" className="gap-2">
                   <Calendar className="h-4 w-4" />
@@ -540,6 +573,13 @@ export default function ClubDetailPage() {
                 <TabsTrigger value="members" className="gap-2">
                   <Users className="h-4 w-4" />
                   Members
+                  {(club as { pendingJoinRequestCount?: number } | null)?.pendingJoinRequestCount ? (
+                    <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      {(club as { pendingJoinRequestCount: number }).pendingJoinRequestCount > 99
+                        ? '99+'
+                        : (club as { pendingJoinRequestCount: number }).pendingJoinRequestCount}
+                    </span>
+                  ) : null}
                 </TabsTrigger>
               </TabsList>
 

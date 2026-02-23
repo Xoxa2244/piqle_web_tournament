@@ -43,6 +43,7 @@ model User {
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests         ClubJoinRequest[]
+  clubJoinRequestSeen      ClubJoinRequestSeen[]
   clubBans                 ClubBan[]
   clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
   clubTournamentTemplatesCreated ClubTournamentTemplate[] @relation("ClubTournamentTemplateCreatedBy")
@@ -204,6 +205,7 @@ model Club {
   tournamentTemplates ClubTournamentTemplate[]
   followers          ClubFollower[]
   joinRequests       ClubJoinRequest[]
+  joinRequestSeen    ClubJoinRequestSeen[]
   admins             ClubAdmin[]
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
@@ -242,6 +244,21 @@ model ClubJoinRequest {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_join_requests")
+}
+
+model ClubJoinRequestSeen {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  clubId    String   @map("club_id")
+  seenAt    DateTime @default(now()) @map("seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([userId])
+  @@index([clubId])
+  @@map("club_join_request_seen")
 }
 
 model ClubAdmin {

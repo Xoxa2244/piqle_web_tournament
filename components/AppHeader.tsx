@@ -70,6 +70,9 @@ export default function AppHeader() {
     { limit: 20 },
     { enabled: status === 'authenticated', refetchInterval: 15_000 }
   )
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: () => utils.notification.list.invalidate({ limit: 20 }),
+  })
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -298,7 +301,12 @@ export default function AppHeader() {
                               key={n.id}
                               href={n.targetUrl || '/'}
                               className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => setNotificationsOpen(false)}
+                              onClick={() => {
+                                if (n.type === 'CLUB_JOIN_REQUEST' && n.clubId) {
+                                  markClubJoinRequestSeen.mutate({ clubId: n.clubId })
+                                }
+                                setNotificationsOpen(false)
+                              }}
                             >
                               <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
                               {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
