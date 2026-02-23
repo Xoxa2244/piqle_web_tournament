@@ -1819,7 +1819,7 @@ function ClubChatCard({
                             key={m.id}
                             className={cn(
                               'flex items-end gap-1.5',
-                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row'
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
                             )}
                           >
                             {!isMine ? (
@@ -1856,7 +1856,7 @@ function ClubChatCard({
                                 {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
                               </div>
                             </div>
-                            {isMine && canDelete && !m.isDeleted ? (
+                            {canDelete && !m.isDeleted ? (
                               <Button
                                 type="button"
                                 size="icon"
