@@ -221,7 +221,7 @@ Best regards,
                       </div>
                     </li>
                     <li>
-                      <strong>Teams</strong> — create teams in divisions (up to 8 players per team for IndyLeague)
+                      <strong>Teams</strong> — create teams in divisions (up to 32 players per team for IndyLeague (no fixed roster limit))
                       <div className="ml-6 mt-1 text-sm text-gray-600">
                         <code className="bg-gray-100 px-2 py-1 rounded">POST /teams/upsert</code>
                       </div>
@@ -567,7 +567,7 @@ Best regards,
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-gray-700">
-                    Creates or updates teams within a division. Teams can have up to 8 players for IndyLeague tournaments.
+                    Creates or updates teams within a division. Teams can have up to 32 players for IndyLeague tournaments (no fixed roster limit).
                     Each team must belong to a division and have a unique external ID within the tournament.
                   </p>
                   <div>
@@ -630,7 +630,7 @@ Best regards,
                 <CardContent className="space-y-4">
                   <p className="text-gray-700">
                     Creates or updates players within a tournament. If <code className="bg-gray-100 px-2 py-1 rounded">externalTeamId</code> is provided,
-                    the player will be automatically added to that team (up to 8 players per team for IndyLeague).
+                    the player will be automatically added to that team (up to 32 players per team for IndyLeague (no fixed roster limit)).
                     Players must be part of a team before they can be added to a roster.
                   </p>
                   <div>

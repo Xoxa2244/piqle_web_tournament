@@ -2,9 +2,12 @@ import { PrismaClient, Prisma } from '@prisma/client'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
+// Indy League: no fixed roster limit (use high cap for slot indexing only)
+export const INDY_LEAGUE_MAX_ROSTER = 32
+
 export const getTeamSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
   if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
-    return 8
+    return INDY_LEAGUE_MAX_ROSTER
   }
 
   switch (teamKind) {

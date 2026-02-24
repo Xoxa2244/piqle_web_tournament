@@ -380,8 +380,11 @@ export default function TournamentDetailPage() {
 
   const handleConnectStripe = async () => {
     try {
+      const returnUrl = typeof window !== 'undefined' ? window.location.href : undefined
       const response = await fetch('/api/stripe/create-account-link', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl, refreshUrl: returnUrl }),
       })
       const payload = await response.json()
       if (!response.ok || !payload?.url) {

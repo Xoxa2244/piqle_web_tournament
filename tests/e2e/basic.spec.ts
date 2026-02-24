@@ -14,8 +14,7 @@ test('admin page loads correctly', async ({ page }) => {
   await expect(page.locator('h1')).toContainText('Tournaments')
 })
 
-test('public scoreboard shows not found for invalid slug', async ({ page }) => {
-  await page.goto('/t/invalid-slug')
-  
-  await expect(page.locator('h1')).toContainText('Tournament Not Found')
+test('removed public board route returns 404', async ({ page }) => {
+  const res = await page.goto('/t/invalid-slug')
+  expect(res?.status()).toBe(404)
 })

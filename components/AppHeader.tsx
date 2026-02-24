@@ -1,17 +1,21 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
 import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
+
+type RealtimeEvent = { type: 'invalidate'; keys: string[] }
 import { formatDescription } from '@/lib/formatDescription'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
 
 export default function AppHeader() {
+  const router = useRouter()
   const { data: session, status } = useSession()
   const [avatarError, setAvatarError] = useState(false)
   const [logoError, setLogoError] = useState(false)
@@ -27,10 +31,32 @@ export default function AppHeader() {
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notificationsRef = useRef<HTMLDivElement>(null)
 
+  const utils = trpc.useUtils()
+
   const { data: searchResults } = trpc.tournamentAccess.searchTournaments.useQuery(
     { query: searchQuery },
     { enabled: !!session && searchQuery.length >= 2 }
   )
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const es = new EventSource('/api/realtime')
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as RealtimeEvent
+        if (event.type === 'invalidate' && Array.isArray(event.keys)) {
+          event.keys.forEach((key) => {
+            if (key === 'notification.list') utils.notification.list.invalidate({ limit: 20 })
+            if (key === 'club.listMyChatClubs') utils.club.listMyChatClubs.invalidate()
+            if (key === 'tournamentChat.listMyEventChats') utils.tournamentChat.listMyEventChats.invalidate()
+          })
+        }
+      } catch (_) {
+        // ignore parse errors
+      }
+    }
+    return () => es.close()
+  }, [status, utils])
 
   const requestAccessMutation = trpc.tournamentAccess.requestAccess.useMutation({
     onSuccess: () => {
@@ -44,8 +70,11 @@ export default function AppHeader() {
 
   const { data: notificationsData } = trpc.notification.list.useQuery(
     { limit: 20 },
-    { enabled: status === 'authenticated' }
+    { enabled: status === 'authenticated', refetchInterval: 5_000 }
   )
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: () => utils.notification.list.invalidate({ limit: 20 }),
+  })
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -90,9 +119,11 @@ export default function AppHeader() {
 
   const { data: myChatClubs } = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isLoggedIn,
+    refetchInterval: 5_000,
   })
   const { data: myEventChats } = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: isLoggedIn,
+    refetchInterval: 5_000,
   })
 
   const unreadChatsCount = useMemo(() => {
@@ -267,17 +298,34 @@ export default function AppHeader() {
                         <div className="px-3 py-6 text-center text-sm text-gray-500">No notifications yet.</div>
                       ) : (
                         <div className="max-h-80 overflow-y-auto">
-                          {notifications.map((n: any) => (
-                            <Link
-                              key={n.id}
-                              href={n.targetUrl || '/'}
-                              className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => setNotificationsOpen(false)}
-                            >
-                              <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
-                              {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
-                            </Link>
-                          ))}
+                          {notifications.map((n: any) =>
+                            n.type === 'CLUB_JOIN_REQUEST' && n.clubId ? (
+                              <button
+                                key={n.id}
+                                type="button"
+                                className="block w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                onClick={async () => {
+                                  setNotificationsOpen(false)
+                                  await markClubJoinRequestSeen.mutateAsync({ clubId: n.clubId })
+                                  router.push(n.targetUrl || '/')
+                                }}
+                                disabled={markClubJoinRequestSeen.isPending}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
+                                {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
+                              </button>
+                            ) : (
+                              <Link
+                                key={n.id}
+                                href={n.targetUrl || '/'}
+                                className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => setNotificationsOpen(false)}
+                              >
+                                <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
+                                {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}
+                              </Link>
+                            )
+                          )}
                         </div>
                       )}
                     </div>

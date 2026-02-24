@@ -19,7 +19,7 @@ type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
 const getSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
   if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
-    return 8
+    return 32
   }
 
   switch (teamKind) {

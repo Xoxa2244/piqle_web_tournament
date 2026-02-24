@@ -282,14 +282,6 @@ export default function SuperAdminPage() {
                     >
                       Manage
                     </Link>
-                    {tournament.isPublicBoardEnabled && (
-                      <Link
-                        href={`/t/${tournament.publicSlug}`}
-                        className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-                      >
-                        View Board
-                      </Link>
-                    )}
                     <button
                       onClick={() => handleDelete(tournament.id, tournament.title)}
                       disabled={deleteTournament.isLoading}

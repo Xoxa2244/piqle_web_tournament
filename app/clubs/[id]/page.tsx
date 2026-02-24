@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,7 +116,12 @@ const buildMonthGrid = (month: Date) => {
 export default function ClubDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
+  const tabFromUrl = searchParams.get('tab')
+  const [clubTab, setClubTab] = useState<'upcoming' | 'announcements' | 'members'>(() =>
+    tabFromUrl === 'members' || tabFromUrl === 'announcements' ? tabFromUrl : 'upcoming'
+  )
 
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
@@ -158,9 +163,24 @@ export default function ClubDetailPage() {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
     },
   })
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: () => utils.notification.list.invalidate(),
+  })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
+
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t === 'members' || t === 'announcements') setClubTab(t)
+    else if (t !== 'upcoming') setClubTab('upcoming')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (clubTab === 'members' && club?.isAdmin && clubId) {
+      markClubJoinRequestSeen.mutate({ clubId })
+    }
+  }, [clubTab, club?.isAdmin, clubId])
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
@@ -527,7 +547,20 @@ export default function ClubDetailPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px] lg:items-start">
           <div className="space-y-4 min-w-0">
-            <Tabs defaultValue="upcoming" className="w-full">
+            <Tabs
+              value={clubTab}
+              onValueChange={(v) => {
+                const tab = v as 'upcoming' | 'announcements' | 'members'
+                setClubTab(tab)
+                const url = new URL(window.location.href)
+                url.searchParams.set('tab', tab)
+                router.replace(url.pathname + url.search)
+                if (tab === 'members' && club?.isAdmin && clubId) {
+                  markClubJoinRequestSeen.mutate({ clubId })
+                }
+              }}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="upcoming" className="gap-2">
                   <Calendar className="h-4 w-4" />
@@ -540,6 +573,13 @@ export default function ClubDetailPage() {
                 <TabsTrigger value="members" className="gap-2">
                   <Users className="h-4 w-4" />
                   Members
+                  {(club as { pendingJoinRequestCount?: number } | null)?.pendingJoinRequestCount ? (
+                    <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      {(club as { pendingJoinRequestCount: number }).pendingJoinRequestCount > 99
+                        ? '99+'
+                        : (club as { pendingJoinRequestCount: number }).pendingJoinRequestCount}
+                    </span>
+                  ) : null}
                 </TabsTrigger>
               </TabsList>
 
@@ -576,13 +616,18 @@ export default function ClubDetailPage() {
                       tournaments.map((tournament) => (
                         <div
                           key={tournament.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50"
+                          role="button"
+                          tabIndex={0}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                          onClick={() => setModalTournamentId(tournament.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setModalTournamentId(tournament.id)
+                            }
+                          }}
                         >
-                          <button
-                            type="button"
-                            className="min-w-0 text-left hover:opacity-90 transition-opacity"
-                            onClick={() => setModalTournamentId(tournament.id)}
-                          >
+                          <div className="min-w-0 text-left">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
                               {formatEventDateTimeRange(
@@ -598,8 +643,8 @@ export default function ClubDetailPage() {
                                 <Badge variant="outline">Free</Badge>
                               )}
                             </div>
-                          </button>
-                          <div className="flex items-center gap-2">
+                          </div>
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
                                 {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
@@ -607,11 +652,6 @@ export default function ClubDetailPage() {
                                   : 'Join'}
                               </Button>
                             </Link>
-                            {tournament.publicSlug ? (
-                              <Link href={`/t/${tournament.publicSlug}`}>
-                                <Button variant="outline">Public board</Button>
-                              </Link>
-                            ) : null}
                           </div>
                         </div>
                       ))
@@ -622,6 +662,7 @@ export default function ClubDetailPage() {
                     <ClubEventsCalendar
                       tournaments={tournaments}
                       eventsByDay={eventsByDay}
+                      onTournamentClick={setModalTournamentId}
                     />
                   </TabsContent>
                 </Tabs>
@@ -948,6 +989,7 @@ export default function ClubDetailPage() {
 function ClubEventsCalendar({
   tournaments,
   eventsByDay,
+  onTournamentClick,
 }: {
   tournaments: Array<{
     id: string
@@ -963,6 +1005,7 @@ function ClubEventsCalendar({
     duprLabel?: string | null
   }>
   eventsByDay: Map<string, any[]>
+  onTournamentClick?: (tournamentId: string) => void
 }) {
   const now = new Date()
   const initialBase = tournaments[0] ? new Date(tournaments[0].startDate) : now
@@ -1188,15 +1231,18 @@ function ClubEventsCalendar({
                         const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
 
                         return ev?.id ? (
-                          <Link
+                          <button
                             key={ev.id}
-                            href={`/tournaments/${ev.id}/register`}
-                            className="block rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open registration"
+                            type="button"
+                            className="block w-full rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100 text-left"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onTournamentClick?.(ev.id)
+                            }}
+                            title="View tournament"
                           >
                             {label}
-                          </Link>
+                          </button>
                         ) : (
                           <div key={String(ev?.title ?? Math.random())} className="text-[10px] text-blue-800 truncate">
                             {label}
@@ -1294,14 +1340,20 @@ function ClubEventsCalendar({
                         const showGender = t.genderLabel && t.genderLabel !== 'Any'
 
                         return (
-                          <div key={t.id} className="rounded-md border bg-white p-2">
-                            <Link
-                              href={`/tournaments/${t.id}/register`}
-                              className="text-xs font-semibold text-gray-900 hover:underline block truncate"
-                              title="Open registration"
-                            >
-                              {t.title}
-                            </Link>
+                          <div
+                            key={t.id}
+                            role="button"
+                            tabIndex={0}
+                            className="rounded-md border bg-white p-2 cursor-pointer transition-colors hover:bg-gray-50"
+                            onClick={() => onTournamentClick?.(t.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                onTournamentClick?.(t.id)
+                              }
+                            }}
+                          >
+                            <div className="text-xs font-semibold text-gray-900 truncate">{t.title}</div>
                             <div className="mt-1 text-[11px] text-muted-foreground">{timeLabel}</div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                               {isPaid ? (
@@ -1357,25 +1409,31 @@ function ClubEventsCalendar({
                 tournament.timezone
               )
               return (
-                <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/tournaments/${tournament.id}/register`}
-                      className="text-sm font-medium text-gray-900 truncate hover:underline block"
-                      title="Open registration"
-                    >
-                      {tournament.title}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">
+                <div
+                  key={tournament.id}
+                  role="button"
+                  tabIndex={0}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                  onClick={() => onTournamentClick?.(tournament.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onTournamentClick?.(tournament.id)
+                    }
+                  }}
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
+                    <div className="text-sm text-muted-foreground">
                       {timeLabel}
                     </div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="flex items-center gap-2 mt-1">
                       {isPaid ? (
                         <Badge variant="secondary">${fromCents(fee).toFixed(2)}</Badge>
                       ) : (
                         <Badge variant="outline">Free</Badge>
                       )}
-                      <Badge variant="outline">{typeLabel}</Badge>
+                      {typeLabel ? <Badge variant="outline">{typeLabel}</Badge> : null}
                       {occupancy ? (
                         <Badge variant="secondary" className="gap-1">
                           <Users className="h-3 w-3" />
@@ -1386,19 +1444,12 @@ function ClubEventsCalendar({
                       {tournament.duprLabel ? <Badge variant="outline">{tournament.duprLabel}</Badge> : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
-                        {isPaid ? 'Join & Pay' : 'Join'}
+                        {isPaid ? `Join & Pay — $${fromCents(fee).toFixed(2)}` : 'Join'}
                       </Button>
                     </Link>
-                    {tournament.publicSlug ? (
-                      <Link href={`/t/${tournament.publicSlug}`}>
-                        <Button size="sm" variant="outline">
-                          Public board
-                        </Button>
-                      </Link>
-                    ) : null}
                   </div>
                 </div>
               )
@@ -1819,7 +1870,7 @@ function ClubChatCard({
                             key={m.id}
                             className={cn(
                               'flex items-end gap-1.5',
-                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row'
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
                             )}
                           >
                             {!isMine ? (
@@ -1856,7 +1907,7 @@ function ClubChatCard({
                                 {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
                               </div>
                             </div>
-                            {isMine && canDelete && !m.isDeleted ? (
+                            {canDelete && !m.isDeleted ? (
                               <Button
                                 type="button"
                                 size="icon"

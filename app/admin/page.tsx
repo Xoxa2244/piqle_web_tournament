@@ -471,14 +471,6 @@ export default function AdminPage() {
                   >
                     Manage
                   </Link>
-                  {tournament.isPublicBoardEnabled && (
-                    <Link
-                      href={`/t/${tournament.publicSlug}`}
-                      className="block w-full text-center bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded transition-colors border border-gray-300"
-                    >
-                      View Board
-                    </Link>
-                  )}
                 </div>
               </div>
             </div>
