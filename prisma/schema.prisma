@@ -142,6 +142,7 @@ model Tournament {
   seasonLabel             String?                   @map("season_label")
   timezone                String?
   hasDivisions            Boolean                   @default(true) @map("has_divisions")
+  isPro                   Boolean                   @default(false) @map("is_pro")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String

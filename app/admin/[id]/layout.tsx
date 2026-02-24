@@ -66,6 +66,7 @@ export default function TournamentLayout({
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={tournament.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         tournamentFormat={tournament.format}
+        tournamentIsPro={tournament.isPro ?? true}
       />
       <div className="pt-[7.5rem]">
         {children}

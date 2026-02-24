@@ -1670,7 +1670,7 @@ export default function DivisionsPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Teams and Divisions</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{tournament?.isPro ? 'Teams and Divisions' : 'Teams'}</h1>
               </div>
             </div>
             

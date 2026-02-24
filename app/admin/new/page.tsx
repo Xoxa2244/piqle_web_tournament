@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import AvatarCropper from '@/components/AvatarCropper'
 import StructureSetupModal, { TournamentStructureInput } from '@/components/StructureSetupModal'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, Layers, Upload, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, HelpCircle, Layers, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
@@ -408,6 +408,46 @@ const CREATE_TOURNAMENT_STEPS = [
   { key: 'publish', title: 'Publish', description: 'Pricing and visibility' },
 ] as const
 
+const BASIC_FORMATS: TournamentFormat[] = [
+  'ROUND_ROBIN',
+  'LEAGUE_ROUND_ROBIN',
+  'ONE_DAY_LADDER',
+  'LADDER_LEAGUE',
+]
+
+const PRO_HELP_MODAL_CONTENT = (
+  <div className="space-y-4 text-sm text-gray-700">
+    <div>
+      <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Basic:</p>
+      <ul className="list-disc list-inside space-y-1">
+        <li>Only simple formats: Ladder, Round Robin, League Ladder, League Round Robin</li>
+        <li>Only Singles and Doubles (no 4v4)</li>
+        <li>One division (division management hidden)</li>
+        <li>No CSV import</li>
+        <li>No Indy League</li>
+        <li>No elimination stages</li>
+        <li>No templates</li>
+        <li>No access control</li>
+      </ul>
+    </div>
+    <div>
+      <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Pro:</p>
+      <ul className="list-disc list-inside space-y-1">
+        <li>Everything in Basic</li>
+        <li>CSV import</li>
+        <li>Indy League</li>
+        <li>Multi-division structure</li>
+        <li>Complex / custom settings</li>
+        <li>Elimination stages</li>
+        <li>Full set of management tools (within your permissions)</li>
+      </ul>
+    </div>
+    <p className="text-gray-600">
+      Need Pro mode? Contact <a href="mailto:info@piqle.io" className="text-blue-600 hover:underline">info@piqle.io</a> to unlock.
+    </p>
+  </div>
+)
+
 export default function NewTournamentPage() {
   // Next.js requires `useSearchParams()` to be wrapped in a Suspense boundary.
   return (
@@ -436,11 +476,13 @@ function NewTournamentPageInner() {
     paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as TournamentFormat,
+    format: 'ROUND_ROBIN' as TournamentFormat,
     seasonLabel: '',
     timezone: getBrowserTimeZone(),
     image: '',
   })
+  const [isPro, setIsPro] = useState(false)
+  const [showProHelpModal, setShowProHelpModal] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
   const [showCropper, setShowCropper] = useState(false)
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
@@ -448,7 +490,7 @@ function NewTournamentPageInner() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
   const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(() => (
-    buildRecommendedStructure('SINGLE_ELIMINATION')
+    buildRecommendedStructure('ROUND_ROBIN')
   ))
   const [seriesDraftForm, setSeriesDraftForm] = useState({
     enabled: false,
@@ -1126,6 +1168,7 @@ function NewTournamentPageInner() {
           ? (formData.seasonLabel || undefined)
           : undefined,
       timezone: normalizedTimezone,
+      isPro,
     }
 
     if (isSeries) {
@@ -1394,36 +1437,101 @@ function NewTournamentPageInner() {
             Step {stepIndex + 1} of {totalSteps}: <span className="font-medium text-gray-900">{currentStep.title}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {CREATE_TOURNAMENT_STEPS.map((s, idx) => {
-            const isActive = idx === stepIndex
-            const isDone = idx < stepIndex
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => goToStep(idx)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                  isActive
-                    ? 'border-blue-200 bg-blue-50 text-blue-900'
-                    : isDone
-                      ? 'border-gray-200 bg-white text-gray-700'
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
-                } transition-colors hover:bg-gray-100`}
-              >
-                <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
-                    isActive ? 'bg-blue-600 text-white' : isDone ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {CREATE_TOURNAMENT_STEPS.map((s, idx) => {
+              const isActive = idx === stepIndex
+              const isDone = idx < stepIndex
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => goToStep(idx)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                    isActive
+                      ? 'border-blue-200 bg-blue-50 text-blue-900'
+                      : isDone
+                        ? 'border-gray-200 bg-white text-gray-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-500'
+                  } transition-colors hover:bg-gray-100`}
                 >
-                  {idx + 1}
-                </span>
-                <span className="font-medium">{s.title}</span>
-              </button>
-            )
-          })}
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      isActive ? 'bg-blue-600 text-white' : isDone ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="font-medium">{s.title}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs font-medium text-gray-600">PRO</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPro}
+              onClick={() => {
+                const next = !isPro
+                setIsPro(next)
+                if (!next && !BASIC_FORMATS.includes(formData.format)) {
+                  setFormData((prev) => ({ ...prev, format: 'ROUND_ROBIN' }))
+                  setStructureDraft((prev) => prev ? { ...prev, ...buildRecommendedStructure('ROUND_ROBIN') } : buildRecommendedStructure('ROUND_ROBIN'))
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                isPro ? 'bg-blue-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+                  isPro ? 'translate-x-5' : 'translate-x-1'
+                }`}
+                style={{ top: '2px' }}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowProHelpModal(true)}
+              className="p-1.5 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
+              title="Basic vs Pro"
+              aria-label="What is Basic vs Pro?"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
+
+      {showProHelpModal ? (
+        <div
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowProHelpModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Basic vs Pro</h3>
+            {PRO_HELP_MODAL_CONTENT}
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="outline" onClick={() => setShowProHelpModal(false)}>
+                Close
+              </Button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProHelpModal(false)}
+              className="absolute top-4 right-4 p-1 text-gray-400 hover:text-gray-600 rounded"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -1798,13 +1906,24 @@ function NewTournamentPageInner() {
                     className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS}`}
                     style={SELECT_ARROW_STYLE}
                   >
-                    <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
-                    <option value="ROUND_ROBIN">Round Robin</option>
-                    <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
-                    <option value="ONE_DAY_LADDER">One-day Ladder</option>
-                    <option value="LADDER_LEAGUE">Ladder League</option>
-                    <option value="MLP">MiLP style</option>
-                    <option value="INDY_LEAGUE">Indy League</option>
+                    {isPro ? (
+                      <>
+                        <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
+                        <option value="ROUND_ROBIN">Round Robin</option>
+                        <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
+                        <option value="ONE_DAY_LADDER">One-day Ladder</option>
+                        <option value="LADDER_LEAGUE">Ladder League</option>
+                        <option value="MLP">MiLP style</option>
+                        <option value="INDY_LEAGUE">Indy League</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="ROUND_ROBIN">Round Robin</option>
+                        <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
+                        <option value="ONE_DAY_LADDER">One-day Ladder</option>
+                        <option value="LADDER_LEAGUE">Ladder League</option>
+                      </>
+                    )}
                   </select>
                   <p className="mt-1 text-sm text-gray-500">
                     {formData.format === 'MLP'
@@ -1886,7 +2005,7 @@ function NewTournamentPageInner() {
                         <div>
                           <div className="text-xs font-medium text-gray-700 mb-2">Players per team</div>
                           <div className="flex gap-2">
-                            {([1, 2, 4] as const).map((value) => {
+                            {(isPro ? ([1, 2, 4] as const) : ([1, 2] as const)).map((value) => {
                               const forceSquad = formData.format === 'MLP' || formData.format === 'INDY_LEAGUE'
                               const disableSingles = formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE'
                               const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1)
@@ -2225,6 +2344,7 @@ function NewTournamentPageInner() {
         onClose={() => setShowStructureModal(false)}
         onSave={handleStructureSave}
         initialStructure={structureDraft}
+        isPro={isPro}
       />
     </div>
   )

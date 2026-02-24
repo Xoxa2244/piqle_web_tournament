@@ -61,6 +61,8 @@ interface StructureSetupModalProps {
   initialStructure?: TournamentStructureInput | null
   onClose: () => void
   onSave: (structure: TournamentStructureInput) => void
+  /** When false (Basic mode), Hard enforcement and Add division are disabled. */
+  isPro?: boolean
 }
 
 const defaultDivision = (index: number): DivisionForm => ({
@@ -172,6 +174,7 @@ export default function StructureSetupModal({
   initialStructure,
   onClose,
   onSave,
+  isPro = true,
 }: StructureSetupModalProps) {
   const [divisions, setDivisions] = useState<DivisionForm[]>([defaultDivision(0)])
 
@@ -664,24 +667,28 @@ export default function StructureSetupModal({
                       <p className="text-xs text-slate-500">Informational vs. hard enforcement.</p>
                     </div>
                     <div className="flex gap-2">
-                      {(['INFO', 'HARD'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                enforcement: value,
-                              },
-                            }))
-                          }
-                          className={`px-3 py-2 rounded-lg border ${division.constraints.enforcement === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {value === 'INFO' ? 'Informational' : 'Hard'}
-                        </button>
-                      ))}
+                      {(['INFO', 'HARD'] as const).map((value) => {
+                        const hardDisabled = value === 'HARD' && !isPro
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={hardDisabled}
+                            onClick={() =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  enforcement: value,
+                                },
+                              }))
+                            }
+                            className={`px-3 py-2 rounded-lg border ${division.constraints.enforcement === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : hardDisabled ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            {value === 'INFO' ? 'Informational' : 'Hard'}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -690,7 +697,8 @@ export default function StructureSetupModal({
               <button
                 type="button"
                 onClick={handleAddDivision}
-                className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
+                disabled={!isPro}
+                className={`flex items-center gap-2 text-sm ${isPro ? 'text-indigo-600 hover:text-indigo-700' : 'text-slate-400 cursor-not-allowed'}`}
               >
                 <Plus className="w-4 h-4" />
                 Add division

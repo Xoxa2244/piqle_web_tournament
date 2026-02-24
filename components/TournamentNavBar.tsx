@@ -40,6 +40,8 @@ interface TournamentNavBarProps {
     | 'LEAGUE_ROUND_ROBIN'
     | 'ONE_DAY_LADDER'
     | 'LADDER_LEAGUE'
+  /** When false (Basic tournament), CSV Import and Access Control are hidden; "Teams and Divisions" is shown as "Teams". */
+  tournamentIsPro?: boolean
 }
 
 function TournamentNavBarContent({
@@ -51,7 +53,8 @@ function TournamentNavBarContent({
   onPublicScoreboardClick,
   onEditTournamentClick,
   publicScoreboardUrl,
-  tournamentFormat
+  tournamentFormat,
+  tournamentIsPro = true,
 }: TournamentNavBarProps) {
   const params = useParams()
   const pathname = usePathname()
@@ -108,7 +111,7 @@ function TournamentNavBarContent({
           </div>
           
           <div className="flex items-center space-x-2">
-            {isOwner && (
+            {isOwner && tournamentIsPro && (
               <Link
                 href={`/admin/${tournamentId}/import`}
                 className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
@@ -180,7 +183,7 @@ function TournamentNavBarContent({
                   className={`flex items-center space-x-2 whitespace-nowrap transition-all ${isDivisions ? 'bg-blue-100 border-blue-400 font-medium text-blue-900' : 'hover:bg-slate-50 hover:border-slate-200'}`}
                 >
                   <Settings className="w-4 h-4" />
-                  <span>Teams and Divisions</span>
+                  <span>{tournamentIsPro ? 'Teams and Divisions' : 'Teams'}</span>
                 </Button>
               </Link>
             )}
@@ -269,7 +272,7 @@ function TournamentNavBarContent({
               </Link>
             )}
             
-            {isOwner && (
+            {isOwner && tournamentIsPro && (
               <Link href={`/admin/${tournamentId}/access`} className="relative z-10 flex-shrink-0">
                 <Button 
                   variant="outline" 

@@ -172,6 +172,7 @@ const tournamentCreateInput = z.object({
     .default('SINGLE_ELIMINATION'),
   seasonLabel: z.string().optional(),
   timezone: z.string().optional(),
+  isPro: z.boolean().default(false),
 })
 
 const getEffectivePaymentTiming = (
@@ -610,6 +611,7 @@ export const tournamentRouter = createTRPCRouter({
             userId: ctx.session.user.id,
             publicSlug,
             hasDivisions,
+            isPro: input.isPro,
           },
         })
 
@@ -763,6 +765,7 @@ export const tournamentRouter = createTRPCRouter({
               userId: ctx.session.user.id,
               publicSlug: occSlug,
               hasDivisions,
+              isPro: input.isPro,
             },
             select: { id: true },
           })
