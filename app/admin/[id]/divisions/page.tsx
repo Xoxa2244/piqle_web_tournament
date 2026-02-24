@@ -1585,6 +1585,7 @@ export default function DivisionsPage() {
           isOwner={false}
           pendingRequestsCount={0}
           tournamentFormat={tournament?.format}
+          tournamentIsPro={tournament?.isPro ?? true}
           onPublicScoreboardClick={handlePublicScoreboardClick}
           onEditTournamentClick={handleEditTournamentClick}
           publicScoreboardUrl={publicScoreboardUrl}
@@ -1624,6 +1625,7 @@ export default function DivisionsPage() {
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
             tournamentFormat={tournament.format}
+            tournamentIsPro={tournament.isPro ?? true}
             onPublicScoreboardClick={handlePublicScoreboardClick}
             onEditTournamentClick={handleEditTournamentClick}
             publicScoreboardUrl={publicScoreboardUrl}
@@ -1674,6 +1676,7 @@ export default function DivisionsPage() {
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
         tournamentFormat={tournament.format}
+        tournamentIsPro={tournament.isPro ?? true}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={publicScoreboardUrl}
