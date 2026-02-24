@@ -259,7 +259,7 @@ function TournamentNavBarContent({
               </Link>
             )}
 
-            {(tournamentFormat === 'INDY_LEAGUE' || tournamentFormat === 'LEAGUE_ROUND_ROBIN') && isAdmin && (
+            {isAdmin && (
               <Link href={`/admin/${tournamentId}/courts`}>
                 <Button
                   variant="outline"

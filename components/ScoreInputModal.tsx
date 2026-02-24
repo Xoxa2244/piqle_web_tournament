@@ -18,7 +18,7 @@ interface Player {
 interface ScoreInputModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (scoreA: number, scoreB: number, sendToDupr?: boolean) => void
+  onSubmit: (scoreA: number, scoreB: number, sendToDupr?: boolean, courtId?: string | null) => void
   teamAName: string
   teamBName: string
   poolName?: string
@@ -31,6 +31,8 @@ interface ScoreInputModalProps {
   onRetryDuprSubmission?: () => void
   existingScoreA?: number | null
   existingScoreB?: number | null
+  availableCourts?: Array<{ id: string; name: string }>
+  selectedCourtId?: string | null
 }
 
 export default function ScoreInputModal({
@@ -49,11 +51,14 @@ export default function ScoreInputModal({
   onRetryDuprSubmission,
   existingScoreA,
   existingScoreB,
+  availableCourts = [],
+  selectedCourtId = null,
 }: ScoreInputModalProps) {
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
   const [sendToDupr, setSendToDupr] = useState(false)
   const [showPlayersWithoutDupr, setShowPlayersWithoutDupr] = useState(false)
+  const [courtId, setCourtId] = useState<string>('')
 
   // Check if all players have DUPR rating
   const allPlayersHaveDupr = useMemo(() => {
@@ -105,8 +110,9 @@ export default function ScoreInputModal({
       } else {
         setScoreB('')
       }
+      setCourtId(selectedCourtId ?? '')
     }
-  }, [isOpen, allPlayersHaveDupr, existingScoreA, existingScoreB])
+  }, [isOpen, allPlayersHaveDupr, existingScoreA, existingScoreB, selectedCourtId])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -118,13 +124,14 @@ export default function ScoreInputModal({
       return
     }
 
-    onSubmit(scoreAValue, scoreBValue, sendToDupr && allPlayersHaveDupr)
+    onSubmit(scoreAValue, scoreBValue, sendToDupr && allPlayersHaveDupr, courtId || null)
   }
 
   const handleClose = () => {
     setScoreA('')
     setScoreB('')
     setSendToDupr(false)
+    setCourtId('')
     setShowPlayersWithoutDupr(false)
     onClose()
   }
@@ -178,6 +185,24 @@ export default function ScoreInputModal({
                   required
                 />
           </div>
+
+          {availableCourts.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Court</label>
+              <select
+                value={courtId}
+                onChange={(e) => setCourtId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">Unassigned</option>
+                {availableCourts.map((court) => (
+                  <option key={court.id} value={court.id}>
+                    {court.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* DUPR Submission Checkbox */}
           {allowDuprSubmission && (

@@ -153,6 +153,10 @@ function DivisionStageManagementContent() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+  const { data: availableCourts = [] } = trpc.indyCourt.list.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId && isAdmin }
+  )
 
   // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
   useEffect(() => {
@@ -878,7 +882,12 @@ function DivisionStageManagementContent() {
     setShowScoreModal(true)
   }
 
-  const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>, sendToDupr?: boolean) => {
+  const handleScoreSubmit = (
+    matchId: string,
+    games: Array<{ scoreA: number; scoreB: number }>,
+    sendToDupr?: boolean,
+    courtId?: string | null
+  ) => {
     const game = games[0] // Take first game
     if (!game) return // Safety check
     updateMatchResultMutation.mutate({
@@ -886,6 +895,7 @@ function DivisionStageManagementContent() {
       scoreA: game.scoreA ?? null,
       scoreB: game.scoreB ?? null,
       sendToDupr: sendToDupr ?? false,
+      courtId: courtId ?? null,
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
@@ -976,11 +986,19 @@ function DivisionStageManagementContent() {
     const isLocked = Boolean(match?.locked)
     const matchNeedsTiebreaker = needsTiebreaker(match)
     const hasTiebreaker = match?.tiebreaker !== null && match?.tiebreaker !== undefined
+    const fallbackCourtName = availableCourts.find((c: any) => c.id === match?.courtId)?.name
+    const courtName = match?.court?.name || fallbackCourtName || 'Unassigned'
+    const withCourt = (content: React.ReactNode) => (
+      <div className="space-y-2">
+        <p className="text-xs text-gray-500 text-center">Court: {courtName}</p>
+        {content}
+      </div>
+    )
     
     // If match has tiebreaker, show button to edit tiebreaker
     if (hasTiebreaker) {
-      return (
-        <div className="space-y-2">
+      return withCourt(
+        <>
           <Button
             size="sm"
             variant="outline"
@@ -999,14 +1017,14 @@ function DivisionStageManagementContent() {
           >
             Edit Tiebreaker
           </Button>
-        </div>
+        </>
       )
     }
     
     // If match needs tiebreaker, show tiebreaker button instead
     if (matchNeedsTiebreaker) {
-      return (
-        <div className="space-y-2">
+      return withCourt(
+        <>
           <Button
             size="sm"
             variant="outline"
@@ -1025,14 +1043,14 @@ function DivisionStageManagementContent() {
           >
             Enter Tiebreaker
           </Button>
-        </div>
+        </>
       )
     }
     
     const label = isLocked ? 'Scores Locked' : hasResult ? 'Change Score' : 'Enter Score'
     const variant = isLocked ? 'secondary' : hasResult ? 'outline' : 'default'
 
-    return (
+    return withCourt(
       <Button
         size="sm"
         variant={variant}
@@ -2844,8 +2862,8 @@ function DivisionStageManagementContent() {
           <ScoreInputModal
             isOpen={showScoreModal}
             onClose={handleScoreModalClose}
-            onSubmit={(scoreA, scoreB, sendToDupr) => {
-              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }], sendToDupr)
+            onSubmit={(scoreA, scoreB, sendToDupr, courtId) => {
+              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }], sendToDupr, courtId)
             }}
             teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
             teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
@@ -2858,6 +2876,8 @@ function DivisionStageManagementContent() {
             duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
             existingScoreA={selectedMatch.games?.[0]?.scoreA ?? null}
             existingScoreB={selectedMatch.games?.[0]?.scoreB ?? null}
+            availableCourts={availableCourts.map((court: any) => ({ id: court.id, name: court.name }))}
+            selectedCourtId={selectedMatch.courtId ?? null}
             onRetryDuprSubmission={() => handleRetryDuprSubmission(selectedMatch.id)}
           />
         )

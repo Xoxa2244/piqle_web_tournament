@@ -56,20 +56,6 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
   )
   const pendingRequestsCount = accessRequests?.length || 0
 
-  if (tournament?.format && tournament.format !== 'INDY_LEAGUE' && tournament.format !== 'LEAGUE_ROUND_ROBIN') {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-gray-600">
-              This page is only available for Indy League and Round Robin League tournaments.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   const handleCreateCourt = () => {
     createCourt.mutate({ tournamentId })
   }
