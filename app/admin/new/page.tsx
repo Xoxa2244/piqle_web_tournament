@@ -433,7 +433,7 @@ const PRO_HELP_MODAL_CONTENT = (
       <ul className="list-disc list-inside space-y-1">
         <li>Everything in Basic</li>
         <li>CSV import (import games, teams and players via CSV from external systems)</li>
-        <li>Indy League</li>
+        <li>More tournament formats</li>
         <li>Multi-division structure</li>
         <li>Complex / custom settings</li>
         <li>Elimination stages</li>
@@ -2036,7 +2036,7 @@ function NewTournamentPageInner() {
                           {(formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE') ? (
                             <div className="mt-2 text-xs text-gray-500">Ladder formats require teams (not 1v1).</div>
                           ) : null}
-                          <div className="mt-2 text-xs text-gray-500">1 = Singles, 2 = Doubles, 4 = Squad.</div>
+                          <div className="mt-2 text-xs text-gray-500">{isPro ? '1 = Singles, 2 = Doubles, 4 = Squad.' : '1 = Singles, 2 = Doubles.'}</div>
                         </div>
 
                         <div>
