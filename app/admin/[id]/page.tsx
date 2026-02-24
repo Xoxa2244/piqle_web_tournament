@@ -249,7 +249,7 @@ export default function TournamentDetailPage() {
   const [winnerTeamModal, setWinnerTeamModal] = useState<{
     teamName: string
     divisionName: string
-    players: Array<{ id: string; name: string; email?: string | null }>
+    players: Array<{ id: string; profileId: string | null; name: string; email?: string | null }>
   } | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
@@ -421,6 +421,7 @@ export default function TournamentDetailPage() {
         const fullName = `${p?.firstName ?? ''} ${p?.lastName ?? ''}`.trim()
         return {
           id: String(p?.id ?? `${teamId}-${idx}`),
+          profileId: p?.id ? String(p.id) : null,
           name: fullName || p?.name || p?.email || 'Player',
           email: p?.email ?? null,
         }
@@ -1105,15 +1106,31 @@ export default function TournamentDetailPage() {
               {winnerTeamModal.players.length > 0 ? (
                 <div className="space-y-2">
                   {winnerTeamModal.players.map((player, index) => (
-                    <div key={player.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
-                        {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                    player.profileId ? (
+                      <Link
+                        key={player.id}
+                        href={`/profile/${player.profileId}`}
+                        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                          {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                        </div>
+                      </Link>
+                    ) : (
+                      <div key={player.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                          {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                        </div>
                       </div>
-                    </div>
+                    )
                   ))}
                 </div>
               ) : (
