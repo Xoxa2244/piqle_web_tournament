@@ -400,6 +400,7 @@ export default function TournamentDetailPage() {
   const isAdmin = tournament?.userAccessInfo?.isOwner || tournament?.userAccessInfo?.accessLevel === 'ADMIN'
   // Check if user is owner (for owner-only features like CSV import and access control)
   const isOwner = tournament?.userAccessInfo?.isOwner
+  const isBasicTournament = tournament?.isPro === false
 
   const parsedEntryFeeForForm = Number(tournamentForm.entryFee)
   const entryFeeCentsForForm =
@@ -413,7 +414,7 @@ export default function TournamentDetailPage() {
   // Get pending access requests (only for owner)
   const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
     { tournamentId },
-    { enabled: !!isOwner && !!tournamentId }
+    { enabled: !!isOwner && !!tournamentId && !isBasicTournament }
   )
   const pendingRequestsCount = accessRequests?.length || 0
 
@@ -771,9 +772,9 @@ export default function TournamentDetailPage() {
     <div className="min-h-screen w-full bg-gray-50">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className={isBasicTournament ? 'flex justify-center' : 'grid gap-6 lg:grid-cols-3'}>
           {/* Tournament Information - Left Column (60%) */}
-          <div className="lg:col-span-2">
+          <div className={isBasicTournament ? 'w-full max-w-4xl' : 'lg:col-span-2'}>
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-2xl font-bold text-gray-900 flex items-center">
@@ -948,6 +949,7 @@ export default function TournamentDetailPage() {
           </div>
 
           {/* Access requests - Right Column (40%) */}
+          {!isBasicTournament ? (
           <div className="lg:col-span-1">
             <Card className="h-full border border-gray-200 shadow-lg bg-white relative overflow-hidden group">
               <CardHeader className="pb-4">
@@ -1039,6 +1041,7 @@ export default function TournamentDetailPage() {
               </CardContent>
             </Card>
           </div>
+          ) : null}
         </div>
       </div>
 
