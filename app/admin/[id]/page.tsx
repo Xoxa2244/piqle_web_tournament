@@ -901,19 +901,25 @@ export default function TournamentDetailPage() {
                             <div className="space-y-2 text-base text-gray-800">
                               {winnersForDivision?.first && (
                                 <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                    <Trophy className="h-4 w-4" />
+                                  </span>
                                   <span>{winnersForDivision.first.teamName}</span>
                                 </div>
                               )}
                               {winnersForDivision?.second && (
                                 <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-slate-700">
+                                    <Trophy className="h-4 w-4" />
+                                  </span>
                                   <span>{winnersForDivision.second.teamName}</span>
                                 </div>
                               )}
                               {winnersForDivision?.third && (
                                 <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-200 text-orange-800">
+                                    <Trophy className="h-4 w-4" />
+                                  </span>
                                   <span>{winnersForDivision.third.teamName}</span>
                                 </div>
                               )}
