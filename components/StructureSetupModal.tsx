@@ -420,22 +420,28 @@ export default function StructureSetupModal({
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Players per team</label>
                       <div className="flex gap-2">
-                        {(isPro ? [1, 2, 4] : [1, 2]).map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() =>
-                              handleDivisionChange(index, (current) => ({
-                                ...current,
-                                playersPerTeam: value as 1 | 2 | 4,
-                                name: getDivisionNameWhenChangingPlayersPerTeam(current.name, value as 1 | 2 | 4),
-                              }))
-                            }
-                            className={`px-3 py-2 rounded-lg border ${division.playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                          >
-                            {value}
-                          </button>
-                        ))}
+                        {(isPro ? [1, 2, 4] : [1, 2]).map((value) => {
+                          const singlesComingSoon = value === 1
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={singlesComingSoon}
+                              title={singlesComingSoon ? 'Coming soon' : undefined}
+                              onClick={() => {
+                                if (singlesComingSoon) return
+                                handleDivisionChange(index, (current) => ({
+                                  ...current,
+                                  playersPerTeam: value as 1 | 2 | 4,
+                                  name: getDivisionNameWhenChangingPlayersPerTeam(current.name, value as 1 | 2 | 4),
+                                }))
+                              }}
+                              className={`px-3 py-2 rounded-lg border ${division.playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : singlesComingSoon ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              {value}
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>

@@ -2017,13 +2017,15 @@ function NewTournamentPageInner() {
                             {(isPro ? ([1, 2, 4] as const) : ([1, 2] as const)).map((value) => {
                               const forceSquad = formData.format === 'MLP' || formData.format === 'INDY_LEAGUE'
                               const disableSingles = formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE'
-                              const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1)
+                              const singlesComingSoon = value === 1
+                              const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1) || singlesComingSoon
                               const selected = quickDivision.playersPerTeam === value
                               return (
                                 <button
                                   key={value}
                                   type="button"
                                   disabled={disabled}
+                                  title={singlesComingSoon ? 'Coming soon' : undefined}
                                   onClick={() => {
                                     if (disabled) return
                                     updateQuickDivision((d) => ({

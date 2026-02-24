@@ -381,6 +381,7 @@ function DivisionCard({
   onToggleExpansion, 
   canCollapse = true,
   canDeleteDivision = true,
+  canMergeDivision = true,
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
@@ -407,6 +408,7 @@ function DivisionCard({
   onToggleExpansion: () => void
   canCollapse?: boolean
   canDeleteDivision?: boolean
+  canMergeDivision?: boolean
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
@@ -501,7 +503,7 @@ function DivisionCard({
             </Button>
             )}
             
-            {!isIndyLeague && (
+            {canMergeDivision && !isIndyLeague && (
               (division as any).isMerged ? (
               <Button
                 variant="outline"
@@ -1780,7 +1782,9 @@ export default function DivisionsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className={isBasicOneDivision ? 'max-w-4xl mx-auto' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}>
+            {!isBasicOneDivision && (
+            <>
             {/* Left Sidebar - multi-division (Pro) view */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
@@ -1800,9 +1804,11 @@ export default function DivisionsPage() {
                 
               </div>
             </div>
+            </>
+            )}
 
             {/* Main Content */}
-            <div className="lg:col-span-3">
+            <div className={isBasicOneDivision ? undefined : 'lg:col-span-3'}>
               <DndContext
                 sensors={sensors}
                 onDragStart={handleDragStart}
@@ -1818,6 +1824,7 @@ export default function DivisionsPage() {
                       onToggleExpansion={isBasicOneDivision ? () => {} : () => toggleDivisionExpansion(division.id)}
                       canCollapse={!isBasicOneDivision}
                       canDeleteDivision={tournament?.isPro !== false}
+                      canMergeDivision={tournament?.isPro !== false}
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
