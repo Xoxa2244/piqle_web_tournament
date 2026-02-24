@@ -785,6 +785,10 @@ export default function DivisionsPage() {
   // Get divisions for team creation
   const divisions = tournament?.divisions || []
   const isNoDivisionMode = tournament?.hasDivisions === false
+  // Basic mode with one division: show as flat view (always "expanded" division, no division cards)
+  const isBasicSingleDivisionView =
+    tournament?.isPro === false && (tournament?.divisions?.length ?? 0) === 1
+  const showFlatDivisionView = isNoDivisionMode || isBasicSingleDivisionView
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
@@ -1598,7 +1602,7 @@ export default function DivisionsPage() {
     )
   }
 
-  if (!isNoDivisionMode && tournament.divisions.length === 0) {
+  if (!showFlatDivisionView && tournament.divisions.length === 0) {
     return (
       <>
         <div className="min-h-screen bg-gray-50">
@@ -1647,7 +1651,7 @@ export default function DivisionsPage() {
     )
   }
 
-  const activeDivision = isNoDivisionMode ? (localDivisions[0] || divisions[0]) : null
+  const activeDivision = showFlatDivisionView ? (localDivisions[0] || divisions[0]) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1675,7 +1679,7 @@ export default function DivisionsPage() {
             </div>
             
             <div className="flex items-center space-x-4">
-              {isNoDivisionMode ? (
+              {showFlatDivisionView ? (
                 <Button
                   className="flex items-center space-x-2"
                   onClick={() => {
@@ -1707,7 +1711,7 @@ export default function DivisionsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {isNoDivisionMode ? (
+        {showFlatDivisionView ? (
           <div className="space-y-6">
             {!activeDivision ? (
               <div className="bg-white rounded-lg shadow-sm p-6 text-center text-slate-600">
@@ -1768,7 +1772,7 @@ export default function DivisionsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Left Sidebar */}
+            {/* Left Sidebar - multi-division (Pro) view */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
                 <div>

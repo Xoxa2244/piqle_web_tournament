@@ -424,9 +424,7 @@ const PRO_HELP_MODAL_CONTENT = (
         <li>Only Singles and Doubles (no 4v4)</li>
         <li>One division (division management hidden)</li>
         <li>No CSV import</li>
-        <li>No Indy League</li>
         <li>No elimination stages</li>
-        <li>No templates</li>
         <li>No access control</li>
       </ul>
     </div>
@@ -434,7 +432,7 @@ const PRO_HELP_MODAL_CONTENT = (
       <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Pro:</p>
       <ul className="list-disc list-inside space-y-1">
         <li>Everything in Basic</li>
-        <li>CSV import</li>
+        <li>CSV import (import players, teams, divisions, etc.)</li>
         <li>Indy League</li>
         <li>Multi-division structure</li>
         <li>Complex / custom settings</li>
