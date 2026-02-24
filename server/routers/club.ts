@@ -16,6 +16,30 @@ const isMissingDbColumn = (err: any, columnName: string) => {
   return msg.includes(`"${columnName.toLowerCase()}"`) && msg.includes('does not exist')
 }
 
+const createUserNotificationBestEffort = async (args: {
+  prisma: any
+  userId: string
+  type: string
+  title: string
+  body?: string | null
+  targetUrl?: string | null
+}) => {
+  const { prisma, userId, type, title, body, targetUrl } = args
+  try {
+    await prisma.userNotification.create({
+      data: {
+        userId,
+        type,
+        title,
+        body: body ?? null,
+        targetUrl: targetUrl ?? null,
+      },
+    })
+  } catch (err: any) {
+    if (!isMissingDbRelation(err, 'user_notifications')) throw err
+  }
+}
+
 const maskEmail = (email: string | null | undefined) => {
   try {
     const [localRaw, domainRaw] = String(email ?? '').split('@')
@@ -1553,6 +1577,13 @@ If you weren’t expecting this, you can ignore this email.`
       if (!admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can approve requests' })
       }
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, name: true },
+      })
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
 
       // If the user is banned, don't allow approval.
       try {
@@ -1597,6 +1628,16 @@ If you weren’t expecting this, you can ignore this email.`
         ctx.prisma.clubJoinRequest.delete({ where: { id: req.id } }),
       ])
 
+      await createUserNotificationBestEffort({
+        prisma: ctx.prisma,
+        userId: input.userId,
+        type: 'CLUB_JOIN_APPROVED',
+        title: 'Join request approved',
+        body: `You can now access "${club.name}".`,
+        targetUrl: `/clubs/${club.id}`,
+      })
+      pushToUsers([input.userId], { type: 'invalidate', keys: ['notification.list'] })
+
       return { success: true }
     }),
 
@@ -1612,11 +1653,29 @@ If you weren’t expecting this, you can ignore this email.`
       if (!admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can reject requests' })
       }
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, name: true },
+      })
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
 
       try {
-        await ctx.prisma.clubJoinRequest.deleteMany({
+        const removed = await ctx.prisma.clubJoinRequest.deleteMany({
           where: { clubId: input.clubId, userId: input.userId },
         })
+        if (removed.count > 0) {
+          await createUserNotificationBestEffort({
+            prisma: ctx.prisma,
+            userId: input.userId,
+            type: 'CLUB_JOIN_REJECTED',
+            title: 'Join request declined',
+            body: `Your request to join "${club.name}" was declined.`,
+            targetUrl: `/clubs/${club.id}`,
+          })
+          pushToUsers([input.userId], { type: 'invalidate', keys: ['notification.list'] })
+        }
       } catch (err: any) {
         if (isMissingDbRelation(err, 'club_join_requests')) {
           throw new TRPCError({
@@ -1647,6 +1706,13 @@ If you weren’t expecting this, you can ignore this email.`
       })
       if (!admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can ban users' })
+      }
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, name: true },
+      })
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
       }
 
       if (input.userId === currentUserId) {
@@ -1704,6 +1770,18 @@ If you weren’t expecting this, you can ignore this email.`
         if (!isMissingDbRelation(err, 'club_join_requests')) throw err
       }
 
+      await createUserNotificationBestEffort({
+        prisma: ctx.prisma,
+        userId: input.userId,
+        type: 'CLUB_BANNED',
+        title: 'You were banned from a club',
+        body: reason
+          ? `You were banned from "${club.name}". Reason: ${reason}`
+          : `You were banned from "${club.name}".`,
+        targetUrl: '/clubs',
+      })
+      pushToUsers([input.userId], { type: 'invalidate', keys: ['notification.list'] })
+
       return { success: true }
     }),
 
@@ -1719,11 +1797,29 @@ If you weren’t expecting this, you can ignore this email.`
       if (!admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can unban users' })
       }
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, name: true },
+      })
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
 
       try {
-        await ctx.prisma.clubBan.deleteMany({
+        const removed = await ctx.prisma.clubBan.deleteMany({
           where: { clubId: input.clubId, userId: input.userId },
         })
+        if (removed.count > 0) {
+          await createUserNotificationBestEffort({
+            prisma: ctx.prisma,
+            userId: input.userId,
+            type: 'CLUB_UNBANNED',
+            title: 'You were unbanned from a club',
+            body: `You can join "${club.name}" again.`,
+            targetUrl: `/clubs/${club.id}`,
+          })
+          pushToUsers([input.userId], { type: 'invalidate', keys: ['notification.list'] })
+        }
       } catch (err: any) {
         if (isMissingDbRelation(err, 'club_bans')) {
           throw new TRPCError({

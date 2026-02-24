@@ -212,7 +212,7 @@ function ClubsPageContent() {
           <div className="mt-auto flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
             <Button
               variant={club.isJoinPending ? 'outline' : 'default'}
-              className={`w-full ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              className={`h-10 w-full whitespace-nowrap ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
               onClick={() => (club.isJoinPending ? onCancelJoinClick(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
