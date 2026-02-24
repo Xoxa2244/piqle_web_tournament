@@ -246,6 +246,11 @@ export default function TournamentDetailPage() {
   const [showEditTournament, setShowEditTournament] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
+  const [winnerTeamModal, setWinnerTeamModal] = useState<{
+    teamName: string
+    divisionName: string
+    players: Array<{ id: string; name: string; email?: string | null }>
+  } | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -405,6 +410,29 @@ export default function TournamentDetailPage() {
       refetchAccessRequests()
     },
   })
+
+  const openWinnerTeamModal = useCallback(
+    (divisionId: string, teamId: string, teamName: string) => {
+      const divisions = (tournament?.divisions ?? []) as any[]
+      const division = divisions.find((d) => d.id === divisionId)
+      const team = (division?.teams ?? []).find((t: any) => t.id === teamId)
+      const players = ((team?.teamPlayers ?? []) as any[]).map((tp: any, idx: number) => {
+        const p = tp?.player ?? {}
+        const fullName = `${p?.firstName ?? ''} ${p?.lastName ?? ''}`.trim()
+        return {
+          id: String(p?.id ?? `${teamId}-${idx}`),
+          name: fullName || p?.name || p?.email || 'Player',
+          email: p?.email ?? null,
+        }
+      })
+      setWinnerTeamModal({
+        teamName,
+        divisionName: division?.name || 'Division',
+        players,
+      })
+    },
+    [tournament?.divisions]
+  )
 
   // Winners come from tournament.get (winnersByDivision) — no separate getWinners query
 
@@ -898,31 +926,51 @@ export default function TournamentDetailPage() {
                           </div>
                         ) : (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
-                            <div className="space-y-2 text-base text-gray-800">
-                              {winnersForDivision?.first && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-                                    <Trophy className="h-4 w-4" />
-                                  </span>
-                                  <span>{winnersForDivision.first.teamName}</span>
-                                </div>
-                              )}
-                              {winnersForDivision?.second && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-slate-700">
-                                    <Trophy className="h-4 w-4" />
-                                  </span>
-                                  <span>{winnersForDivision.second.teamName}</span>
-                                </div>
-                              )}
-                              {winnersForDivision?.third && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-200 text-orange-800">
-                                    <Trophy className="h-4 w-4" />
-                                  </span>
-                                  <span>{winnersForDivision.third.teamName}</span>
-                                </div>
-                              )}
+                            <div className="flex items-end justify-center gap-3 md:gap-4 min-h-[220px]">
+                              {[
+                                {
+                                  key: 'second',
+                                  place: 2,
+                                  team: winnersForDivision?.second,
+                                  podiumClass: 'h-24 bg-gradient-to-b from-slate-200 to-slate-300 border-slate-300',
+                                  iconClass: 'text-slate-600',
+                                },
+                                {
+                                  key: 'first',
+                                  place: 1,
+                                  team: winnersForDivision?.first,
+                                  podiumClass: 'h-32 bg-gradient-to-b from-amber-200 to-yellow-300 border-amber-300',
+                                  iconClass: 'text-amber-700',
+                                },
+                                {
+                                  key: 'third',
+                                  place: 3,
+                                  team: winnersForDivision?.third,
+                                  podiumClass: 'h-20 bg-gradient-to-b from-orange-200 to-orange-300 border-orange-300',
+                                  iconClass: 'text-orange-700',
+                                },
+                              ]
+                                .filter((slot) => slot.team)
+                                .map((slot) => (
+                                  <div key={slot.key} className="flex w-full max-w-[180px] flex-1 flex-col items-center">
+                                    <button
+                                      type="button"
+                                      className="text-sm md:text-base font-semibold text-blue-700 hover:text-blue-900 hover:underline text-center line-clamp-2 min-h-[2.5rem]"
+                                      onClick={() => {
+                                        if (!effectiveDivisionId || !slot.team) return
+                                        openWinnerTeamModal(effectiveDivisionId, slot.team.teamId, slot.team.teamName)
+                                      }}
+                                    >
+                                      {slot.team?.teamName}
+                                    </button>
+                                    <div
+                                      className={`mt-2 w-full rounded-t-2xl border px-2 py-2 flex flex-col items-center justify-center shadow-sm ${slot.podiumClass}`}
+                                    >
+                                      <Trophy className={`h-6 w-6 ${slot.iconClass}`} />
+                                      <span className="mt-1 text-xl font-black text-gray-900">{slot.place}</span>
+                                    </div>
+                                  </div>
+                                ))}
                             </div>
                           </div>
                         )}
@@ -1028,6 +1076,53 @@ export default function TournamentDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Winner team details modal */}
+      {winnerTeamModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+          onClick={() => setWinnerTeamModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-gray-200 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{winnerTeamModal.teamName}</h3>
+                <p className="text-sm text-gray-500 mt-1">{winnerTeamModal.divisionName}</p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                onClick={() => setWinnerTeamModal(null)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Players</p>
+              {winnerTeamModal.players.length > 0 ? (
+                <div className="space-y-2">
+                  {winnerTeamModal.players.map((player, index) => (
+                    <div key={player.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                        {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No players found in this team.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Division Modal */}
       {showCreateDivision && (
