@@ -432,7 +432,7 @@ const PRO_HELP_MODAL_CONTENT = (
       <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Pro:</p>
       <ul className="list-disc list-inside space-y-1">
         <li>Everything in Basic</li>
-        <li>CSV import (import players, teams, divisions, etc.)</li>
+        <li>CSV import (import games, teams and players via CSV from external systems)</li>
         <li>Indy League</li>
         <li>Multi-division structure</li>
         <li>Complex / custom settings</li>
