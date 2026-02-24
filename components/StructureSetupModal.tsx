@@ -420,7 +420,7 @@ export default function StructureSetupModal({
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Players per team</label>
                       <div className="flex gap-2">
-                        {[1, 2, 4].map((value) => (
+                        {(isPro ? [1, 2, 4] : [1, 2]).map((value) => (
                           <button
                             key={value}
                             type="button"

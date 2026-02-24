@@ -379,6 +379,8 @@ function DivisionCard({
   division, 
   isExpanded, 
   onToggleExpansion, 
+  canCollapse = true,
+  canDeleteDivision = true,
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
@@ -403,6 +405,8 @@ function DivisionCard({
   division: Division
   isExpanded: boolean
   onToggleExpansion: () => void
+  canCollapse?: boolean
+  canDeleteDivision?: boolean
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
@@ -443,18 +447,22 @@ function DivisionCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleExpansion}
-              className="h-6 w-6 p-0"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
+            {canCollapse ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleExpansion}
+                className="h-6 w-6 p-0"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            ) : (
+              <ChevronDown className="h-4 w-4 text-slate-400" />
+            )}
             
             <div>
               <CardTitle className="text-lg">{division.name} / {division.teamKind}</CardTitle>
@@ -542,13 +550,15 @@ function DivisionCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                className={`h-8 w-8 p-0 ${canDeleteDivision ? 'text-red-500 hover:text-red-700' : 'text-slate-300 cursor-not-allowed'}`}
                 onClick={() => {
+                  if (!canDeleteDivision) return
                   if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
                     onDeleteDivision(division.id)
                   }
                 }}
-                title="Delete Division"
+                title={canDeleteDivision ? 'Delete Division' : undefined}
+                disabled={!canDeleteDivision}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -785,10 +795,9 @@ export default function DivisionsPage() {
   // Get divisions for team creation
   const divisions = tournament?.divisions || []
   const isNoDivisionMode = tournament?.hasDivisions === false
-  // Basic mode with one division: show as flat view (always "expanded" division, no division cards)
-  const isBasicSingleDivisionView =
+  const showFlatDivisionView = isNoDivisionMode
+  const isBasicOneDivision =
     tournament?.isPro === false && (tournament?.divisions?.length ?? 0) === 1
-  const showFlatDivisionView = isNoDivisionMode || isBasicSingleDivisionView
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
@@ -1695,7 +1704,7 @@ export default function DivisionsPage() {
                   <span>{activeDivision?.teamKind === 'SINGLES_1v1' ? 'Add Player' : 'Add Team'}</span>
                 </Button>
               ) : (
-                <>
+                tournament?.isPro !== false && (
                   <Button 
                     className="flex items-center space-x-2"
                     onClick={() => setShowAddDivisionModal(true)}
@@ -1703,7 +1712,7 @@ export default function DivisionsPage() {
                     <Plus className="h-4 w-4" />
                     <span>Create Division</span>
                   </Button>
-                </>
+                )
               )}
             </div>
           </div>
@@ -1805,8 +1814,10 @@ export default function DivisionsPage() {
                     <DivisionCard
                       key={division.id}
                       division={division}
-                      isExpanded={expandedDivisions.has(division.id)}
-                      onToggleExpansion={() => toggleDivisionExpansion(division.id)}
+                      isExpanded={isBasicOneDivision ? true : expandedDivisions.has(division.id)}
+                      onToggleExpansion={isBasicOneDivision ? () => {} : () => toggleDivisionExpansion(division.id)}
+                      canCollapse={!isBasicOneDivision}
+                      canDeleteDivision={tournament?.isPro !== false}
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
