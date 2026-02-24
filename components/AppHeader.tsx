@@ -75,9 +75,6 @@ export default function AppHeader() {
   const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
     onSuccess: () => utils.notification.list.invalidate({ limit: 20 }),
   })
-  const markUserNotificationRead = trpc.notification.markUserNotificationRead.useMutation({
-    onSuccess: () => utils.notification.list.invalidate({ limit: 20 }),
-  })
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -119,43 +116,6 @@ export default function AppHeader() {
   const isLoggedIn = status === 'authenticated'
   const notifications = notificationsData?.items ?? []
   const unreadCount = notificationsData?.unreadCount ?? 0
-  const notificationsBootstrappedRef = useRef(false)
-  const shownToastNotificationIdsRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      notificationsBootstrappedRef.current = false
-      shownToastNotificationIdsRef.current = new Set()
-    }
-  }, [isLoggedIn])
-
-  useEffect(() => {
-    if (!isLoggedIn) return
-    if (!notificationsBootstrappedRef.current) {
-      for (const n of notifications) {
-        shownToastNotificationIdsRef.current.add(n.id)
-      }
-      notificationsBootstrappedRef.current = true
-      return
-    }
-
-    const toastTypes = new Set([
-      'CLUB_JOIN_APPROVED',
-      'CLUB_JOIN_REJECTED',
-      'CLUB_BANNED',
-      'CLUB_UNBANNED',
-    ])
-    for (const n of notifications) {
-      if (!toastTypes.has(String(n.type))) continue
-      if (n.readAt) continue
-      if (shownToastNotificationIdsRef.current.has(n.id)) continue
-      shownToastNotificationIdsRef.current.add(n.id)
-      toast({
-        title: n.title || 'Notification',
-        description: n.body || undefined,
-      })
-    }
-  }, [isLoggedIn, notifications])
 
   const { data: myChatClubs } = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isLoggedIn,
@@ -359,12 +319,7 @@ export default function AppHeader() {
                                 key={n.id}
                                 href={n.targetUrl || '/'}
                                 className="block px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                                onClick={() => {
-                                  setNotificationsOpen(false)
-                                  if (n.userNotificationId) {
-                                    markUserNotificationRead.mutate({ notificationId: n.userNotificationId })
-                                  }
-                                }}
+                                onClick={() => setNotificationsOpen(false)}
                               >
                                 <div className="text-sm font-medium text-gray-900 truncate">{n.title}</div>
                                 {n.body ? <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.body}</div> : null}

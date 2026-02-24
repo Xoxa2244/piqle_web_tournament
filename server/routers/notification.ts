@@ -50,42 +50,6 @@ export const notificationRouter = createTRPCRouter({
         }),
       ])
 
-      let userNotifications: Array<{
-        id: string
-        type: string
-        title: string
-        body: string | null
-        targetUrl: string | null
-        createdAt: Date
-        readAt: Date | null
-      }> = []
-      let userNotificationsUnreadCount = 0
-      try {
-        const [rows, unread] = await Promise.all([
-          ctx.prisma.userNotification.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'desc' },
-            take: limit,
-            select: {
-              id: true,
-              type: true,
-              title: true,
-              body: true,
-              targetUrl: true,
-              createdAt: true,
-              readAt: true,
-            },
-          }),
-          ctx.prisma.userNotification.count({
-            where: { userId, readAt: null },
-          }),
-        ])
-        userNotifications = rows
-        userNotificationsUnreadCount = unread
-      } catch (err) {
-        if (!isMissingDbRelation(err, 'user_notifications')) throw err
-      }
-
       const invitationItems = pendingInvitations.map((inv) => ({
         id: `tournament-invitation-${inv.id}`,
         type: 'TOURNAMENT_INVITATION' as const,
@@ -162,22 +126,11 @@ export const notificationRouter = createTRPCRouter({
       const allItems = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
-        ...userNotifications.map((n) => ({
-          id: `user-notification-${n.id}`,
-          type: n.type,
-          title: n.title,
-          body: n.body,
-          createdAt: n.createdAt.toISOString(),
-          readAt: n.readAt ? n.readAt.toISOString() : null,
-          targetUrl: n.targetUrl,
-          userNotificationId: n.id,
-          clubId: null as string | null,
-        })).map((i) => ({ ...i, _sort: i.createdAt })),
       ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
       const items = allItems.slice(0, limit).map(({ _sort, ...rest }) => rest)
 
       return {
-        unreadCount: invitationCount + clubJoinItems.length + userNotificationsUnreadCount,
+        unreadCount: invitationCount + clubJoinItems.length,
         items,
       }
     }),
@@ -204,20 +157,4 @@ export const notificationRouter = createTRPCRouter({
   markAllRead: protectedProcedure.mutation(async () => {
     return { success: true }
   }),
-
-  markUserNotificationRead: protectedProcedure
-    .input(z.object({ notificationId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const userId = ctx.session.user.id
-      try {
-        await ctx.prisma.userNotification.updateMany({
-          where: { id: input.notificationId, userId },
-          data: { readAt: new Date() },
-        })
-      } catch (err) {
-        if (isMissingDbRelation(err, 'user_notifications')) return { success: true }
-        throw err
-      }
-      return { success: true }
-    }),
 })

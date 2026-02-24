@@ -173,7 +173,7 @@ function ClubsPageContent() {
           </span>
         </div>
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col space-y-4">
+      <CardContent className="flex flex-1 flex-col gap-4">
         <div
           className={`text-sm rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors ${club.nextTournament ? 'cursor-pointer hover:bg-gray-100' : ''}`}
           onClick={(e) => {
@@ -212,7 +212,7 @@ function ClubsPageContent() {
           <div className="mt-auto flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
             <Button
               variant={club.isJoinPending ? 'outline' : 'default'}
-              className={`h-10 w-full whitespace-nowrap ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              className={`w-full ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
               onClick={() => (club.isJoinPending ? onCancelJoinClick(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
@@ -322,7 +322,7 @@ function ClubsPageContent() {
       {isLoggedIn && followingClubs.length > 0 ? (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-900">My clubs</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
             {followingClubs.map(renderClubCard)}
           </div>
         </div>
@@ -333,7 +333,7 @@ function ClubsPageContent() {
           <h2 className="text-sm font-semibold text-gray-900">
             {isLoggedIn && followingClubs.length > 0 ? 'Discover' : 'All clubs'}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
             {discoverClubs.map(renderClubCard)}
           </div>
         </div>
