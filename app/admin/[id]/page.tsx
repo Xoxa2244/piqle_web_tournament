@@ -4,6 +4,12 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
@@ -87,34 +93,6 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
     reader.onerror = () => reject(new Error('Failed to read file'))
     reader.readAsDataURL(file)
   })
-}
-
-function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
-  const now = new Date()
-  const start = new Date(tournament.startDate)
-  const end = new Date(tournament.endDate)
-  const endWithGrace = new Date(end)
-  endWithGrace.setHours(endWithGrace.getHours() + 12)
-  const nextDay = new Date(now)
-  nextDay.setDate(nextDay.getDate() + 1)
-  nextDay.setHours(0, 0, 0, 0)
-  if (endWithGrace < nextDay) return 'past'
-  if (start > now) return 'upcoming'
-  return 'in_progress'
-}
-function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'Past'
-    case 'upcoming': return 'Upcoming'
-    case 'in_progress': return 'In progress'
-  }
-}
-function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'bg-gray-100 text-gray-700'
-    case 'upcoming': return 'bg-blue-50 text-blue-700'
-    case 'in_progress': return 'bg-green-50 text-green-700'
-  }
 }
 
 const getRegistrationMaxDateTime = (startDate: string) => {
@@ -802,6 +780,9 @@ export default function TournamentDetailPage() {
                 <div className="flex items-center gap-2">
                   <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
                     {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                  </span>
+                  <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                    {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                   </span>
                 </div>
 

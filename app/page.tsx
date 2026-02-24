@@ -4,6 +4,12 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort, formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -248,57 +254,6 @@ function HomePageContent() {
       router.replace(nextQuery ? `/?${nextQuery}` : '/', { scroll: false })
     }
   }, [router, searchParams])
-
-  const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
-    const now = new Date()
-    const start = new Date(tournament.startDate)
-    const end = new Date(tournament.endDate)
-    const endWithGrace = new Date(end)
-    endWithGrace.setHours(endWithGrace.getHours() + 12)
-    const nextDay = new Date(now)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(0, 0, 0, 0)
-    if (endWithGrace < nextDay) return 'past'
-    if (start > now) return 'upcoming'
-    return 'in_progress'
-  }
-
-  const getTournamentStatusLabel = (status: 'past' | 'upcoming' | 'in_progress') => {
-    switch (status) {
-      case 'past': return 'Past'
-      case 'upcoming': return 'Upcoming'
-      case 'in_progress': return 'In progress'
-    }
-  }
-
-  const getTournamentStatusBadgeClass = (status: 'past' | 'upcoming' | 'in_progress') => {
-    switch (status) {
-      case 'past': return 'bg-gray-100 text-gray-700'
-      case 'upcoming': return 'bg-blue-50 text-blue-700'
-      case 'in_progress': return 'bg-green-50 text-green-700'
-    }
-  }
-
-  const getTournamentTypeLabel = (format?: string | null) => {
-    switch (format) {
-      case 'SINGLE_ELIMINATION':
-        return 'Single elim'
-      case 'ROUND_ROBIN':
-        return 'Round robin'
-      case 'MLP':
-        return 'MLP'
-      case 'INDY_LEAGUE':
-        return 'Indy league'
-      case 'LEAGUE_ROUND_ROBIN':
-        return 'League RR'
-      case 'ONE_DAY_LADDER':
-        return 'One-day ladder'
-      case 'LADDER_LEAGUE':
-        return 'Ladder league'
-      default:
-        return 'Tournament'
-    }
-  }
 
   const isRegistrationOpen = (tournament: { registrationStartDate?: Date | string | null; registrationEndDate?: Date | string | null; startDate: Date | string }): boolean => {
     const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
