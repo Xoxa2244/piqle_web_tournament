@@ -331,7 +331,11 @@ export default function AdminPage() {
       {filteredTournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           {filteredTournaments.map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
+            <div
+              key={tournament.id}
+              className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0 cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => router.push(`/admin/${tournament.id}`)}
+            >
               {/* Top right: Share + Delete (icon only) */}
               <div className="absolute top-4 right-4 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {baseUrl && (

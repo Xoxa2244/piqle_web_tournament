@@ -279,6 +279,27 @@ function HomePageContent() {
     }
   }
 
+  const getTournamentTypeLabel = (format?: string | null) => {
+    switch (format) {
+      case 'SINGLE_ELIMINATION':
+        return 'Single elim'
+      case 'ROUND_ROBIN':
+        return 'Round robin'
+      case 'MLP':
+        return 'MLP'
+      case 'INDY_LEAGUE':
+        return 'Indy league'
+      case 'LEAGUE_ROUND_ROBIN':
+        return 'League RR'
+      case 'ONE_DAY_LADDER':
+        return 'One-day ladder'
+      case 'LADDER_LEAGUE':
+        return 'Ladder league'
+      default:
+        return 'Tournament'
+    }
+  }
+
   const isRegistrationOpen = (tournament: { registrationStartDate?: Date | string | null; registrationEndDate?: Date | string | null; startDate: Date | string }): boolean => {
     const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
     const end = tournament.registrationEndDate ? new Date(tournament.registrationEndDate) : new Date(tournament.startDate)
@@ -535,9 +556,12 @@ function HomePageContent() {
                     </div>
                   </div>
                   {/* Tournament status badge */}
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
+                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                      {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                     </span>
                   </div>
                 </CardHeader>

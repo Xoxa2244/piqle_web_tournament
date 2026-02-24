@@ -131,6 +131,27 @@ function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progres
   }
 }
 
+function getTournamentTypeLabel(format?: string | null) {
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return 'Single elim'
+    case 'ROUND_ROBIN':
+      return 'Round robin'
+    case 'MLP':
+      return 'MLP'
+    case 'INDY_LEAGUE':
+      return 'Indy league'
+    case 'LEAGUE_ROUND_ROBIN':
+      return 'League RR'
+    case 'ONE_DAY_LADDER':
+      return 'One-day ladder'
+    case 'LADDER_LEAGUE':
+      return 'Ladder league'
+    default:
+      return 'Tournament'
+  }
+}
+
 function isRegistrationOpen(tournament: {
   registrationStartDate?: Date | string | null
   registrationEndDate?: Date | string | null
@@ -480,11 +501,14 @@ export default function TournamentModal({
             {modalTab === 'information' && (
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
-                  <div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}
                     >
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
+                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                      {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                     </span>
                   </div>
                   {tournament.description && (
