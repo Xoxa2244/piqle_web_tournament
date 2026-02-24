@@ -54,20 +54,20 @@ const buildRecommendedStructure = (format: TournamentFormat): TournamentStructur
 
   switch (format) {
     case 'MLP':
-      return make({ name: 'MiLP Open', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+      return make({ name: '4v4', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
     case 'INDY_LEAGUE':
-      return make({ name: 'Indy League', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+      return make({ name: '4v4', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
     case 'ONE_DAY_LADDER':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
     case 'LADDER_LEAGUE':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
     case 'LEAGUE_ROUND_ROBIN':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 16, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 16, poolCount: 4 })
     case 'ROUND_ROBIN':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
     case 'SINGLE_ELIMINATION':
     default:
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
   }
 }
 
@@ -85,6 +85,17 @@ const SELECT_ARROW_STYLE = {
 } as const
 const SELECT_ARROW_CLASS =
   'appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center] pr-[calc(12px+1rem)]'
+
+const DEFAULT_DIVISION_NAME_BY_PLAYERS: Record<1 | 2 | 4, string> = { 1: '1v1', 2: '2v2', 4: '4v4' }
+const AUTO_UPDATE_DIVISION_NAMES = new Set([
+  '1v1', '2v2', '4v4', 'Open Doubles', 'MiLP Open', 'Indy League',
+])
+const DIVISION_NAME_DEFAULT_PATTERN = /^Division \d+$/
+function getDivisionNameWhenChangingPlayersPerTeam(currentName: string, newPlayersPerTeam: 1 | 2 | 4): string {
+  const trimmed = (currentName || '').trim()
+  const isDefault = AUTO_UPDATE_DIVISION_NAMES.has(trimmed) || DIVISION_NAME_DEFAULT_PATTERN.test(trimmed)
+  return isDefault ? DEFAULT_DIVISION_NAME_BY_PLAYERS[newPlayersPerTeam] : trimmed
+}
 
 const resolveTimeZoneFromLatLng = async (lat: number, lng: number, googleApi?: any) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
@@ -2015,7 +2026,11 @@ function NewTournamentPageInner() {
                                   disabled={disabled}
                                   onClick={() => {
                                     if (disabled) return
-                                    updateQuickDivision((d) => ({ ...d, playersPerTeam: value }))
+                                    updateQuickDivision((d) => ({
+                                      ...d,
+                                      playersPerTeam: value,
+                                      name: getDivisionNameWhenChangingPlayersPerTeam(d.name, value),
+                                    }))
                                   }}
                                   className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
                                     selected

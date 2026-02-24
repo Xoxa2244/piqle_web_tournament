@@ -80,6 +80,17 @@ const defaultDivision = (index: number): DivisionForm => ({
   },
 })
 
+const DEFAULT_DIVISION_NAME_BY_PLAYERS: Record<1 | 2 | 4, string> = { 1: '1v1', 2: '2v2', 4: '4v4' }
+const AUTO_UPDATE_DIVISION_NAMES = new Set([
+  '1v1', '2v2', '4v4', 'Open Doubles', 'MiLP Open', 'Indy League',
+])
+const DIVISION_NAME_DEFAULT_PATTERN = /^Division \d+$/
+function getDivisionNameWhenChangingPlayersPerTeam(currentName: string, newPlayersPerTeam: 1 | 2 | 4): string {
+  const trimmed = (currentName || '').trim()
+  const isDefault = AUTO_UPDATE_DIVISION_NAMES.has(trimmed) || DIVISION_NAME_DEFAULT_PATTERN.test(trimmed)
+  return isDefault ? DEFAULT_DIVISION_NAME_BY_PLAYERS[newPlayersPerTeam] : trimmed
+}
+
 const parseOptionalNumber = (value: string) => {
   if (!value.trim()) return undefined
   const parsed = Number(value)
@@ -417,6 +428,7 @@ export default function StructureSetupModal({
                               handleDivisionChange(index, (current) => ({
                                 ...current,
                                 playersPerTeam: value as 1 | 2 | 4,
+                                name: getDivisionNameWhenChangingPlayersPerTeam(current.name, value as 1 | 2 | 4),
                               }))
                             }
                             className={`px-3 py-2 rounded-lg border ${division.playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
