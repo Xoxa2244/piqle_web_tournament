@@ -1477,30 +1477,35 @@ function NewTournamentPageInner() {
             })}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs font-medium text-gray-600">PRO</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isPro}
-              onClick={() => {
-                const next = !isPro
-                setIsPro(next)
-                if (!next && !BASIC_FORMATS.includes(formData.format)) {
-                  setFormData((prev) => ({ ...prev, format: 'ROUND_ROBIN' }))
-                  setStructureDraft((prev) => prev ? { ...prev, ...buildRecommendedStructure('ROUND_ROBIN') } : buildRecommendedStructure('ROUND_ROBIN'))
-                }
-              }}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                isPro ? 'bg-blue-600' : 'bg-gray-200'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-                  isPro ? 'translate-x-5' : 'translate-x-1'
+            <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isPro) return
+                  setIsPro(false)
+                  if (!BASIC_FORMATS.includes(formData.format)) {
+                    setFormData((prev) => ({ ...prev, format: 'ROUND_ROBIN' }))
+                    setStructureDraft(buildRecommendedStructure('ROUND_ROBIN'))
+                  }
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  !isPro ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
                 }`}
-                style={{ top: '2px' }}
-              />
-            </button>
+                aria-pressed={!isPro}
+              >
+                Basic
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPro(true)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  isPro ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                }`}
+                aria-pressed={isPro}
+              >
+                Pro
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setShowProHelpModal(true)}
@@ -2025,7 +2030,7 @@ function NewTournamentPageInner() {
                                   key={value}
                                   type="button"
                                   disabled={disabled}
-                                  title={singlesComingSoon ? 'Coming soon' : undefined}
+                                  title={singlesComingSoon ? 'Comming soon' : undefined}
                                   onClick={() => {
                                     if (disabled) return
                                     updateQuickDivision((d) => ({

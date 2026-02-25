@@ -427,7 +427,7 @@ export default function StructureSetupModal({
                               key={value}
                               type="button"
                               disabled={singlesComingSoon}
-                              title={singlesComingSoon ? 'Coming soon' : undefined}
+                            title={singlesComingSoon ? 'Comming soon' : undefined}
                               onClick={() => {
                                 if (singlesComingSoon) return
                                 handleDivisionChange(index, (current) => ({
@@ -692,6 +692,7 @@ export default function StructureSetupModal({
                             key={value}
                             type="button"
                             disabled={hardDisabled}
+                            title={hardDisabled ? 'Available with PRO' : undefined}
                             onClick={() =>
                               handleDivisionChange(index, (current) => ({
                                 ...current,
@@ -716,6 +717,7 @@ export default function StructureSetupModal({
                 type="button"
                 onClick={handleAddDivision}
                 disabled={!isPro}
+                title={!isPro ? 'Available with PRO' : undefined}
                 className={`flex items-center gap-2 text-sm ${isPro ? 'text-indigo-600 hover:text-indigo-700' : 'text-slate-400 cursor-not-allowed'}`}
               >
                 <Plus className="w-4 h-4" />
