@@ -901,22 +901,48 @@ export const clubRouter = createTRPCRouter({
     }
 
     try {
-      const club = await ctx.prisma.club.update({
-        where: { id: input.id },
-        data: {
-          name: input.name.trim(),
-          kind: input.kind,
-          joinPolicy: input.joinPolicy,
-          description: input.description?.trim() || null,
-          logoUrl: input.logoUrl?.trim() || null,
-          address: input.address?.trim() || null,
-          city: input.city?.trim() || null,
-          state: input.state?.trim() || null,
-          country: input.country?.trim() || null,
-          courtReserveUrl: input.courtReserveUrl?.trim() || null,
-          bookingRequestEmail: input.bookingRequestEmail?.trim() || null,
-        },
-        select: { id: true },
+      const nextClubName = input.name.trim()
+      const club = await ctx.prisma.$transaction(async (tx) => {
+        const currentClub = await tx.club.findUnique({
+          where: { id: input.id },
+          select: { name: true },
+        })
+        if (!currentClub) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+        }
+
+        const updatedClub = await tx.club.update({
+          where: { id: input.id },
+          data: {
+            name: nextClubName,
+            kind: input.kind,
+            joinPolicy: input.joinPolicy,
+            description: input.description?.trim() || null,
+            logoUrl: input.logoUrl?.trim() || null,
+            address: input.address?.trim() || null,
+            city: input.city?.trim() || null,
+            state: input.state?.trim() || null,
+            country: input.country?.trim() || null,
+            courtReserveUrl: input.courtReserveUrl?.trim() || null,
+            bookingRequestEmail: input.bookingRequestEmail?.trim() || null,
+          },
+          select: { id: true },
+        })
+
+        // Keep club tournament cards in sync when they display the club name from venueName.
+        // We only touch records that still have the previous club name (or empty value),
+        // so custom tournament venue names are preserved.
+        await tx.tournament.updateMany({
+          where: {
+            clubId: input.id,
+            OR: [{ venueName: currentClub.name }, { venueName: null }, { venueName: '' }],
+          },
+          data: {
+            venueName: nextClubName,
+          },
+        })
+
+        return updatedClub
       })
 
       return club
