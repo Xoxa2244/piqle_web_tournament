@@ -2147,7 +2147,6 @@ function ClubMembersAdminCard({
                         className="gap-2"
                         disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
                         onClick={async () => {
-                          if (!confirm('Approve this join request?')) return
                           try {
                             await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
                             toast({ title: 'Approved', description: 'User joined the club.', variant: 'success' })
@@ -2164,7 +2163,6 @@ function ClubMembersAdminCard({
                         variant="outline"
                         disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
                         onClick={async () => {
-                          if (!confirm('Reject this join request?')) return
                           try {
                             await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
                             toast({ title: 'Rejected', description: 'Request rejected.', variant: 'success' })
