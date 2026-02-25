@@ -18,6 +18,7 @@ import {
 import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import EditPlayerModal from '@/components/EditPlayerModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
 
@@ -66,6 +67,7 @@ export default function PlayersPage() {
   const [inviteSearchDebounced, setInviteSearchDebounced] = useState('')
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
+  const [playerToDelete, setPlayerToDelete] = useState<string | null>(null)
   const [rosterFilter, setRosterFilter] = useState<'active_in_team' | 'waitlist' | 'no_team' | 'all'>('all')
   const [divisionFilter, setDivisionFilter] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
@@ -204,11 +206,7 @@ export default function PlayersPage() {
   }
 
   const handleDeletePlayer = (playerId: string) => {
-    if (!confirm('Are you sure you want to delete this player?')) {
-      return
-    }
-    
-    deletePlayerMutation.mutate({ id: playerId })
+    setPlayerToDelete(playerId)
   }
 
   const getPlayerDivision = (player: Player) => {
@@ -623,6 +621,20 @@ export default function PlayersPage() {
           }}
         />
       )}
+      <ConfirmModal
+        open={!!playerToDelete}
+        onClose={() => setPlayerToDelete(null)}
+        onConfirm={() => {
+          if (!playerToDelete) return
+          deletePlayerMutation.mutate({ id: playerToDelete })
+          setPlayerToDelete(null)
+        }}
+        isPending={deletePlayerMutation.isPending}
+        destructive
+        title="Delete player?"
+        description="This player will be removed from the tournament roster."
+        confirmText={deletePlayerMutation.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

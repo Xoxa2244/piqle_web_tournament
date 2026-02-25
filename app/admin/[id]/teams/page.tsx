@@ -21,6 +21,7 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import AddTeamModal from '@/components/AddTeamModal'
 import EditTeamModal from '@/components/EditTeamModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { toast } from '@/components/ui/use-toast'
 interface Player {
   id: string
@@ -92,6 +93,7 @@ export default function TeamsPage() {
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [teamToDelete, setTeamToDelete] = useState<string | null>(null)
 
   const { data: tournament, refetch } = trpc.tournament.get.useQuery(
     { id: tournamentId },
@@ -176,11 +178,7 @@ export default function TeamsPage() {
   }
 
   const handleDeleteTeam = (teamId: string) => {
-    if (!confirm('Are you sure you want to delete this team? All participants will be moved to the general list.')) {
-      return
-    }
-    
-    deleteTeamMutation.mutate({ id: teamId })
+    setTeamToDelete(teamId)
   }
 
   const getTeamDisplayName = (team: Team) => {
@@ -456,6 +454,20 @@ export default function TeamsPage() {
           }}
         />
       )}
+      <ConfirmModal
+        open={!!teamToDelete}
+        onClose={() => setTeamToDelete(null)}
+        onConfirm={() => {
+          if (!teamToDelete) return
+          deleteTeamMutation.mutate({ id: teamToDelete })
+          setTeamToDelete(null)
+        }}
+        isPending={deleteTeamMutation.isPending}
+        destructive
+        title="Delete team?"
+        description="All participants from this team will be moved to the general list."
+        confirmText={deleteTeamMutation.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

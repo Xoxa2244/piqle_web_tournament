@@ -7,6 +7,7 @@ import { formatMatchDayDate } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
@@ -25,6 +26,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [selectedHomeTeamId, setSelectedHomeTeamId] = useState<string>('')
   const [selectedAwayTeamId, setSelectedAwayTeamId] = useState<string>('')
+  const [matchupToDelete, setMatchupToDelete] = useState<string | null>(null)
 
   const { data: matchDay, refetch: refetchMatchDay } = trpc.matchDay.get.useQuery(
     {
@@ -139,9 +141,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const handleDelete = (matchupId: string) => {
-    if (confirm('Are you sure you want to delete this matchup? This action cannot be undone.')) {
-      deleteMatchup.mutate({ matchupId })
-    }
+    setMatchupToDelete(matchupId)
   }
 
   const formatDate = (date: Date | string) => formatMatchDayDate(date)
@@ -486,6 +486,20 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={!!matchupToDelete}
+        onClose={() => setMatchupToDelete(null)}
+        onConfirm={() => {
+          if (!matchupToDelete) return
+          deleteMatchup.mutate({ matchupId: matchupToDelete })
+          setMatchupToDelete(null)
+        }}
+        isPending={deleteMatchup.isPending}
+        destructive
+        title="Delete matchup?"
+        description="This action cannot be undone."
+        confirmText={deleteMatchup.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

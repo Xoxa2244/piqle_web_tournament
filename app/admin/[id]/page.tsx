@@ -12,6 +12,7 @@ import {
 import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import ConfirmModal from '@/components/ConfirmModal'
 import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
@@ -251,6 +252,7 @@ export default function TournamentDetailPage() {
     divisionName: string
     players: Array<{ id: string; profileId: string | null; name: string; email?: string | null }>
   } | null>(null)
+  const [requestToReject, setRequestToReject] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -1058,9 +1060,7 @@ export default function TournamentDetailPage() {
                                 className="text-red-600 hover:text-red-700 border-red-200"
                                 disabled={rejectRequestMutation.isPending}
                                 onClick={() => {
-                                  if (typeof window !== 'undefined' && window.confirm('Reject this access request?')) {
-                                    rejectRequestMutation.mutate({ requestId: request.id })
-                                  }
+                                  setRequestToReject(request.id)
                                 }}
                               >
                                 <UserX className="h-4 w-4" />
@@ -1140,6 +1140,21 @@ export default function TournamentDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!requestToReject}
+        onClose={() => setRequestToReject(null)}
+        onConfirm={() => {
+          if (!requestToReject) return
+          rejectRequestMutation.mutate({ requestId: requestToReject })
+          setRequestToReject(null)
+        }}
+        isPending={rejectRequestMutation.isPending}
+        destructive
+        title="Reject access request?"
+        description="This request will be declined."
+        confirmText={rejectRequestMutation.isPending ? 'Rejecting…' : 'Reject'}
+      />
 
       {/* Create Division Modal */}
       {showCreateDivision && (

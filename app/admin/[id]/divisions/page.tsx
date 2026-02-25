@@ -35,6 +35,7 @@ import AddPlayerModal from '@/components/AddPlayerModal'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import WaitlistAssignModal from '@/components/WaitlistAssignModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
@@ -544,9 +545,7 @@ function DivisionCard({
                 size="sm"
                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                 onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
-                    onDeleteDivision(division.id)
-                  }
+                  onDeleteDivision(division.id)
                 }}
                 title="Delete Division"
               >
@@ -728,6 +727,9 @@ export default function DivisionsPage() {
   const [selectedWaitlistEntry, setSelectedWaitlistEntry] = useState<any | null>(null)
   const [selectedWaitlistDivision, setSelectedWaitlistDivision] = useState<Division | null>(null)
   const [showWaitlistAssignModal, setShowWaitlistAssignModal] = useState(false)
+  const [divisionToDelete, setDivisionToDelete] = useState<string | null>(null)
+  const [divisionToRedistribute, setDivisionToRedistribute] = useState<string | null>(null)
+  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1381,15 +1383,11 @@ export default function DivisionsPage() {
   }
 
   const handleDistributeTeams = (divisionId: string) => {
-    if (window.confirm('Are you sure you want to redistribute teams by DUPR rating? This will move all teams from their current pools.')) {
-      distributeTeamsMutation.mutate({ divisionId })
-    }
+    setDivisionToRedistribute(divisionId)
   }
 
   const handleDeleteDivision = (divisionId: string) => {
-    if (window.confirm('Are you sure you want to delete this division? All players in this division will become free agents and can be added to any other division.')) {
-      deleteDivisionMutation.mutate({ id: divisionId })
-    }
+    setDivisionToDelete(divisionId)
   }
 
   const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
@@ -1424,23 +1422,7 @@ export default function DivisionsPage() {
   }
 
   const handleDeleteTeam = (team: Team) => {
-    // Find division to get teamKind
-    const division = localDivisions.find(d => d.teams.some(t => t.id === team.id))
-    const teamKind = division?.teamKind
-    
-    // Get display name (player name for SINGLES_1v1, team name for others)
-    const displayName = teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0
-      ? `${team.teamPlayers[0].player.firstName} ${team.teamPlayers[0].player.lastName}`
-      : team.name
-    
-    const confirmMessage = teamKind === 'SINGLES_1v1'
-      ? `Are you sure you want to delete "${displayName}"?`
-      : `Are you sure you want to delete "${displayName}"? This will remove all players from the team and cannot be undone.`
-    
-    if (window.confirm(confirmMessage)) {
-      // Use the existing deleteTeamMutation
-      deleteTeamMutation.mutate({ id: team.id })
-    }
+    setTeamToDelete(team)
   }
 
   const toggleTeamExpansion = (teamId: string) => {
@@ -1958,6 +1940,54 @@ export default function DivisionsPage() {
         onSuccess={() => {
           refetch()
         }}
+      />
+
+      <ConfirmModal
+        open={!!divisionToRedistribute}
+        onClose={() => setDivisionToRedistribute(null)}
+        onConfirm={() => {
+          if (!divisionToRedistribute) return
+          distributeTeamsMutation.mutate({ divisionId: divisionToRedistribute })
+          setDivisionToRedistribute(null)
+        }}
+        isPending={distributeTeamsMutation.isPending}
+        title="Redistribute teams by DUPR?"
+        description="This will move all teams from their current pools."
+        confirmText={distributeTeamsMutation.isPending ? 'Redistributing…' : 'Redistribute'}
+      />
+
+      <ConfirmModal
+        open={!!divisionToDelete}
+        onClose={() => setDivisionToDelete(null)}
+        onConfirm={() => {
+          if (!divisionToDelete) return
+          deleteDivisionMutation.mutate({ id: divisionToDelete })
+          setDivisionToDelete(null)
+        }}
+        isPending={deleteDivisionMutation.isPending}
+        destructive
+        title="Delete division?"
+        description="All players in this division will become free agents and can be added to any other division."
+        confirmText={deleteDivisionMutation.isPending ? 'Deleting…' : 'Delete division'}
+      />
+
+      <ConfirmModal
+        open={!!teamToDelete}
+        onClose={() => setTeamToDelete(null)}
+        onConfirm={() => {
+          if (!teamToDelete) return
+          deleteTeamMutation.mutate({ id: teamToDelete.id })
+          setTeamToDelete(null)
+        }}
+        isPending={deleteTeamMutation.isPending}
+        destructive
+        title="Delete team?"
+        description={
+          teamToDelete?.teamPlayers?.length
+            ? `Delete "${teamToDelete.name}"? This will remove all players from the team and cannot be undone.`
+            : `Delete "${teamToDelete?.name ?? 'this team'}"?`
+        }
+        confirmText={deleteTeamMutation.isPending ? 'Deleting…' : 'Delete team'}
       />
     </div>
   )

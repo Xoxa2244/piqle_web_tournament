@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Search, UserPlus, Edit, Trash2, Check, X, Clock, UserCheck, UserX } from 'lucide-react'
 
 export default function AccessManagementPage() {
@@ -33,6 +34,9 @@ export default function AccessManagementPage() {
   const [requestAccessLevel, setRequestAccessLevel] = useState<'ADMIN' | 'SCORE_ONLY'>('SCORE_ONLY')
   const [requestDivisionMode, setRequestDivisionMode] = useState<'all' | 'selected'>('all')
   const [requestSelectedDivisionIds, setRequestSelectedDivisionIds] = useState<string[]>([])
+  const [accessToRevoke, setAccessToRevoke] = useState<string | null>(null)
+  const [requestToReject, setRequestToReject] = useState<string | null>(null)
+  const [userToRevokeAll, setUserToRevokeAll] = useState<{ userId: string; name: string } | null>(null)
 
   // Get tournament divisions
   const { data: tournament } = trpc.tournament.get.useQuery({ id: tournamentId })
@@ -136,9 +140,11 @@ export default function AccessManagementPage() {
   }
 
   const handleRevokeAccess = (accessId: string, skipConfirm = false) => {
-    if (skipConfirm || confirm('Are you sure you want to revoke this access?')) {
+    if (skipConfirm) {
       revokeAccessMutation.mutate({ accessId })
+      return
     }
+    setAccessToRevoke(accessId)
   }
 
   const startEditing = (access: any) => {
@@ -187,9 +193,7 @@ export default function AccessManagementPage() {
   }
 
   const handleRejectRequest = (requestId: string) => {
-    if (confirm('Are you sure you want to reject this access request?')) {
-      rejectRequestMutation.mutate({ requestId })
-    }
+    setRequestToReject(requestId)
   }
 
   const startApprovingRequest = (requestId: string) => {
@@ -890,13 +894,10 @@ export default function AccessManagementPage() {
                         </Button>
                         <Button
                           onClick={() => {
-                            if (confirm('Are you sure you want to revoke all access for this user?')) {
-                              // Revoke all accesses for this user in one operation
-                              revokeAllAccessMutation.mutate({
-                                userId: groupedAccess.user.id,
-                                tournamentId,
-                              })
-                            }
+                            setUserToRevokeAll({
+                              userId: groupedAccess.user.id,
+                              name: groupedAccess.user.name || groupedAccess.user.email || 'this user',
+                            })
                           }}
                           variant="outline"
                           size="sm"
@@ -916,6 +917,54 @@ export default function AccessManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmModal
+        open={!!accessToRevoke}
+        onClose={() => setAccessToRevoke(null)}
+        onConfirm={() => {
+          if (!accessToRevoke) return
+          revokeAccessMutation.mutate({ accessId: accessToRevoke })
+          setAccessToRevoke(null)
+        }}
+        isPending={revokeAccessMutation.isLoading}
+        destructive
+        title="Revoke access?"
+        description="This user will lose tournament access."
+        confirmText={revokeAccessMutation.isLoading ? 'Revoking…' : 'Revoke'}
+      />
+
+      <ConfirmModal
+        open={!!requestToReject}
+        onClose={() => setRequestToReject(null)}
+        onConfirm={() => {
+          if (!requestToReject) return
+          rejectRequestMutation.mutate({ requestId: requestToReject })
+          setRequestToReject(null)
+        }}
+        isPending={rejectRequestMutation.isLoading}
+        destructive
+        title="Reject access request?"
+        description="This request will be declined."
+        confirmText={rejectRequestMutation.isLoading ? 'Rejecting…' : 'Reject'}
+      />
+
+      <ConfirmModal
+        open={!!userToRevokeAll}
+        onClose={() => setUserToRevokeAll(null)}
+        onConfirm={() => {
+          if (!userToRevokeAll) return
+          revokeAllAccessMutation.mutate({
+            userId: userToRevokeAll.userId,
+            tournamentId,
+          })
+          setUserToRevokeAll(null)
+        }}
+        isPending={revokeAllAccessMutation.isLoading}
+        destructive
+        title="Revoke all access?"
+        description={`Revoke all tournament access for ${userToRevokeAll?.name ?? 'this user'}?`}
+        confirmText={revokeAllAccessMutation.isLoading ? 'Revoking…' : 'Revoke all'}
+      />
     </div>
   )
 }
