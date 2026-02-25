@@ -2117,6 +2117,7 @@ function ClubMembersAdminCard({
   }, [data?.bans, q])
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
@@ -2396,5 +2397,6 @@ function ClubMembersAdminCard({
       description={`Allow ${unbanTarget?.name ?? 'this user'} to join the club again?`}
       confirmText={unbanUser.isPending ? 'Unbanning…' : 'Unban'}
     />
+    </>
   )
 }
