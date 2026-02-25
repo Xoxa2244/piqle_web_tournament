@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
 import { 
   Plus, 
@@ -76,11 +78,11 @@ export default function PlayerSlot({
     transition,
   }
 
-  const handleRemoveClick = () => {
-    if (window.confirm(`Are you sure you want to remove ${player?.firstName} ${player?.lastName} from this team?`)) {
-      console.log('[PlayerSlot] Removing player from slot:', slotIndex)
-      onRemovePlayer(slotIndex)
-    }
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
+  const handleRemoveClick = () => setShowRemoveConfirm(true)
+  const confirmRemove = () => {
+    onRemovePlayer(slotIndex)
+    setShowRemoveConfirm(false)
   }
 
   if (!player) {
@@ -117,6 +119,7 @@ export default function PlayerSlot({
 
   // Filled slot
   return (
+    <>
     <div
       ref={setNodeRef}
       style={style}
@@ -173,5 +176,15 @@ export default function PlayerSlot({
         </Button>
       </div>
     </div>
+    <ConfirmModal
+      open={showRemoveConfirm}
+      onClose={() => setShowRemoveConfirm(false)}
+      onConfirm={confirmRemove}
+      destructive
+      title="Remove player from team?"
+      description={`Are you sure you want to remove ${player?.firstName ?? ''} ${player?.lastName ?? ''} from this team?`}
+      confirmText="Remove"
+    />
+    </>
   )
 }

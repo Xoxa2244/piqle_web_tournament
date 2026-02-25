@@ -3,6 +3,12 @@
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
@@ -12,56 +18,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import Image from 'next/image'
 import { Eye, User as UserIcon, Calendar, Users, Trophy, Trash2 } from 'lucide-react'
 import ShareButton from '@/components/ShareButton'
-
-// Status helpers (same logic as main page)
-function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
-  const now = new Date()
-  const start = new Date(tournament.startDate)
-  const end = new Date(tournament.endDate)
-  const endWithGrace = new Date(end)
-  endWithGrace.setHours(endWithGrace.getHours() + 12)
-  const nextDay = new Date(now)
-  nextDay.setDate(nextDay.getDate() + 1)
-  nextDay.setHours(0, 0, 0, 0)
-  if (endWithGrace < nextDay) return 'past'
-  if (start > now) return 'upcoming'
-  return 'in_progress'
-}
-function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'Past'
-    case 'upcoming': return 'Upcoming'
-    case 'in_progress': return 'In progress'
-  }
-}
-function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'bg-gray-100 text-gray-700'
-    case 'upcoming': return 'bg-blue-50 text-blue-700'
-    case 'in_progress': return 'bg-green-50 text-green-700'
-  }
-}
-
-function getTournamentTypeLabel(format?: string | null) {
-  switch (format) {
-    case 'SINGLE_ELIMINATION':
-      return 'Single elim'
-    case 'ROUND_ROBIN':
-      return 'Round robin'
-    case 'MLP':
-      return 'MLP'
-    case 'INDY_LEAGUE':
-      return 'Indy league'
-    case 'LEAGUE_ROUND_ROBIN':
-      return 'League RR'
-    case 'ONE_DAY_LADDER':
-      return 'One-day ladder'
-    case 'LADDER_LEAGUE':
-      return 'Ladder league'
-    default:
-      return 'Tournament'
-  }
-}
 
 // Same as main page: uses tournament-placeholder.png with fallback icon
 function TournamentImagePlaceholder() {
@@ -331,7 +287,11 @@ export default function AdminPage() {
       {filteredTournaments.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           {filteredTournaments.map((tournament: any) => (
-            <div key={tournament.id} className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0">
+            <div
+              key={tournament.id}
+              className="bg-white rounded-lg shadow-md p-6 relative flex flex-col h-full min-h-0 cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => router.push(`/admin/${tournament.id}`)}
+            >
               {/* Top right: Share + Delete (icon only) */}
               <div className="absolute top-4 right-4 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {baseUrl && (

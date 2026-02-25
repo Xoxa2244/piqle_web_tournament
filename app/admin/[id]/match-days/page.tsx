@@ -7,6 +7,7 @@ import { formatMatchDayDate } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Plus, Calendar, Trash2, Edit, Upload } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 export default function MatchDaysPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,6 +24,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   const [newDate, setNewDate] = useState('')
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [isImporting, setIsImporting] = useState(false)
+  const [matchDayToDelete, setMatchDayToDelete] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data: tournament } = trpc.tournament.get.useQuery(
@@ -253,11 +255,7 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
   }
 
   const handleDelete = (matchDayId: string) => {
-    if (!confirm('Are you sure you want to delete this match day?')) {
-      return
-    }
-
-    deleteMatchDay.mutate({ matchDayId })
+    setMatchDayToDelete(matchDayId)
   }
 
   const handleStatusChange = (matchDayId: string, status: 'DRAFT' | 'IN_PROGRESS' | 'FINALIZED') => {
@@ -460,6 +458,20 @@ export default function MatchDaysPage({ params }: { params: Promise<{ id: string
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={!!matchDayToDelete}
+        onClose={() => setMatchDayToDelete(null)}
+        onConfirm={() => {
+          if (!matchDayToDelete) return
+          deleteMatchDay.mutate({ matchDayId: matchDayToDelete })
+          setMatchDayToDelete(null)
+        }}
+        isPending={deleteMatchDay.isPending}
+        destructive
+        title="Delete match day?"
+        description="This action cannot be undone."
+        confirmText={deleteMatchDay.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

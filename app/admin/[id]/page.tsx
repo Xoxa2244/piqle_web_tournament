@@ -4,8 +4,15 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import ConfirmModal from '@/components/ConfirmModal'
 import Link from 'next/link'
 import Image from 'next/image'
 import AvatarCropper from '@/components/AvatarCropper'
@@ -87,34 +94,6 @@ function resizeImage(file: File, maxSize: number = 1920): Promise<Blob> {
     reader.onerror = () => reject(new Error('Failed to read file'))
     reader.readAsDataURL(file)
   })
-}
-
-function getTournamentStatus(tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' {
-  const now = new Date()
-  const start = new Date(tournament.startDate)
-  const end = new Date(tournament.endDate)
-  const endWithGrace = new Date(end)
-  endWithGrace.setHours(endWithGrace.getHours() + 12)
-  const nextDay = new Date(now)
-  nextDay.setDate(nextDay.getDate() + 1)
-  nextDay.setHours(0, 0, 0, 0)
-  if (endWithGrace < nextDay) return 'past'
-  if (start > now) return 'upcoming'
-  return 'in_progress'
-}
-function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'Past'
-    case 'upcoming': return 'Upcoming'
-    case 'in_progress': return 'In progress'
-  }
-}
-function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past': return 'bg-gray-100 text-gray-700'
-    case 'upcoming': return 'bg-blue-50 text-blue-700'
-    case 'in_progress': return 'bg-green-50 text-green-700'
-  }
 }
 
 const getRegistrationMaxDateTime = (startDate: string) => {
@@ -268,6 +247,12 @@ export default function TournamentDetailPage() {
   const [showEditTournament, setShowEditTournament] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [selectedWinnersDivisionId, setSelectedWinnersDivisionId] = useState<string | null>(null)
+  const [winnerTeamModal, setWinnerTeamModal] = useState<{
+    teamName: string
+    divisionName: string
+    players: Array<{ id: string; profileId: string | null; name: string; email?: string | null }>
+  } | null>(null)
+  const [requestToReject, setRequestToReject] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>('')
 
   // Set base URL on client side only to avoid hydration mismatch
@@ -428,6 +413,30 @@ export default function TournamentDetailPage() {
       refetchAccessRequests()
     },
   })
+
+  const openWinnerTeamModal = useCallback(
+    (divisionId: string, teamId: string, teamName: string) => {
+      const divisions = (tournament?.divisions ?? []) as any[]
+      const division = divisions.find((d) => d.id === divisionId)
+      const team = (division?.teams ?? []).find((t: any) => t.id === teamId)
+      const players = ((team?.teamPlayers ?? []) as any[]).map((tp: any, idx: number) => {
+        const p = tp?.player ?? {}
+        const fullName = `${p?.firstName ?? ''} ${p?.lastName ?? ''}`.trim()
+        return {
+          id: String(p?.id ?? `${teamId}-${idx}`),
+          profileId: p?.id ? String(p.id) : null,
+          name: fullName || p?.name || p?.email || 'Player',
+          email: p?.email ?? null,
+        }
+      })
+      setWinnerTeamModal({
+        teamName,
+        divisionName: division?.name || 'Division',
+        players,
+      })
+    },
+    [tournament?.divisions]
+  )
 
   // Winners come from tournament.get (winnersByDivision) — no separate getWinners query
 
@@ -804,6 +813,9 @@ export default function TournamentDetailPage() {
                   <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
                     {getTournamentStatusLabel(getTournamentStatus(tournament))}
                   </span>
+                  <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                    {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
+                  </span>
                 </div>
 
                 {/* Description */}
@@ -918,25 +930,51 @@ export default function TournamentDetailPage() {
                           </div>
                         ) : (
                           <div className="rounded-xl bg-gray-50 border border-gray-200 p-4">
-                            <div className="space-y-2 text-base text-gray-800">
-                              {winnersForDivision?.first && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-sm font-bold">1</span>
-                                  <span>{winnersForDivision.first.teamName}</span>
-                                </div>
-                              )}
-                              {winnersForDivision?.second && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-700 text-sm font-bold">2</span>
-                                  <span>{winnersForDivision.second.teamName}</span>
-                                </div>
-                              )}
-                              {winnersForDivision?.third && (
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-200/80 text-amber-900 text-sm font-bold">3</span>
-                                  <span>{winnersForDivision.third.teamName}</span>
-                                </div>
-                              )}
+                            <div className="flex items-end justify-center gap-3 md:gap-4 min-h-[220px]">
+                              {[
+                                {
+                                  key: 'second',
+                                  place: 2,
+                                  team: winnersForDivision?.second,
+                                  podiumClass: 'h-24 bg-gradient-to-b from-slate-200 to-slate-300 border-slate-300',
+                                  iconClass: 'text-slate-600',
+                                },
+                                {
+                                  key: 'first',
+                                  place: 1,
+                                  team: winnersForDivision?.first,
+                                  podiumClass: 'h-32 bg-gradient-to-b from-amber-200 to-yellow-300 border-amber-300',
+                                  iconClass: 'text-amber-700',
+                                },
+                                {
+                                  key: 'third',
+                                  place: 3,
+                                  team: winnersForDivision?.third,
+                                  podiumClass: 'h-20 bg-gradient-to-b from-orange-200 to-orange-300 border-orange-300',
+                                  iconClass: 'text-orange-700',
+                                },
+                              ]
+                                .filter((slot) => slot.team)
+                                .map((slot) => (
+                                  <div key={slot.key} className="flex w-full max-w-[180px] flex-1 flex-col items-center">
+                                    <button
+                                      type="button"
+                                      className="text-sm md:text-base font-semibold text-blue-700 hover:text-blue-900 hover:underline text-center line-clamp-2 min-h-[2.5rem]"
+                                      onClick={() => {
+                                        if (!effectiveDivisionId || !slot.team) return
+                                        openWinnerTeamModal(effectiveDivisionId, slot.team.teamId, slot.team.teamName)
+                                      }}
+                                    >
+                                      {slot.team?.teamName}
+                                    </button>
+                                    <div
+                                      className={`mt-2 w-full rounded-t-2xl border px-2 py-2 flex flex-col items-center justify-center shadow-sm ${slot.podiumClass}`}
+                                    >
+                                      <Trophy className={`h-6 w-6 ${slot.iconClass}`} />
+                                      <span className="mt-1 text-xl font-black text-gray-900">{slot.place}</span>
+                                    </div>
+                                  </div>
+                                ))}
                             </div>
                           </div>
                         )}
@@ -1024,9 +1062,7 @@ export default function TournamentDetailPage() {
                                 className="text-red-600 hover:text-red-700 border-red-200"
                                 disabled={rejectRequestMutation.isPending}
                                 onClick={() => {
-                                  if (typeof window !== 'undefined' && window.confirm('Reject this access request?')) {
-                                    rejectRequestMutation.mutate({ requestId: request.id })
-                                  }
+                                  setRequestToReject(request.id)
                                 }}
                               >
                                 <UserX className="h-4 w-4" />
@@ -1044,6 +1080,84 @@ export default function TournamentDetailPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Winner team details modal */}
+      {winnerTeamModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+          onClick={() => setWinnerTeamModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-gray-200 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{winnerTeamModal.teamName}</h3>
+                <p className="text-sm text-gray-500 mt-1">{winnerTeamModal.divisionName}</p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                onClick={() => setWinnerTeamModal(null)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Players</p>
+              {winnerTeamModal.players.length > 0 ? (
+                <div className="space-y-2">
+                  {winnerTeamModal.players.map((player, index) => (
+                    player.profileId ? (
+                      <Link
+                        key={player.id}
+                        href={`/profile/${player.profileId}`}
+                        className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                          {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                        </div>
+                      </Link>
+                    ) : (
+                      <div key={player.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                          {player.email ? <p className="text-xs text-gray-500 truncate">{player.email}</p> : null}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No players found in this team.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={!!requestToReject}
+        onClose={() => setRequestToReject(null)}
+        onConfirm={() => {
+          if (!requestToReject) return
+          rejectRequestMutation.mutate({ requestId: requestToReject })
+          setRequestToReject(null)
+        }}
+        isPending={rejectRequestMutation.isPending}
+        destructive
+        title="Reject access request?"
+        description="This request will be declined."
+        confirmText={rejectRequestMutation.isPending ? 'Rejecting…' : 'Reject'}
+      />
 
       {/* Create Division Modal */}
       {showCreateDivision && (

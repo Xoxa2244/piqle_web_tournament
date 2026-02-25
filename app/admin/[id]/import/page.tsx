@@ -5,14 +5,18 @@ import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export default function ImportPage() {
   const params = useParams()
   const tournamentId = params.id as string
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [isImporting, setIsImporting] = useState(false)
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetConfirmText, setResetConfirmText] = useState('')
 
   const { data: tournament, isLoading } = trpc.tournament.get.useQuery({ id: tournamentId })
   
@@ -69,27 +73,8 @@ export default function ImportPage() {
   }
 
   const handleReset = () => {
-    const confirmed = window.confirm(
-      'WARNING! This action will delete ALL tournament data:\n\n' +
-      '• All divisions\n' +
-      '• All teams\n' +
-      '• All players\n' +
-      '• All matches\n' +
-      '• All results\n\n' +
-      'This action CANNOT be undone!\n\n' +
-      'Are you sure you want to reset the tournament?'
-    )
-    
-    if (confirmed) {
-      const doubleConfirm = window.confirm(
-        'Last chance! Do you really want to delete ALL tournament data?\n\n' +
-        'Press OK only if you are absolutely sure!'
-      )
-      
-      if (doubleConfirm) {
-        resetTournament.mutate({ tournamentId })
-      }
-    }
+    setResetConfirmText('')
+    setShowResetModal(true)
   }
 
   const downloadTemplate = () => {
@@ -298,6 +283,39 @@ export default function ImportPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmModal
+        open={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        onConfirm={() => {
+          if (resetConfirmText !== 'RESET') return
+          resetTournament.mutate({ tournamentId })
+          setShowResetModal(false)
+        }}
+        isPending={resetTournament.isPending}
+        confirmDisabled={resetConfirmText !== 'RESET'}
+        destructive
+        title="Reset tournament?"
+        description={
+          'This will permanently delete ALL tournament data:\n\n' +
+          '• All divisions\n' +
+          '• All teams\n' +
+          '• All players\n' +
+          '• All matches\n' +
+          '• All results\n' +
+          '• All prizes and history\n\n' +
+          'Type RESET to confirm.'
+        }
+        confirmText={resetTournament.isPending ? 'Resetting…' : 'Reset tournament'}
+        cancelText="Cancel"
+      >
+        <Input
+          value={resetConfirmText}
+          onChange={(e) => setResetConfirmText(e.target.value)}
+          placeholder="RESET"
+          className="font-mono"
+        />
+      </ConfirmModal>
     </div>
   )
 }

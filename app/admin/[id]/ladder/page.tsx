@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 type Seeding = 'BY_SEED' | 'RANDOM'
 
@@ -82,6 +83,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
   )
 
   const [newWeekDate, setNewWeekDate] = useState('')
+  const [showCloseWeekConfirm, setShowCloseWeekConfirm] = useState(false)
   const createMatchDay = trpc.matchDay.create.useMutation({
     onSuccess: async (day) => {
       setNewWeekDate('')
@@ -665,8 +667,7 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
                     variant="destructive"
                     onClick={() => {
                       if (leagueCloseBlockedReason) return (toast({ description: leagueCloseBlockedReason, variant: 'destructive' }), undefined)
-                      if (!confirm('Close this week and promote/demote teams?')) return
-                      closeWeek.mutate({ divisionId: selectedDivisionId, matchDayId: selectedMatchDayId })
+                      setShowCloseWeekConfirm(true)
                     }}
                     disabled={closeWeek.isPending || Boolean(leagueCloseBlockedReason)}
                   >
@@ -749,6 +750,19 @@ function LadderAdminPageInner({ params }: { params: Promise<{ id: string }> }) {
           </Card>
         )}
       </div>
+      <ConfirmModal
+        open={showCloseWeekConfirm}
+        onClose={() => setShowCloseWeekConfirm(false)}
+        onConfirm={() => {
+          closeWeek.mutate({ divisionId: selectedDivisionId, matchDayId: selectedMatchDayId })
+          setShowCloseWeekConfirm(false)
+        }}
+        isPending={closeWeek.isPending}
+        destructive
+        title="Close this week?"
+        description="This will apply promotion/demotion between pods."
+        confirmText={closeWeek.isPending ? 'Closing…' : 'Close Week'}
+      />
     </div>
   )
 }

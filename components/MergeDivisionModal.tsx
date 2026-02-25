@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
 import { X, GitMerge, AlertCircle } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 import type { Division } from '@prisma/client'
 
 interface MergeDivisionModalProps {
@@ -26,6 +27,7 @@ export default function MergeDivisionModal({
   onSuccess
 }: MergeDivisionModalProps) {
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
+  const [mergeConfirm, setMergeConfirm] = useState<'withData' | 'noData' | null>(null)
 
   // Filter out the source division and already merged divisions
   const mergeableDivisions = availableDivisions.filter(
@@ -81,33 +83,17 @@ export default function MergeDivisionModal({
 
     // Check if data has been entered
     const hasData = hasDataInfo?.hasData || false
+    setMergeConfirm(hasData ? 'withData' : 'noData')
+  }
 
-    if (hasData) {
-      // Show warning about data loss
-      if (window.confirm(
-        `Data has already been entered for this tournament. Merging divisions will delete all tournament data (scores, matches). Do you want to continue?`
-      )) {
-        // User confirmed - clear data and merge
-        mergeMutation.mutate({
-          divisionId1: sourceDivision.id,
-          divisionId2: selectedDivisionId,
-          clearData: true,
-        })
-      }
-    } else {
-      // No data entered - proceed with normal merge
-      if (window.confirm(
-        `Are you sure you want to merge "${sourceDivision.name}" with "${targetDivision.name}"?\n\n` +
-        `Both divisions will be combined into one merged division. Round Robin will be played among all merged teams. ` +
-        `You can manually unmerge the division after Round Robin completes.`
-      )) {
-        mergeMutation.mutate({
-          divisionId1: sourceDivision.id,
-          divisionId2: selectedDivisionId,
-          clearData: false,
-        })
-      }
-    }
+  const confirmMerge = () => {
+    if (!mergeConfirm || !selectedDivisionId) return
+    mergeMutation.mutate({
+      divisionId1: sourceDivision.id,
+      divisionId2: selectedDivisionId,
+      clearData: mergeConfirm === 'withData',
+    })
+    setMergeConfirm(null)
   }
 
   const handleClose = () => {
@@ -270,6 +256,25 @@ export default function MergeDivisionModal({
           )}
         </CardContent>
       </Card>
+      <ConfirmModal
+        open={mergeConfirm !== null}
+        onClose={() => setMergeConfirm(null)}
+        onConfirm={confirmMerge}
+        isPending={mergeMutation.isPending}
+        destructive={mergeConfirm === 'withData'}
+        title={mergeConfirm === 'withData' ? 'Merge and clear data?' : 'Merge divisions?'}
+        description={
+          mergeConfirm === 'withData'
+            ? 'Data has already been entered for this tournament. Merging divisions will delete all tournament data (scores, matches). Do you want to continue?'
+            : (() => {
+                const target = mergeableDivisions.find((d) => d.id === selectedDivisionId)
+                return target
+                  ? `Are you sure you want to merge "${sourceDivision.name}" with "${target.name}"? Both divisions will be combined into one merged division. Round Robin will be played among all merged teams. You can manually unmerge the division after Round Robin completes.`
+                  : ''
+              })()
+        }
+        confirmText={mergeMutation.isPending ? 'Merging…' : 'Merge'}
+      />
     </div>
   )
 }
