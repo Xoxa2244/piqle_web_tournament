@@ -499,8 +499,8 @@ export const clubRouter = createTRPCRouter({
             take: 1,
           },
           tournaments: {
-            // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
+            // Club page should show all upcoming/running club tournaments, including private ones.
+            where: { endDate: { gte: now } },
             orderBy: { startDate: 'asc' },
             take: 20,
             select: {
