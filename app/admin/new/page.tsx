@@ -569,6 +569,8 @@ function NewTournamentPageInner() {
 
   const { data: clubs } = trpc.club.list.useQuery(undefined)
   const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
+  const { data: profile } = trpc.user.getProfile.useQuery(undefined)
+  const canUseProMode = profile?.organizerTier === 'PRO'
   const timezoneOptions = useMemo(() => {
     return timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
   }, [timezoneData?.timezones])
@@ -577,6 +579,12 @@ function NewTournamentPageInner() {
     [clubs, formData.clubId]
   )
   const adminClubs = useMemo(() => (clubs ?? []).filter((c) => (c as any).isAdmin), [clubs])
+
+  useEffect(() => {
+    if (!canUseProMode && isPro) {
+      setIsPro(false)
+    }
+  }, [canUseProMode, isPro])
 
   const syncTimezoneFromAddress = useCallback(
     async (
@@ -1177,7 +1185,7 @@ function NewTournamentPageInner() {
           ? (formData.seasonLabel || undefined)
           : undefined,
       timezone: normalizedTimezone,
-      isPro,
+      isPro: canUseProMode ? isPro : false,
     }
 
     if (isSeries) {
@@ -1497,11 +1505,20 @@ function NewTournamentPageInner() {
               </button>
               <button
                 type="button"
-                onClick={() => setIsPro(true)}
+                onClick={() => {
+                  if (!canUseProMode) return
+                  setIsPro(true)
+                }}
+                disabled={!canUseProMode}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  isPro ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                  isPro
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : canUseProMode
+                      ? 'text-gray-600 hover:text-gray-800'
+                      : 'text-gray-400 cursor-not-allowed'
                 }`}
                 aria-pressed={isPro}
+                title={canUseProMode ? 'Pro mode' : 'Pro mode is not enabled for your account'}
               >
                 Pro
               </button>

@@ -176,6 +176,7 @@ export const userRouter = createTRPCRouter({
           duprRatingSingles: true,
           duprRatingDoubles: true,
           role: true,
+          organizerTier: true,
           _count: {
             select: {
               clubFollows: true,

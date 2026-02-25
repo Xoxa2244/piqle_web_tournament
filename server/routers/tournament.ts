@@ -368,6 +368,25 @@ const validateTournamentDates = (input: z.infer<typeof tournamentCreateInput>) =
   }
 }
 
+const assertCanUseProTournamentMode = async (
+  ctx: { prisma: PrismaClient; session: { user: { id: string } } },
+  isProRequested: boolean
+) => {
+  if (!isProRequested) return
+
+  const user = await ctx.prisma.user.findUnique({
+    where: { id: ctx.session.user.id },
+    select: { organizerTier: true },
+  })
+
+  if (user?.organizerTier !== 'PRO') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Pro mode is not enabled for your account',
+    })
+  }
+}
+
 const getUniqueTournamentSlug = async (
   ctx: { prisma: any },
   input: z.infer<typeof tournamentCreateInput>
@@ -503,6 +522,7 @@ export const tournamentRouter = createTRPCRouter({
   create: tdProcedure
     .input(tournamentCreateInput)
     .mutation(async ({ ctx, input }) => {
+      await assertCanUseProTournamentMode(ctx, input.isPro)
       validateTournamentDates(input)
 
       if (input.clubId) {
@@ -566,6 +586,7 @@ export const tournamentRouter = createTRPCRouter({
       structure: tournamentStructureInput,
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertCanUseProTournamentMode(ctx, input.isPro)
       validateTournamentDates(input)
 
       if (input.clubId) {
@@ -643,6 +664,7 @@ export const tournamentRouter = createTRPCRouter({
       recurrence: recurrenceSchema,
     }))
     .mutation(async ({ ctx, input }) => {
+      await assertCanUseProTournamentMode(ctx, input.isPro)
       validateTournamentDates(input)
 
       if (input.clubId) {
