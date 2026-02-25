@@ -15,6 +15,7 @@ model User {
   emailVerified            DateTime?
   passwordHash             String?                   @map("password_hash")
   role                     UserRole                  @default(TD)
+  organizerTier            OrganizerTier             @default(BASIC) @map("organizer_tier")
   isActive                 Boolean                   @default(true)
   gender                   Gender?
   city                     String?
@@ -43,6 +44,7 @@ model User {
   clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests         ClubJoinRequest[]
+  clubJoinRequestSeen      ClubJoinRequestSeen[]
   clubBans                 ClubBan[]
   clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
   clubTournamentTemplatesCreated ClubTournamentTemplate[] @relation("ClubTournamentTemplateCreatedBy")
@@ -141,6 +143,7 @@ model Tournament {
   seasonLabel             String?                   @map("season_label")
   timezone                String?
   hasDivisions            Boolean                   @default(true) @map("has_divisions")
+  isPro                   Boolean                   @default(false) @map("is_pro")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   userId                  String
@@ -204,6 +207,7 @@ model Club {
   tournamentTemplates ClubTournamentTemplate[]
   followers          ClubFollower[]
   joinRequests       ClubJoinRequest[]
+  joinRequestSeen    ClubJoinRequestSeen[]
   admins             ClubAdmin[]
   announcements      ClubAnnouncement[]
   bookingRequests    ClubBookingRequest[]
@@ -242,6 +246,21 @@ model ClubJoinRequest {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_join_requests")
+}
+
+model ClubJoinRequestSeen {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  clubId    String   @map("club_id")
+  seenAt    DateTime @default(now()) @map("seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([userId])
+  @@index([clubId])
+  @@map("club_join_request_seen")
 }
 
 model ClubAdmin {
@@ -466,6 +485,7 @@ model Court {
   updatedAt    DateTime    @updatedAt @map("updated_at")
   tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matchups     IndyMatchup[]
+  matches      Match[]
 
   @@map("courts")
 }
@@ -745,12 +765,14 @@ model Match {
   updatedAt             DateTime              @updatedAt
   note                  String?                @db.VarChar(255)
   matchDayId            String?                @map("match_day_id")
+  courtId               String?                @map("court_id")
   games                 Game[]
   tiebreaker            Tiebreaker?
   division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
   rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
   matchDay     MatchDay?        @relation(fields: [matchDayId], references: [id], onDelete: SetNull)
+  court        Court?           @relation(fields: [courtId], references: [id], onDelete: SetNull)
   teamA        Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
   teamB        Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
 
@@ -988,6 +1010,11 @@ model IndyGame {
 enum UserRole {
   TD
   ASSISTANT
+}
+
+enum OrganizerTier {
+  BASIC
+  PRO
 }
 
 enum ClubKind {

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, Edit } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Player {
   id: string
@@ -67,7 +68,7 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
     },
     onError: (error) => {
       console.error('Failed to update player:', error)
-      alert(`Error updating player: ${error.message}`)
+      toast({ title: 'Error', description: `Error updating player: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -76,12 +77,12 @@ export default function EditPlayerModal({ player, tournamentId, isOpen, onClose,
     e.preventDefault()
     
     if (!firstName.trim() || !lastName.trim()) {
-      alert('Please enter player name and surname')
+      toast({ description: 'Please enter player name and surname', variant: 'destructive' })
       return
     }
 
     if (isMLP && (!gender || gender === 'X')) {
-      alert('Gender (M or F) is required for players in MLP tournaments')
+      toast({ description: 'Gender (M or F) is required for players in MLP tournaments', variant: 'destructive' })
       return
     }
 

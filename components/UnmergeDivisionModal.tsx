@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
 import { X, GitBranch, AlertCircle } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 import type { Division } from '@prisma/client'
 
 interface UnmergeDivisionModalProps {
@@ -25,7 +26,7 @@ export default function UnmergeDivisionModal({
       onClose()
     },
     onError: (error) => {
-      alert(`Error unmerging division: ${error.message}`)
+      toast({ title: 'Error', description: `Error unmerging division: ${error.message}`, variant: 'destructive' })
     }
   })
 

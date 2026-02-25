@@ -41,6 +41,22 @@ function generateRoundRobinForTeams(teams: any[], startRoundIndex: number, poolI
   return rounds
 }
 
+function assignCourtIdsByRound<T extends { roundIndex: number }>(
+  items: T[],
+  courtIds: string[]
+): Array<T & { courtId: string | null }> {
+  const roundCounters = new Map<number, number>()
+
+  return items.map((item) => {
+    const roundIdx = item.roundIndex
+    const perRoundIndex = roundCounters.get(roundIdx) ?? 0
+    roundCounters.set(roundIdx, perRoundIndex + 1)
+
+    const courtId = courtIds.length > 0 ? courtIds[perRoundIndex % courtIds.length] : null
+    return { ...item, courtId }
+  })
+}
+
 export const matchRouter = createTRPCRouter({
   generateRR: tdProcedure
     .input(z.object({
@@ -158,10 +174,16 @@ export const matchRouter = createTRPCRouter({
       // Determine match settings based on tournament format
       const isMLP = division.tournament.format === 'MLP'
       const gamesCount = isMLP ? 4 : 1
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const roundsWithCourts = assignCourtIdsByRound(rounds, courts.map((c) => c.id))
 
       // Create matches in database
       const matches = await Promise.all(
-        rounds.map(async (round) => {
+        roundsWithCourts.map(async (round) => {
           const match = await ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
@@ -169,6 +191,7 @@ export const matchRouter = createTRPCRouter({
               teamAId: round.teamA.id,
               teamBId: round.teamB.id,
               roundIndex: round.roundIndex,
+              courtId: round.courtId,
               stage: 'ROUND_ROBIN',
               bestOfMode: 'FIXED_GAMES', // Default to fixed games mode
               gamesCount, // 4 for MLP, 1 for single elimination
@@ -361,10 +384,16 @@ export const matchRouter = createTRPCRouter({
       // Determine match settings based on tournament format
       const isMLP = division.tournament.format === 'MLP'
       const gamesCount = isMLP ? 4 : 1
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const roundsWithCourts = assignCourtIdsByRound(rounds, courts.map((c) => c.id))
 
       // Create new matches in database
       const matches = await Promise.all(
-        rounds.map(async (round) => {
+        roundsWithCourts.map(async (round) => {
           const match = await ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
@@ -372,6 +401,7 @@ export const matchRouter = createTRPCRouter({
               teamAId: round.teamA.id,
               teamBId: round.teamB.id,
               roundIndex: round.roundIndex,
+              courtId: round.courtId,
               stage: 'ROUND_ROBIN',
               bestOfMode: 'FIXED_GAMES', // Default fixed games
               gamesCount, // 4 for MLP, 1 for single elimination

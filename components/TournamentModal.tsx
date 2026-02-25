@@ -8,9 +8,16 @@ import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import {
   Calendar,
   MapPin,
@@ -27,6 +34,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import ComplaintModal from '@/components/ComplaintModal'
+import CancelRegistrationModal from '@/components/CancelRegistrationModal'
 
 function TournamentImagePlaceholder({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const [showFallback, setShowFallback] = useState(true)
@@ -91,45 +99,6 @@ function AvatarImage({
   )
 }
 
-function getTournamentStatus(tournament: {
-  startDate: Date | string
-  endDate: Date | string
-}): 'past' | 'upcoming' | 'in_progress' {
-  const now = new Date()
-  const start = new Date(tournament.startDate)
-  const end = new Date(tournament.endDate)
-  const endWithGrace = new Date(end)
-  endWithGrace.setHours(endWithGrace.getHours() + 12)
-  const nextDay = new Date(now)
-  nextDay.setDate(nextDay.getDate() + 1)
-  nextDay.setHours(0, 0, 0, 0)
-  if (endWithGrace < nextDay) return 'past'
-  if (start > now) return 'upcoming'
-  return 'in_progress'
-}
-
-function getTournamentStatusLabel(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past':
-      return 'Past'
-    case 'upcoming':
-      return 'Upcoming'
-    case 'in_progress':
-      return 'In progress'
-  }
-}
-
-function getTournamentStatusBadgeClass(status: 'past' | 'upcoming' | 'in_progress') {
-  switch (status) {
-    case 'past':
-      return 'bg-gray-100 text-gray-700'
-    case 'upcoming':
-      return 'bg-blue-50 text-blue-700'
-    case 'in_progress':
-      return 'bg-green-50 text-green-700'
-  }
-}
-
 function isRegistrationOpen(tournament: {
   registrationStartDate?: Date | string | null
   registrationEndDate?: Date | string | null
@@ -171,6 +140,9 @@ export default function TournamentModal({
     authorName: string
     authorEmail: string
   } | null>(null)
+  const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false)
+  const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null)
 
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
     { id: tournamentId! },
@@ -194,7 +166,6 @@ export default function TournamentModal({
     { tournamentId: tournamentId || '' },
     { enabled: !!session && !!tournamentId }
   )
-
   const utils = trpc.useUtils()
 
   const createComment = trpc.comment.createComment.useMutation({
@@ -270,7 +241,7 @@ export default function TournamentModal({
 
   if (!tournamentId) return null
 
-  if (tournamentLoading || !tournament) {
+  if (tournamentLoading) {
     return (
       <div
         className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -281,6 +252,30 @@ export default function TournamentModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!tournament) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament not found</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            This tournament is unavailable or was removed.
+          </p>
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -324,18 +319,9 @@ export default function TournamentModal({
             </div>
             <div className="flex items-center gap-2">
               {(tournament as { user?: { id: string } }).user?.id === session?.user?.id && (
-                <>
-                  <Link href={`/admin/${tournament.id}`}>
-                    <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
-                  </Link>
-                  {(tournament as { publicSlug?: string | null }).publicSlug && (
-                    <Link href={`/t/${(tournament as { publicSlug: string }).publicSlug}`}>
-                      <Button className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300">
-                        View Board
-                      </Button>
-                    </Link>
-                  )}
-                </>
+                <Link href={`/admin/${tournament.id}`}>
+                  <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
+                </Link>
               )}
               {(() => {
                 const pendingInvitation =
@@ -378,6 +364,10 @@ export default function TournamentModal({
 
                 const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                 const registrationOpen = isRegistrationOpen(tournament)
+                const isActiveUnpaid =
+                  status === 'active' &&
+                  entryFeeNum > 0 &&
+                  !(registrationStatuses?.[tournament.id] as { isPaid?: boolean } | undefined)?.isPaid
                 const label =
                   status === 'active'
                     ? 'Cancel Registration'
@@ -385,41 +375,50 @@ export default function TournamentModal({
                       ? 'Leave Waitlist'
                       : 'Join Tournament'
                 return (
-                  <Button
-                    className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-                    variant={
-                      label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'
-                    }
-                    disabled={!registrationOpen}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!session) {
-                        router.push(
-                          `/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`
-                        )
-                        return
+                  <div className="flex flex-wrap gap-2">
+                    {isActiveUnpaid && (
+                      <Button className="bg-gray-900 hover:bg-gray-800 text-white" asChild>
+                        <Link
+                          href={`/tournaments/${tournament.id}/register`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Pay Now ${entryFeeNum.toFixed(2)}
+                        </Link>
+                      </Button>
+                    )}
+                    <Button
+                      className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                      variant={
+                        label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'
                       }
-                      if (status === 'active') {
-                        if (confirm('Cancel registration?')) {
-                          cancelRegistration.mutate({ tournamentId: tournament.id })
+                      disabled={!registrationOpen}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!session) {
+                          router.push(
+                            `/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`
+                          )
+                          return
                         }
-                        return
-                      }
-                      if (status === 'waitlisted') {
-                        const divisionId = registrationStatuses?.[tournament.id]?.divisionId
-                        if (divisionId && confirm('Leave waitlist?')) {
-                          leaveWaitlist.mutate({ divisionId })
+                        if (status === 'active') {
+                          setShowCancelRegistrationModal(true)
+                          return
                         }
-                        return
-                      }
-                      router.push(`/tournaments/${tournament.id}/register`)
-                    }}
-                  >
-                    {label}
-                  </Button>
+                        if (status === 'waitlisted') {
+                          const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                          if (divisionId) setLeaveWaitlistDivisionId(divisionId)
+                          return
+                        }
+                        router.push(`/tournaments/${tournament.id}/register`)
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  </div>
                 )
               })()}
               <button
+                type="button"
                 onClick={() => {
                   resetModalState()
                   onClose()
@@ -464,7 +463,7 @@ export default function TournamentModal({
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                View Results
+                Dashboard
               </button>
             </nav>
           </div>
@@ -473,11 +472,14 @@ export default function TournamentModal({
             {modalTab === 'information' && (
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
-                  <div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}
                     >
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
+                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                      {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                     </span>
                   </div>
                   {tournament.description && (
@@ -671,11 +673,7 @@ export default function TournamentModal({
                                             <button
                                               onClick={() => {
                                                 setOpenCommentMenu(null)
-                                                if (
-                                                  confirm('Are you sure you want to delete this comment?')
-                                                ) {
-                                                  deleteComment.mutate({ commentId: comment.id })
-                                                }
+                                                setCommentToDelete(comment.id)
                                               }}
                                               className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
                                             >
@@ -757,16 +755,77 @@ export default function TournamentModal({
 
             {modalTab === 'view-results' && (
               <div className="flex-1 min-h-0 flex flex-col">
-                <iframe
-                  src={`/scoreboard/${tournament.id}/embed`}
-                  title="View Results"
-                  className="w-full flex-1 min-h-[60vh] border-0"
-                />
+                {registrationStatuses?.[tournament.id]?.status === 'active' &&
+                  (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string; divisionId?: string; teamId?: string }).divisionName &&
+                  (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (
+                  <div className="flex-shrink-0 px-6 pt-4 pb-2 border-b border-gray-200">
+                    <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900 text-left">
+                      <span className="font-medium">You&apos;re registered:</span>{' '}
+                      {(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} ·{' '}
+                      {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 min-h-0">
+                  <iframe
+                    src={(() => {
+                      const divId = (registrationStatuses?.[tournament.id] as { divisionId?: string } | undefined)?.divisionId
+                      const teamId = (registrationStatuses?.[tournament.id] as { teamId?: string } | undefined)?.teamId
+                      const params = new URLSearchParams()
+                      if (divId) params.set('divisionId', divId)
+                      if (teamId) params.set('teamId', teamId)
+                      const q = params.toString()
+                      return `/scoreboard/${tournament.id}/embed${q ? `?${q}` : ''}`
+                    })()}
+                    title="Dashboard"
+                    className="w-full h-full min-h-[60vh] border-0"
+                  />
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <CancelRegistrationModal
+        open={showCancelRegistrationModal}
+        onClose={() => setShowCancelRegistrationModal(false)}
+        onConfirm={() => {
+          cancelRegistration.mutate({ tournamentId: tournament.id })
+          setShowCancelRegistrationModal(false)
+        }}
+        isPending={cancelRegistration.isPending}
+        isPaidTournament={entryFeeNum > 0}
+      />
+
+      <ConfirmModal
+        open={!!leaveWaitlistDivisionId}
+        onClose={() => setLeaveWaitlistDivisionId(null)}
+        onConfirm={() => {
+          if (!leaveWaitlistDivisionId) return
+          leaveWaitlist.mutate({ divisionId: leaveWaitlistDivisionId })
+          setLeaveWaitlistDivisionId(null)
+        }}
+        isPending={leaveWaitlist.isPending}
+        title="Leave waitlist?"
+        description="You will lose your waitlist spot for this division."
+        confirmText={leaveWaitlist.isPending ? 'Leaving…' : 'Leave waitlist'}
+      />
+
+      <ConfirmModal
+        open={!!commentToDelete}
+        onClose={() => setCommentToDelete(null)}
+        onConfirm={() => {
+          if (!commentToDelete) return
+          deleteComment.mutate({ commentId: commentToDelete })
+          setCommentToDelete(null)
+        }}
+        isPending={deleteComment.isPending}
+        destructive
+        title="Delete comment?"
+        description="Are you sure you want to delete this comment? This cannot be undone."
+        confirmText={deleteComment.isPending ? 'Deleting…' : 'Delete'}
+      />
 
       {reportCommentModal && tournamentId && (
         <ComplaintModal

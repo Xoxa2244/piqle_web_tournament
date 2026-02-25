@@ -18,6 +18,7 @@ export const publicRouter = createTRPCRouter({
       id: true,
       title: true,
       description: true,
+      format: true,
       venueName: true,
       venueAddress: true,
       startDate: true,
@@ -110,6 +111,7 @@ export const publicRouter = createTRPCRouter({
         id: true,
         title: true,
         description: true,
+        format: true,
         venueName: true,
         venueAddress: true,
         startDate: true,
@@ -136,7 +138,7 @@ export const publicRouter = createTRPCRouter({
       let tournament: any
       try {
         tournament = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: {
             ...baseSelect,
             timezone: true,
@@ -149,7 +151,7 @@ export const publicRouter = createTRPCRouter({
           throw error
         }
         const fallback = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: baseSelect,
         })
         tournament = fallback
@@ -1078,5 +1080,150 @@ export const publicRouter = createTRPCRouter({
         },
         orderBy: { createdAt: 'asc' },
       })
+    }),
+
+  getPublicIndyStandings: publicProcedure
+    .input(z.object({
+      tournamentId: z.string(),
+      divisionId: z.string().optional(),
+      matchDayId: z.string().optional(),
+      mode: z.enum(['DAY_ONLY', 'SEASON_TO_DATE']).default('SEASON_TO_DATE'),
+    }))
+    .query(async ({ ctx, input }) => {
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: { id: true, format: true, isPublicBoardEnabled: true },
+      })
+      if (!tournament || !tournament.isPublicBoardEnabled || tournament.format !== 'INDY_LEAGUE') {
+        return { standings: [] }
+      }
+
+      let matchDays: { id: string; date: Date }[] = []
+      if (input.mode === 'DAY_ONLY' && input.matchDayId) {
+        const matchDay = await ctx.prisma.matchDay.findUnique({
+          where: { id: input.matchDayId },
+          select: { id: true, date: true },
+        })
+        if (matchDay) matchDays = [matchDay]
+      } else {
+        matchDays = await ctx.prisma.matchDay.findMany({
+          where: { tournamentId: input.tournamentId },
+          orderBy: { date: 'asc' },
+          select: { id: true, date: true },
+        })
+      }
+
+      const divisionFilter: { tournamentId: string; id?: string } = { tournamentId: input.tournamentId }
+      if (input.divisionId) divisionFilter.id = input.divisionId
+      const divisions = await ctx.prisma.division.findMany({
+        where: divisionFilter,
+        include: { teams: true },
+      })
+
+      const standings: Array<{
+        teamId: string
+        teamName: string
+        divisionId: string
+        divisionName: string
+        wins: number
+        losses: number
+        pointsFor: number
+        pointsAgainst: number
+        pointDiff: number
+      }> = []
+
+      const calculateStatsForDay = async (
+        matchDayId: string,
+        _matchDayDate: Date,
+        divisionId: string,
+        teamId: string
+      ) => {
+        const matchups = await ctx.prisma.indyMatchup.findMany({
+          where: {
+            matchDayId,
+            divisionId,
+            OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+          },
+          include: { games: true },
+        })
+        let wins = 0
+        let losses = 0
+        let pointsFor = 0
+        let pointsAgainst = 0
+        for (const matchup of matchups) {
+          const completedGames = matchup.games.filter(
+            (g: any) => g.homeScore !== null && g.awayScore !== null
+          )
+          if (completedGames.length === 0) continue
+          let gamesWonHome = 0
+          let gamesWonAway = 0
+          for (const game of completedGames) {
+            if (game.homeScore === null || game.awayScore === null) continue
+            if (game.homeScore > game.awayScore) gamesWonHome++
+            else if (game.awayScore > game.homeScore) gamesWonAway++
+          }
+          for (const game of completedGames) {
+            if (game.homeScore === null || game.awayScore === null) continue
+            if (matchup.homeTeamId === teamId) {
+              pointsFor += game.homeScore
+              pointsAgainst += game.awayScore
+            } else {
+              pointsFor += game.awayScore
+              pointsAgainst += game.homeScore
+            }
+          }
+          const allGamesCompleted =
+            matchup.games.length > 0 && matchup.games.length === completedGames.length
+          if (allGamesCompleted) {
+            let winnerTeamId: string | null = null
+            if (gamesWonHome > gamesWonAway) winnerTeamId = matchup.homeTeamId
+            else if (gamesWonAway > gamesWonHome) winnerTeamId = matchup.awayTeamId
+            else if (gamesWonHome === 6 && gamesWonAway === 6)
+              winnerTeamId = matchup.tieBreakWinnerTeamId
+            if (winnerTeamId === teamId) wins++
+            else if (winnerTeamId) losses++
+          }
+        }
+        return { wins, losses, pointsFor, pointsAgainst }
+      }
+
+      for (const division of divisions) {
+        for (const team of division.teams) {
+          let totalWins = 0
+          let totalLosses = 0
+          let totalPointsFor = 0
+          let totalPointsAgainst = 0
+          for (const matchDay of matchDays) {
+            const dayStats = await calculateStatsForDay(
+              matchDay.id,
+              matchDay.date,
+              division.id,
+              team.id
+            )
+            totalWins += dayStats.wins
+            totalLosses += dayStats.losses
+            totalPointsFor += dayStats.pointsFor
+            totalPointsAgainst += dayStats.pointsAgainst
+          }
+          standings.push({
+            teamId: team.id,
+            teamName: team.name,
+            divisionId: division.id,
+            divisionName: division.name,
+            wins: totalWins,
+            losses: totalLosses,
+            pointsFor: totalPointsFor,
+            pointsAgainst: totalPointsAgainst,
+            pointDiff: totalPointsFor - totalPointsAgainst,
+          })
+        }
+      }
+
+      standings.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins
+        return b.pointDiff - a.pointDiff
+      })
+
+      return { standings }
     }),
 })

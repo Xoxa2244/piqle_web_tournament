@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Plus, Layers } from 'lucide-react'
 
 type ConstraintRange = {
@@ -61,6 +62,8 @@ interface StructureSetupModalProps {
   initialStructure?: TournamentStructureInput | null
   onClose: () => void
   onSave: (structure: TournamentStructureInput) => void
+  /** When false (Basic mode), Hard enforcement and Add division are disabled. */
+  isPro?: boolean
 }
 
 const defaultDivision = (index: number): DivisionForm => ({
@@ -78,6 +81,17 @@ const defaultDivision = (index: number): DivisionForm => ({
   },
 })
 
+const DEFAULT_DIVISION_NAME_BY_PLAYERS: Record<1 | 2 | 4, string> = { 1: '1v1', 2: '2v2', 4: '4v4' }
+const AUTO_UPDATE_DIVISION_NAMES = new Set([
+  '1v1', '2v2', '4v4', 'Open Doubles', 'MiLP Open', 'Indy League',
+])
+const DIVISION_NAME_DEFAULT_PATTERN = /^Division \d+$/
+function getDivisionNameWhenChangingPlayersPerTeam(currentName: string, newPlayersPerTeam: 1 | 2 | 4): string {
+  const trimmed = (currentName || '').trim()
+  const isDefault = AUTO_UPDATE_DIVISION_NAMES.has(trimmed) || DIVISION_NAME_DEFAULT_PATTERN.test(trimmed)
+  return isDefault ? DEFAULT_DIVISION_NAME_BY_PLAYERS[newPlayersPerTeam] : trimmed
+}
+
 const parseOptionalNumber = (value: string) => {
   if (!value.trim()) return undefined
   const parsed = Number(value)
@@ -91,6 +105,12 @@ const parseIntegerOrDefault = (value: string, fallback: number) => {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+const SELECT_ARROW_CLASS =
+  'appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center] pr-[calc(12px+1rem)]'
+const SELECT_ARROW_STYLE = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+} as const
 
 const getNumberOrDefault = (value: string, fallback: number) => {
   if (!value.trim()) return fallback
@@ -166,8 +186,10 @@ export default function StructureSetupModal({
   initialStructure,
   onClose,
   onSave,
+  isPro = true,
 }: StructureSetupModalProps) {
   const [divisions, setDivisions] = useState<DivisionForm[]>([defaultDivision(0)])
+  const [divisionIndexToRemove, setDivisionIndexToRemove] = useState<number | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -273,11 +295,17 @@ export default function StructureSetupModal({
       !division.constraints.gender.enabled
 
     if (!isDefault) {
-      const confirmRemove = window.confirm('Remove this division? All entered settings will be lost.')
-      if (!confirmRemove) return
+      setDivisionIndexToRemove(index)
+      return
     }
 
     setDivisions((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const confirmRemoveDivision = () => {
+    if (divisionIndexToRemove === null) return
+    setDivisions((prev) => prev.filter((_, idx) => idx !== divisionIndexToRemove))
+    setDivisionIndexToRemove(null)
   }
 
   const handleDivisionChange = (index: number, updater: (division: DivisionForm) => DivisionForm) => {
@@ -400,21 +428,28 @@ export default function StructureSetupModal({
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Players per team</label>
                       <div className="flex gap-2">
-                        {[1, 2, 4].map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() =>
-                              handleDivisionChange(index, (current) => ({
-                                ...current,
-                                playersPerTeam: value as 1 | 2 | 4,
-                              }))
-                            }
-                            className={`px-3 py-2 rounded-lg border ${division.playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                          >
-                            {value}
-                          </button>
-                        ))}
+                        {(isPro ? [1, 2, 4] : [1, 2]).map((value) => {
+                          const singlesComingSoon = value === 1
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={singlesComingSoon}
+                            title={singlesComingSoon ? 'Comming soon' : undefined}
+                              onClick={() => {
+                                if (singlesComingSoon) return
+                                handleDivisionChange(index, (current) => ({
+                                  ...current,
+                                  playersPerTeam: value as 1 | 2 | 4,
+                                  name: getDivisionNameWhenChangingPlayersPerTeam(current.name, value as 1 | 2 | 4),
+                                }))
+                              }}
+                              className={`px-3 py-2 rounded-lg border ${division.playersPerTeam === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : singlesComingSoon ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              {value}
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>
@@ -426,6 +461,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.individualDupr.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -485,6 +521,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.teamDupr.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -544,6 +581,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.gender.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -577,7 +615,8 @@ export default function StructureSetupModal({
                             }))
                           }
                           disabled={!division.constraints.gender.enabled}
-                          className={`w-full border border-slate-200 rounded-lg px-3 py-2 ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
+                          className={`w-full border border-slate-200 rounded-lg pl-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS} ${division.constraints.gender.enabled ? '' : 'opacity-50'}`}
+                          style={SELECT_ARROW_STYLE}
                         >
                           <option value="ANY">Any</option>
                           <option value="MEN">Men</option>
@@ -593,6 +632,7 @@ export default function StructureSetupModal({
                         <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          className="h-6 w-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           checked={division.constraints.age.enabled}
                           onChange={(event) =>
                             handleDivisionChange(index, (current) => ({
@@ -653,24 +693,29 @@ export default function StructureSetupModal({
                       <p className="text-xs text-slate-500">Informational vs. hard enforcement.</p>
                     </div>
                     <div className="flex gap-2">
-                      {(['INFO', 'HARD'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() =>
-                            handleDivisionChange(index, (current) => ({
-                              ...current,
-                              constraints: {
-                                ...current.constraints,
-                                enforcement: value,
-                              },
-                            }))
-                          }
-                          className={`px-3 py-2 rounded-lg border ${division.constraints.enforcement === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {value === 'INFO' ? 'Informational' : 'Hard'}
-                        </button>
-                      ))}
+                      {(['INFO', 'HARD'] as const).map((value) => {
+                        const hardDisabled = value === 'HARD' && !isPro
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={hardDisabled}
+                            title={hardDisabled ? 'Available with PRO' : undefined}
+                            onClick={() =>
+                              handleDivisionChange(index, (current) => ({
+                                ...current,
+                                constraints: {
+                                  ...current.constraints,
+                                  enforcement: value,
+                                },
+                              }))
+                            }
+                            className={`px-3 py-2 rounded-lg border ${division.constraints.enforcement === value ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : hardDisabled ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            {value === 'INFO' ? 'Informational' : 'Hard'}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -679,7 +724,9 @@ export default function StructureSetupModal({
               <button
                 type="button"
                 onClick={handleAddDivision}
-                className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
+                disabled={!isPro}
+                title={!isPro ? 'Available with PRO' : undefined}
+                className={`flex items-center gap-2 text-sm ${isPro ? 'text-indigo-600 hover:text-indigo-700' : 'text-slate-400 cursor-not-allowed'}`}
               >
                 <Plus className="w-4 h-4" />
                 Add division
@@ -706,6 +753,15 @@ export default function StructureSetupModal({
           </Button>
         </div>
       </div>
+      <ConfirmModal
+        open={divisionIndexToRemove !== null}
+        onClose={() => setDivisionIndexToRemove(null)}
+        onConfirm={confirmRemoveDivision}
+        destructive
+        title="Remove this division?"
+        description="All entered settings for this division will be lost."
+        confirmText="Remove"
+      />
     </div>
   )
 }

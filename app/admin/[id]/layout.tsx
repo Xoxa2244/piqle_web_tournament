@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import { toast } from '@/components/ui/use-toast'
 
 export default function TournamentLayout({
   children,
@@ -35,7 +36,7 @@ export default function TournamentLayout({
 
   const handlePublicScoreboardClick = () => {
     if (!tournament?.isPublicBoardEnabled) {
-      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      toast({ description: 'Public Scoreboard is not available. Please enable it in tournament settings.', variant: 'destructive' })
       return
     }
     router.push(`/scoreboard/${tournamentId}`)
@@ -65,6 +66,7 @@ export default function TournamentLayout({
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={tournament.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}
         tournamentFormat={tournament.format}
+        tournamentIsPro={tournament.isPro ?? true}
       />
       <div className="pt-[7.5rem]">
         {children}

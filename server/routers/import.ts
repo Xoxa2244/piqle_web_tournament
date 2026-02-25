@@ -313,7 +313,8 @@ export const importRouter = createTRPCRouter({
           createdTeams.set(`${divisionName}-${teamName}`, team)
           
           // Create players
-          for (const participant of teamParticipants) {
+          for (let index = 0; index < teamParticipants.length; index++) {
+            const participant = teamParticipants[index]
             // Parse age and create birthDate only if age is valid
             let birthDate: Date | undefined = undefined
             const ageStr = participant['Age']?.trim()
@@ -323,7 +324,7 @@ export const importRouter = createTRPCRouter({
                 birthDate = new Date(new Date().getFullYear() - age, 0, 1)
               }
             }
-            
+
             const rawEmail = participant['Email']?.trim()
             const normalizedEmail = rawEmail ? normalizeEmail(rawEmail) : null
             const player = await ctx.prisma.player.create({
@@ -338,13 +339,14 @@ export const importRouter = createTRPCRouter({
                 duprRating: participant['DUPR rating']?.trim() ? parseFloat(participant['DUPR rating']) : null,
               }
             })
-            
-            // Add player to team
+
+            // Add player to team with slotIndex so they show in division roster (same as other formats)
             await ctx.prisma.teamPlayer.create({
               data: {
                 teamId: team.id,
                 playerId: player.id,
-                role: 'CAPTAIN' // First player is captain
+                role: index === 0 ? 'CAPTAIN' : 'PLAYER',
+                slotIndex: index,
               }
             })
           }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, Plus } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Division {
   id: string
@@ -51,7 +52,7 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
     },
     onError: (error) => {
       console.error('Failed to create team:', error)
-      alert(`Error creating team: ${error.message}`)
+      toast({ title: 'Error', description: `Error creating team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -62,12 +63,12 @@ export default function AddTeamModal({ divisions, selectedDivisionId: initialDiv
     e.preventDefault()
     
     if (!teamName.trim()) {
-      alert('Enter team name')
+      toast({ description: 'Enter team name', variant: 'destructive' })
       return
     }
 
     if (!selectedDivisionId) {
-      alert('Select division')
+      toast({ description: 'Select division', variant: 'destructive' })
       return
     }
 

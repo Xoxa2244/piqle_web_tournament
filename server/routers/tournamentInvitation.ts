@@ -5,6 +5,7 @@ import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { assertTournamentAdmin } from '../utils/access'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
 import { formatUsDateShort } from '@/lib/dateFormat'
+import { pushToUser } from '@/lib/realtime'
 
 function getAppBaseUrl(baseUrlFromClient?: string | null): string {
   if (baseUrlFromClient && baseUrlFromClient.startsWith('http')) return baseUrlFromClient.replace(/\/$/, '')
@@ -150,6 +151,8 @@ export const tournamentInvitationRouter = createTRPCRouter({
       const declineLink = `${baseUrl}/invitation/${invitation.id}/respond?action=decline`
       const html = buildInvitationEmailHtml(tournament, baseUrl, acceptLink, declineLink)
       await sendHtmlEmail(user.email, `Invitation: ${tournament?.title ?? 'Tournament'}`, html)
+
+      pushToUser(user.id, { type: 'invalidate', keys: ['notification.list'] })
 
       return { id: invitation.id, status: 'PENDING' as const, email: user.email }
     }),

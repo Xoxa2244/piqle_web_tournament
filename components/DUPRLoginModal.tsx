@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/use-toast'
 
 interface DUPRLoginModalProps {
   isOpen: boolean
@@ -34,7 +35,7 @@ export default function DUPRLoginModal({
     const clientKey = process.env.NEXT_PUBLIC_DUPR_CLIENT_KEY
     if (!clientKey) {
       console.error('NEXT_PUBLIC_DUPR_CLIENT_KEY is not set')
-      alert('DUPR integration is not configured. Please set NEXT_PUBLIC_DUPR_CLIENT_KEY in environment variables.')
+      toast({ description: 'DUPR integration is not configured. Please set NEXT_PUBLIC_DUPR_CLIENT_KEY in environment variables.', variant: 'destructive' })
       onClose()
       return
     }

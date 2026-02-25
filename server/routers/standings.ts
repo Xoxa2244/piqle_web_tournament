@@ -29,6 +29,22 @@ type DivisionForStandings = {
   }>
 }
 
+function assignCourtIdsByRound<T extends { roundIndex: number }>(
+  items: T[],
+  courtIds: string[]
+): Array<T & { courtId: string | null }> {
+  const roundCounters = new Map<number, number>()
+
+  return items.map((item) => {
+    const roundIdx = item.roundIndex
+    const perRoundIndex = roundCounters.get(roundIdx) ?? 0
+    roundCounters.set(roundIdx, perRoundIndex + 1)
+
+    const courtId = courtIds.length > 0 ? courtIds[perRoundIndex % courtIds.length] : null
+    return { ...item, courtId }
+  })
+}
+
 /** Compute sorted standings from division RR matches (same logic as dashboard). Used by getWinners for RR-only formats. */
 export function computeStandingsFromDivisionMatches(
   division: DivisionForStandings,
@@ -832,8 +848,14 @@ export const standingsRouter = createTRPCRouter({
       }
 
       // Create matches in database
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const matchesWithCourts = assignCourtIdsByRound(matches, courts.map((c) => c.id))
       const createdMatches = await Promise.all(
-        matches.map(match => {
+        matchesWithCourts.map(match => {
           // For MLP matches, create 4 games
           const gamesCount = isMLP ? 4 : 1
           
@@ -850,6 +872,7 @@ export const standingsRouter = createTRPCRouter({
               winBy: 2,
               locked: false,
               note: (match as any).note || null,
+              courtId: match.courtId,
             },
           })
         })
@@ -922,7 +945,7 @@ export const standingsRouter = createTRPCRouter({
             orderBy: { roundIndex: 'asc' },
           },
           tournament: {
-            select: { format: true },
+            select: { id: true, format: true },
           },
         },
       })
@@ -1103,8 +1126,14 @@ export const standingsRouter = createTRPCRouter({
       }
 
       // Create next round matches in database
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const nextRoundMatchesWithCourts = assignCourtIdsByRound(nextRoundMatches, courts.map((c) => c.id))
       const createdMatches = await Promise.all(
-        nextRoundMatches.map(async match => {
+        nextRoundMatchesWithCourts.map(async match => {
           const gamesCount = isMLP ? 4 : 1
           
           const createdMatch = await ctx.prisma.match.create({
@@ -1121,6 +1150,7 @@ export const standingsRouter = createTRPCRouter({
               locked: false,
               // Add third place flag if it exists
               ...(match.isThirdPlace && { note: 'Third Place Match' }),
+              courtId: match.courtId,
             },
           })
           
@@ -1296,6 +1326,7 @@ export const standingsRouter = createTRPCRouter({
       // Generate Play-Off matches
       const playoffTeams = sortedTeams.slice(0, targetBracketSize)
       const rounds = Math.log2(targetBracketSize)
+      const playoffMatchesToCreate: Array<{ teamAId: string; teamBId: string; roundIndex: number }> = []
       
       for (let round = 0; round < rounds; round++) {
         const matchesInRound = Math.pow(2, rounds - round - 1)
@@ -1305,22 +1336,40 @@ export const standingsRouter = createTRPCRouter({
           const teamBIndex = match * 2 + 1
           
           if (teamAIndex < playoffTeams.length && teamBIndex < playoffTeams.length) {
-            await ctx.prisma.match.create({
-              data: {
-                divisionId: input.divisionId,
-                teamAId: playoffTeams[teamAIndex].teamId,
-                teamBId: playoffTeams[teamBIndex].teamId,
-                stage: 'ELIMINATION',
-                roundIndex: round,
-                bestOfMode: 'FIXED_GAMES',
-                gamesCount: 1,
-                targetPoints: 11,
-                winBy: 2,
-              }
+            playoffMatchesToCreate.push({
+              teamAId: playoffTeams[teamAIndex].teamId,
+              teamBId: playoffTeams[teamBIndex].teamId,
+              roundIndex: round,
             })
           }
         }
       }
+
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const playoffMatchesWithCourts = assignCourtIdsByRound(playoffMatchesToCreate, courts.map((c) => c.id))
+
+      await Promise.all(
+        playoffMatchesWithCourts.map((match) =>
+          ctx.prisma.match.create({
+            data: {
+              divisionId: input.divisionId,
+              teamAId: match.teamAId,
+              teamBId: match.teamBId,
+              stage: 'ELIMINATION',
+              roundIndex: match.roundIndex,
+              bestOfMode: 'FIXED_GAMES',
+              gamesCount: 1,
+              targetPoints: 11,
+              winBy: 2,
+              courtId: match.courtId,
+            },
+          })
+        )
+      )
 
       // Reset division stage to PO_R1_SCHEDULED
       await ctx.prisma.division.update({
@@ -2334,8 +2383,14 @@ export const standingsRouter = createTRPCRouter({
       console.log('===========================')
 
       // Create playoff matches in database
+      const courts = await ctx.prisma.court.findMany({
+        where: { tournamentId: division.tournament.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      const playoffMatchesWithCourts = assignCourtIdsByRound(playoffMatches, courts.map((c) => c.id))
       const createdMatches = await Promise.all(
-        playoffMatches.map(match =>
+        playoffMatchesWithCourts.map(match =>
           ctx.prisma.match.create({
             data: {
               divisionId: input.divisionId,
@@ -2348,6 +2403,7 @@ export const standingsRouter = createTRPCRouter({
               targetPoints: 11,
               winBy: 2,
               locked: false,
+              courtId: match.courtId,
             },
           })
         )

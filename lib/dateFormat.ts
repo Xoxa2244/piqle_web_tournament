@@ -18,6 +18,11 @@ const usDateTimeShortFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 })
 
+const usTimeShortFormatter = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
 const usDateTimeFormatterByTimezone = new Map<string, Intl.DateTimeFormat>()
 const usDateFormatterByTimezone = new Map<string, Intl.DateTimeFormat>()
 
@@ -107,4 +112,28 @@ export const formatUsDateTimeShort = (
   const date = getDate(value)
   if (!date) return ''
   return getUsDateTimeFormatter(opts?.timeZone).format(date)
+}
+
+export const formatUsTimeShort = (
+  value: Date | string | number | null | undefined
+) => {
+  const date = getDate(value)
+  if (!date) return ''
+  return usTimeShortFormatter.format(date)
+}
+
+/** Format a match day date in UTC so it never shifts by timezone (e.g. 02/17/26 stays 02/17/26 for everyone). */
+export const formatMatchDayDate = (
+  value: Date | string | number | null | undefined
+) => formatUsDateShort(value, { timeZone: 'UTC' })
+
+/** Parse a date string (YYYY-MM-DD or ISO) as UTC midnight for storage. Match days are calendar dates, not timestamps. */
+export const parseDateOnlyAsUtc = (dateStr: string): Date => {
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) {
+    const [y, m, day] = dateStr.split(/[-/]/).map(Number)
+    if (y && m && day) return new Date(Date.UTC(y, m - 1, day))
+    throw new Error(`Invalid date: ${dateStr}`)
+  }
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }

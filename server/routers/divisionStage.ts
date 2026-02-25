@@ -78,6 +78,7 @@ export const divisionStageRouter = createTRPCRouter({
                 orderBy: { index: 'asc' },
               },
               tiebreaker: true,
+              court: true,
             },
           },
         },
@@ -299,8 +300,21 @@ export const divisionStageRouter = createTRPCRouter({
 
       // Create matches if needed
       if (matchesToCreate.length > 0) {
+        const courts = await ctx.prisma.court.findMany({
+          where: { tournamentId: division.tournament.id },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+        const roundCounters = new Map<number, number>()
+
         await Promise.all(
-          matchesToCreate.map(match =>
+          matchesToCreate.map(match => {
+            const roundIdx = match.roundIndex
+            const perRoundIndex = roundCounters.get(roundIdx) ?? 0
+            roundCounters.set(roundIdx, perRoundIndex + 1)
+            const courtId = courts.length > 0 ? courts[perRoundIndex % courts.length].id : null
+
+            return (
             ctx.prisma.match.create({
               data: {
                 divisionId: input.divisionId,
@@ -313,9 +327,11 @@ export const divisionStageRouter = createTRPCRouter({
                 targetPoints: 11,
                 winBy: 2,
                 locked: false,
+                courtId,
               },
             })
-          )
+            )
+          })
         )
       }
 
@@ -353,6 +369,7 @@ export const divisionStageRouter = createTRPCRouter({
       scoreA: z.number(),
       scoreB: z.number(),
       sendToDupr: z.boolean().optional(),
+      courtId: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       // Update game score
@@ -362,7 +379,7 @@ export const divisionStageRouter = createTRPCRouter({
           division: {
             include: {
               tournament: {
-                select: { format: true },
+                select: { id: true, format: true },
               },
             },
           },
@@ -391,6 +408,17 @@ export const divisionStageRouter = createTRPCRouter({
 
       // Check if this is an MLP tournament
       const isMLP = match.division?.tournament?.format === 'MLP'
+      const courtIdData = input.courtId === undefined ? undefined : input.courtId
+
+      if (typeof input.courtId === 'string') {
+        const court = await ctx.prisma.court.findUnique({
+          where: { id: input.courtId },
+          select: { id: true, tournamentId: true },
+        })
+        if (!court || court.tournamentId !== match.division?.tournament?.id) {
+          throw new Error('Selected court does not belong to this tournament')
+        }
+      }
 
       // Calculate winner from scores
       const gameWinner: 'A' | 'B' | null = input.scoreA > input.scoreB ? 'A' : input.scoreB > input.scoreA ? 'B' : null
@@ -427,6 +455,7 @@ export const divisionStageRouter = createTRPCRouter({
             winnerTeamId: gameWinner === 'A' ? match.teamA.id : 
                           gameWinner === 'B' ? match.teamB.id : null,
             sendToDupr: input.sendToDupr ?? false,
+            courtId: courtIdData,
           },
         })
       } else {
@@ -435,6 +464,7 @@ export const divisionStageRouter = createTRPCRouter({
           where: { id: input.matchId },
           data: {
             sendToDupr: input.sendToDupr ?? false,
+            courtId: courtIdData,
           },
         })
       }

@@ -9,12 +9,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import Image from 'next/image'
-import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw, Unlink } from 'lucide-react'
+import { User as UserIcon, Save, ArrowLeft, Upload, Camera, Link as LinkIcon, RefreshCw, Unlink, Users, Trophy, Medal } from 'lucide-react'
 import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
 import DUPRLoginModal from '@/components/DUPRLoginModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
+import { toast } from '@/components/ui/use-toast'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -40,6 +42,7 @@ export default function ProfilePage() {
   const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
   const [isRefreshingRatings, setIsRefreshingRatings] = useState(false)
   const [isUnlinkingDUPR, setIsUnlinkingDUPR] = useState(false)
+  const [showUnlinkDUPRConfirm, setShowUnlinkDUPRConfirm] = useState(false)
   const [payoutStatus, setPayoutStatus] = useState<{
     hasAccount: boolean
     payoutsActive: boolean
@@ -95,8 +98,11 @@ export default function ProfilePage() {
 
   const handleConnectStripe = async () => {
     try {
+      const returnUrl = typeof window !== 'undefined' ? window.location.href : undefined
       const response = await fetch('/api/stripe/create-account-link', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl, refreshUrl: returnUrl }),
       })
       const payload = await response.json()
       if (!response.ok || !payload?.url) {
@@ -104,7 +110,7 @@ export default function ProfilePage() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to start Stripe onboarding')
+      toast({ title: 'Error', description: error.message || 'Failed to start Stripe onboarding', variant: 'destructive' })
     }
   }
 
@@ -146,7 +152,7 @@ export default function ProfilePage() {
       setShowDUPRModal(false)
     } catch (error) {
       console.error('Error linking DUPR:', error)
-      alert('Failed to link DUPR account. Please try again.')
+      toast({ description: 'Failed to link DUPR account. Please try again.', variant: 'destructive' })
     } finally {
       setIsLinkingDUPR(false)
     }
@@ -171,17 +177,15 @@ export default function ProfilePage() {
       await refetch()
     } catch (error: any) {
       console.error('Error refreshing ratings:', error)
-      alert(error.message || 'Failed to refresh DUPR ratings. Please try again.')
+      toast({ title: 'Error', description: error.message || 'Failed to refresh DUPR ratings. Please try again.', variant: 'destructive' })
     } finally {
       setIsRefreshingRatings(false)
     }
   }
 
-  const handleUnlinkDUPR = async () => {
-    if (!confirm('Are you sure you want to unlink your DUPR account? You will need to reconnect it to use DUPR features.')) {
-      return
-    }
+  const handleUnlinkDUPRClick = () => setShowUnlinkDUPRConfirm(true)
 
+  const handleUnlinkDUPRConfirm = async () => {
     setIsUnlinkingDUPR(true)
     try {
       const response = await fetch('/api/dupr/unlink', {
@@ -198,9 +202,10 @@ export default function ProfilePage() {
 
       // Refresh profile data
       await refetch()
+      setShowUnlinkDUPRConfirm(false)
     } catch (error: any) {
       console.error('Error unlinking DUPR:', error)
-      alert(error.message || 'Failed to unlink DUPR account. Please try again.')
+      toast({ title: 'Error', description: error.message || 'Failed to unlink DUPR account. Please try again.', variant: 'destructive' })
     } finally {
       setIsUnlinkingDUPR(false)
     }
@@ -253,13 +258,13 @@ export default function ProfilePage() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -303,7 +308,7 @@ export default function ProfilePage() {
       URL.revokeObjectURL(croppedImageUrl)
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload avatar. Please try again.')
+      toast({ description: 'Failed to upload avatar. Please try again.', variant: 'destructive' })
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)
@@ -346,9 +351,15 @@ export default function ProfilePage() {
   const hasValidAvatar = currentAvatar && currentAvatar.trim() !== '' && 
     (currentAvatar.startsWith('http') || currentAvatar.startsWith('data:'))
 
+  const singles = formatDuprRating(profile.duprRatingSingles)
+  const doubles = formatDuprRating(profile.duprRatingDoubles)
+  const clubsCount = (profile as any).clubsJoinedCount ?? 0
+  const playedCount = (profile as any).tournamentsPlayedCount ?? 0
+  const createdCount = (profile as any).tournamentsCreatedCount ?? 0
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-2xl mx-auto px-4">
+      <div className="max-w-5xl mx-auto px-4">
         {/* Back Button */}
         <button
           type="button"
@@ -376,6 +387,8 @@ export default function ProfilePage() {
           )}
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
         <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
@@ -519,7 +532,7 @@ export default function ProfilePage() {
                         Linked: <span className="font-medium">{profile.duprId}</span>
                       </div>
                       <Button
-                        onClick={handleUnlinkDUPR}
+                        onClick={handleUnlinkDUPRClick}
                         disabled={isUnlinkingDUPR}
                         variant="outline"
                         size="sm"
@@ -638,6 +651,48 @@ export default function ProfilePage() {
             )}
           </div>
         </Card>
+          </div>
+
+          {/* Правая колонка: рейтинги и статистика как на карточках /players */}
+          <div className="space-y-4">
+            <Card className="p-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-4">Stats</h2>
+              <div className="grid grid-cols-2 gap-2 text-xs mb-4">
+                <div className="rounded-md border bg-gray-50 p-2">
+                  <div className="text-muted-foreground">Singles</div>
+                  <div className="text-sm font-medium text-gray-900">{singles ?? '—'}</div>
+                </div>
+                <div className="rounded-md border bg-gray-50 p-2">
+                  <div className="text-muted-foreground">Doubles</div>
+                  <div className="text-sm font-medium text-gray-900">{doubles ?? '—'}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{clubsCount}</div>
+                  <div className="text-muted-foreground">clubs</div>
+                </div>
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Trophy className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{playedCount}</div>
+                  <div className="text-muted-foreground">played</div>
+                </div>
+                <div className="rounded-md border p-2 text-center">
+                  <div className="flex items-center justify-center text-muted-foreground">
+                    <Medal className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="font-medium text-gray-900">{createdCount}</div>
+                  <div className="text-muted-foreground">created</div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
 
         {/* Avatar Cropper Modal */}
         {cropperImageSrc && (
@@ -655,6 +710,16 @@ export default function ProfilePage() {
           isOpen={showDUPRModal}
           onClose={() => setShowDUPRModal(false)}
           onSuccess={handleDUPRSuccess}
+        />
+        <ConfirmModal
+          open={showUnlinkDUPRConfirm}
+          onClose={() => setShowUnlinkDUPRConfirm(false)}
+          onConfirm={handleUnlinkDUPRConfirm}
+          isPending={isUnlinkingDUPR}
+          destructive
+          title="Unlink DUPR account?"
+          description="Are you sure you want to unlink your DUPR account? You will need to reconnect it to use DUPR features."
+          confirmText={isUnlinkingDUPR ? 'Unlinking…' : 'Unlink'}
         />
       </div>
     </div>

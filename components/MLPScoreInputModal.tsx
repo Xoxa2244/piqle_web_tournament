@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { HelpCircle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
+import { toast } from '@/components/ui/use-toast'
 import PlayersWithoutDuprModal from './PlayersWithoutDuprModal'
 
 interface Player {
@@ -93,7 +94,7 @@ export default function MLPScoreInputModal({
     },
     onError: (error) => {
       console.error('Error updating game score:', error)
-      alert('Error updating game score: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating game score: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -154,7 +155,7 @@ export default function MLPScoreInputModal({
     
     // If one is empty but not both, show error
     if (scoreA === null || scoreB === null || isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
-      alert('Please enter valid scores (non-negative numbers) or leave both empty')
+      toast({ description: 'Please enter valid scores (non-negative numbers) or leave both empty', variant: 'destructive' })
       return
     }
 

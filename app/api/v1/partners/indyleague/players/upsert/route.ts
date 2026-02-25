@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withPartnerAuth } from '@/server/utils/partnerApiMiddleware'
 import { prisma } from '@/lib/prisma'
 import { setExternalIdMapping, getInternalId } from '@/server/utils/externalIdMapping'
+import { INDY_LEAGUE_MAX_ROSTER } from '@/server/utils/teamSlots'
 import { z } from 'zod'
 
 const upsertPlayersSchema = z.object({
@@ -120,10 +121,10 @@ export const POST = withPartnerAuth(
                 })
 
                 if (team) {
-                  // Check team capacity: 8 for IndyLeague, otherwise based on teamKind
+                  // Check team capacity: no fixed limit for IndyLeague; otherwise based on teamKind
                   const maxPlayers =
                     team.division.tournament.format === 'INDY_LEAGUE'
-                      ? 8
+                      ? INDY_LEAGUE_MAX_ROSTER
                       : team.division.teamKind === 'SINGLES_1v1'
                         ? 1
                         : team.division.teamKind === 'DOUBLES_2v2'
@@ -140,6 +141,22 @@ export const POST = withPartnerAuth(
                       warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player updated but not added to team.`,
                     })
                   } else {
+                    const usedSlots = new Set(
+                      team.teamPlayers
+                        .map((tp) => tp.slotIndex)
+                        .filter(
+                          (slotIndex): slotIndex is number =>
+                            slotIndex !== null && slotIndex !== undefined
+                        )
+                    )
+                    let nextAvailableSlot: number | null = null
+                    for (let i = 0; i < maxPlayers; i++) {
+                      if (!usedSlots.has(i)) {
+                        nextAvailableSlot = i
+                        break
+                      }
+                    }
+
                     // Check if player is already in team
                     const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                       where: {
@@ -156,6 +173,7 @@ export const POST = withPartnerAuth(
                           teamId,
                           playerId: existingInternalId,
                           role: 'PLAYER',
+                          slotIndex: nextAvailableSlot,
                         },
                       })
                     }
@@ -235,10 +253,10 @@ export const POST = withPartnerAuth(
                 })
 
                 if (team) {
-                  // Check team capacity: 8 for IndyLeague, otherwise based on teamKind
+                  // Check team capacity: no fixed limit for IndyLeague; otherwise based on teamKind
                   const maxPlayers =
                     team.division.tournament.format === 'INDY_LEAGUE'
-                      ? 8
+                      ? INDY_LEAGUE_MAX_ROSTER
                       : team.division.teamKind === 'SINGLES_1v1'
                         ? 1
                         : team.division.teamKind === 'DOUBLES_2v2'
@@ -255,6 +273,22 @@ export const POST = withPartnerAuth(
                       warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player created but not added to team.`,
                     })
                   } else {
+                    const usedSlots = new Set(
+                      team.teamPlayers
+                        .map((tp) => tp.slotIndex)
+                        .filter(
+                          (slotIndex): slotIndex is number =>
+                            slotIndex !== null && slotIndex !== undefined
+                        )
+                    )
+                    let nextAvailableSlot: number | null = null
+                    for (let i = 0; i < maxPlayers; i++) {
+                      if (!usedSlots.has(i)) {
+                        nextAvailableSlot = i
+                        break
+                      }
+                    }
+
                     // Check if player is already in team
                     const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                       where: {
@@ -271,6 +305,7 @@ export const POST = withPartnerAuth(
                           teamId,
                           playerId: newPlayer.id,
                           role: 'PLAYER',
+                          slotIndex: nextAvailableSlot,
                         },
                       })
                     }
@@ -341,10 +376,10 @@ export const POST = withPartnerAuth(
               })
 
               if (team) {
-                // Check team capacity: 8 for IndyLeague, otherwise based on teamKind
+                // Check team capacity: no fixed limit for IndyLeague; otherwise based on teamKind
                 const maxPlayers =
                   team.division.tournament.format === 'INDY_LEAGUE'
-                    ? 8
+                    ? INDY_LEAGUE_MAX_ROSTER
                     : team.division.teamKind === 'SINGLES_1v1'
                       ? 1
                       : team.division.teamKind === 'DOUBLES_2v2'
@@ -361,6 +396,22 @@ export const POST = withPartnerAuth(
                     warning: `Team ${player.externalTeamId} is full (max ${maxPlayers} players). Player created but not added to team.`,
                   })
                 } else {
+                  const usedSlots = new Set(
+                    team.teamPlayers
+                      .map((tp) => tp.slotIndex)
+                      .filter(
+                        (slotIndex): slotIndex is number =>
+                          slotIndex !== null && slotIndex !== undefined
+                      )
+                  )
+                  let nextAvailableSlot: number | null = null
+                  for (let i = 0; i < maxPlayers; i++) {
+                    if (!usedSlots.has(i)) {
+                      nextAvailableSlot = i
+                      break
+                    }
+                  }
+
                   // Check if player is already in team
                   const existingTeamPlayer = await prisma.teamPlayer.findUnique({
                     where: {
@@ -377,6 +428,7 @@ export const POST = withPartnerAuth(
                         teamId,
                         playerId: newPlayer.id,
                         role: 'PLAYER',
+                        slotIndex: nextAvailableSlot,
                       },
                     })
                   }

@@ -4,6 +4,12 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort, formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
+import {
+  getTournamentStatus,
+  getTournamentStatusBadgeClass,
+  getTournamentStatusLabel,
+} from '@/lib/tournamentStatus'
+import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +22,8 @@ import { useSession } from 'next-auth/react'
 import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import TournamentModal from '@/components/TournamentModal'
+import CancelRegistrationModal from '@/components/CancelRegistrationModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TournamentsMapContent } from '@/components/TournamentsMapContent'
 
@@ -95,6 +103,8 @@ function HomePageContent() {
   const [selectedTournament, setSelectedTournament] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterType>('all')
   const [mapFocusTournamentId, setMapFocusTournamentId] = useState<string | null>(null)
+  const [cancelModalTournament, setCancelModalTournament] = useState<{ tournamentId: string; isPaid: boolean } | null>(null)
+  const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
@@ -246,36 +256,6 @@ function HomePageContent() {
       router.replace(nextQuery ? `/?${nextQuery}` : '/', { scroll: false })
     }
   }, [router, searchParams])
-
-  const getTournamentStatus = (tournament: { startDate: Date | string; endDate: Date | string }): 'past' | 'upcoming' | 'in_progress' => {
-    const now = new Date()
-    const start = new Date(tournament.startDate)
-    const end = new Date(tournament.endDate)
-    const endWithGrace = new Date(end)
-    endWithGrace.setHours(endWithGrace.getHours() + 12)
-    const nextDay = new Date(now)
-    nextDay.setDate(nextDay.getDate() + 1)
-    nextDay.setHours(0, 0, 0, 0)
-    if (endWithGrace < nextDay) return 'past'
-    if (start > now) return 'upcoming'
-    return 'in_progress'
-  }
-
-  const getTournamentStatusLabel = (status: 'past' | 'upcoming' | 'in_progress') => {
-    switch (status) {
-      case 'past': return 'Past'
-      case 'upcoming': return 'Upcoming'
-      case 'in_progress': return 'In progress'
-    }
-  }
-
-  const getTournamentStatusBadgeClass = (status: 'past' | 'upcoming' | 'in_progress') => {
-    switch (status) {
-      case 'past': return 'bg-gray-100 text-gray-700'
-      case 'upcoming': return 'bg-blue-50 text-blue-700'
-      case 'in_progress': return 'bg-green-50 text-green-700'
-    }
-  }
 
   const isRegistrationOpen = (tournament: { registrationStartDate?: Date | string | null; registrationEndDate?: Date | string | null; startDate: Date | string }): boolean => {
     const start = tournament.registrationStartDate ? new Date(tournament.registrationStartDate) : new Date(tournament.startDate)
@@ -533,9 +513,12 @@ function HomePageContent() {
                     </div>
                   </div>
                   {/* Tournament status badge */}
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getTournamentStatusBadgeClass(getTournamentStatus(tournament))}`}>
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
+                    </span>
+                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                      {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                     </span>
                   </div>
                 </CardHeader>
@@ -699,6 +682,8 @@ function HomePageContent() {
                     {(() => {
                       const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
                       const registrationOpen = isRegistrationOpen(tournament)
+                      const isPaidTournament = !!(tournament.entryFee && parseFloat(String(tournament.entryFee)) > 0)
+                      const isActiveUnpaid = status === 'active' && isPaidTournament && !registrationStatuses?.[tournament.id]?.isPaid
                       const label =
                         status === 'active'
                           ? 'Cancel Registration'
@@ -707,34 +692,45 @@ function HomePageContent() {
                           : 'Join Tournament'
 
                       return (
-                        <Button
-                          className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-                          variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
-                          disabled={!registrationOpen}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (!session) {
-                              router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
-                              return
-                            }
-                            if (status === 'active') {
-                              if (confirm('Cancel registration?')) {
-                                cancelRegistration.mutate({ tournamentId: tournament.id })
+                        <div className="flex flex-col gap-2">
+                          {isActiveUnpaid && (
+                            <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white" asChild>
+                              <Link
+                                href={`/tournaments/${tournament.id}/register`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Pay Now ${tournament.entryFee != null ? Number(tournament.entryFee).toFixed(2) : '0.00'}
+                              </Link>
+                            </Button>
+                          )}
+                          <Button
+                            className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                            variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
+                            disabled={!registrationOpen}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!session) {
+                                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                                return
                               }
-                              return
-                            }
-                            if (status === 'waitlisted') {
-                              const divisionId = registrationStatuses?.[tournament.id]?.divisionId
-                              if (divisionId && confirm('Leave waitlist?')) {
-                                leaveWaitlist.mutate({ divisionId })
+                              if (status === 'active') {
+                                setCancelModalTournament({
+                                  tournamentId: tournament.id,
+                                  isPaid: isPaidTournament,
+                                })
+                                return
                               }
-                              return
-                            }
-                            router.push(`/tournaments/${tournament.id}/register`)
-                          }}
-                        >
-                          {label}
-                        </Button>
+                              if (status === 'waitlisted') {
+                                const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                                if (divisionId) setLeaveWaitlistDivisionId(divisionId)
+                                return
+                              }
+                              router.push(`/tournaments/${tournament.id}/register`)
+                            }}
+                          >
+                            {label}
+                          </Button>
+                        </div>
                       )
                     })()}
                   </div>
@@ -761,6 +757,32 @@ function HomePageContent() {
           </div>
         )}
       </div>
+
+      <CancelRegistrationModal
+        open={!!cancelModalTournament}
+        onClose={() => setCancelModalTournament(null)}
+        onConfirm={() => {
+          if (!cancelModalTournament) return
+          cancelRegistration.mutate({ tournamentId: cancelModalTournament.tournamentId })
+          setCancelModalTournament(null)
+        }}
+        isPending={cancelRegistration.isPending}
+        isPaidTournament={cancelModalTournament?.isPaid ?? false}
+      />
+
+      <ConfirmModal
+        open={!!leaveWaitlistDivisionId}
+        onClose={() => setLeaveWaitlistDivisionId(null)}
+        onConfirm={() => {
+          if (!leaveWaitlistDivisionId) return
+          leaveWaitlist.mutate({ divisionId: leaveWaitlistDivisionId })
+          setLeaveWaitlistDivisionId(null)
+        }}
+        isPending={leaveWaitlist.isPending}
+        title="Leave waitlist?"
+        description="You will lose your waitlist spot for this division."
+        confirmText={leaveWaitlist.isPending ? 'Leaving…' : 'Leave waitlist'}
+      />
 
       <TournamentModal
         tournamentId={selectedTournament}

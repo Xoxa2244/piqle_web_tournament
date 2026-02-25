@@ -98,12 +98,7 @@ const buildInfoWindowContent = (
   const openButton =
     onOpenTournament != null
       ? `<a href="#" class="open-tournament-modal-link" data-tournament-id="${tournament.id}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; border: none; cursor: pointer;">Open tournament</a>`
-      : (() => {
-          const href = tournament.publicSlug
-            ? `/t/${tournament.publicSlug}`
-            : `/admin/${tournament.id}`
-          return `<a href="${href}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Open tournament</a>`
-        })()
+      : `<a href="/admin/${tournament.id}" style="display: inline-block; margin-top: 8px; padding: 8px 16px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Open tournament</a>`
 
   return `
     <div style="min-width: 260px; font-family: system-ui, sans-serif;">

@@ -7,7 +7,11 @@ import { X } from 'lucide-react'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
-const getSlotCount = (teamKind: TeamKind) => {
+const getSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
+  if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
+    return 32
+  }
+
   switch (teamKind) {
     case 'SINGLES_1v1':
       return 1
@@ -25,18 +29,20 @@ export default function WaitlistAssignModal({
   onClose,
   onAssign,
   division,
+  tournamentFormat,
   waitlistEntry,
 }: {
   isOpen: boolean
   onClose: () => void
   onAssign: (teamId: string, slotIndex: number) => void
   division: any
+  tournamentFormat?: string
   waitlistEntry: any | null
 }) {
   const [selectedTeamId, setSelectedTeamId] = useState('')
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | ''>('')
 
-  const slotCount = getSlotCount(division.teamKind)
+  const slotCount = getSlotCount(division.teamKind, tournamentFormat)
 
   const availableSlotsByTeam = useMemo(() => {
     return division.teams.reduce((acc: Record<string, number[]>, team: any) => {

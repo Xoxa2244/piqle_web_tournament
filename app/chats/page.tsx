@@ -7,12 +7,14 @@ import { useSession } from 'next-auth/react'
 import { MessageCircle, Send, Trash2, CalendarDays, Building2, ChevronRight } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
-import { formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
+import { formatUsDateTimeShort, formatUsDateShort, formatUsTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +40,36 @@ type ChatMessage = {
     name: string | null
     image: string | null
   }
+}
+
+function toLocalYmd(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function groupMessagesByDate(messages: ChatMessage[]): { dateKey: string; dateLabel: string; list: ChatMessage[] }[] {
+  const todayKey = toLocalYmd(new Date())
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = toLocalYmd(yesterday)
+  const groups: { dateKey: string; dateLabel: string; list: ChatMessage[] }[] = []
+  let currentKey = ''
+  for (const m of messages) {
+    const d = m.createdAt ? new Date(m.createdAt) : new Date()
+    const key = toLocalYmd(d)
+    if (key !== currentKey) {
+      currentKey = key
+      groups.push({
+        dateKey: key,
+        dateLabel: key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatUsDateShort(d),
+        list: [],
+      })
+    }
+    groups[groups.length - 1]!.list.push(m)
+  }
+  return groups
 }
 
 type ClubChatListItem = {
@@ -94,6 +126,7 @@ export default function ChatsPage() {
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [activeDivisionId, setActiveDivisionId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!clubs || clubs.length === 0) {
@@ -178,8 +211,20 @@ export default function ChatsPage() {
   )
 
   useEffect(() => {
-    if (isArchivedEventSelected) setArchiveOpen(true)
-  }, [isArchivedEventSelected])
+    if (isArchivedEventSelected) {
+      setArchiveOpen(true)
+      if (activeEventId) setExpandedArchiveEventIds((prev) => new Set(prev).add(activeEventId))
+    }
+  }, [isArchivedEventSelected, activeEventId])
+
+  const toggleArchiveEventExpanded = (eventId: string) => {
+    setExpandedArchiveEventIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
 
   const renderEventListItem = (event: any) => {
     const eventActive = event.id === activeEventId && !activeDivisionId
@@ -252,6 +297,87 @@ export default function ChatsPage() {
     )
   }
 
+  const renderArchivedEventItem = (event: any) => {
+    const eventActive = event.id === activeEventId && !activeDivisionId
+    const hasDivisions = event.divisions.length > 0
+    const isExpanded = expandedArchiveEventIds.has(event.id)
+
+    return (
+      <div key={event.id} className="rounded-lg border border-gray-200 bg-white p-2">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveEventId(event.id)
+            setActiveDivisionId(null)
+            if (hasDivisions) toggleArchiveEventExpanded(event.id)
+          }}
+          className={cn(
+            'flex w-full items-center justify-between gap-2 rounded-md p-2 text-left transition-colors',
+            eventActive ? 'bg-blue-50 text-blue-900' : 'hover:bg-gray-50'
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{event.title}</div>
+            {event.unreadCount > 0 ? (
+              <div className="mt-1">
+                <Badge className="bg-red-600 hover:bg-red-600">
+                  {event.unreadCount > 99 ? '99+' : event.unreadCount} unread
+                </Badge>
+              </div>
+            ) : null}
+            <div className="mt-1 text-xs text-muted-foreground">
+              {formatUsDateTimeShort(event.startDate, { timeZone: event.timezone })} ·{' '}
+              {getTimezoneLabel(event.timezone)}
+            </div>
+            {event.club?.name ? (
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3 shrink-0" />
+                <span className="truncate">{event.club.name}</span>
+              </div>
+            ) : null}
+          </div>
+          {hasDivisions ? (
+            <ChevronRight
+              className={cn('h-4 w-4 shrink-0 transition-transform text-muted-foreground', isExpanded ? 'rotate-90' : 'rotate-0')}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+
+        {hasDivisions && isExpanded ? (
+          <div className="ml-2 mt-1 space-y-1 border-l border-gray-200 pl-2">
+            {event.divisions.map((division: any) => {
+              const divisionActive = event.id === activeEventId && division.id === activeDivisionId
+              return (
+                <button
+                  key={division.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveEventId(event.id)
+                    setActiveDivisionId(division.id)
+                  }}
+                  className={cn(
+                    'w-full rounded-md px-2 py-1 text-left text-xs transition-colors',
+                    divisionActive ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <span>{division.name}</span>
+                    {division.unreadCount > 0 ? (
+                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {division.unreadCount > 99 ? '99+' : division.unreadCount}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   if (status === 'loading') {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -281,16 +407,19 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="space-y-1">
+    <div
+      className="mx-auto flex max-w-7xl flex-col overflow-hidden px-4 py-4 sm:px-6 lg:px-8"
+      style={{ height: 'calc(100vh - 4rem)' }}
+    >
+      <div className="shrink-0 space-y-1">
         <h1 className="text-2xl font-semibold">Chats</h1>
         <p className="text-sm text-muted-foreground">
           One place for club chats and event chats.
         </p>
       </div>
 
-      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')}>
-        <TabsList className="grid w-full grid-cols-2 md:w-[420px]">
+      <Tabs value={topTab} onValueChange={(value) => setTopTab(value as 'clubs' | 'events')} className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TabsList className="grid w-full shrink-0 grid-cols-2 md:w-[420px]">
           <TabsTrigger value="clubs">
             Club chats {(clubs?.length ?? 0) > 0 ? `(${clubs?.length ?? 0})` : ''}
           </TabsTrigger>
@@ -299,13 +428,13 @@ export default function ChatsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="clubs" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
-              <CardHeader>
+        <TabsContent value="clubs" className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-3">
+            <Card className="flex min-h-0 flex-col overflow-hidden lg:col-span-1">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-base">Your club chats</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="min-h-0 overflow-y-auto space-y-2">
                 {clubsLoading ? (
                   <div className="text-sm text-muted-foreground">Loading clubs…</div>
                 ) : !clubs || clubs.length === 0 ? (
@@ -361,7 +490,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="lg:col-span-2">
+            <div className="flex min-h-0 flex-col overflow-hidden lg:col-span-2">
               {selectedClub ? (
                 <ClubChatPanel
                   clubId={selectedClub.id}
@@ -380,13 +509,13 @@ export default function ChatsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="events" className="mt-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
-              <CardHeader>
+        <TabsContent value="events" className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-3">
+            <Card className="flex min-h-0 flex-col overflow-hidden lg:col-span-1">
+              <CardHeader className="shrink-0">
                 <CardTitle className="text-base">Event chats</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="min-h-0 overflow-y-auto space-y-2">
                 {eventsLoading ? (
                   <div className="text-sm text-muted-foreground">Loading events…</div>
                 ) : !events || events.length === 0 ? (
@@ -421,7 +550,7 @@ export default function ChatsPage() {
                             className={cn('h-4 w-4 transition-transform', archiveOpen ? 'rotate-90' : 'rotate-0')}
                           />
                         </button>
-                        {archiveOpen ? archivedEventChats.map((event) => renderEventListItem(event)) : null}
+                        {archiveOpen ? archivedEventChats.map((event) => renderArchivedEventItem(event)) : null}
                       </div>
                     ) : null}
                   </div>
@@ -429,7 +558,7 @@ export default function ChatsPage() {
               </CardContent>
             </Card>
 
-            <div className="lg:col-span-2">
+            <div className="flex min-h-0 flex-col overflow-hidden lg:col-span-2">
               {!selectedEvent ? (
                 <Card>
                   <CardContent className="py-10 text-sm text-muted-foreground">
@@ -474,13 +603,14 @@ function ClubChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery({ clubId, limit })
   const sendMessage = trpc.clubChat.send.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.clubChat.list.invalidate({ clubId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -515,13 +645,14 @@ function ClubChatPanel({
     try {
       await sendMessage.mutateAsync({ clubId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-2">
+    <>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
           {clubName} · Club chat
@@ -530,72 +661,96 @@ function ClubChatPanel({
           Club members and admins can participate here.
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div ref={listRef} className="max-h-[420px] overflow-y-auto rounded-md border bg-white">
+      <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
           {isLoading ? (
-            <div className="p-3 text-sm text-muted-foreground">Loading chat…</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
           ) : error ? (
             <div className="p-3 text-sm text-red-700">{error.message}</div>
           ) : !messages || messages.length === 0 ? (
-            <div className="p-3 text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
           ) : (
-            <div className="divide-y">
-              {(messages as ChatMessage[]).map((m) => {
-                const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                const canDelete = Boolean(isMine || isAdmin)
-                return (
-                  <div key={m.id} className="flex items-start justify-between gap-3 p-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="truncate text-sm font-medium text-gray-900">{m.user?.name || 'User'}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatUsDateTimeShort(m.createdAt)}
-                        </div>
-                        {isMine ? <Badge variant="secondary">You</Badge> : null}
-                        {isAdmin ? <Badge variant="outline">Admin</Badge> : null}
-                      </div>
+            <div className="space-y-3">
+              {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
+                <div key={g.dateKey} className="space-y-1.5">
+                  <div className="text-center">
+                    <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
+                      {g.dateLabel}
+                    </span>
+                  </div>
+                  {g.list.map((m) => {
+                    const isMine = Boolean(currentUserId && m.userId === currentUserId)
+                    const canDelete = Boolean(isMine || isAdmin)
+                    return (
                       <div
+                        key={m.id}
                         className={cn(
-                          'mt-1 rounded-md border px-2 py-1 text-sm whitespace-pre-wrap break-words',
-                          m.isDeleted
-                            ? 'border-gray-200 bg-gray-50 text-muted-foreground italic'
-                            : isMine
-                              ? 'border-blue-200 bg-blue-50 text-gray-800'
-                              : 'border-gray-200 bg-white text-gray-700'
+                          'flex items-end gap-1.5',
+                          isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
                         )}
                       >
-                        {m.isDeleted ? 'Message removed' : m.text}
+                        {!isMine ? (
+                          <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
+                            {m.user?.image ? (
+                              <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+                                {(m.user?.name || 'U').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                        <div
+                          className={cn(
+                            'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
+                            isMine
+                              ? 'rounded-br-md bg-blue-600 text-white'
+                              : 'rounded-bl-md bg-gray-200/90 text-gray-900'
+                          )}
+                        >
+                          {!isMine ? (
+                            <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
+                              {m.user?.name || 'User'}
+                            </div>
+                          ) : null}
+                          <div className={cn(m.isDeleted && 'italic opacity-80')}>
+                            {m.isDeleted ? 'Message removed' : m.text}
+                          </div>
+                          <div className={cn(
+                            'text-[10px] mt-1',
+                            isMine ? 'text-blue-100' : 'text-gray-500'
+                          )}>
+                            {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
+                          </div>
+                        </div>
+                        {canDelete && !m.isDeleted ? (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
+                            disabled={deleteMessage.isPending}
+                            onClick={() => setMessageToDelete(m.id)}
+                            title="Delete message"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
                       </div>
-                    </div>
-                    {canDelete && !m.isDeleted ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        disabled={deleteMessage.isPending}
-                        onClick={async () => {
-                          if (!confirm('Delete this message?')) return
-                          await deleteMessage.mutateAsync({ messageId: m.id })
-                        }}
-                        title="Delete message"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        <div className="flex items-end gap-2">
-          <Textarea
+        <div className="flex shrink-0 items-center gap-2">
+          <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Write a message…"
-            rows={2}
-            className="flex-1"
+            placeholder="Message…"
+            className="flex-1 min-w-0"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -603,13 +758,27 @@ function ClubChatPanel({
               }
             }}
           />
-          <Button type="button" className="gap-2" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+          <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
             <Send className="h-4 w-4" />
-            Send
           </Button>
         </div>
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }
 
@@ -627,6 +796,7 @@ function TournamentChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const canView = Boolean(permission?.canView)
   const canPost = Boolean(permission?.canPost)
@@ -639,7 +809,7 @@ function TournamentChatPanel({
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.tournamentChat.listTournament.invalidate({ tournamentId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -674,13 +844,14 @@ function TournamentChatPanel({
     try {
       await sendMessage.mutateAsync({ tournamentId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-2">
+    <>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarDays className="h-4 w-4" />
           {tournamentName} · Event chat
@@ -689,7 +860,7 @@ function TournamentChatPanel({
           Organizer, admins, and tournament participants.
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
         {!permission ? (
           <div className="text-sm text-muted-foreground">Checking chat access…</div>
         ) : !canView ? (
@@ -698,71 +869,96 @@ function TournamentChatPanel({
           </div>
         ) : (
           <>
-            <div ref={listRef} className="max-h-[420px] overflow-y-auto rounded-md border bg-white">
+            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
               {isLoading ? (
-                <div className="p-3 text-sm text-muted-foreground">Loading chat…</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
               ) : error ? (
                 <div className="p-3 text-sm text-red-700">{error.message}</div>
               ) : !messages || messages.length === 0 ? (
-                <div className="p-3 text-sm text-muted-foreground">No messages yet.</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">No messages yet.</div>
               ) : (
-                <div className="divide-y">
-                  {(messages as ChatMessage[]).map((m) => {
-                    const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                    const canDelete = Boolean(isMine || canModerate)
-                    return (
-                      <div key={m.id} className="flex items-start justify-between gap-3 p-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-medium text-gray-900">{m.user?.name || 'User'}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatUsDateTimeShort(m.createdAt)}
-                            </div>
-                            {isMine ? <Badge variant="secondary">You</Badge> : null}
-                          </div>
+                <div className="space-y-3">
+                  {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
+                    <div key={g.dateKey} className="space-y-1.5">
+                      <div className="text-center">
+                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
+                          {g.dateLabel}
+                        </span>
+                      </div>
+                      {g.list.map((m) => {
+                        const isMine = Boolean(currentUserId && m.userId === currentUserId)
+                        const canDelete = Boolean(isMine || canModerate)
+                        return (
                           <div
+                            key={m.id}
                             className={cn(
-                              'mt-1 rounded-md border px-2 py-1 text-sm whitespace-pre-wrap break-words',
-                              m.isDeleted
-                                ? 'border-gray-200 bg-gray-50 text-muted-foreground italic'
-                                : isMine
-                                  ? 'border-blue-200 bg-blue-50 text-gray-800'
-                                  : 'border-gray-200 bg-white text-gray-700'
+                              'flex items-end gap-1.5',
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
                             )}
                           >
-                            {m.isDeleted ? 'Message removed' : m.text}
+                            {!isMine ? (
+                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
+                                {m.user?.image ? (
+                                  <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                            <div
+                              className={cn(
+                                'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
+                                isMine
+                                  ? 'rounded-br-md bg-blue-600 text-white'
+                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
+                              )}
+                            >
+                              {!isMine ? (
+                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
+                                  {m.user?.name || 'User'}
+                                </div>
+                              ) : null}
+                              <div className={cn(m.isDeleted && 'italic opacity-80')}>
+                                {m.isDeleted ? 'Message removed' : m.text}
+                              </div>
+                              <div className={cn(
+                                'text-[10px] mt-1',
+                                isMine ? 'text-blue-100' : 'text-gray-500'
+                              )}>
+                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
+                              </div>
+                            </div>
+                            {isMine && canDelete && !m.isDeleted ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
+                                disabled={deleteMessage.isPending}
+                                onClick={() => setMessageToDelete(m.id)}
+                                title="Delete message"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
                           </div>
-                        </div>
-                        {canDelete && !m.isDeleted ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            disabled={deleteMessage.isPending}
-                            onClick={async () => {
-                              if (!confirm('Delete this message?')) return
-                              await deleteMessage.mutateAsync({ messageId: m.id })
-                            }}
-                            title="Delete message"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    )
-                  })}
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
             {canPost ? (
-              <div className="flex items-end gap-2">
-                <Textarea
+              <div className="flex shrink-0 items-center gap-2">
+                <Input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Write a message to event participants…"
-                  rows={2}
-                  className="flex-1"
+                  placeholder="Message…"
+                  className="flex-1 min-w-0"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -770,9 +966,8 @@ function TournamentChatPanel({
                     }
                   }}
                 />
-                <Button type="button" className="gap-2" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+                <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
                   <Send className="h-4 w-4" />
-                  Send
                 </Button>
               </div>
             ) : (
@@ -784,6 +979,21 @@ function TournamentChatPanel({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }
 
@@ -803,6 +1013,7 @@ function DivisionChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const canView = Boolean(permission?.canView)
   const canPost = Boolean(permission?.canPost)
@@ -815,7 +1026,7 @@ function DivisionChatPanel({
   const sendMessage = trpc.tournamentChat.sendDivision.useMutation({
     onSuccess: async (res) => {
       setDraft('')
-      if (res?.wasFiltered) alert('Some words were filtered.')
+      if (res?.wasFiltered) toast({ description: 'Some words were filtered.', variant: 'success' })
       await utils.tournamentChat.listDivision.invalidate({ divisionId, limit })
       setTimeout(() => {
         if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -850,13 +1061,14 @@ function DivisionChatPanel({
     try {
       await sendMessage.mutateAsync({ divisionId, text })
     } catch (err: any) {
-      alert(err?.message || 'Failed to send message')
+      toast({ title: 'Error', description: err?.message || 'Failed to send message', variant: 'destructive' })
     }
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-2">
+    <>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageCircle className="h-4 w-4" />
           {eventName} · {divisionName} chat
@@ -865,7 +1077,7 @@ function DivisionChatPanel({
           Organizer/admins and participants of this division only.
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
         {!permission ? (
           <div className="text-sm text-muted-foreground">Checking chat access…</div>
         ) : !canView ? (
@@ -874,71 +1086,96 @@ function DivisionChatPanel({
           </div>
         ) : (
           <>
-            <div ref={listRef} className="max-h-[420px] overflow-y-auto rounded-md border bg-white">
+            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
               {isLoading ? (
-                <div className="p-3 text-sm text-muted-foreground">Loading chat…</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
               ) : error ? (
                 <div className="p-3 text-sm text-red-700">{error.message}</div>
               ) : !messages || messages.length === 0 ? (
-                <div className="p-3 text-sm text-muted-foreground">No messages yet.</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">No messages yet.</div>
               ) : (
-                <div className="divide-y">
-                  {(messages as ChatMessage[]).map((m) => {
-                    const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                    const canDelete = Boolean(isMine || canModerate)
-                    return (
-                      <div key={m.id} className="flex items-start justify-between gap-3 p-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-medium text-gray-900">{m.user?.name || 'User'}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {formatUsDateTimeShort(m.createdAt)}
-                            </div>
-                            {isMine ? <Badge variant="secondary">You</Badge> : null}
-                          </div>
+                <div className="space-y-3">
+                  {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
+                    <div key={g.dateKey} className="space-y-1.5">
+                      <div className="text-center">
+                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
+                          {g.dateLabel}
+                        </span>
+                      </div>
+                      {g.list.map((m) => {
+                        const isMine = Boolean(currentUserId && m.userId === currentUserId)
+                        const canDelete = Boolean(isMine || canModerate)
+                        return (
                           <div
+                            key={m.id}
                             className={cn(
-                              'mt-1 rounded-md border px-2 py-1 text-sm whitespace-pre-wrap break-words',
-                              m.isDeleted
-                                ? 'border-gray-200 bg-gray-50 text-muted-foreground italic'
-                                : isMine
-                                  ? 'border-blue-200 bg-blue-50 text-gray-800'
-                                  : 'border-gray-200 bg-white text-gray-700'
+                              'flex items-end gap-1.5',
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
                             )}
                           >
-                            {m.isDeleted ? 'Message removed' : m.text}
+                            {!isMine ? (
+                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
+                                {m.user?.image ? (
+                                  <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                            <div
+                              className={cn(
+                                'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
+                                isMine
+                                  ? 'rounded-br-md bg-blue-600 text-white'
+                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
+                              )}
+                            >
+                              {!isMine ? (
+                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
+                                  {m.user?.name || 'User'}
+                                </div>
+                              ) : null}
+                              <div className={cn(m.isDeleted && 'italic opacity-80')}>
+                                {m.isDeleted ? 'Message removed' : m.text}
+                              </div>
+                              <div className={cn(
+                                'text-[10px] mt-1',
+                                isMine ? 'text-blue-100' : 'text-gray-500'
+                              )}>
+                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
+                              </div>
+                            </div>
+                            {isMine && canDelete && !m.isDeleted ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
+                                disabled={deleteMessage.isPending}
+                                onClick={() => setMessageToDelete(m.id)}
+                                title="Delete message"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
                           </div>
-                        </div>
-                        {canDelete && !m.isDeleted ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            disabled={deleteMessage.isPending}
-                            onClick={async () => {
-                              if (!confirm('Delete this message?')) return
-                              await deleteMessage.mutateAsync({ messageId: m.id })
-                            }}
-                            title="Delete message"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    )
-                  })}
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
             {canPost ? (
-              <div className="flex items-end gap-2">
-                <Textarea
+              <div className="flex shrink-0 items-center gap-2">
+                <Input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder={`Write to ${divisionName} participants…`}
-                  rows={2}
-                  className="flex-1"
+                  placeholder="Message…"
+                  className="flex-1 min-w-0"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
@@ -946,9 +1183,8 @@ function DivisionChatPanel({
                     }
                   }}
                 />
-                <Button type="button" className="gap-2" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend}>
+                <Button type="button" size="icon" className="shrink-0" disabled={!draft.trim() || sendMessage.isPending} onClick={handleSend} title="Send">
                   <Send className="h-4 w-4" />
-                  Send
                 </Button>
               </div>
             ) : (
@@ -960,5 +1196,20 @@ function DivisionChatPanel({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }

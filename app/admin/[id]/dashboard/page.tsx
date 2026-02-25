@@ -24,6 +24,7 @@ import BracketModal from '@/components/BracketModal'
 import DaySelector from '@/components/DaySelector'
 import Link from 'next/link'
 import { getTeamDisplayName } from '@/lib/utils'
+import { toast } from '@/components/ui/use-toast'
 
 interface TeamStanding {
   teamId: string
@@ -207,7 +208,7 @@ function DivisionDashboardContent() {
       setScoreModal({ isOpen: false, matchId: null, teamAName: '', teamBName: '' })
     },
     onError: (error) => {
-      alert(`Error: ${error.message}`)
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
     },
   })
 
@@ -217,7 +218,7 @@ function DivisionDashboardContent() {
       refetchTournament()
     },
     onError: (error) => {
-      alert(`Error: ${error.message}`)
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
     },
   })
 

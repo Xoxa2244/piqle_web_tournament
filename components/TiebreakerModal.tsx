@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { trpc } from '@/lib/trpc'
+import { toast } from '@/components/ui/use-toast'
 
 interface TiebreakerSequenceSlot {
   order: number
@@ -49,7 +50,7 @@ export default function TiebreakerModal({
     },
     onError: (error) => {
       console.error('Error saving tiebreaker:', error)
-      alert('Error saving tiebreaker: ' + error.message)
+      toast({ title: 'Error', description: 'Error saving tiebreaker: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -76,12 +77,12 @@ export default function TiebreakerModal({
     const scoreB = parseInt(teamBScore)
     
     if (isNaN(scoreA) || isNaN(scoreB) || scoreA < 0 || scoreB < 0) {
-      alert('Please enter valid scores (non-negative numbers)')
+      toast({ description: 'Please enter valid scores (non-negative numbers)', variant: 'destructive' })
       return
     }
 
     if (scoreA === scoreB) {
-      alert('Tiebreaker cannot end in a tie. Please enter different scores.')
+      toast({ description: 'Tiebreaker cannot end in a tie. Please enter different scores.', variant: 'destructive' })
       return
     }
 

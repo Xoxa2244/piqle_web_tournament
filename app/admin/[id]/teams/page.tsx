@@ -21,6 +21,8 @@ import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import AddTeamModal from '@/components/AddTeamModal'
 import EditTeamModal from '@/components/EditTeamModal'
+import ConfirmModal from '@/components/ConfirmModal'
+import { toast } from '@/components/ui/use-toast'
 interface Player {
   id: string
   firstName: string
@@ -91,6 +93,7 @@ export default function TeamsPage() {
   const [showAddTeamModal, setShowAddTeamModal] = useState(false)
   const [showEditTeamModal, setShowEditTeamModal] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [teamToDelete, setTeamToDelete] = useState<string | null>(null)
 
   const { data: tournament, refetch } = trpc.tournament.get.useQuery(
     { id: tournamentId },
@@ -120,7 +123,7 @@ export default function TeamsPage() {
     },
     onError: (error) => {
       console.error('Failed to delete team:', error)
-      alert('Error deleting team')
+      toast({ title: 'Error', description: 'Error deleting team', variant: 'destructive' })
     }
   })
 
@@ -175,11 +178,7 @@ export default function TeamsPage() {
   }
 
   const handleDeleteTeam = (teamId: string) => {
-    if (!confirm('Are you sure you want to delete this team? All participants will be moved to the general list.')) {
-      return
-    }
-    
-    deleteTeamMutation.mutate({ id: teamId })
+    setTeamToDelete(teamId)
   }
 
   const getTeamDisplayName = (team: Team) => {
@@ -191,6 +190,11 @@ export default function TeamsPage() {
 
   const getMaxPlayersForTeam = (team: Team) => {
     const teamKind = team.division.teamKind
+    const tournamentFormat = tournament?.format
+    if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
+      return 32
+    }
+
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
       case 'DOUBLES_2v2': return 2
@@ -450,6 +454,20 @@ export default function TeamsPage() {
           }}
         />
       )}
+      <ConfirmModal
+        open={!!teamToDelete}
+        onClose={() => setTeamToDelete(null)}
+        onConfirm={() => {
+          if (!teamToDelete) return
+          deleteTeamMutation.mutate({ id: teamToDelete })
+          setTeamToDelete(null)
+        }}
+        isPending={deleteTeamMutation.isPending}
+        destructive
+        title="Delete team?"
+        description="All participants from this team will be moved to the general list."
+        confirmText={deleteTeamMutation.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

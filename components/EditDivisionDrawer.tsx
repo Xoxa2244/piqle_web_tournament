@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { X, AlertTriangle } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Division {
   id: string
@@ -86,7 +87,7 @@ export default function EditDivisionDrawer({
 
   const handleSave = () => {
     if (!formData.name.trim()) {
-      alert('Please enter division name')
+      toast({ description: 'Please enter division name', variant: 'destructive' })
       return
     }
 

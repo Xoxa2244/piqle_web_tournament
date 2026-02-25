@@ -5,7 +5,9 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import ConfirmModal from '@/components/ConfirmModal'
 import { X, Save, Trash2 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface Division {
   id: string
@@ -43,6 +45,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
   const [teamNote, setTeamNote] = useState('')
   const [teamSeed, setTeamSeed] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Initialize form with team data
   useEffect(() => {
@@ -63,7 +66,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     },
     onError: (error) => {
       console.error('Failed to update team:', error)
-      alert(`Error updating team: ${error.message}`)
+      toast({ title: 'Error', description: `Error updating team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -76,7 +79,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     },
     onError: (error) => {
       console.error('Failed to delete team:', error)
-      alert(`Error deleting team: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting team: ${error.message}`, variant: 'destructive' })
       setIsSubmitting(false)
     }
   })
@@ -89,12 +92,12 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     if (!team) return
     
     if (!teamName.trim()) {
-      alert('Enter team name')
+      toast({ description: 'Enter team name', variant: 'destructive' })
       return
     }
 
     if (!selectedDivisionId) {
-      alert('Select division')
+      toast({ description: 'Select division', variant: 'destructive' })
       return
     }
 
@@ -114,20 +117,17 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
     }
   }
 
-  const handleDelete = async () => {
-    if (!team) return
-    
-    if (!window.confirm(`Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.`)) {
-      return
-    }
+  const handleDeleteClick = () => setShowDeleteConfirm(true)
 
+  const handleDeleteConfirm = async () => {
+    if (!team) return
     setIsSubmitting(true)
-    
     try {
-      await deleteTeamMutation.mutateAsync({
-        id: team.id
-      })
-    } catch (error) {
+      await deleteTeamMutation.mutateAsync({ id: team.id })
+      setShowDeleteConfirm(false)
+      onClose()
+      onSuccess?.()
+    } catch {
       // Error handling is done in the mutation onError
     }
   }
@@ -264,7 +264,7 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 disabled={isSubmitting}
                 className="flex items-center space-x-2 text-red-600 hover:text-red-700 hover:bg-red-50"
               >
@@ -309,6 +309,16 @@ export default function EditTeamModal({ team, divisions, isOpen, onClose, onSucc
           </div>
         </CardContent>
       </Card>
+      <ConfirmModal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        isPending={isSubmitting}
+        destructive
+        title="Delete team?"
+        description={team ? `Are you sure you want to delete "${team.name}"? This will remove all players from the team and cannot be undone.` : ''}
+        confirmText={isSubmitting ? 'Deleting…' : 'Delete'}
+      />
     </div>
   )
 }

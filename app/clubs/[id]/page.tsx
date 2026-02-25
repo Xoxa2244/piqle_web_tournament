@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,14 +13,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
-import { formatUsDateShort, formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort, formatUsTimeShort } from '@/lib/dateFormat'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, ArrowLeft, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
+import TournamentModal from '@/components/TournamentModal'
+import CreateClubModal from '@/components/CreateClubModal'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -114,7 +117,12 @@ const buildMonthGrid = (month: Date) => {
 export default function ClubDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
+  const tabFromUrl = searchParams.get('tab')
+  const [clubTab, setClubTab] = useState<'upcoming' | 'announcements' | 'members'>(() =>
+    tabFromUrl === 'members' || tabFromUrl === 'announcements' ? tabFromUrl : 'upcoming'
+  )
 
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
@@ -123,11 +131,57 @@ export default function ClubDetailPage() {
   const { data: club, isLoading, error } = trpc.club.get.useQuery({ id: clubId }, { enabled: !!clubId })
   const utils = trpc.useUtils()
 
-  const toggleFollow = trpc.club.toggleFollow.useMutation()
-  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
+  const toggleFollow = trpc.club.toggleFollow.useMutation({
+    onSuccess: (data) => {
+      if (data.status === 'pending') {
+        toast({ description: 'Request sent.', variant: 'success' })
+      } else if (data.status === 'joined') {
+        toast({ description: 'You joined the club.', variant: 'success' })
+      } else if (data.status === 'left') {
+        toast({ description: 'You left the club.', variant: 'success' })
+      }
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
+  const deleteClub = trpc.club.delete.useMutation({
+    onSuccess: () => {
+      toast({ title: 'Club deleted', description: 'The club has been permanently deleted.', variant: 'success' })
+      setDeleteClubOpen(false)
+      setDeleteClubConfirmText('')
+      router.push('/clubs')
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
+  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
+    onSuccess: () => {
+      toast({ description: 'Join request cancelled.', variant: 'success' })
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: () => utils.notification.list.invalidate(),
+  })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation()
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation()
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation()
+
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (t === 'members' || t === 'announcements') setClubTab(t)
+    else if (t !== 'upcoming') setClubTab('upcoming')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (clubTab === 'members' && club?.isAdmin && clubId) {
+      markClubJoinRequestSeen.mutate({ clubId })
+    }
+  }, [clubTab, club?.isAdmin, clubId])
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: '',
@@ -140,6 +194,12 @@ export default function ClubDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
+  const [descriptionModalOpen, setDescriptionModalOpen] = useState(false)
+  const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
+  const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
+  const [editClubModalOpen, setEditClubModalOpen] = useState(false)
+  const [deleteClubOpen, setDeleteClubOpen] = useState(false)
+  const [deleteClubConfirmText, setDeleteClubConfirmText] = useState('')
 
   const bookingUrl = (club?.courtReserveUrl ?? '').trim()
   const canBook = Boolean(bookingUrl)
@@ -188,16 +248,8 @@ export default function ClubDetailPage() {
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)
       return
     }
-    try {
-      await toggleFollow.mutateAsync({ clubId })
-      await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
-    } catch (err: any) {
-      toast({
-        title: 'Failed',
-        description: err?.message || 'Could not update membership. Try again.',
-        variant: 'destructive',
-      })
-    }
+    await toggleFollow.mutateAsync({ clubId })
+    await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
   }
 
   const handleConfirmLeave = async () => {
@@ -215,7 +267,6 @@ export default function ClubDetailPage() {
         utils.club.listMembers.invalidate({ clubId }),
       ])
       setLeaveOpen(false)
-      toast({ title: 'Left club', description: 'You left this club.' })
     } catch (err: any) {
       toast({
         title: 'Failed to leave',
@@ -296,15 +347,19 @@ export default function ClubDetailPage() {
   }
 
   const handleDeleteAnnouncement = async (announcementId: string) => {
-    if (!isLoggedIn) return
-    if (!confirm('Delete this announcement?')) return
+    setAnnouncementToDelete(announcementId)
+  }
+
+  const confirmDeleteAnnouncement = async () => {
+    if (!isLoggedIn || !announcementToDelete) return
     try {
-      await deleteAnnouncement.mutateAsync({ clubId, announcementId })
+      await deleteAnnouncement.mutateAsync({ clubId, announcementId: announcementToDelete })
       toast({ title: 'Deleted', description: 'Announcement removed.' })
-      if (editingAnnouncementId === announcementId) {
+      if (editingAnnouncementId === announcementToDelete) {
         cancelEditAnnouncement()
       }
       await utils.club.get.invalidate({ id: clubId })
+      setAnnouncementToDelete(null)
     } catch (err: any) {
       toast({ title: 'Failed to delete', description: err?.message || 'Try again', variant: 'destructive' })
     }
@@ -320,11 +375,7 @@ export default function ClubDetailPage() {
 
   if (error || !club) {
     return (
-      <div className="space-y-6 px-6 py-8">
-        <Link href="/clubs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-gray-900">
-          <ArrowLeft className="h-4 w-4" />
-          Back to clubs
-        </Link>
+      <div className="space-y-6 px-4 sm:px-6 lg:px-8 py-8">
         <Card>
           <CardContent className="py-8 text-sm text-muted-foreground">
             {error?.message || 'Club not found.'}
@@ -338,11 +389,6 @@ export default function ClubDetailPage() {
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="space-y-3">
-          <Link href="/clubs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-gray-900">
-            <ArrowLeft className="h-4 w-4" />
-            Back to clubs
-          </Link>
-
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="flex items-start gap-3">
@@ -370,13 +416,23 @@ export default function ClubDetailPage() {
                     </span>
                   </div>
                   {club.description ? (
-                    <p className="text-sm text-gray-700 max-w-2xl whitespace-pre-wrap">{club.description}</p>
+                    <div className="max-w-2xl">
+                      <p className="text-sm text-gray-700 truncate">{club.description}</p>
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 hover:underline mt-0.5"
+                        onClick={() => setDescriptionModalOpen(true)}
+                      >
+                        Show full description
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
               {(club as any).isBanned ? (
                 <Button variant="secondary" className="gap-2" disabled title="You are banned from this club">
                   <Ban className="h-4 w-4" />
@@ -440,18 +496,37 @@ export default function ClubDetailPage() {
               )}
 
               {club.isAdmin ? (
-                <Button asChild variant="outline" className="gap-2">
-                  <Link href={`/clubs/${clubId}/edit`}>
+                <>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Edit club"
+                    onClick={() => setEditClubModalOpen(true)}
+                  >
                     <Pencil className="h-4 w-4" />
-                    Edit club
-                  </Link>
-                </Button>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Invite"
+                    onClick={() => setInviteOpen((v) => !v)}
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Delete club"
+                    onClick={() => setDeleteClubOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
               ) : null}
 
-              {club.isFollowing || club.isAdmin ? (
-                <Button variant="outline" className="gap-2" onClick={() => setInviteOpen((v) => !v)}>
+              {club.isFollowing && !club.isAdmin ? (
+                <Button variant="outline" size="icon" title="Invite" onClick={() => setInviteOpen((v) => !v)}>
                   <Share2 className="h-4 w-4" />
-                  Invite
                 </Button>
               ) : null}
 
@@ -463,23 +538,35 @@ export default function ClubDetailPage() {
                   </Button>
                 </a>
               ) : null}
+              </div>
+              {club.isAdmin ? (
+                <Button asChild className="gap-2 bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto">
+                  <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
+                    <Plus className="h-4 w-4" />
+                    Create Tournament
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-4">
-            {inviteOpen && (club.isFollowing || club.isAdmin) ? (
-              <ClubInviteCard
-                clubId={club.id}
-                clubName={club.name}
-                isLoggedIn={isLoggedIn}
-                canEmailInvite={club.isAdmin}
-                onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
-              />
-            ) : null}
-
-            <Tabs defaultValue="upcoming" className="w-full">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_480px] lg:items-start">
+          <div className="space-y-4 min-w-0">
+            <Tabs
+              value={clubTab}
+              onValueChange={(v) => {
+                const tab = v as 'upcoming' | 'announcements' | 'members'
+                setClubTab(tab)
+                const url = new URL(window.location.href)
+                url.searchParams.set('tab', tab)
+                router.replace(url.pathname + url.search)
+                if (tab === 'members' && club?.isAdmin && clubId) {
+                  markClubJoinRequestSeen.mutate({ clubId })
+                }
+              }}
+              className="w-full"
+            >
               <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="upcoming" className="gap-2">
                   <Calendar className="h-4 w-4" />
@@ -489,27 +576,26 @@ export default function ClubDetailPage() {
                   <Megaphone className="h-4 w-4" />
                   Announcements
                 </TabsTrigger>
-                <TabsTrigger value="chat" className="gap-2">
-                  <MessageCircle className="h-4 w-4" />
-                  Club chat
+                <TabsTrigger value="members" className="gap-2">
+                  <Users className="h-4 w-4" />
+                  Members
+                  {(club as { pendingJoinRequestCount?: number } | null)?.pendingJoinRequestCount ? (
+                    <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      {(club as { pendingJoinRequestCount: number }).pendingJoinRequestCount > 99
+                        ? '99+'
+                        : (club as { pendingJoinRequestCount: number }).pendingJoinRequestCount}
+                    </span>
+                  ) : null}
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="upcoming" className="space-y-4 mt-0">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   Upcoming events
                 </CardTitle>
-                {club.isAdmin ? (
-                  <Button asChild size="sm" variant="outline" className="gap-2">
-                    <Link href={`/admin/new?clubId=${encodeURIComponent(club.id)}`}>
-                      <Plus className="h-4 w-4" />
-                      Create tournament
-                    </Link>
-                  </Button>
-                ) : null}
               </CardHeader>
               <CardContent className="space-y-3">
                 <Tabs defaultValue="list">
@@ -536,9 +622,18 @@ export default function ClubDetailPage() {
                       tournaments.map((tournament) => (
                         <div
                           key={tournament.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3"
+                          role="button"
+                          tabIndex={0}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                          onClick={() => setModalTournamentId(tournament.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setModalTournamentId(tournament.id)
+                            }
+                          }}
                         >
-                          <div className="min-w-0">
+                          <div className="min-w-0 text-left">
                             <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
                             <div className="text-sm text-muted-foreground">
                               {formatEventDateTimeRange(
@@ -555,7 +650,7 @@ export default function ClubDetailPage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <Link href={`/tournaments/${tournament.id}/register`}>
                               <Button>
                                 {typeof tournament.entryFeeCents === 'number' && tournament.entryFeeCents > 0
@@ -563,11 +658,6 @@ export default function ClubDetailPage() {
                                   : 'Join'}
                               </Button>
                             </Link>
-                            {tournament.publicSlug ? (
-                              <Link href={`/t/${tournament.publicSlug}`}>
-                                <Button variant="outline">Public board</Button>
-                              </Link>
-                            ) : null}
                           </div>
                         </div>
                       ))
@@ -578,19 +668,12 @@ export default function ClubDetailPage() {
                     <ClubEventsCalendar
                       tournaments={tournaments}
                       eventsByDay={eventsByDay}
+                      onTournamentClick={setModalTournamentId}
                     />
                   </TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
-
-            {club.isAdmin || club.isFollowing ? (
-              <ClubMembersAdminCard
-                clubId={club.id}
-                canModerate={club.isAdmin}
-                currentUserId={session?.user?.id}
-              />
-            ) : null}
               </TabsContent>
 
               <TabsContent value="announcements" className="mt-0">
@@ -705,7 +788,28 @@ export default function ClubDetailPage() {
             </Card>
               </TabsContent>
 
-              <TabsContent value="chat" className="mt-0">
+              <TabsContent value="members" className="mt-0">
+            {club.isAdmin || club.isFollowing ? (
+              <ClubMembersAdminCard
+                clubId={club.id}
+                canModerate={club.isAdmin}
+                currentUserId={session?.user?.id}
+              />
+            ) : (
+              <Card>
+                <CardContent className="py-6 text-sm text-muted-foreground">
+                  Join the club to see members.
+                </CardContent>
+              </Card>
+            )}
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <div
+            className="sticky top-16 flex min-h-0 w-full min-w-0 flex-col overflow-hidden lg:w-[480px]"
+            style={{ height: 'calc(100vh - 18rem)', maxHeight: 'calc(100vh - 18rem)', boxSizing: 'border-box' }}
+          >
             <ClubChatCard
               clubId={club.id}
               isLoggedIn={isLoggedIn}
@@ -717,33 +821,132 @@ export default function ClubDetailPage() {
               currentUserId={session?.user?.id}
               onJoinToggle={handleToggleFollow}
             />
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Booking</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {canBook ? (
-                  <a href={bookingUrl} target="_blank" rel="noreferrer" className="block">
-                    <Button variant="outline" className="w-full gap-2">
-                      <ExternalLink className="h-4 w-4" />
-                      {bookingButtonLabel}
-                    </Button>
-                  </a>
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    Online booking is not configured for this club yet.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
+
+      <TournamentModal
+        tournamentId={modalTournamentId}
+        onClose={() => setModalTournamentId(null)}
+      />
+
+      <CreateClubModal
+        isOpen={editClubModalOpen}
+        onClose={() => setEditClubModalOpen(false)}
+        onSuccess={() => {
+          utils.club.get.invalidate({ id: clubId })
+          setEditClubModalOpen(false)
+        }}
+        clubId={editClubModalOpen ? clubId : null}
+      />
+
+      {/* Full description modal */}
+      {descriptionModalOpen && club.description ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setDescriptionModalOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 rounded-full"
+              onClick={() => setDescriptionModalOpen(false)}
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <h3 className="text-lg font-semibold text-gray-900 pr-10">{club.name}</h3>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap mt-3">{club.description}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmModal
+        open={!!announcementToDelete}
+        onClose={() => setAnnouncementToDelete(null)}
+        onConfirm={confirmDeleteAnnouncement}
+        isPending={deleteAnnouncement.isPending}
+        destructive
+        title="Delete announcement?"
+        description="This announcement will be permanently removed."
+        confirmText={deleteAnnouncement.isPending ? 'Deleting…' : 'Delete'}
+      />
+
+      {/* Invite Modal */}
+      {inviteOpen && (club.isFollowing || club.isAdmin) && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setInviteOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-4 pt-12"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 rounded-full"
+              onClick={() => setInviteOpen(false)}
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <ClubInviteCard
+              clubId={club.id}
+              clubName={club.name}
+              isLoggedIn={isLoggedIn}
+              canEmailInvite={club.isAdmin}
+              onSignIn={() => router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/clubs/${clubId}`)}`)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Delete Club Modal */}
+      {deleteClubOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setDeleteClubOpen(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete club</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              This will permanently delete the club <span className="font-medium">{club.name}</span>, all its data (members, announcements, chat), and unlink any tournaments created for this club. This action cannot be undone.
+            </p>
+            <p className="text-sm text-gray-700 mb-2">
+              Type <span className="font-mono font-semibold">DELETE</span> to confirm:
+            </p>
+            <Input
+              value={deleteClubConfirmText}
+              onChange={(e) => setDeleteClubConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono mb-6"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => { setDeleteClubOpen(false); setDeleteClubConfirmText('') }} disabled={deleteClub.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteClub.mutate({ clubId })}
+                disabled={deleteClubConfirmText !== 'DELETE' || deleteClub.isPending}
+              >
+                {deleteClub.isPending ? 'Deleting…' : 'Delete club'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Leave Club Confirmation Modal */}
       {leaveOpen && (
@@ -803,6 +1006,7 @@ export default function ClubDetailPage() {
 function ClubEventsCalendar({
   tournaments,
   eventsByDay,
+  onTournamentClick,
 }: {
   tournaments: Array<{
     id: string
@@ -818,6 +1022,7 @@ function ClubEventsCalendar({
     duprLabel?: string | null
   }>
   eventsByDay: Map<string, any[]>
+  onTournamentClick?: (tournamentId: string) => void
 }) {
   const now = new Date()
   const initialBase = tournaments[0] ? new Date(tournaments[0].startDate) : now
@@ -1043,15 +1248,18 @@ function ClubEventsCalendar({
                         const label = meta ? `${meta} · ${ev?.title ?? 'Event'}` : ev?.title ?? 'Event'
 
                         return ev?.id ? (
-                          <Link
+                          <button
                             key={ev.id}
-                            href={`/tournaments/${ev.id}/register`}
-                            className="block rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open registration"
+                            type="button"
+                            className="block w-full rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-800 truncate hover:bg-blue-100 text-left"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onTournamentClick?.(ev.id)
+                            }}
+                            title="View tournament"
                           >
                             {label}
-                          </Link>
+                          </button>
                         ) : (
                           <div key={String(ev?.title ?? Math.random())} className="text-[10px] text-blue-800 truncate">
                             {label}
@@ -1149,14 +1357,20 @@ function ClubEventsCalendar({
                         const showGender = t.genderLabel && t.genderLabel !== 'Any'
 
                         return (
-                          <div key={t.id} className="rounded-md border bg-white p-2">
-                            <Link
-                              href={`/tournaments/${t.id}/register`}
-                              className="text-xs font-semibold text-gray-900 hover:underline block truncate"
-                              title="Open registration"
-                            >
-                              {t.title}
-                            </Link>
+                          <div
+                            key={t.id}
+                            role="button"
+                            tabIndex={0}
+                            className="rounded-md border bg-white p-2 cursor-pointer transition-colors hover:bg-gray-50"
+                            onClick={() => onTournamentClick?.(t.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                onTournamentClick?.(t.id)
+                              }
+                            }}
+                          >
+                            <div className="text-xs font-semibold text-gray-900 truncate">{t.title}</div>
                             <div className="mt-1 text-[11px] text-muted-foreground">{timeLabel}</div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
                               {isPaid ? (
@@ -1212,25 +1426,31 @@ function ClubEventsCalendar({
                 tournament.timezone
               )
               return (
-                <div key={tournament.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-md bg-gray-50 p-2">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/tournaments/${tournament.id}/register`}
-                      className="text-sm font-medium text-gray-900 truncate hover:underline block"
-                      title="Open registration"
-                    >
-                      {tournament.title}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">
+                <div
+                  key={tournament.id}
+                  role="button"
+                  tabIndex={0}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                  onClick={() => onTournamentClick?.(tournament.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onTournamentClick?.(tournament.id)
+                    }
+                  }}
+                >
+                  <div className="min-w-0 text-left">
+                    <div className="font-medium text-gray-900 truncate">{tournament.title}</div>
+                    <div className="text-sm text-muted-foreground">
                       {timeLabel}
                     </div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="flex items-center gap-2 mt-1">
                       {isPaid ? (
                         <Badge variant="secondary">${fromCents(fee).toFixed(2)}</Badge>
                       ) : (
                         <Badge variant="outline">Free</Badge>
                       )}
-                      <Badge variant="outline">{typeLabel}</Badge>
+                      {typeLabel ? <Badge variant="outline">{typeLabel}</Badge> : null}
                       {occupancy ? (
                         <Badge variant="secondary" className="gap-1">
                           <Users className="h-3 w-3" />
@@ -1241,19 +1461,12 @@ function ClubEventsCalendar({
                       {tournament.duprLabel ? <Badge variant="outline">{tournament.duprLabel}</Badge> : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Link href={`/tournaments/${tournament.id}/register`}>
                       <Button size="sm">
-                        {isPaid ? 'Join & Pay' : 'Join'}
+                        {isPaid ? `Join & Pay — $${fromCents(fee).toFixed(2)}` : 'Join'}
                       </Button>
                     </Link>
-                    {tournament.publicSlug ? (
-                      <Link href={`/t/${tournament.publicSlug}`}>
-                        <Button size="sm" variant="outline">
-                          Public board
-                        </Button>
-                      </Link>
-                    ) : null}
                   </div>
                 </div>
               )
@@ -1579,6 +1792,7 @@ function ClubChatCard({
   })
 
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const canPost = canView
@@ -1618,14 +1832,15 @@ function ClubChatCard({
   }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
-    <Card>
-      <CardHeader>
+    <>
+    <Card className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 py-3 px-4">
         <CardTitle className="text-base flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
           Club chat
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 pt-0">
         {isLoading && canView ? (
           <div className="text-sm text-muted-foreground">Loading chat…</div>
         ) : null}
@@ -1634,55 +1849,104 @@ function ClubChatCard({
         ) : null}
 
         {canView ? (
-          <div ref={listRef} className="max-h-[360px] overflow-y-auto rounded-md border bg-white">
+          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 px-2 py-1.5 space-y-1">
             {!isLoading && (!messages || messages.length === 0) ? (
-              <div className="p-3 text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
-            ) : (
-              <div className="divide-y">
-                {(messages ?? []).map((m: any) => {
-                  const isMine = currentUserId && m.userId === currentUserId
-                  const canDelete = Boolean(isAdmin || isMine)
-
-                  return (
-                    <div key={m.id} className="p-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-900 truncate">{m.user?.name || 'User'}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {m.createdAt ? formatUsDateTimeShort(m.createdAt) : ''}
-                          </div>
-                          {isMine ? <Badge variant="secondary">You</Badge> : null}
-                        </div>
-                        <div
-                          className={cn(
-                            'mt-1 text-sm whitespace-pre-wrap break-words',
-                            m.isDeleted ? 'text-muted-foreground italic' : 'text-gray-700'
-                          )}
-                        >
-                          {m.isDeleted ? 'Message removed' : m.text}
-                        </div>
+              <div className="py-4 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
+            ) : (() => {
+              const todayKey = toLocalYmd(new Date())
+              const yesterday = new Date()
+              yesterday.setDate(yesterday.getDate() - 1)
+              const yesterdayKey = toLocalYmd(yesterday)
+              const groups: { dateKey: string; dateLabel: string; list: any[] }[] = []
+              let currentKey = ''
+              for (const m of messages ?? []) {
+                const d = m.createdAt ? new Date(m.createdAt) : new Date()
+                const key = toLocalYmd(d)
+                if (key !== currentKey) {
+                  currentKey = key
+                  groups.push({
+                    dateKey: key,
+                    dateLabel: key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatUsDateShort(d),
+                    list: [],
+                  })
+                }
+                groups[groups.length - 1]!.list.push(m)
+              }
+              return (
+                <div className="space-y-2">
+                  {groups.map((g) => (
+                    <div key={g.dateKey} className="space-y-1">
+                      <div className="text-center">
+                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
+                          {g.dateLabel}
+                        </span>
                       </div>
-
-                      {canDelete && !m.isDeleted ? (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          disabled={deleteMessage.isPending}
-                          onClick={async () => {
-                            if (!confirm('Delete this message?')) return
-                            await deleteMessage.mutateAsync({ messageId: m.id })
-                          }}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
+                      {g.list.map((m: any) => {
+                        const isMine = currentUserId && m.userId === currentUserId
+                        const canDelete = Boolean(isAdmin || isMine)
+                        return (
+                          <div
+                            key={m.id}
+                            className={cn(
+                              'flex items-end gap-1.5',
+                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
+                            )}
+                          >
+                            {!isMine ? (
+                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
+                                {m.user?.image ? (
+                                  <Image src={m.user.image} alt="" fill className="object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
+                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                            <div
+                              className={cn(
+                                'group relative max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
+                                isMine
+                                  ? 'rounded-br-md bg-blue-600 text-white'
+                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
+                              )}
+                            >
+                              {!isMine ? (
+                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
+                                  {m.user?.name || 'User'}
+                                </div>
+                              ) : null}
+                              <div className={cn(m.isDeleted && 'italic text-inherit opacity-80')}>
+                                {m.isDeleted ? 'Message removed' : m.text}
+                              </div>
+                              <div className={cn(
+                                'text-[10px] mt-1',
+                                isMine ? 'text-blue-100' : 'text-gray-500'
+                              )}>
+                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
+                              </div>
+                            </div>
+                            {canDelete && !m.isDeleted ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
+                                disabled={deleteMessage.isPending}
+                                onClick={() => setMessageToDelete(m.id)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         ) : (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">
@@ -1721,13 +1985,12 @@ function ClubChatCard({
             </div>
           )
         ) : (
-          <div className="flex items-end gap-2">
-            <Textarea
+          <div className="flex shrink-0 items-center gap-2">
+            <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write a message…"
-              rows={2}
-              className="flex-1"
+              placeholder="Message…"
+              className="flex-1 min-w-0"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -1737,17 +2000,33 @@ function ClubChatCard({
             />
             <Button
               type="button"
-              className="gap-2"
+              size="icon"
+              className="shrink-0"
               disabled={!draft.trim() || sendMessage.isPending}
               onClick={handleSend}
+              title="Send"
             >
               <Send className="h-4 w-4" />
-              Send
             </Button>
           </div>
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+  </>
   )
 }
 
@@ -1797,6 +2076,10 @@ function ClubMembersAdminCard({
   })
 
   const [query, setQuery] = useState('')
+  const [kickTarget, setKickTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banTarget, setBanTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banReason, setBanReason] = useState('')
+  const [unbanTarget, setUnbanTarget] = useState<{ userId: string; name: string } | null>(null)
   const q = query.trim().toLowerCase()
 
   const joinRequests = useMemo(() => {
@@ -1834,6 +2117,7 @@ function ClubMembersAdminCard({
   }, [data?.bans, q])
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
@@ -1899,10 +2183,9 @@ function ClubMembersAdminCard({
                         className="gap-2"
                         disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
                         onClick={async () => {
-                          if (!confirm('Approve this join request?')) return
                           try {
                             await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                            toast({ title: 'Approved', description: 'User joined the club.' })
+                            toast({ title: 'Approved', description: 'User joined the club.', variant: 'success' })
                           } catch (err: any) {
                             toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                           }
@@ -1916,10 +2199,9 @@ function ClubMembersAdminCard({
                         variant="outline"
                         disabled={approveJoinRequest.isPending || rejectJoinRequest.isPending}
                         onClick={async () => {
-                          if (!confirm('Reject this join request?')) return
                           try {
                             await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                            toast({ title: 'Rejected', description: 'Request rejected.' })
+                            toast({ title: 'Rejected', description: 'Request rejected.', variant: 'success' })
                           } catch (err: any) {
                             toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                           }
@@ -1977,15 +2259,7 @@ function ClubMembersAdminCard({
                           variant="outline"
                           className="gap-2"
                           disabled={kickMember.isPending || banUser.isPending}
-                          onClick={async () => {
-                            if (!confirm('Remove this member from the club?')) return
-                            try {
-                              await kickMember.mutateAsync({ clubId, userId: m.userId })
-                              toast({ title: 'Removed', description: 'Member removed from the club.' })
-                            } catch (err: any) {
-                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                            }
-                          }}
+                          onClick={() => setKickTarget({ userId: m.userId, name: m.user?.name || 'User' })}
                         >
                           <UserMinus className="h-4 w-4" />
                           Kick
@@ -1995,15 +2269,9 @@ function ClubMembersAdminCard({
                           size="sm"
                           className="gap-2"
                           disabled={kickMember.isPending || banUser.isPending}
-                          onClick={async () => {
-                            const reason = prompt('Ban reason (optional):') || ''
-                            if (!confirm('Ban this user? They will not be able to re-join.')) return
-                            try {
-                              await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
-                              toast({ title: 'Banned', description: 'User banned.' })
-                            } catch (err: any) {
-                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                            }
+                          onClick={() => {
+                            setBanReason('')
+                            setBanTarget({ userId: m.userId, name: m.user?.name || 'User' })
                           }}
                         >
                           <Ban className="h-4 w-4" />
@@ -2044,15 +2312,7 @@ function ClubMembersAdminCard({
                         size="sm"
                         variant="outline"
                         disabled={unbanUser.isPending}
-                        onClick={async () => {
-                          if (!confirm('Unban this user?')) return
-                          try {
-                            await unbanUser.mutateAsync({ clubId, userId: b.userId })
-                            toast({ title: 'Unbanned', description: 'User can join again.' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
+                        onClick={() => setUnbanTarget({ userId: b.userId, name: b.user?.name || 'User' })}
                       >
                         Unban
                       </Button>
@@ -2066,5 +2326,77 @@ function ClubMembersAdminCard({
         </div>
       </CardContent>
     </Card>
+    
+    <ConfirmModal
+      open={!!kickTarget}
+      onClose={() => setKickTarget(null)}
+      onConfirm={async () => {
+        if (!kickTarget) return
+        try {
+          await kickMember.mutateAsync({ clubId, userId: kickTarget.userId })
+          toast({ title: 'Removed', description: 'Member removed from the club.', variant: 'success' })
+          setKickTarget(null)
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={kickMember.isPending}
+      destructive
+      title="Remove member?"
+      description={`Remove ${kickTarget?.name ?? 'this user'} from the club?`}
+      confirmText={kickMember.isPending ? 'Removing…' : 'Remove'}
+    />
+
+    <ConfirmModal
+      open={!!banTarget}
+      onClose={() => setBanTarget(null)}
+      onConfirm={async () => {
+        if (!banTarget) return
+        try {
+          await banUser.mutateAsync({
+            clubId,
+            userId: banTarget.userId,
+            reason: banReason.trim() || undefined,
+          })
+          toast({ title: 'Banned', description: 'User banned.', variant: 'success' })
+          setBanTarget(null)
+          setBanReason('')
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={banUser.isPending}
+      destructive
+      title="Ban user?"
+      description={`${banTarget?.name ?? 'This user'} will not be able to re-join the club.`}
+      confirmText={banUser.isPending ? 'Banning…' : 'Ban'}
+    >
+      <Input
+        placeholder="Reason (optional)"
+        value={banReason}
+        onChange={(e) => setBanReason(e.target.value)}
+      />
+    </ConfirmModal>
+
+    <ConfirmModal
+      open={!!unbanTarget}
+      onClose={() => setUnbanTarget(null)}
+      onConfirm={async () => {
+        if (!unbanTarget) return
+        try {
+          await unbanUser.mutateAsync({ clubId, userId: unbanTarget.userId })
+          toast({ title: 'Unbanned', description: 'User can join again.', variant: 'success' })
+          setUnbanTarget(null)
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={unbanUser.isPending}
+      destructive
+      title="Unban user?"
+      description={`Allow ${unbanTarget?.name ?? 'this user'} to join the club again?`}
+      confirmText={unbanUser.isPending ? 'Unbanning…' : 'Unban'}
+    />
+    </>
   )
 }

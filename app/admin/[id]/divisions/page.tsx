@@ -35,9 +35,11 @@ import AddPlayerModal from '@/components/AddPlayerModal'
 import AddParticipantModal from '@/components/AddParticipantModal'
 import MergeDivisionModal from '@/components/MergeDivisionModal'
 import UnmergeDivisionModal from '@/components/UnmergeDivisionModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import TeamWithSlots from '@/components/TeamWithSlots'
 import WaitlistAssignModal from '@/components/WaitlistAssignModal'
 import TournamentNavBar from '@/components/TournamentNavBar'
+import { toast } from '@/components/ui/use-toast'
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -131,6 +133,7 @@ function WaitList({
   expandedTeams,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -144,6 +147,7 @@ function WaitList({
   expandedTeams: Set<string>
   availablePlayers: any[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleTeamExpansion: (teamId: string) => void
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
@@ -180,9 +184,11 @@ function WaitList({
                 key={team.id}
                 team={team}
                 teamKind={division.teamKind as any}
+                divisionId={division.id}
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
+                tournamentFormat={tournamentFormat}
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
@@ -209,6 +215,7 @@ function PoolCard({
   expandedTeams,
   availablePlayers,
   tournamentId,
+  tournamentFormat,
   onToggleTeamExpansion,
   onAddPlayerToSlot,
   onRemovePlayerFromSlot,
@@ -223,6 +230,7 @@ function PoolCard({
   expandedTeams: Set<string>
   availablePlayers: any[]
   tournamentId: string
+  tournamentFormat?: string
   onToggleTeamExpansion: (teamId: string) => void
   onAddPlayerToSlot: (teamId: string, slotIndex: number, playerId: string) => void
   onRemovePlayerFromSlot: (teamId: string, slotIndex: number) => void
@@ -260,9 +268,11 @@ function PoolCard({
                 key={team.id}
                 team={team}
                 teamKind={division.teamKind as any}
+                divisionId={division.id}
                 isExpanded={expandedTeams.has(team.id)}
                 availablePlayers={availablePlayers}
                 tournamentId={tournamentId}
+                tournamentFormat={tournamentFormat}
                 onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                 onEdit={() => onEditTeam(team)}
                 onDelete={() => onDeleteTeam(team)}
@@ -370,6 +380,9 @@ function DivisionCard({
   division, 
   isExpanded, 
   onToggleExpansion, 
+  canCollapse = true,
+  canDeleteDivision = true,
+  canMergeDivision = true,
   onEditDivision, 
   onAddTeam, 
   onDistributeTeams,
@@ -394,6 +407,9 @@ function DivisionCard({
   division: Division
   isExpanded: boolean
   onToggleExpansion: () => void
+  canCollapse?: boolean
+  canDeleteDivision?: boolean
+  canMergeDivision?: boolean
   onEditDivision: () => void
   onAddTeam: () => void
   onDistributeTeams: (divisionId: string) => void
@@ -434,18 +450,22 @@ function DivisionCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleExpansion}
-              className="h-6 w-6 p-0"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
+            {canCollapse ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleExpansion}
+                className="h-6 w-6 p-0"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
+            ) : (
+              <ChevronDown className="h-4 w-4 text-slate-400" />
+            )}
             
             <div>
               <CardTitle className="text-lg">{division.name} / {division.teamKind}</CardTitle>
@@ -484,7 +504,7 @@ function DivisionCard({
             </Button>
             )}
             
-            {!isIndyLeague && (
+            {canMergeDivision && !isIndyLeague && (
               (division as any).isMerged ? (
               <Button
                 variant="outline"
@@ -533,13 +553,15 @@ function DivisionCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                className={`h-8 w-8 p-0 ${canDeleteDivision ? 'text-red-500 hover:text-red-700' : 'text-slate-300 cursor-not-allowed'}`}
                 onClick={() => {
+                  if (!canDeleteDivision) return
                   if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
                     onDeleteDivision(division.id)
                   }
                 }}
-                title="Delete Division"
+                title={canDeleteDivision ? 'Delete Division' : undefined}
+                disabled={!canDeleteDivision}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -560,6 +582,7 @@ function DivisionCard({
                       key={team.id}
                       team={team}
                       teamKind={division.teamKind as any}
+                      divisionId={division.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
@@ -591,6 +614,7 @@ function DivisionCard({
                     expandedTeams={expandedTeams}
                     availablePlayers={availablePlayers}
                     tournamentId={tournamentId}
+                    tournamentFormat={tournamentFormat}
                     onToggleTeamExpansion={onToggleTeamExpansion}
                     onAddPlayerToSlot={onAddPlayerToSlot}
                     onRemovePlayerFromSlot={onRemovePlayerFromSlot}
@@ -614,9 +638,11 @@ function DivisionCard({
                       key={team.id}
                       team={team}
                       teamKind={division.teamKind as any}
+                      divisionId={division.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
+                      tournamentFormat={tournamentFormat}
                       onToggleExpansion={() => onToggleTeamExpansion(team.id)}
                       onEdit={() => onEditTeam(team)}
                       onDelete={() => onDeleteTeam(team)}
@@ -639,6 +665,7 @@ function DivisionCard({
               expandedTeams={expandedTeams}
               availablePlayers={availablePlayers}
               tournamentId={tournamentId}
+              tournamentFormat={tournamentFormat}
               onToggleTeamExpansion={onToggleTeamExpansion}
               onAddPlayerToSlot={onAddPlayerToSlot}
               onRemovePlayerFromSlot={onRemovePlayerFromSlot}
@@ -714,6 +741,9 @@ export default function DivisionsPage() {
   const [selectedWaitlistEntry, setSelectedWaitlistEntry] = useState<any | null>(null)
   const [selectedWaitlistDivision, setSelectedWaitlistDivision] = useState<Division | null>(null)
   const [showWaitlistAssignModal, setShowWaitlistAssignModal] = useState(false)
+  const [divisionToDelete, setDivisionToDelete] = useState<string | null>(null)
+  const [divisionToRedistribute, setDivisionToRedistribute] = useState<string | null>(null)
+  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -732,7 +762,7 @@ export default function DivisionsPage() {
 
   const handlePublicScoreboardClick = () => {
     if (!tournament?.isPublicBoardEnabled) {
-      alert('Public Scoreboard is not available. Please enable it in tournament settings.')
+      toast({ description: 'Public Scoreboard is not available. Please enable it in tournament settings.', variant: 'destructive' })
       return
     }
     router.push(`/scoreboard/${tournamentId}`)
@@ -771,6 +801,9 @@ export default function DivisionsPage() {
   // Get divisions for team creation
   const divisions = tournament?.divisions || []
   const isNoDivisionMode = tournament?.hasDivisions === false
+  const showFlatDivisionView = isNoDivisionMode
+  const isBasicOneDivision =
+    tournament?.isPro === false && (tournament?.divisions?.length ?? 0) === 1
   
   // Local state for optimistic updates
   const [localDivisions, setLocalDivisions] = useState<Division[]>([])
@@ -824,7 +857,7 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Error moving team: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -835,7 +868,7 @@ export default function DivisionsPage() {
     },
     onError: (error) => {
       console.error('moveToPool error:', error)
-      alert(`Error moving team: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -844,37 +877,37 @@ export default function DivisionsPage() {
       refetch()
     },
     onError: (error) => {
-      alert(`Error updating division: ${error.message}`)
+      toast({ title: 'Error', description: `Error updating division: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const distributeTeamsMutation = trpc.division.distributeTeamsByDupr.useMutation({
     onSuccess: (result) => {
       refetch()
-      alert(`Successfully distributed teams!\n\nTeams with DUPR ratings: ${result.teamsWithRatings}\nTeams without ratings: ${result.teamsWithoutRatings}`)
+      toast({ description: `Successfully distributed teams! Teams with DUPR: ${result.teamsWithRatings}, without: ${result.teamsWithoutRatings}`, variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error distributing teams: ${error.message}`)
+      toast({ title: 'Error', description: `Error distributing teams: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const deleteDivisionMutation = trpc.division.delete.useMutation({
     onSuccess: () => {
       refetch()
-      alert('Division deleted successfully! All players are now free agents.')
+      toast({ description: 'Division deleted successfully! All players are now free agents.', variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error deleting division: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting division: ${error.message}`, variant: 'destructive' })
     }
   })
 
   const deleteTeamMutation = trpc.team.delete.useMutation({
     onSuccess: () => {
       refetch()
-      alert('Team deleted successfully!')
+      toast({ description: 'Team deleted successfully!', variant: 'success' })
     },
     onError: (error) => {
-      alert(`Error deleting team: ${error.message}`)
+      toast({ title: 'Error', description: `Error deleting team: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -890,7 +923,7 @@ export default function DivisionsPage() {
     onError: (error) => {
       // Rollback on error
       refetch()
-      alert(`Error adding player: ${error.message}`)
+      toast({ title: 'Error', description: `Error adding player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -899,7 +932,7 @@ export default function DivisionsPage() {
       // Optimistically update the UI
       optimisticRemovePlayer(variables.teamPlayerId, variables.slotIndex)
       
-      // Also optimistically update availablePlayers
+      // Also optimistically update availablePlayers so removed player appears as free agent
       const teamPlayer = localDivisions
         .flatMap(d => d.teams)
         .flatMap(t => t.teamPlayers)
@@ -912,11 +945,13 @@ export default function DivisionsPage() {
     },
     onSuccess: () => {
       refetch()
+      // Refetch available players so the removed player is in the list (free agent)
+      utils.teamPlayer.getAvailablePlayers.invalidate()
     },
     onError: (error) => {
       // Rollback on error
       refetch()
-      alert(`Error removing player: ${error.message}`)
+      toast({ title: 'Error', description: `Error removing player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -938,7 +973,7 @@ export default function DivisionsPage() {
       } else {
         refetch()
       }
-      alert(`Error moving player: ${error.message}`)
+      toast({ title: 'Error', description: `Error moving player: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -948,7 +983,7 @@ export default function DivisionsPage() {
       utils.waitlist.listByTournament.invalidate({ tournamentId })
     },
     onError: (error) => {
-      alert(`Error assigning waitlist player: ${error.message}`)
+      toast({ title: 'Error', description: `Error assigning waitlist player: ${error.message}`, variant: 'destructive' })
     },
   })
 
@@ -1365,15 +1400,11 @@ export default function DivisionsPage() {
   }
 
   const handleDistributeTeams = (divisionId: string) => {
-    if (window.confirm('Are you sure you want to redistribute teams by DUPR rating? This will move all teams from their current pools.')) {
-      distributeTeamsMutation.mutate({ divisionId })
-    }
+    setDivisionToRedistribute(divisionId)
   }
 
   const handleDeleteDivision = (divisionId: string) => {
-    if (window.confirm('Are you sure you want to delete this division? All players in this division will become free agents and can be added to any other division.')) {
-      deleteDivisionMutation.mutate({ id: divisionId })
-    }
+    setDivisionToDelete(divisionId)
   }
 
   const handleTeamMove = async (teamId: string, targetDivisionId: string, targetPoolId?: string | null) => {
@@ -1408,23 +1439,7 @@ export default function DivisionsPage() {
   }
 
   const handleDeleteTeam = (team: Team) => {
-    // Find division to get teamKind
-    const division = localDivisions.find(d => d.teams.some(t => t.id === team.id))
-    const teamKind = division?.teamKind
-    
-    // Get display name (player name for SINGLES_1v1, team name for others)
-    const displayName = teamKind === 'SINGLES_1v1' && team.teamPlayers && team.teamPlayers.length > 0
-      ? `${team.teamPlayers[0].player.firstName} ${team.teamPlayers[0].player.lastName}`
-      : team.name
-    
-    const confirmMessage = teamKind === 'SINGLES_1v1'
-      ? `Are you sure you want to delete "${displayName}"?`
-      : `Are you sure you want to delete "${displayName}"? This will remove all players from the team and cannot be undone.`
-    
-    if (window.confirm(confirmMessage)) {
-      // Use the existing deleteTeamMutation
-      deleteTeamMutation.mutate({ id: team.id })
-    }
+    setTeamToDelete(team)
   }
 
   const toggleTeamExpansion = (teamId: string) => {
@@ -1554,6 +1569,7 @@ export default function DivisionsPage() {
           isOwner={false}
           pendingRequestsCount={0}
           tournamentFormat={tournament?.format}
+          tournamentIsPro={tournament?.isPro ?? true}
           onPublicScoreboardClick={handlePublicScoreboardClick}
           onEditTournamentClick={handleEditTournamentClick}
           publicScoreboardUrl={publicScoreboardUrl}
@@ -1582,7 +1598,7 @@ export default function DivisionsPage() {
     )
   }
 
-  if (!isNoDivisionMode && tournament.divisions.length === 0) {
+  if (!showFlatDivisionView && tournament.divisions.length === 0) {
     return (
       <>
         <div className="min-h-screen bg-gray-50">
@@ -1593,6 +1609,7 @@ export default function DivisionsPage() {
             isOwner={isOwner}
             pendingRequestsCount={pendingRequestsCount}
             tournamentFormat={tournament.format}
+            tournamentIsPro={tournament.isPro ?? true}
             onPublicScoreboardClick={handlePublicScoreboardClick}
             onEditTournamentClick={handleEditTournamentClick}
             publicScoreboardUrl={publicScoreboardUrl}
@@ -1631,7 +1648,7 @@ export default function DivisionsPage() {
     )
   }
 
-  const activeDivision = isNoDivisionMode ? (localDivisions[0] || divisions[0]) : null
+  const activeDivision = showFlatDivisionView ? (localDivisions[0] || divisions[0]) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1643,6 +1660,7 @@ export default function DivisionsPage() {
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
         tournamentFormat={tournament.format}
+        tournamentIsPro={tournament.isPro ?? true}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={publicScoreboardUrl}
@@ -1654,12 +1672,12 @@ export default function DivisionsPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Teams and Divisions</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{tournament?.isPro ? 'Teams and Divisions' : 'Teams'}</h1>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              {isNoDivisionMode ? (
+              {showFlatDivisionView ? (
                 <Button
                   className="flex items-center space-x-2"
                   onClick={() => {
@@ -1675,7 +1693,7 @@ export default function DivisionsPage() {
                   <span>{activeDivision?.teamKind === 'SINGLES_1v1' ? 'Add Player' : 'Add Team'}</span>
                 </Button>
               ) : (
-                <>
+                tournament?.isPro !== false && (
                   <Button 
                     className="flex items-center space-x-2"
                     onClick={() => setShowAddDivisionModal(true)}
@@ -1683,7 +1701,7 @@ export default function DivisionsPage() {
                     <Plus className="h-4 w-4" />
                     <span>Create Division</span>
                   </Button>
-                </>
+                )
               )}
             </div>
           </div>
@@ -1691,7 +1709,7 @@ export default function DivisionsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {isNoDivisionMode ? (
+        {showFlatDivisionView ? (
           <div className="space-y-6">
             {!activeDivision ? (
               <div className="bg-white rounded-lg shadow-sm p-6 text-center text-slate-600">
@@ -1732,9 +1750,11 @@ export default function DivisionsPage() {
                       key={team.id}
                       team={team}
                       teamKind={activeDivision.teamKind as any}
+                      divisionId={activeDivision.id}
                       isExpanded={expandedTeams.has(team.id)}
                       availablePlayers={availablePlayers}
                       tournamentId={tournamentId}
+                      tournamentFormat={tournament?.format}
                       onToggleExpansion={() => toggleTeamExpansion(team.id)}
                       onEdit={() => handleEditTeam(team)}
                       onDelete={() => handleDeleteTeam(team)}
@@ -1749,8 +1769,10 @@ export default function DivisionsPage() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Left Sidebar */}
+          <div className={isBasicOneDivision ? 'max-w-4xl mx-auto' : 'grid grid-cols-1 lg:grid-cols-4 gap-6'}>
+            {!isBasicOneDivision && (
+            <>
+            {/* Left Sidebar - multi-division (Pro) view */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
                 <div>
@@ -1769,9 +1791,11 @@ export default function DivisionsPage() {
                 
               </div>
             </div>
+            </>
+            )}
 
             {/* Main Content */}
-            <div className="lg:col-span-3">
+            <div className={isBasicOneDivision ? undefined : 'lg:col-span-3'}>
               <DndContext
                 sensors={sensors}
                 onDragStart={handleDragStart}
@@ -1783,8 +1807,11 @@ export default function DivisionsPage() {
                     <DivisionCard
                       key={division.id}
                       division={division}
-                      isExpanded={expandedDivisions.has(division.id)}
-                      onToggleExpansion={() => toggleDivisionExpansion(division.id)}
+                      isExpanded={isBasicOneDivision ? true : expandedDivisions.has(division.id)}
+                      onToggleExpansion={isBasicOneDivision ? () => {} : () => toggleDivisionExpansion(division.id)}
+                      canCollapse={!isBasicOneDivision}
+                      canDeleteDivision={tournament?.isPro !== false}
+                      canMergeDivision={tournament?.isPro !== false}
                       onEditDivision={() => handleEditDivision(division)}
                       onAddTeam={() => handleAddTeam(division)}
                       onDistributeTeams={handleDistributeTeams}
@@ -1883,6 +1910,7 @@ export default function DivisionsPage() {
           }}
           onAssign={handleAssignWaitlist}
           division={selectedWaitlistDivision}
+          tournamentFormat={tournament?.format}
           waitlistEntry={selectedWaitlistEntry}
         />
       )}
@@ -1939,6 +1967,54 @@ export default function DivisionsPage() {
         onSuccess={() => {
           refetch()
         }}
+      />
+
+      <ConfirmModal
+        open={!!divisionToRedistribute}
+        onClose={() => setDivisionToRedistribute(null)}
+        onConfirm={() => {
+          if (!divisionToRedistribute) return
+          distributeTeamsMutation.mutate({ divisionId: divisionToRedistribute })
+          setDivisionToRedistribute(null)
+        }}
+        isPending={distributeTeamsMutation.isPending}
+        title="Redistribute teams by DUPR?"
+        description="This will move all teams from their current pools."
+        confirmText={distributeTeamsMutation.isPending ? 'Redistributing…' : 'Redistribute'}
+      />
+
+      <ConfirmModal
+        open={!!divisionToDelete}
+        onClose={() => setDivisionToDelete(null)}
+        onConfirm={() => {
+          if (!divisionToDelete) return
+          deleteDivisionMutation.mutate({ id: divisionToDelete })
+          setDivisionToDelete(null)
+        }}
+        isPending={deleteDivisionMutation.isPending}
+        destructive
+        title="Delete division?"
+        description="All players in this division will become free agents and can be added to any other division."
+        confirmText={deleteDivisionMutation.isPending ? 'Deleting…' : 'Delete division'}
+      />
+
+      <ConfirmModal
+        open={!!teamToDelete}
+        onClose={() => setTeamToDelete(null)}
+        onConfirm={() => {
+          if (!teamToDelete) return
+          deleteTeamMutation.mutate({ id: teamToDelete.id })
+          setTeamToDelete(null)
+        }}
+        isPending={deleteTeamMutation.isPending}
+        destructive
+        title="Delete team?"
+        description={
+          teamToDelete?.teamPlayers?.length
+            ? `Delete "${teamToDelete.name}"? This will remove all players from the team and cannot be undone.`
+            : `Delete "${teamToDelete?.name ?? 'this team'}"?`
+        }
+        confirmText={deleteTeamMutation.isPending ? 'Deleting…' : 'Delete team'}
       />
     </div>
   )

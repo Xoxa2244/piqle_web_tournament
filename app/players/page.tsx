@@ -27,8 +27,9 @@ const genderLabel = (gender?: string | null) => {
 
 export default function PlayersPage() {
   const router = useRouter()
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
+  const currentUserId = session?.user?.id
 
   const [query, setQuery] = useState('')
   const [city, setCity] = useState('')
@@ -60,23 +61,29 @@ export default function PlayersPage() {
     const list = [...players]
     if (sortBy === 'name') {
       list.sort((a: any, b: any) => String(a.name ?? '').localeCompare(String(b.name ?? ''), undefined, { sensitivity: 'base' }))
-      return list
-    }
-    if (sortBy === 'activity_desc') {
+    } else if (sortBy === 'activity_desc') {
       list.sort((a: any, b: any) => {
         const aScore = Number(a.tournamentsPlayedCount ?? 0) + Number(a.clubsJoinedCount ?? 0)
         const bScore = Number(b.tournamentsPlayedCount ?? 0) + Number(b.clubsJoinedCount ?? 0)
         return bScore - aScore
       })
-      return list
+    } else {
+      list.sort((a: any, b: any) => {
+        const aRating = Number(a.duprRatingDoubles ?? a.duprRatingSingles ?? -1)
+        const bRating = Number(b.duprRatingDoubles ?? b.duprRatingSingles ?? -1)
+        return bRating - aRating
+      })
     }
-    list.sort((a: any, b: any) => {
-      const aRating = Number(a.duprRatingDoubles ?? a.duprRatingSingles ?? -1)
-      const bRating = Number(b.duprRatingDoubles ?? b.duprRatingSingles ?? -1)
-      return bRating - aRating
-    })
+    // Показать свой профиль первым в списке
+    if (currentUserId) {
+      const idx = list.findIndex((p: any) => String(p.id) === String(currentUserId))
+      if (idx > 0) {
+        const [me] = list.splice(idx, 1)
+        list.unshift(me)
+      }
+    }
     return list
-  }, [players, sortBy])
+  }, [players, sortBy, currentUserId])
 
   if (!isLoggedIn && status !== 'loading') {
     return null
@@ -175,10 +182,11 @@ export default function PlayersPage() {
           const singles = formatDuprRating(player.duprRatingSingles)
           const doubles = formatDuprRating(player.duprRatingDoubles)
           const gender = genderLabel(player.gender)
+          const isMe = Boolean(currentUserId && String(player.id) === String(currentUserId))
 
           return (
-            <Link key={player.id} href={`/profile/${player.id}`} className="block">
-              <Card className="h-full transition-colors hover:bg-gray-50 cursor-pointer">
+            <Link key={player.id} href={isMe ? '/profile' : `/profile/${player.id}`} className="block">
+              <Card className={`h-full transition-colors hover:bg-gray-50 cursor-pointer ${isMe ? 'ring-2 ring-green-500 bg-green-50/50' : ''}`}>
                 <CardHeader className="space-y-2">
                   <div className="flex items-start gap-3">
                     {player.image ? (
@@ -189,7 +197,10 @@ export default function PlayersPage() {
                       <div className="w-12 h-12 rounded-full bg-gray-100 border border-gray-200" />
                     )}
                     <div className="min-w-0">
-                      <div className="text-lg font-semibold text-gray-900 truncate">{player.name || 'Piqle user'}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-semibold text-gray-900 truncate">{player.name || 'Piqle user'}</span>
+                        {isMe ? <Badge className="bg-green-600 hover:bg-green-600 shrink-0">You</Badge> : null}
+                      </div>
                       <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin className="h-4 w-4" />
                         <span className="truncate">{player.city || 'City not set'}</span>

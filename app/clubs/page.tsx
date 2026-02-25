@@ -1,8 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { Suspense, useMemo, useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,11 +14,14 @@ import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import TournamentModal from '@/components/TournamentModal'
+import CreateClubModal from '@/components/CreateClubModal'
+import { toast } from '@/components/ui/use-toast'
 
 export const dynamic = 'force-dynamic'
 
-export default function ClubsPage() {
+function ClubsPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
 
@@ -30,6 +32,12 @@ export default function ClubsPage() {
   const [hasBooking, setHasBooking] = useState(false)
   const [hasUpcomingEvents, setHasUpcomingEvents] = useState(false)
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
+  const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
+  const [cancelRequestClubId, setCancelRequestClubId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') setCreateClubModalOpen(true)
+  }, [searchParams])
 
   const listInput = useMemo(() => {
     const trimmed = query.trim()
@@ -45,8 +53,31 @@ export default function ClubsPage() {
 
   const { data: clubs, isLoading } = trpc.club.list.useQuery(listInput)
 
-  const toggleFollow = trpc.club.toggleFollow.useMutation()
-  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation()
+  const toggleFollow = trpc.club.toggleFollow.useMutation({
+    onSuccess: (data) => {
+      if (data.status === 'pending') {
+        toast({ description: 'Request sent.', variant: 'success' })
+      } else if (data.status === 'joined') {
+        toast({ description: 'You joined the club.', variant: 'success' })
+      } else if (data.status === 'left') {
+        toast({ description: 'You left the club.', variant: 'success' })
+      }
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
+  const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
+    onSuccess: (_, variables) => {
+      toast({ description: 'Join request cancelled.', variant: 'success' })
+      utils.club.list.invalidate()
+      utils.club.get.invalidate({ id: variables.clubId })
+      setCancelRequestClubId(null)
+    },
+    onError: (e) => {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    },
+  })
   const utils = trpc.useUtils()
 
   const onToggleFollow = async (clubId: string) => {
@@ -61,14 +92,17 @@ export default function ClubsPage() {
     ])
   }
 
-  const onCancelJoin = async (clubId: string) => {
+  const onCancelJoinClick = (clubId: string) => {
     if (!isLoggedIn) {
       router.push(`/auth/signin?callbackUrl=${encodeURIComponent('/clubs')}`)
       return
     }
-    if (!confirm('Cancel your join request?')) return
-    await cancelJoinRequest.mutateAsync({ clubId })
-    await Promise.all([utils.club.list.invalidate(), utils.club.get.invalidate({ id: clubId })])
+    setCancelRequestClubId(clubId)
+  }
+
+  const confirmCancelRequest = () => {
+    if (!cancelRequestClubId) return
+    cancelJoinRequest.mutate({ clubId: cancelRequestClubId })
   }
 
   const followingClubs = useMemo(() => {
@@ -105,7 +139,7 @@ export default function ClubsPage() {
   const renderClubCard = (club: any) => (
     <Card
       key={club.id}
-      className="flex flex-col cursor-pointer"
+      className="flex h-full flex-col cursor-pointer hover:shadow-lg transition-shadow"
       onClick={() => router.push(`/clubs/${club.id}`)}
     >
       <CardHeader className="space-y-2">
@@ -123,6 +157,7 @@ export default function ClubsPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            {club.isAdmin ? <Badge className="bg-blue-600 text-white">Admin</Badge> : null}
             {club.isVerified ? <Badge>Verified</Badge> : null}
             {club.hasBooking ? (
               <Badge variant="secondary" className="gap-1">
@@ -138,7 +173,7 @@ export default function ClubsPage() {
           </span>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 space-y-4">
+      <CardContent className="flex flex-1 flex-col gap-4">
         <div
           className={`text-sm rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors ${club.nextTournament ? 'cursor-pointer hover:bg-gray-100' : ''}`}
           onClick={(e) => {
@@ -166,16 +201,6 @@ export default function ClubsPage() {
                 ) : (
                   <Badge variant="outline">Free</Badge>
                 )}
-                <Button
-                  size="sm"
-                  className="ml-auto bg-gray-900 hover:bg-gray-800 text-white"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setSelectedTournamentId(club.nextTournament!.id)
-                  }}
-                >
-                  View Event
-                </Button>
               </div>
             </div>
           ) : (
@@ -183,34 +208,23 @@ export default function ClubsPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <Link href={`/clubs/${club.id}`} className="flex-1" onClick={(e) => e.stopPropagation()}>
-            <Button variant="outline" className="w-full">
-              View
-            </Button>
-          </Link>
-          {club.isAdmin ? (
-            <Button variant="secondary" className="flex-1" disabled>
-              Admin
-            </Button>
-          ) : (
+        {!club.isAdmin && !club.isFollowing && (
+          <div className="mt-auto flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
             <Button
-              variant={club.isJoinPending ? 'outline' : club.isFollowing ? 'secondary' : 'default'}
-              className={`flex-1 ${!club.isFollowing && !club.isJoinPending ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-              onClick={() => (club.isJoinPending ? onCancelJoin(club.id) : onToggleFollow(club.id))}
+              variant={club.isJoinPending ? 'outline' : 'default'}
+              className={`w-full ${club.isJoinPending ? 'border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              onClick={() => (club.isJoinPending ? onCancelJoinClick(club.id) : onToggleFollow(club.id))}
               disabled={toggleFollow.isPending || cancelJoinRequest.isPending}
               title={!isLoggedIn ? 'Sign in to join clubs' : undefined}
             >
-              {club.isFollowing
-                ? 'Joined'
-                : club.isJoinPending
-                  ? 'Cancel'
-                  : club.joinPolicy === 'APPROVAL'
-                    ? 'Request to the club'
-                    : 'Join the club'}
+              {club.isJoinPending
+                ? 'Cancel request'
+                : club.joinPolicy === 'APPROVAL'
+                  ? 'Request to the club'
+                  : 'Join the club'}
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -225,12 +239,10 @@ export default function ClubsPage() {
           </p>
         </div>
         {isLoggedIn ? (
-          <Link href="/clubs/new">
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create club
-            </Button>
-          </Link>
+          <Button className="gap-2" onClick={() => setCreateClubModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create club
+          </Button>
         ) : null}
       </div>
 
@@ -248,8 +260,8 @@ export default function ClubsPage() {
               className="pl-10"
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-3 w-full">
+            <div className="space-y-1 flex-1 min-w-[140px]">
               <label className="text-sm font-medium text-gray-700">Type</label>
               <select
                 value={kind}
@@ -264,53 +276,33 @@ export default function ClubsPage() {
                 <option value="COMMUNITY">Community/coach</option>
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1 flex-1 min-w-[140px]">
               <label className="text-sm font-medium text-gray-700">City</label>
               <Input
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="e.g., Carmel"
+                className="h-10 w-full"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1 flex-1 min-w-[90px]">
               <label className="text-sm font-medium text-gray-700">State</label>
               <Input
                 value={stateCode}
                 onChange={(e) => setStateCode(e.target.value)}
                 onBlur={() => setStateCode((v) => v.trim().toUpperCase())}
                 placeholder="e.g., IN"
+                className="h-10 w-full"
               />
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-gray-700 pb-2.5 flex-shrink-0">
               <Checkbox checked={hasBooking} onCheckedChange={(v) => setHasBooking(Boolean(v))} />
               Has booking
             </label>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-medium text-gray-700 pb-2.5 flex-shrink-0">
               <Checkbox checked={hasUpcomingEvents} onCheckedChange={(v) => setHasUpcomingEvents(Boolean(v))} />
               Has upcoming events
             </label>
-
-            {query.trim() || kind || city.trim() || stateCode.trim() || hasBooking || hasUpcomingEvents ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => {
-                  setQuery('')
-                  setKind('')
-                  setCity('')
-                  setStateCode('')
-                  setHasBooking(false)
-                  setHasUpcomingEvents(false)
-                }}
-              >
-                Clear
-              </Button>
-            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -330,7 +322,7 @@ export default function ClubsPage() {
       {isLoggedIn && followingClubs.length > 0 ? (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-900">My clubs</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
             {followingClubs.map(renderClubCard)}
           </div>
         </div>
@@ -341,7 +333,7 @@ export default function ClubsPage() {
           <h2 className="text-sm font-semibold text-gray-900">
             {isLoggedIn && followingClubs.length > 0 ? 'Discover' : 'All clubs'}
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-fr">
             {discoverClubs.map(renderClubCard)}
           </div>
         </div>
@@ -351,6 +343,63 @@ export default function ClubsPage() {
         tournamentId={selectedTournamentId}
         onClose={() => setSelectedTournamentId(null)}
       />
+      <CreateClubModal
+        isOpen={createClubModalOpen}
+        onClose={() => setCreateClubModalOpen(false)}
+        onSuccess={(club) => {
+          utils.club.list.invalidate()
+          router.push(`/clubs/${club.id}`)
+        }}
+      />
+
+      {cancelRequestClubId ? (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setCancelRequestClubId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold">Cancel request?</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              Cancel your join request for this club?
+            </p>
+            <div className="flex gap-2 mt-6">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setCancelRequestClubId(null)}
+                disabled={cancelJoinRequest.isPending}
+              >
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={confirmCancelRequest}
+                disabled={cancelJoinRequest.isPending}
+              >
+                {cancelJoinRequest.isPending ? 'Cancelling…' : 'Cancel request'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+export default function ClubsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        </div>
+      }
+    >
+      <ClubsPageContent />
+    </Suspense>
   )
 }

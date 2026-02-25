@@ -41,6 +41,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { getTeamDisplayName, formatDuprRating } from '@/lib/utils'
+import ConfirmModal from '@/components/ConfirmModal'
 
 interface Team {
   id: string
@@ -831,6 +832,7 @@ function DivisionColumn({
   onRemovePlayerFromSlot?: (teamPlayerId: string, slotIndex: number) => void
   onMovePlayerBetweenSlots?: (fromTeamId: string, toTeamId: string, fromSlotIndex: number, toSlotIndex: number) => void
 }) {
+  const [showDeleteDivisionConfirm, setShowDeleteDivisionConfirm] = useState(false)
   const { setNodeRef: setWaitListRef } = useDroppable({
     id: `waitlist-${division?.id || 'unknown'}`,
     data: {
@@ -879,6 +881,7 @@ function DivisionColumn({
   }
 
   return (
+    <>
     <div className="w-80 flex-shrink-0" style={style}>
       <Card className="h-full">
         <CardHeader className="pb-3">
@@ -909,11 +912,7 @@ function DivisionColumn({
                 variant="ghost" 
                 size="sm"
                 className="text-red-500 hover:text-red-700"
-                onClick={() => {
-                  if (window.confirm(`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`)) {
-                    onDeleteDivision?.(division.id)
-                  }
-                }}
+                onClick={() => setShowDeleteDivisionConfirm(true)}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -995,6 +994,19 @@ function DivisionColumn({
         </CardContent>
       </Card>
     </div>
+    <ConfirmModal
+      open={showDeleteDivisionConfirm}
+      onClose={() => setShowDeleteDivisionConfirm(false)}
+      onConfirm={() => {
+        onDeleteDivision?.(division.id)
+        setShowDeleteDivisionConfirm(false)
+      }}
+      destructive
+      title="Delete division?"
+      description={`Are you sure you want to delete "${division.name}"? All players in this division will become free agents.`}
+      confirmText="Delete"
+    />
+    </>
   )
 }
 

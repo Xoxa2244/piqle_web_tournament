@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Eye, Ban } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 
@@ -16,6 +17,11 @@ const genderLabel = (gender?: string | null) => {
   if (gender === 'F') return 'Female'
   if (gender === 'X') return 'Other'
   return '—'
+}
+
+const organizerTierLabel = (tier?: string | null) => {
+  if (tier === 'PRO') return 'Pro'
+  return 'Basic'
 }
 
 export default function SuperAdminPlayersPage() {
@@ -61,7 +67,16 @@ export default function SuperAdminPlayersPage() {
 
   const setUserActive = trpc.superadmin.setUserActive.useMutation({
     onSuccess: () => refetch(),
-    onError: (err) => alert(err.message || 'Failed to update user'),
+    onError: (err) => toast({ title: 'Error', description: err.message || 'Failed to update user', variant: 'destructive' }),
+  })
+
+  const setOrganizerTier = trpc.superadmin.setOrganizerTier.useMutation({
+    onSuccess: () => {
+      toast({ title: 'Saved', description: 'Organizer tier updated' })
+      refetch()
+    },
+    onError: (err) =>
+      toast({ title: 'Error', description: err.message || 'Failed to update organizer tier', variant: 'destructive' }),
   })
 
   if (!isAuthenticated) {
@@ -129,6 +144,8 @@ export default function SuperAdminPlayersPage() {
                     <th className="text-left p-3 font-medium">Player Name</th>
                     <th className="text-left p-3 font-medium">Location</th>
                     <th className="text-left p-3 font-medium">Gender</th>
+                    <th className="text-left p-3 font-medium">Role</th>
+                    <th className="text-left p-3 font-medium">Organizer Tier</th>
                     <th className="text-left p-3 font-medium">Status</th>
                     <th className="text-left p-3 font-medium">Actions</th>
                   </tr>
@@ -136,11 +153,11 @@ export default function SuperAdminPlayersPage() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-gray-500">Loading...</td>
+                      <td colSpan={8} className="p-6 text-center text-gray-500">Loading...</td>
                     </tr>
                   ) : players.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-gray-500">No players found.</td>
+                      <td colSpan={8} className="p-6 text-center text-gray-500">No players found.</td>
                     </tr>
                   ) : (
                     players.map((player) => (
@@ -152,6 +169,35 @@ export default function SuperAdminPlayersPage() {
                         </td>
                         <td className="p-3">{player.city || '—'}</td>
                         <td className="p-3">{genderLabel(player.gender)}</td>
+                        <td className="p-3">
+                          <Badge variant="outline">{player.role}</Badge>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex min-w-[170px] items-center gap-2">
+                            <Badge
+                              variant={player.organizerTier === 'PRO' ? 'default' : 'secondary'}
+                              className={player.organizerTier === 'PRO' ? 'bg-blue-600 hover:bg-blue-600' : ''}
+                            >
+                              {organizerTierLabel(player.organizerTier)}
+                            </Badge>
+                            <select
+                              value={player.organizerTier || 'BASIC'}
+                              disabled={player.role !== 'TD' || setOrganizerTier.isPending}
+                              onChange={(e) => {
+                                const nextTier = e.target.value as 'BASIC' | 'PRO'
+                                if (nextTier === (player.organizerTier || 'BASIC')) return
+                                setOrganizerTier.mutate({ userId: player.id, organizerTier: nextTier })
+                              }}
+                              className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <option value="BASIC">Basic</option>
+                              <option value="PRO">Pro</option>
+                            </select>
+                          </div>
+                          {player.role !== 'TD' && (
+                            <div className="mt-1 text-[11px] text-gray-500">TD only</div>
+                          )}
+                        </td>
                         <td className="p-3">
                           <Badge variant={player.isActive ? 'default' : 'secondary'}>
                             {player.isActive ? 'Active' : 'Blocked'}
@@ -169,6 +215,7 @@ export default function SuperAdminPlayersPage() {
                             <Button
                               variant="outline"
                               size="sm"
+                              disabled={setUserActive.isPending}
                               onClick={() =>
                                 setUserActive.mutate({ userId: player.id, isActive: !player.isActive })
                               }

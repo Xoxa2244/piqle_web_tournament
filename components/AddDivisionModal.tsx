@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
 import { X, Users } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface AddDivisionModalProps {
   isOpen: boolean
@@ -39,7 +40,7 @@ export default function AddDivisionModal({
       })
     },
     onError: (error) => {
-      alert(`Error creating division: ${error.message}`)
+      toast({ title: 'Error', description: `Error creating division: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -47,7 +48,7 @@ export default function AddDivisionModal({
     e.preventDefault()
     
     if (!formData.name.trim()) {
-      alert('Please enter a division name')
+      toast({ description: 'Please enter a division name', variant: 'destructive' })
       return
     }
 

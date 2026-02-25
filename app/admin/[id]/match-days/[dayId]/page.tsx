@@ -3,11 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatMatchDayDate } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import { ArrowLeft, Plus, RefreshCw, Users, Play, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function MatchDayDetailPage({ params }: { params: Promise<{ id: string; dayId: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -24,6 +26,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
   const [selectedHomeTeamId, setSelectedHomeTeamId] = useState<string>('')
   const [selectedAwayTeamId, setSelectedAwayTeamId] = useState<string>('')
+  const [matchupToDelete, setMatchupToDelete] = useState<string | null>(null)
 
   const { data: matchDay, refetch: refetchMatchDay } = trpc.matchDay.get.useQuery(
     {
@@ -80,7 +83,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error creating matchup: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating matchup: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -89,7 +92,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error swapping teams: ' + error.message)
+      toast({ title: 'Error', description: 'Error swapping teams: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -98,7 +101,7 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error deleting matchup: ' + error.message)
+      toast({ title: 'Error', description: 'Error deleting matchup: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -106,22 +109,22 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
     onSuccess: (data) => {
       refetchMatchups()
       if (data.updated === 0) {
-        alert('No matchups to assign courts to.')
+        toast({ description: 'No matchups to assign courts to.', variant: 'destructive' })
       }
     },
     onError: (error) => {
-      alert('Error assigning courts: ' + error.message)
+      toast({ title: 'Error', description: 'Error assigning courts: ' + error.message, variant: 'destructive' })
     },
   })
 
   const handleCreate = () => {
     if (!selectedDivisionId || !selectedHomeTeamId || !selectedAwayTeamId) {
-      alert('Please select division and both teams')
+      toast({ description: 'Please select division and both teams', variant: 'destructive' })
       return
     }
 
     if (selectedHomeTeamId === selectedAwayTeamId) {
-      alert('Home and away teams cannot be the same')
+      toast({ description: 'Home and away teams cannot be the same', variant: 'destructive' })
       return
     }
 
@@ -138,14 +141,10 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const handleDelete = (matchupId: string) => {
-    if (confirm('Are you sure you want to delete this matchup? This action cannot be undone.')) {
-      deleteMatchup.mutate({ matchupId })
-    }
+    setMatchupToDelete(matchupId)
   }
 
-  const formatDate = (date: Date | string) => {
-    return formatUsDateShort(date)
-  }
+  const formatDate = (date: Date | string) => formatMatchDayDate(date)
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -487,6 +486,20 @@ export default function MatchDayDetailPage({ params }: { params: Promise<{ id: s
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={!!matchupToDelete}
+        onClose={() => setMatchupToDelete(null)}
+        onConfirm={() => {
+          if (!matchupToDelete) return
+          deleteMatchup.mutate({ matchupId: matchupToDelete })
+          setMatchupToDelete(null)
+        }}
+        isPending={deleteMatchup.isPending}
+        destructive
+        title="Delete matchup?"
+        description="This action cannot be undone."
+        confirmText={deleteMatchup.isPending ? 'Deleting…' : 'Delete'}
+      />
       </div>
     </div>
   )

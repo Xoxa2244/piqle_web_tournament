@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Save } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function MatchupDetailPage({ params }: { params: Promise<{ id: string; matchupId: string }> }) {
   const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string>('')
@@ -38,7 +39,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       window.location.reload() // Simple refresh for now
     },
     onError: (error) => {
-      alert('Error updating roster: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating roster: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -48,7 +49,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       window.location.reload() // Simple refresh for now
     },
     onError: (error) => {
-      alert('Error updating tie-break: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating tie-break: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -59,7 +60,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
       window.location.reload()
     },
     onError: (error) => {
-      alert('Error updating court: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating court: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -114,7 +115,7 @@ export default function MatchupDetailPage({ params }: { params: Promise<{ id: st
   const handleAutoAssign = (teamRosters: any[], setRosters: any) => {
     const activePlayers = teamRosters.filter((r) => r.isActive)
     if (activePlayers.length !== 4) {
-      alert('Please select exactly 4 active players first')
+      toast({ description: 'Please select exactly 4 active players first', variant: 'destructive' })
       return
     }
 

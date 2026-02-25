@@ -124,6 +124,8 @@ export const superadminRouter = createTRPCRouter({
           email: true,
           city: true,
           gender: true,
+          role: true,
+          organizerTier: true,
           isActive: true,
         },
       })
@@ -137,6 +139,20 @@ export const superadminRouter = createTRPCRouter({
         where: { id: input.userId },
         data: { isActive: input.isActive },
         select: { id: true, isActive: true },
+      })
+      return user
+    }),
+
+  setOrganizerTier: publicProcedure
+    .input(z.object({ userId: z.string(), organizerTier: z.enum(['BASIC', 'PRO']) }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await ctx.prisma.user.update({
+        where: { id: input.userId },
+        data: { organizerTier: input.organizerTier },
+        select: {
+          id: true,
+          organizerTier: true,
+        },
       })
       return user
     }),
@@ -303,4 +319,3 @@ export const superadminRouter = createTRPCRouter({
       })
     }),
 })
-

@@ -22,6 +22,7 @@ import {
   Search
 } from 'lucide-react'
 import Link from 'next/link'
+import ConfirmModal from '@/components/ConfirmModal'
 
 const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 
@@ -42,6 +43,7 @@ export default function PartnersPage() {
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null)
   const [newSecret, setNewSecret] = useState<string | null>(null)
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({})
+  const [appToRevoke, setAppToRevoke] = useState<string | null>(null)
   const [partnerForm, setPartnerForm] = useState({
     name: '',
     code: '',
@@ -677,11 +679,7 @@ export default function PartnersPage() {
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to revoke these credentials?')) {
-                                revokeApp.mutate({ appId: app.id })
-                              }
-                            }}
+                            onClick={() => setAppToRevoke(app.id)}
                           >
                             Revoke
                           </Button>
@@ -710,6 +708,21 @@ export default function PartnersPage() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={!!appToRevoke}
+        onClose={() => setAppToRevoke(null)}
+        onConfirm={() => {
+          if (appToRevoke) {
+            revokeApp.mutate({ appId: appToRevoke })
+            setAppToRevoke(null)
+          }
+        }}
+        isPending={revokeApp.isPending}
+        destructive
+        title="Revoke credentials?"
+        description="Are you sure you want to revoke these credentials? This cannot be undone."
+        confirmText={revokeApp.isPending ? 'Revoking…' : 'Revoke'}
+      />
     </div>
   )
 }

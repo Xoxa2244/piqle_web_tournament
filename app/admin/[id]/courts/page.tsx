@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, Save } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 export default function CourtsPage({ params }: { params: Promise<{ id: string }> }) {
   const [tournamentId, setTournamentId] = useState<string>('')
   const [editingCourtId, setEditingCourtId] = useState<string | null>(null)
@@ -31,7 +32,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
       refetchCourts()
     },
     onError: (error) => {
-      alert('Error creating court: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating court: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -42,7 +43,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
       refetchCourts()
     },
     onError: (error) => {
-      alert('Error updating court: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating court: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -55,20 +56,6 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
   )
   const pendingRequestsCount = accessRequests?.length || 0
 
-  if (tournament?.format && tournament.format !== 'INDY_LEAGUE' && tournament.format !== 'LEAGUE_ROUND_ROBIN') {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-gray-600">
-              This page is only available for Indy League and Round Robin League tournaments.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   const handleCreateCourt = () => {
     createCourt.mutate({ tournamentId })
   }
@@ -80,7 +67,7 @@ export default function CourtsPage({ params }: { params: Promise<{ id: string }>
 
   const handleSave = () => {
     if (!editingCourtId || !editingName.trim()) {
-      alert('Please enter a court name')
+      toast({ description: 'Please enter a court name', variant: 'destructive' })
       return
     }
 

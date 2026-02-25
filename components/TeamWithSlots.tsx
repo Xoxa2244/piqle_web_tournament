@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -54,6 +55,7 @@ interface TeamWithSlotsProps {
   isExpanded: boolean
   availablePlayers: Player[]
   tournamentId: string
+  divisionId?: string
   tournamentFormat?: string
   onToggleExpansion: () => void
   onEdit: () => void
@@ -71,6 +73,7 @@ export default function TeamWithSlots({
   isExpanded,
   availablePlayers,
   tournamentId,
+  divisionId,
   tournamentFormat,
   onToggleExpansion,
   onEdit,
@@ -84,6 +87,13 @@ export default function TeamWithSlots({
   const isIndyLeague = tournamentFormat === 'INDY_LEAGUE'
   const [showPlayerSelection, setShowPlayerSelection] = useState(false)
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null)
+
+  const { data: indyDivisionAvailablePlayers } = trpc.teamPlayer.getAvailablePlayers.useQuery(
+    { tournamentId, divisionId },
+    {
+      enabled: isIndyLeague && showPlayerSelection && !!tournamentId && !!divisionId,
+    }
+  )
 
   const {
     attributes,
@@ -99,9 +109,13 @@ export default function TeamWithSlots({
     transition,
   }
 
-  // Determine number of slots based on team kind
+  // Determine number of slots based on team kind.
+  // Indy League: show 8 slots until team has 8 players; then show players + 1 empty slot (max 32).
   const slotCount = useMemo(() => {
-    if (isIndyLeague && teamKind === 'SQUAD_4v4') return 8
+    if (isIndyLeague && teamKind === 'SQUAD_4v4') {
+      const n = team.teamPlayers.length
+      return n < 8 ? 8 : Math.min(32, n + 1)
+    }
 
     switch (teamKind) {
       case 'SINGLES_1v1': return 1
@@ -109,37 +123,88 @@ export default function TeamWithSlots({
       case 'SQUAD_4v4': return 4
       default: return 2
     }
-  }, [isIndyLeague, teamKind])
+  }, [isIndyLeague, teamKind, team.teamPlayers.length])
 
   // Create slots array with players and teamPlayerIds
   const slots = useMemo(() => {
     const slotsArray: (Player & { teamPlayerId?: string } | null)[] = new Array(slotCount).fill(null)
     
-    // Sort teamPlayers by createdAt to ensure consistent ordering
-    const sortedTeamPlayers = [...team.teamPlayers].sort((a, b) => {
-      if (a.slotIndex !== null && a.slotIndex !== undefined && b.slotIndex !== null && b.slotIndex !== undefined) {
-        return a.slotIndex - b.slotIndex
-      }
-      if (a.slotIndex !== null && a.slotIndex !== undefined) return -1
-      if (b.slotIndex !== null && b.slotIndex !== undefined) return 1
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    })
-    
-    // Fill slots with existing players in sorted order
-    sortedTeamPlayers.forEach((teamPlayer, index) => {
-      const targetIndex = teamPlayer.slotIndex ?? index
-      if (targetIndex < slotCount) {
+    // Keep rendering stable: place explicit slotIndex first, then fill remaining slots.
+    const playersWithSlot = team.teamPlayers
+      .filter(
+        (teamPlayer) =>
+          teamPlayer.slotIndex !== null &&
+          teamPlayer.slotIndex !== undefined &&
+          teamPlayer.slotIndex >= 0 &&
+          teamPlayer.slotIndex < slotCount
+      )
+      .sort((a, b) => {
+        const aSlot = a.slotIndex as number
+        const bSlot = b.slotIndex as number
+        if (aSlot !== bSlot) return aSlot - bSlot
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
+
+    const playersWithoutSlot = team.teamPlayers
+      .filter(
+        (teamPlayer) =>
+          teamPlayer.slotIndex === null ||
+          teamPlayer.slotIndex === undefined ||
+          teamPlayer.slotIndex < 0 ||
+          teamPlayer.slotIndex >= slotCount
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+
+    // Fill explicit slots. If data is inconsistent and slot is already occupied, fallback to auto-placement.
+    playersWithSlot.forEach((teamPlayer) => {
+      const targetIndex = teamPlayer.slotIndex as number
+      if (slotsArray[targetIndex] === null) {
         slotsArray[targetIndex] = {
           ...teamPlayer.player,
           teamPlayerId: teamPlayer.id
         }
+      } else {
+        playersWithoutSlot.push(teamPlayer)
       }
+    })
+
+    // Fill remaining empty slots for players without slotIndex.
+    let nextFreeSlot = 0
+    playersWithoutSlot.forEach((teamPlayer) => {
+      while (nextFreeSlot < slotCount && slotsArray[nextFreeSlot] !== null) {
+        nextFreeSlot += 1
+      }
+
+      if (nextFreeSlot >= slotCount) return
+
+      slotsArray[nextFreeSlot] = {
+        ...teamPlayer.player,
+        teamPlayerId: teamPlayer.id
+      }
+      nextFreeSlot += 1
     })
     
     return slotsArray
   }, [team.teamPlayers, slotCount])
 
+  // If teamPlayers contain more records than we can place into visible slots,
+  // keep them visible in a fallback list instead of silently hiding them.
+  const unplacedTeamPlayers = useMemo(() => {
+    const placedTeamPlayerIds = new Set(
+      slots
+        .map((slot) => slot?.teamPlayerId)
+        .filter((id): id is string => Boolean(id))
+    )
+
+    return team.teamPlayers.filter((teamPlayer) => !placedTeamPlayerIds.has(teamPlayer.id))
+  }, [slots, team.teamPlayers])
+
   const filledSlots = slots.filter(slot => slot !== null).length
+  // In header show n/32 for Indy League (max roster) even when we display fewer slot boxes
+  const rosterCapForHeader = isIndyLeague && teamKind === 'SQUAD_4v4' ? 32 : slotCount
   // Use getTeamDisplayName to show player names for SINGLES_1v1, team names for others
   const teamName = getTeamDisplayName(team, teamKind)
 
@@ -183,6 +248,11 @@ export default function TeamWithSlots({
     setSelectedSlotIndex(slotIndex)
     setShowPlayerSelection(true)
   }
+
+  const playerSelectionOptions =
+    isIndyLeague && divisionId
+      ? (indyDivisionAvailablePlayers ?? availablePlayers)
+      : availablePlayers
 
   const handleRemovePlayer = (slotIndex: number) => {
     const player = slots[slotIndex]
@@ -271,7 +341,12 @@ export default function TeamWithSlots({
             ) : (
               <Badge variant="outline" className="text-xs">
                 <Users className="h-3 w-3 mr-1" />
-                {filledSlots}/{slotCount}
+                {filledSlots}/{rosterCapForHeader}
+              </Badge>
+            )}
+            {unplacedTeamPlayers.length > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                +{unplacedTeamPlayers.length} unplaced
               </Badge>
             )}
             
@@ -315,6 +390,21 @@ export default function TeamWithSlots({
                 isDropTarget={dropTargetId === `player-${team.id}-slot-${index}`}
               />
             ))}
+
+            {unplacedTeamPlayers.length > 0 && (
+              <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2">
+                <div className="text-xs font-medium text-amber-800">
+                  Players without visible slot ({unplacedTeamPlayers.length})
+                </div>
+                <div className="mt-1 space-y-1">
+                  {unplacedTeamPlayers.map((teamPlayer) => (
+                    <div key={teamPlayer.id} className="text-xs text-amber-900">
+                      {teamPlayer.player.firstName} {teamPlayer.player.lastName}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -327,7 +417,7 @@ export default function TeamWithSlots({
           setSelectedSlotIndex(null)
         }}
         onSelectPlayer={handlePlayerSelect}
-        availablePlayers={availablePlayers}
+        availablePlayers={playerSelectionOptions}
         tournamentId={tournamentId}
       />
     </>

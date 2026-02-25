@@ -37,7 +37,9 @@ import BracketModal from '@/components/BracketModal'
 import DuprUploadLogModal from '@/components/DuprUploadLogModal'
 import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
+import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 // Helper function to check roster changes (moved outside component to avoid React hooks issues)
 const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
@@ -152,6 +154,10 @@ function DivisionStageManagementContent() {
     { enabled: !!isOwner && !!tournamentId }
   )
   const pendingRequestsCount = accessRequests?.length || 0
+  const { data: availableCourts = [] } = trpc.indyCourt.list.useQuery(
+    { tournamentId },
+    { enabled: !!tournamentId && isAdmin }
+  )
 
   // No divisions: redirect to divisions page (single place for "No divisions yet" + Create division)
   useEffect(() => {
@@ -227,6 +233,9 @@ function DivisionStageManagementContent() {
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
+  const [showGenerateAllConfirm, setShowGenerateAllConfirm] = useState(false)
+  const [regenerateDivisionMatchupIds, setRegenerateDivisionMatchupIds] = useState<string[] | null>(null)
+  const [regenerateMatchupId, setRegenerateMatchupId] = useState<string | null>(null)
   const { data: matchDays } = trpc.matchDay.list.useQuery(
     { tournamentId },
     { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
@@ -313,7 +322,7 @@ function DivisionStageManagementContent() {
         delete newState[variables.gameId]
         return newState
       })
-      alert('Error updating score: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating score: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -323,7 +332,7 @@ function DivisionStageManagementContent() {
       refetchMatchups()
     },
     onError: (error) => {
-      alert('Error updating tie-break: ' + error.message)
+      toast({ title: 'Error', description: 'Error updating tie-break: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -331,10 +340,10 @@ function DivisionStageManagementContent() {
   const generateGamesForTournament = trpc.indyMatchup.generateGamesForTournament.useMutation({
     onSuccess: (result) => {
       refetchMatchups()
-      alert(`Games generated: ${result.generated}\nSkipped: ${result.skipped}\nErrors: ${result.errors}`)
+      toast({ description: `Games generated: ${result.generated}. Skipped: ${result.skipped}. Errors: ${result.errors}`, variant: 'success' })
     },
     onError: (error) => {
-      alert('Error generating games: ' + error.message)
+      toast({ title: 'Error', description: 'Error generating games: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -343,11 +352,11 @@ function DivisionStageManagementContent() {
     onSuccess: () => {
       refetchMatchups()
       if (!suppressRegenerateAlertRef.current) {
-        alert('Games regenerated successfully. All scores for this matchup have been reset.')
+        toast({ description: 'Games regenerated successfully. All scores for this matchup have been reset.', variant: 'success' })
       }
     },
     onError: (error) => {
-      alert('Error regenerating games: ' + error.message)
+      toast({ title: 'Error', description: 'Error regenerating games: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -379,10 +388,8 @@ function DivisionStageManagementContent() {
     })
   }
 
-  // Format date helper
-  const formatDate = (date: Date | string) => {
-    return formatUsDateShort(date)
-  }
+  // Format match day date in UTC so it does not shift by timezone
+  const formatDate = (date: Date | string) => formatMatchDayDate(date)
 
   // Load division data
   const { data: divisionData, refetch: refetchDivision } = trpc.divisionStage.getDivisionStage.useQuery(
@@ -434,7 +441,7 @@ function DivisionStageManagementContent() {
     },
     onError: (error) => {
       console.error('regeneratePlayInMutation error:', error)
-      alert(`Error regenerating Play-In: ${error.message}`)
+      toast({ title: 'Error', description: `Error regenerating Play-In: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -457,7 +464,7 @@ function DivisionStageManagementContent() {
     },
     onError: (error) => {
       console.error('regenerateRRMutation error:', error)
-      alert(`Error regenerating RR: ${error.message}`)
+      toast({ title: 'Error', description: `Error regenerating RR: ${error.message}`, variant: 'destructive' })
     }
   })
 
@@ -725,7 +732,7 @@ function DivisionStageManagementContent() {
       refetchTournament()
     } catch (error: any) {
       console.error('Error uploading to DUPR:', error)
-      alert(`Error: ${error.message || 'Failed to upload to DUPR'}`)
+      toast({ title: 'Error', description: error.message || 'Failed to upload to DUPR', variant: 'destructive' })
     } finally {
       setIsUploadingToDupr(false)
     }
@@ -756,7 +763,7 @@ function DivisionStageManagementContent() {
   const handleGenerateRR = () => {
     if (!selectedDivisionId) return
     if (isLeagueRoundRobin && !selectedMatchDayId) {
-      alert('Please select a match day first to generate Round Robin for that day.')
+      toast({ description: 'Please select a match day first to generate Round Robin for that day.', variant: 'destructive' })
       return
     }
     generateRRMutation.mutate({
@@ -879,7 +886,12 @@ function DivisionStageManagementContent() {
     setShowScoreModal(true)
   }
 
-  const handleScoreSubmit = (matchId: string, games: Array<{ scoreA: number; scoreB: number }>, sendToDupr?: boolean) => {
+  const handleScoreSubmit = (
+    matchId: string,
+    games: Array<{ scoreA: number; scoreB: number }>,
+    sendToDupr?: boolean,
+    courtId?: string | null
+  ) => {
     const game = games[0] // Take first game
     if (!game) return // Safety check
     updateMatchResultMutation.mutate({
@@ -887,6 +899,7 @@ function DivisionStageManagementContent() {
       scoreA: game.scoreA ?? null,
       scoreB: game.scoreB ?? null,
       sendToDupr: sendToDupr ?? false,
+      courtId: courtId ?? null,
     })
     setShowScoreModal(false)
     setSelectedMatch(null)
@@ -977,11 +990,19 @@ function DivisionStageManagementContent() {
     const isLocked = Boolean(match?.locked)
     const matchNeedsTiebreaker = needsTiebreaker(match)
     const hasTiebreaker = match?.tiebreaker !== null && match?.tiebreaker !== undefined
+    const fallbackCourtName = availableCourts.find((c: any) => c.id === match?.courtId)?.name
+    const courtName = match?.court?.name || fallbackCourtName || 'Unassigned'
+    const withCourt = (content: React.ReactNode) => (
+      <div className="space-y-2">
+        <p className="text-xs text-gray-500 text-center">Court: {courtName}</p>
+        {content}
+      </div>
+    )
     
     // If match has tiebreaker, show button to edit tiebreaker
     if (hasTiebreaker) {
-      return (
-        <div className="space-y-2">
+      return withCourt(
+        <>
           <Button
             size="sm"
             variant="outline"
@@ -1000,14 +1021,14 @@ function DivisionStageManagementContent() {
           >
             Edit Tiebreaker
           </Button>
-        </div>
+        </>
       )
     }
     
     // If match needs tiebreaker, show tiebreaker button instead
     if (matchNeedsTiebreaker) {
-      return (
-        <div className="space-y-2">
+      return withCourt(
+        <>
           <Button
             size="sm"
             variant="outline"
@@ -1026,14 +1047,14 @@ function DivisionStageManagementContent() {
           >
             Enter Tiebreaker
           </Button>
-        </div>
+        </>
       )
     }
     
     const label = isLocked ? 'Scores Locked' : hasResult ? 'Change Score' : 'Enter Score'
     const variant = isLocked ? 'secondary' : hasResult ? 'outline' : 'default'
 
-    return (
+    return withCourt(
       <Button
         size="sm"
         variant={variant}
@@ -1344,11 +1365,7 @@ function DivisionStageManagementContent() {
         {isIndyLeague && (
           <div className="mt-4 flex justify-end">
             <Button
-              onClick={() => {
-                if (confirm('Generate games for all READY matchups across all days and divisions?')) {
-                  generateGamesForTournament.mutate({ tournamentId })
-                }
-              }}
+              onClick={() => setShowGenerateAllConfirm(true)}
               disabled={generateGamesForTournament.isPending}
               className="flex items-center space-x-2"
             >
@@ -1421,28 +1438,12 @@ function DivisionStageManagementContent() {
                             </p>
                           </div>
                           <Button
-                            onClick={async () => {
+                            onClick={() => {
                               if (!hasGames) {
-                                alert('No games to regenerate for this division. Use "Generate All Games" above first.')
+                                toast({ description: 'No games to regenerate for this division. Use "Generate All Games" above first.', variant: 'destructive' })
                                 return
                               }
-                              if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
-                                try {
-                                  suppressRegenerateAlertRef.current = true
-                                  // Regenerate games for each matchup that has games
-                                  await Promise.all(
-                                    matchupsWithGames.map((matchup: any) =>
-                                      regenerateGames.mutateAsync({ matchupId: matchup.id })
-                                    )
-                                  )
-                                  refetchMatchups()
-                                  alert(`Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`)
-                                } catch (error: any) {
-                                  alert('Error regenerating games: ' + (error?.message || 'Unknown error'))
-                                } finally {
-                                  suppressRegenerateAlertRef.current = false
-                                }
-                              }
+                              setRegenerateDivisionMatchupIds(matchupsWithGames.map((m: any) => m.id))
                             }}
                             disabled={regenerateGames.isPending}
                             className="flex items-center space-x-2"
@@ -1530,11 +1531,7 @@ function DivisionStageManagementContent() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  if (confirm('Regenerate games for this matchup? This will reset all scores for this matchup.')) {
-                                    regenerateGames.mutate({ matchupId: matchup.id })
-                                  }
-                                }}
+                                onClick={() => setRegenerateMatchupId(matchup.id)}
                                 disabled={regenerateGames.isPending}
                                 className="flex items-center space-x-1"
                               >
@@ -1761,7 +1758,7 @@ function DivisionStageManagementContent() {
                   <option value="">— Select day —</option>
                   {(matchDays as any[]).map((day: any) => (
                     <option key={day.id} value={day.id}>
-                      {formatUsDateShort(day.date)}
+                      {formatMatchDayDate(day.date)}
                     </option>
                   ))}
                 </select>
@@ -2845,8 +2842,8 @@ function DivisionStageManagementContent() {
           <ScoreInputModal
             isOpen={showScoreModal}
             onClose={handleScoreModalClose}
-            onSubmit={(scoreA, scoreB, sendToDupr) => {
-              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }], sendToDupr)
+            onSubmit={(scoreA, scoreB, sendToDupr, courtId) => {
+              handleScoreSubmit(selectedMatch.id, [{ scoreA, scoreB }], sendToDupr, courtId)
             }}
             teamAName={getTeamDisplayName(selectedMatch.teamA, currentDivision?.teamKind)}
             teamBName={getTeamDisplayName(selectedMatch.teamB, currentDivision?.teamKind)}
@@ -2859,6 +2856,8 @@ function DivisionStageManagementContent() {
             duprSubmissionStatus={selectedMatch.duprSubmissionStatus}
             existingScoreA={selectedMatch.games?.[0]?.scoreA ?? null}
             existingScoreB={selectedMatch.games?.[0]?.scoreB ?? null}
+            availableCourts={availableCourts.map((court: any) => ({ id: court.id, name: court.name }))}
+            selectedCourtId={selectedMatch.courtId ?? null}
             onRetryDuprSubmission={() => handleRetryDuprSubmission(selectedMatch.id)}
           />
         )
@@ -3069,6 +3068,61 @@ function DivisionStageManagementContent() {
         isUploading={isUploadingToDupr}
         onRetry={handleRetryDuprSubmission}
         retryingMatchIds={retryingMatchIds}
+      />
+
+      <ConfirmModal
+        open={showGenerateAllConfirm}
+        onClose={() => setShowGenerateAllConfirm(false)}
+        onConfirm={() => {
+          generateGamesForTournament.mutate({ tournamentId })
+          setShowGenerateAllConfirm(false)
+        }}
+        isPending={generateGamesForTournament.isPending}
+        title="Generate all games?"
+        description="Generate games for all READY matchups across all days and divisions?"
+        confirmText={generateGamesForTournament.isPending ? 'Generating…' : 'Generate'}
+      />
+
+      <ConfirmModal
+        open={regenerateDivisionMatchupIds !== null && regenerateDivisionMatchupIds.length > 0}
+        onClose={() => setRegenerateDivisionMatchupIds(null)}
+        onConfirm={async () => {
+          if (!regenerateDivisionMatchupIds?.length) return
+          try {
+            suppressRegenerateAlertRef.current = true
+            await Promise.all(
+              regenerateDivisionMatchupIds.map((id) => regenerateGames.mutateAsync({ matchupId: id }))
+            )
+            refetchMatchups()
+            toast({ description: `Games regenerated successfully. All scores for ${regenerateDivisionMatchupIds.length} matchups have been reset.`, variant: 'success' })
+          } catch (error: any) {
+            toast({ title: 'Error', description: 'Error regenerating games: ' + (error?.message || 'Unknown error'), variant: 'destructive' })
+          } finally {
+            suppressRegenerateAlertRef.current = false
+            setRegenerateDivisionMatchupIds(null)
+          }
+        }}
+        isPending={regenerateGames.isPending}
+        destructive
+        title="Regenerate games for division?"
+        description="Regenerate games for all matchups in this division? This will delete all existing games and reset all scores."
+        confirmText={regenerateGames.isPending ? 'Regenerating…' : 'Regenerate'}
+      />
+
+      <ConfirmModal
+        open={!!regenerateMatchupId}
+        onClose={() => setRegenerateMatchupId(null)}
+        onConfirm={() => {
+          if (regenerateMatchupId) {
+            regenerateGames.mutate({ matchupId: regenerateMatchupId })
+            setRegenerateMatchupId(null)
+          }
+        }}
+        isPending={regenerateGames.isPending}
+        destructive
+        title="Regenerate games for this matchup?"
+        description="This will reset all scores for this matchup."
+        confirmText={regenerateGames.isPending ? 'Regenerating…' : 'Regenerate'}
       />
     </div>
   )

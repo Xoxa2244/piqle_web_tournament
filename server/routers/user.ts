@@ -176,6 +176,14 @@ export const userRouter = createTRPCRouter({
           duprRatingSingles: true,
           duprRatingDoubles: true,
           role: true,
+          organizerTier: true,
+          _count: {
+            select: {
+              clubFollows: true,
+              players: true,
+              tournaments: true,
+            },
+          },
         },
       })
 
@@ -183,9 +191,13 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
+      const { _count, ...rest } = user
       return {
-        ...user,
+        ...rest,
         duprLinked: !!user.duprId,
+        clubsJoinedCount: _count.clubFollows,
+        tournamentsPlayedCount: _count.players,
+        tournamentsCreatedCount: _count.tournaments,
       }
     }),
 
@@ -205,6 +217,15 @@ export const userRouter = createTRPCRouter({
           city: true,
           duprLink: true,
           role: true,
+          duprRatingSingles: true,
+          duprRatingDoubles: true,
+          _count: {
+            select: {
+              clubFollows: true,
+              players: true,
+              tournaments: true,
+            },
+          },
         },
       })
 
@@ -212,7 +233,15 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
-      return user
+      const { _count, ...rest } = user
+      return {
+        ...rest,
+        duprRatingSingles: decimalToNumber(rest.duprRatingSingles),
+        duprRatingDoubles: decimalToNumber(rest.duprRatingDoubles),
+        clubsJoinedCount: _count.clubFollows,
+        tournamentsPlayedCount: _count.players,
+        tournamentsCreatedCount: _count.tournaments,
+      }
     }),
 
   updateProfile: protectedProcedure

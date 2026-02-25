@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import AvatarCropper from '@/components/AvatarCropper'
 import StructureSetupModal, { TournamentStructureInput } from '@/components/StructureSetupModal'
 import Image from 'next/image'
-import { ChevronLeft, ChevronRight, Layers, Upload, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, HelpCircle, Layers, Upload, X } from 'lucide-react'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 import { calculateOrganizerNetCents, fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort } from '@/lib/dateFormat'
@@ -16,6 +16,7 @@ import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_DEFERRED_PAYMENTS, ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { guessTimeZoneFromLocation, toUtcDateFromLocalInput, toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { normalizeKnownTimezone } from '@/lib/timezoneList'
+import { toast } from '@/components/ui/use-toast'
 
 // Force dynamic rendering to prevent static generation issues
 export const dynamic = 'force-dynamic'
@@ -53,20 +54,20 @@ const buildRecommendedStructure = (format: TournamentFormat): TournamentStructur
 
   switch (format) {
     case 'MLP':
-      return make({ name: 'MiLP Open', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+      return make({ name: '4v4', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
     case 'INDY_LEAGUE':
-      return make({ name: 'Indy League', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
+      return make({ name: '4v4', playersPerTeam: 4, teamCount: 8, poolCount: 2 })
     case 'ONE_DAY_LADDER':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
     case 'LADDER_LEAGUE':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 1 })
     case 'LEAGUE_ROUND_ROBIN':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 16, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 16, poolCount: 4 })
     case 'ROUND_ROBIN':
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
     case 'SINGLE_ELIMINATION':
     default:
-      return make({ name: 'Open Doubles', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
+      return make({ name: '2v2', playersPerTeam: 2, teamCount: 24, poolCount: 4 })
   }
 }
 
@@ -77,6 +78,23 @@ const getBrowserTimeZone = () => {
   } catch {
     return 'UTC'
   }
+}
+
+const SELECT_ARROW_STYLE = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+} as const
+const SELECT_ARROW_CLASS =
+  'appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_12px_center] pr-[calc(12px+1rem)]'
+
+const DEFAULT_DIVISION_NAME_BY_PLAYERS: Record<1 | 2 | 4, string> = { 1: '1v1', 2: '2v2', 4: '4v4' }
+const AUTO_UPDATE_DIVISION_NAMES = new Set([
+  '1v1', '2v2', '4v4', 'Open Doubles', 'MiLP Open', 'Indy League',
+])
+const DIVISION_NAME_DEFAULT_PATTERN = /^Division \d+$/
+function getDivisionNameWhenChangingPlayersPerTeam(currentName: string, newPlayersPerTeam: 1 | 2 | 4): string {
+  const trimmed = (currentName || '').trim()
+  const isDefault = AUTO_UPDATE_DIVISION_NAMES.has(trimmed) || DIVISION_NAME_DEFAULT_PATTERN.test(trimmed)
+  return isDefault ? DEFAULT_DIVISION_NAME_BY_PLAYERS[newPlayersPerTeam] : trimmed
 }
 
 const resolveTimeZoneFromLatLng = async (lat: number, lng: number, googleApi?: any) => {
@@ -142,6 +160,36 @@ const QUARTER_HOUR_TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, idx) => {
     label: `${pad2(hours12)}:${pad2(minutes)} ${period}`,
   }
 })
+
+const TIME_12H_OPTIONS = Array.from({ length: 12 * 4 }, (_, idx) => {
+  const hour12 = idx < 4 ? 12 : Math.floor((idx - 4) / 4) + 1
+  const minutes = (idx % 4) * REGISTRATION_TIME_STEP_MINUTES
+  return { value: `${pad2(hour12)}:${pad2(minutes)}`, label: `${pad2(hour12)}:${pad2(minutes)}` }
+})
+
+const getTime12AndPeriodFrom24h = (hhmm24: string): { time12: string; period: 'AM' | 'PM' } => {
+  const [h, m] = (hhmm24 || '00:00').split(':').map(Number)
+  const hours24 = Number.isFinite(h) ? h % 24 : 0
+  const minutes = Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0
+  const snapped = Math.round(minutes / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const mins = Math.min(45, snapped)
+  const hours12 = hours24 % 12 || 12
+  return {
+    time12: `${pad2(hours12)}:${pad2(mins)}`,
+    period: hours24 >= 12 ? 'PM' : 'AM',
+  }
+}
+
+const time12AndPeriodTo24h = (time12: string, period: 'AM' | 'PM'): string => {
+  const [h, m] = (time12 || '12:00').split(':').map(Number)
+  const hours12 = Number.isFinite(h) ? h : 12
+  const minutes = Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0
+  const snapped = Math.round(minutes / REGISTRATION_TIME_STEP_MINUTES) * REGISTRATION_TIME_STEP_MINUTES
+  const mins = Math.min(45, snapped)
+  let hours24 = hours12 % 12
+  if (period === 'PM') hours24 += 12
+  return `${pad2(hours24)}:${pad2(mins)}`
+}
 
 const getDatePartFromDateTimeLocal = (value?: string | null) => {
   const raw = String(value || '').trim()
@@ -233,35 +281,80 @@ function QuarterHourDateTimeInput({
     onChange(`${baseDate}T${normalized}`)
   }
 
+  const { time12, period } = getTime12AndPeriodFrom24h(datePart ? (normalizedTime || '00:00') : '00:00')
+
+  const handleTime12Change = (nextTime12: string) => {
+    const next24 = time12AndPeriodTo24h(nextTime12, period)
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${next24}`)
+  }
+  const handlePeriodChange = (nextPeriod: 'AM' | 'PM') => {
+    const next24 = time12AndPeriodTo24h(time12, nextPeriod)
+    const baseDate = datePart || minDate || getTodayYmdLocal()
+    onChange(`${baseDate}T${next24}`)
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      <input
-        type="date"
-        id={id}
-        name={name ? `${name}Date` : undefined}
-        value={datePart}
-        min={minDate || undefined}
-        max={maxDate || undefined}
-        onChange={(e) => handleDateChange(e.target.value)}
-        disabled={disabled}
-        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-      />
-      <select
-        name={name ? `${name}Time` : undefined}
-        value={datePart ? (normalizedTime || '00:00') : ''}
-        onChange={(e) => handleTimeChange(e.target.value)}
-        disabled={disabled}
-        className="w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 bg-white"
-      >
-        <option value="" disabled>
-          Select time
-        </option>
-        {QUARTER_HOUR_TIME_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
+      <div className="relative w-full min-w-0">
+        <input
+          type="date"
+          id={id}
+          name={name ? `${name}Date` : undefined}
+          value={datePart}
+          min={minDate || undefined}
+          max={maxDate || undefined}
+          onChange={(e) => handleDateChange(e.target.value)}
+          disabled={disabled}
+          className="w-full min-w-0 pl-3 py-2 pr-[48px] border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:w-6 [&::-webkit-calendar-picker-indicator]:h-6"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-gray-500" aria-hidden>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+        </span>
+      </div>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <select
+          name={name ? `${name}Time` : undefined}
+          value={datePart ? time12 : ''}
+          onChange={(e) => handleTime12Change(e.target.value)}
+          disabled={disabled}
+          className={`w-full min-w-0 pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+          style={SELECT_ARROW_STYLE}
+        >
+          <option value="" disabled>
+            Select time
           </option>
-        ))}
-      </select>
+          {TIME_12H_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex w-[90px] rounded-md border border-gray-300 overflow-hidden bg-gray-100">
+          <input type="hidden" name={name ? `${name}Period` : undefined} value={datePart ? period : 'AM'} readOnly />
+          <button
+            type="button"
+            onClick={() => !disabled && handlePeriodChange('AM')}
+            disabled={disabled}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${period === 'AM' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            AM
+          </button>
+          <button
+            type="button"
+            onClick={() => !disabled && handlePeriodChange('PM')}
+            disabled={disabled}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${period === 'PM' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            PM
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -326,6 +419,44 @@ const CREATE_TOURNAMENT_STEPS = [
   { key: 'publish', title: 'Publish', description: 'Pricing and visibility' },
 ] as const
 
+const BASIC_FORMATS: TournamentFormat[] = [
+  'ROUND_ROBIN',
+  'LEAGUE_ROUND_ROBIN',
+  'ONE_DAY_LADDER',
+  'LADDER_LEAGUE',
+]
+
+const PRO_HELP_MODAL_CONTENT = (
+  <div className="space-y-4 text-sm text-gray-700">
+    <div>
+      <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Basic:</p>
+      <ul className="list-disc list-inside space-y-1">
+        <li>Only simple formats: Ladder, Round Robin, League Ladder, League Round Robin</li>
+        <li>Only Singles and Doubles (no 4v4)</li>
+        <li>One division (division management hidden)</li>
+        <li>No CSV import</li>
+        <li>No elimination stages</li>
+        <li>No access control</li>
+      </ul>
+    </div>
+    <div>
+      <p className="font-semibold text-gray-900 mb-2">What&apos;s available in Pro:</p>
+      <ul className="list-disc list-inside space-y-1">
+        <li>Everything in Basic</li>
+        <li>CSV import (import games, teams and players via CSV from external systems)</li>
+        <li>More tournament formats</li>
+        <li>Multi-division structure</li>
+        <li>Complex / custom settings</li>
+        <li>Elimination stages</li>
+        <li>Full set of management tools (within your permissions)</li>
+      </ul>
+    </div>
+    <p className="text-gray-600">
+      Need Pro mode? Contact <a href="mailto:info@piqle.io" className="text-blue-600 hover:underline">info@piqle.io</a> to unlock.
+    </p>
+  </div>
+)
+
 export default function NewTournamentPage() {
   // Next.js requires `useSearchParams()` to be wrapped in a Suspense boundary.
   return (
@@ -354,11 +485,13 @@ function NewTournamentPageInner() {
     paymentTiming: 'PAY_IN_15_MIN' as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE',
     isPublicBoardEnabled: true,
     allowDuprSubmission: false,
-    format: 'SINGLE_ELIMINATION' as TournamentFormat,
+    format: 'ROUND_ROBIN' as TournamentFormat,
     seasonLabel: '',
     timezone: getBrowserTimeZone(),
     image: '',
   })
+  const [isPro, setIsPro] = useState(false)
+  const [showProHelpModal, setShowProHelpModal] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
   const [showCropper, setShowCropper] = useState(false)
   const [cropperImageSrc, setCropperImageSrc] = useState<string | null>(null)
@@ -366,7 +499,7 @@ function NewTournamentPageInner() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [showStructureModal, setShowStructureModal] = useState(false)
   const [structureDraft, setStructureDraft] = useState<TournamentStructureInput | null>(() => (
-    buildRecommendedStructure('SINGLE_ELIMINATION')
+    buildRecommendedStructure('ROUND_ROBIN')
   ))
   const [seriesDraftForm, setSeriesDraftForm] = useState({
     enabled: false,
@@ -414,7 +547,7 @@ function NewTournamentPageInner() {
     },
     onError: (error) => {
       console.error('Error creating tournament structure:', error)
-      alert('Error creating tournament structure: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating tournament structure: ' + error.message, variant: 'destructive' })
     },
   })
 
@@ -430,12 +563,14 @@ function NewTournamentPageInner() {
     },
     onError: (error) => {
       console.error('Error creating tournament series:', error)
-      alert('Error creating tournament series: ' + error.message)
+      toast({ title: 'Error', description: 'Error creating tournament series: ' + error.message, variant: 'destructive' })
     },
   })
 
   const { data: clubs } = trpc.club.list.useQuery(undefined)
   const { data: timezoneData } = trpc.timezone.list.useQuery(undefined)
+  const { data: profile } = trpc.user.getProfile.useQuery(undefined)
+  const canUseProMode = profile?.organizerTier === 'PRO'
   const timezoneOptions = useMemo(() => {
     return timezoneData?.timezones ?? [{ value: 'UTC', label: 'UTC+0 (GMT/WET)' }]
   }, [timezoneData?.timezones])
@@ -444,6 +579,12 @@ function NewTournamentPageInner() {
     [clubs, formData.clubId]
   )
   const adminClubs = useMemo(() => (clubs ?? []).filter((c) => (c as any).isAdmin), [clubs])
+
+  useEffect(() => {
+    if (!canUseProMode && isPro) {
+      setIsPro(false)
+    }
+  }, [canUseProMode, isPro])
 
   const syncTimezoneFromAddress = useCallback(
     async (
@@ -561,18 +702,18 @@ function NewTournamentPageInner() {
     setRequiredErrors(nextErrors)
 
     if (nextErrors.title || nextErrors.startDate || nextErrors.endDate) {
-      alert('Please fill in required fields')
+      toast({ description: 'Please fill in required fields', variant: 'destructive' })
       return false
     }
 
     const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
     const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
     if (!startDate || !endDate) {
-      alert('Invalid date/time value')
+      toast({ description: 'Invalid date/time value', variant: 'destructive' })
       return false
     }
     if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
+      toast({ description: 'End date cannot be earlier than start date', variant: 'destructive' })
       return false
     }
 
@@ -582,18 +723,18 @@ function NewTournamentPageInner() {
         ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
         : startDate
       if (!registrationCutoffDate) {
-        alert('Invalid date/time value')
+        toast({ description: 'Invalid date/time value', variant: 'destructive' })
         return false
       }
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regStartDate || !regEndDate) {
-          alert('Invalid registration date/time value')
+          toast({ description: 'Invalid registration date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
+          toast({ description: 'Registration end date cannot be earlier than registration start date', variant: 'destructive' })
           return false
         }
       }
@@ -601,11 +742,11 @@ function NewTournamentPageInner() {
       if (formData.registrationStartDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         if (!regStartDate) {
-          alert('Invalid registration start date/time value')
+          toast({ description: 'Invalid registration start date/time value', variant: 'destructive' })
           return false
         }
         if (regStartDate > registrationCutoffDate) {
-          alert('Registration start date cannot be later than tournament start date')
+          toast({ description: 'Registration start date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -613,11 +754,11 @@ function NewTournamentPageInner() {
       if (formData.registrationEndDate) {
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regEndDate) {
-          alert('Invalid registration end date/time value')
+          toast({ description: 'Invalid registration end date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate > registrationCutoffDate) {
-          alert('Registration end date cannot be later than tournament start date')
+          toast({ description: 'Registration end date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -633,7 +774,7 @@ function NewTournamentPageInner() {
     const titleOk = Boolean(formData.title.trim())
     setRequiredErrors((prev) => ({ ...prev, title: !titleOk }))
     if (!titleOk) {
-      alert('Tournament name is required')
+      toast({ description: 'Tournament name is required', variant: 'destructive' })
       return false
     }
     return true
@@ -644,18 +785,18 @@ function NewTournamentPageInner() {
     const endOk = Boolean(formData.endDate)
     setRequiredErrors((prev) => ({ ...prev, startDate: !startOk, endDate: !endOk }))
     if (!startOk || !endOk) {
-      alert('Start and end dates are required')
+      toast({ description: 'Start and end dates are required', variant: 'destructive' })
       return false
     }
 
     const startDate = toUtcDateFromLocalInput(formData.startDate, formData.timezone)
     const endDate = toUtcDateFromLocalInput(formData.endDate, formData.timezone)
     if (!startDate || !endDate) {
-      alert('Invalid date/time value')
+      toast({ description: 'Invalid date/time value', variant: 'destructive' })
       return false
     }
     if (endDate < startDate) {
-      alert('End date cannot be earlier than start date')
+      toast({ description: 'End date cannot be earlier than start date', variant: 'destructive' })
       return false
     }
 
@@ -665,18 +806,18 @@ function NewTournamentPageInner() {
         ? toUtcDateFromLocalInput(registrationCutoff, formData.timezone)
         : startDate
       if (!registrationCutoffDate) {
-        alert('Invalid date/time value')
+        toast({ description: 'Invalid date/time value', variant: 'destructive' })
         return false
       }
       if (formData.registrationStartDate && formData.registrationEndDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regStartDate || !regEndDate) {
-          alert('Invalid registration date/time value')
+          toast({ description: 'Invalid registration date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate < regStartDate) {
-          alert('Registration end date cannot be earlier than registration start date')
+          toast({ description: 'Registration end date cannot be earlier than registration start date', variant: 'destructive' })
           return false
         }
       }
@@ -684,11 +825,11 @@ function NewTournamentPageInner() {
       if (formData.registrationStartDate) {
         const regStartDate = toUtcDateFromLocalInput(formData.registrationStartDate, formData.timezone)
         if (!regStartDate) {
-          alert('Invalid registration start date/time value')
+          toast({ description: 'Invalid registration start date/time value', variant: 'destructive' })
           return false
         }
         if (regStartDate > registrationCutoffDate) {
-          alert('Registration start date cannot be later than tournament start date')
+          toast({ description: 'Registration start date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -696,11 +837,11 @@ function NewTournamentPageInner() {
       if (formData.registrationEndDate) {
         const regEndDate = toUtcDateFromLocalInput(formData.registrationEndDate, formData.timezone)
         if (!regEndDate) {
-          alert('Invalid registration end date/time value')
+          toast({ description: 'Invalid registration end date/time value', variant: 'destructive' })
           return false
         }
         if (regEndDate > registrationCutoffDate) {
-          alert('Registration end date cannot be later than tournament start date')
+          toast({ description: 'Registration end date cannot be later than tournament start date', variant: 'destructive' })
           return false
         }
       }
@@ -709,7 +850,7 @@ function NewTournamentPageInner() {
     if (ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled) {
       const count = Number(seriesDraftForm.count)
       if (!Number.isFinite(count) || count < 2 || count > 12) {
-        alert('Occurrences must be between 2 and 12.')
+        toast({ description: 'Occurrences must be between 2 and 12.', variant: 'destructive' })
         return false
       }
 
@@ -717,7 +858,7 @@ function NewTournamentPageInner() {
         (seriesDraftForm.frequency === 'WEEKLY' || seriesDraftForm.frequency === 'BIWEEKLY') &&
         (seriesDraftForm.weekdays?.length ?? 0) < 1
       ) {
-        alert('Pick at least one weekday for weekly recurrence.')
+        toast({ description: 'Pick at least one weekday for weekly recurrence.', variant: 'destructive' })
         return false
       }
     }
@@ -727,7 +868,7 @@ function NewTournamentPageInner() {
 
   const validateFormatStep = () => {
     if (!structureDraft) {
-      alert('Set up structure (divisions / team counts) before continuing.')
+      toast({ description: 'Set up structure (divisions / team counts) before continuing.', variant: 'destructive' })
       setShowStructureModal(true)
       return false
     }
@@ -750,12 +891,12 @@ function NewTournamentPageInner() {
     if (structureDraft.mode === 'WITH_DIVISIONS') {
       const invalidTeams = divisions.find((d) => !Number.isFinite(d.teamCount) || d.teamCount < 2)
       if (invalidTeams) {
-        alert('Teams in each division must be 2 or more.')
+        toast({ description: 'Teams in each division must be 2 or more.', variant: 'destructive' })
         return false
       }
       const invalidPools = divisions.find((d) => !Number.isFinite(d.poolCount) || d.poolCount < 1)
       if (invalidPools) {
-        alert('Pools in each division must be 1 or more.')
+        toast({ description: 'Pools in each division must be 1 or more.', variant: 'destructive' })
         return false
       }
     }
@@ -763,7 +904,7 @@ function NewTournamentPageInner() {
     if (isLadder) {
       const hasSingles = divisions.some((d) => d.playersPerTeam === 1)
       if (hasSingles) {
-        alert('Ladder formats currently require teams (not 1v1). Choose doubles or squad.')
+        toast({ description: 'Ladder formats currently require teams (not 1v1). Choose doubles or squad.', variant: 'destructive' })
         return false
       }
     }
@@ -771,7 +912,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'ONE_DAY_LADDER') {
       const odd = divisions.find((d) => (d.teamCount ?? 0) % 2 !== 0)
       if (odd) {
-        alert('One-day ladder requires an even number of teams per division.')
+        toast({ description: 'One-day ladder requires an even number of teams per division.', variant: 'destructive' })
         return false
       }
     }
@@ -779,7 +920,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'LADDER_LEAGUE') {
       const bad = divisions.find((d) => (d.teamCount ?? 0) % 4 !== 0)
       if (bad) {
-        alert('Ladder league requires the number of teams to be a multiple of 4 per division.')
+        toast({ description: 'Ladder league requires the number of teams to be a multiple of 4 per division.', variant: 'destructive' })
         return false
       }
     }
@@ -787,7 +928,7 @@ function NewTournamentPageInner() {
     if (formData.format === 'MLP') {
       const bad = divisions.find((d) => d.playersPerTeam !== 4)
       if (bad) {
-        alert('MiLP format requires 4-player teams.')
+        toast({ description: 'MiLP format requires 4-player teams.', variant: 'destructive' })
         return false
       }
     }
@@ -934,8 +1075,11 @@ function NewTournamentPageInner() {
 
   const handleConnectStripe = async () => {
     try {
+      const returnUrl = typeof window !== 'undefined' ? window.location.href : undefined
       const response = await fetch('/api/stripe/create-account-link', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl, refreshUrl: returnUrl }),
       })
       const payload = await response.json()
       if (!response.ok || !payload?.url) {
@@ -943,7 +1087,7 @@ function NewTournamentPageInner() {
       }
       window.location.href = payload.url
     } catch (error: any) {
-      alert(error.message || 'Failed to start Stripe onboarding')
+      toast({ title: 'Error', description: error.message || 'Failed to start Stripe onboarding', variant: 'destructive' })
     }
   }
 
@@ -1006,7 +1150,7 @@ function NewTournamentPageInner() {
       return
     }
     if (requiresPayoutsSetup) {
-      alert('Connect payouts with Stripe before creating a paid tournament.')
+      toast({ description: 'Connect payouts with Stripe before creating a paid tournament.', variant: 'destructive' })
       return
     }
 
@@ -1041,6 +1185,7 @@ function NewTournamentPageInner() {
           ? (formData.seasonLabel || undefined)
           : undefined,
       timezone: normalizedTimezone,
+      isPro: canUseProMode ? isPro : false,
     }
 
     if (isSeries) {
@@ -1209,13 +1354,13 @@ function NewTournamentPageInner() {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -1227,7 +1372,7 @@ function NewTournamentPageInner() {
       setShowCropper(true)
     } catch (error) {
       console.error('Error resizing image:', error)
-      alert('Failed to process image. Please try again.')
+      toast({ description: 'Failed to process image. Please try again.', variant: 'destructive' })
     }
   }
 
@@ -1272,7 +1417,7 @@ function NewTournamentPageInner() {
       }
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Failed to upload image. Please try again.')
+      toast({ description: 'Failed to upload image. Please try again.', variant: 'destructive' })
       setImagePreview(null)
     } finally {
       setIsUploadingImage(false)
@@ -1309,36 +1454,115 @@ function NewTournamentPageInner() {
             Step {stepIndex + 1} of {totalSteps}: <span className="font-medium text-gray-900">{currentStep.title}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {CREATE_TOURNAMENT_STEPS.map((s, idx) => {
-            const isActive = idx === stepIndex
-            const isDone = idx < stepIndex
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => goToStep(idx)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                  isActive
-                    ? 'border-blue-200 bg-blue-50 text-blue-900'
-                    : isDone
-                      ? 'border-gray-200 bg-white text-gray-700'
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
-                } transition-colors hover:bg-gray-100`}
-              >
-                <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
-                    isActive ? 'bg-blue-600 text-white' : isDone ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {CREATE_TOURNAMENT_STEPS.map((s, idx) => {
+              const isActive = idx === stepIndex
+              const isDone = idx < stepIndex
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => goToStep(idx)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                    isActive
+                      ? 'border-blue-200 bg-blue-50 text-blue-900'
+                      : isDone
+                        ? 'border-gray-200 bg-white text-gray-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-500'
+                  } transition-colors hover:bg-gray-100`}
                 >
-                  {idx + 1}
-                </span>
-                <span className="font-medium">{s.title}</span>
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      isActive ? 'bg-blue-600 text-white' : isDone ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="font-medium">{s.title}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isPro) return
+                  setIsPro(false)
+                  if (!BASIC_FORMATS.includes(formData.format)) {
+                    setFormData((prev) => ({ ...prev, format: 'ROUND_ROBIN' }))
+                    setStructureDraft(buildRecommendedStructure('ROUND_ROBIN'))
+                  }
+                }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  !isPro ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                }`}
+                aria-pressed={!isPro}
+              >
+                Basic
               </button>
-            )
-          })}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!canUseProMode) return
+                  setIsPro(true)
+                }}
+                disabled={!canUseProMode}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  isPro
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : canUseProMode
+                      ? 'text-gray-600 hover:text-gray-800'
+                      : 'text-gray-400 cursor-not-allowed'
+                }`}
+                aria-pressed={isPro}
+                title={canUseProMode ? 'Pro mode' : 'Pro mode is not enabled for your account'}
+              >
+                Pro
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProHelpModal(true)}
+              className="p-1.5 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
+              title="Basic vs Pro"
+              aria-label="What is Basic vs Pro?"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
+
+      {showProHelpModal ? (
+        <div
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
+          onClick={() => setShowProHelpModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Basic vs Pro</h3>
+            {PRO_HELP_MODAL_CONTENT}
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="outline" onClick={() => setShowProHelpModal(false)}>
+                Close
+              </Button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProHelpModal(false)}
+              className="absolute top-4 right-4 p-1 text-gray-400 hover:text-gray-600 rounded"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -1358,7 +1582,8 @@ function NewTournamentPageInner() {
                     name="clubId"
                     value={formData.clubId}
                     onChange={handleClubSelect}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
                     <option value="">No club (custom venue)</option>
                     {(adminClubs ?? []).map((club: any) => (
@@ -1528,7 +1753,8 @@ function NewTournamentPageInner() {
                     name="timezone"
                     value={formData.timezone}
                     onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
                     {timezoneOptions.map((tz) => (
                       <option key={tz.value} value={tz.value}>
@@ -1561,7 +1787,7 @@ function NewTournamentPageInner() {
                               return next
                             })
                           }}
-                          className="h-4 w-4 rounded border-gray-300"
+                          className="h-6 w-6 rounded border-gray-300"
                         />
                         Create series
                       </label>
@@ -1585,7 +1811,8 @@ function NewTournamentPageInner() {
                                 return next
                               })
                             }}
-                            className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                            className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${SELECT_ARROW_CLASS}`}
+                            style={SELECT_ARROW_STYLE}
                           >
                             <option value="DAILY">Daily</option>
                             <option value="WEEKLY">Weekly</option>
@@ -1707,15 +1934,27 @@ function NewTournamentPageInner() {
                     name="format"
                     value={formData.format}
                     onChange={handleChange}
-                    className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                    className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                   >
-                    <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
-                    <option value="ROUND_ROBIN">Round Robin</option>
-                    <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
-                    <option value="ONE_DAY_LADDER">One-day Ladder</option>
-                    <option value="LADDER_LEAGUE">Ladder League</option>
-                    <option value="MLP">MiLP style</option>
-                    <option value="INDY_LEAGUE">Indy League</option>
+                    {isPro ? (
+                      <>
+                        <option value="SINGLE_ELIMINATION">Round Robin + Single elimination</option>
+                        <option value="ROUND_ROBIN">Round Robin</option>
+                        <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
+                        <option value="ONE_DAY_LADDER">One-day Ladder</option>
+                        <option value="LADDER_LEAGUE">Ladder League</option>
+                        <option value="MLP">MiLP style</option>
+                        <option value="INDY_LEAGUE">Indy League</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="ROUND_ROBIN">Round Robin</option>
+                        <option value="LEAGUE_ROUND_ROBIN">Round Robin League</option>
+                        <option value="ONE_DAY_LADDER">One-day Ladder</option>
+                        <option value="LADDER_LEAGUE">Ladder League</option>
+                      </>
+                    )}
                   </select>
                   <p className="mt-1 text-sm text-gray-500">
                     {formData.format === 'MLP'
@@ -1761,7 +2000,7 @@ function NewTournamentPageInner() {
                     name="allowDuprSubmission"
                     checked={formData.allowDuprSubmission}
                     onChange={handleChange}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-6 w-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="allowDuprSubmission" className="ml-2 block text-sm text-gray-700">
                     Allow sending results to DUPR
@@ -1797,19 +2036,25 @@ function NewTournamentPageInner() {
                         <div>
                           <div className="text-xs font-medium text-gray-700 mb-2">Players per team</div>
                           <div className="flex gap-2">
-                            {([1, 2, 4] as const).map((value) => {
+                            {(isPro ? ([1, 2, 4] as const) : ([1, 2] as const)).map((value) => {
                               const forceSquad = formData.format === 'MLP' || formData.format === 'INDY_LEAGUE'
                               const disableSingles = formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE'
-                              const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1)
+                              const singlesComingSoon = value === 1
+                              const disabled = (forceSquad && value !== 4) || (disableSingles && value === 1) || singlesComingSoon
                               const selected = quickDivision.playersPerTeam === value
                               return (
                                 <button
                                   key={value}
                                   type="button"
                                   disabled={disabled}
+                                  title={singlesComingSoon ? 'Comming soon' : undefined}
                                   onClick={() => {
                                     if (disabled) return
-                                    updateQuickDivision((d) => ({ ...d, playersPerTeam: value }))
+                                    updateQuickDivision((d) => ({
+                                      ...d,
+                                      playersPerTeam: value,
+                                      name: getDivisionNameWhenChangingPlayersPerTeam(d.name, value),
+                                    }))
                                   }}
                                   className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
                                     selected
@@ -1830,7 +2075,7 @@ function NewTournamentPageInner() {
                           {(formData.format === 'ONE_DAY_LADDER' || formData.format === 'LADDER_LEAGUE') ? (
                             <div className="mt-2 text-xs text-gray-500">Ladder formats require teams (not 1v1).</div>
                           ) : null}
-                          <div className="mt-2 text-xs text-gray-500">1 = Singles, 2 = Doubles, 4 = Squad.</div>
+                          <div className="mt-2 text-xs text-gray-500">{isPro ? '1 = Singles, 2 = Doubles, 4 = Squad.' : '1 = Singles, 2 = Doubles.'}</div>
                         </div>
 
                         <div>
@@ -1957,7 +2202,8 @@ function NewTournamentPageInner() {
                       name="paymentTiming"
                       value={formData.paymentTiming}
                       onChange={handleChange}
-                      className="w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+                      className={`w-full pl-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${SELECT_ARROW_CLASS}`}
+                    style={SELECT_ARROW_STYLE}
                     >
                       <option value="PAY_IN_15_MIN">Player pays within 15 minutes after join</option>
                       <option value="PAY_BY_DEADLINE">Player pays by registration deadline</option>
@@ -2022,7 +2268,7 @@ function NewTournamentPageInner() {
                         checked={isSeries ? false : formData.isPublicBoardEnabled}
                         onChange={handleChange}
                         disabled={isSeries}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-6 w-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="isPublicBoardEnabled" className="ml-2 block text-sm text-gray-700">
                         Enable public results board
@@ -2135,6 +2381,7 @@ function NewTournamentPageInner() {
         onClose={() => setShowStructureModal(false)}
         onSave={handleStructureSave}
         initialStructure={structureDraft}
+        isPro={isPro}
       />
     </div>
   )

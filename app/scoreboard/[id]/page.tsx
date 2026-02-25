@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
-import { useParams, usePathname, useRouter } from 'next/navigation'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,7 +22,7 @@ import BracketPyramid from '@/components/BracketPyramid'
 import BracketPyramidNew from '@/components/BracketPyramidNew'
 import BracketModal from '@/components/BracketModal'
 import { getTeamDisplayName } from '@/lib/utils'
-import { formatUsDateShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
 
 interface TeamStanding {
   teamId: string
@@ -63,13 +63,17 @@ export default function PublicCoursePage() {
   const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const tournamentId = params.id as string
   const isEmbed = pathname?.includes('/embed') ?? false
   const [selectedDivisionId, setSelectedDivisionId] = useState<string>('')
+  const highlightTeamId = searchParams.get('teamId') || null
+  const initialDivisionDone = useRef(false)
   const [showConnectingLines, setShowConnectingLines] = useState(true)
   const [showBracketModal, setShowBracketModal] = useState(false)
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null)
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string | null>(null)
+  const [indyViewMode, setIndyViewMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>('SEASON_TO_DATE')
   const [expandedIndyMatchupId, setExpandedIndyMatchupId] = useState<string | null>(null)
 
   // Get tournament data (using public endpoint)
@@ -78,14 +82,21 @@ export default function PublicCoursePage() {
     { enabled: !!tournamentId }
   )
 
-  // Set first division as default
   const divisions = tournament?.divisions as any[]
   const currentDivision = divisions?.find((d: any) => d.id === selectedDivisionId) || 
                          divisions?.[0]
-  
-  if (currentDivision && !selectedDivisionId) {
-    setSelectedDivisionId(currentDivision.id)
-  }
+
+  // Initial division once: from URL (embed) or first division
+  useEffect(() => {
+    if (!divisions?.length || initialDivisionDone.current) return
+    initialDivisionDone.current = true
+    const fromUrl = searchParams.get('divisionId')
+    if (fromUrl && divisions.some((d: any) => d.id === fromUrl)) {
+      setSelectedDivisionId(fromUrl)
+    } else {
+      setSelectedDivisionId(divisions[0].id)
+    }
+  }, [divisions, searchParams])
 
   // Reset expanded team when switching division
   useEffect(() => {
@@ -134,6 +145,17 @@ export default function PublicCoursePage() {
   useEffect(() => {
     setExpandedIndyMatchupId(null)
   }, [selectedMatchDayId])
+
+  const { data: indyStandingsData } = trpc.public.getPublicIndyStandings.useQuery(
+    {
+      tournamentId,
+      divisionId: currentDivision?.id || undefined,
+      matchDayId: indyViewMode === 'DAY_ONLY' ? (selectedMatchDayId || undefined) : undefined,
+      mode: indyViewMode,
+    },
+    { enabled: isIndy && !!tournamentId && !!currentDivision?.id }
+  )
+  const indyStandings = indyStandingsData?.standings ?? []
 
   const { data: indyMatchups = [], isLoading: indyMatchupsLoading } = trpc.public.getIndyMatchupsByDay.useQuery(
     { matchDayId: selectedMatchDayId || '' },
@@ -190,7 +212,7 @@ export default function PublicCoursePage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">{tournament.title}</h1>
-                <p className="text-sm text-gray-600 mt-1">Indy League results by match day</p>
+                <p className="text-sm text-gray-600 mt-1">Indy League — standings & results</p>
               </div>
               {!isEmbed && (
                 <button
@@ -206,143 +228,208 @@ export default function PublicCoursePage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* Dashboard: date/mode + division */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIndyViewMode('DAY_ONLY')}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  indyViewMode === 'DAY_ONLY'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                This day only
+              </button>
+              <button
+                type="button"
+                onClick={() => setIndyViewMode('SEASON_TO_DATE')}
+                className={`px-3 py-1.5 text-sm rounded-md border ${
+                  indyViewMode === 'SEASON_TO_DATE'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                All dates (season)
+              </button>
+            </div>
+            {indyViewMode === 'DAY_ONLY' && indyMatchDays.length > 0 && (
+              <select
+                value={selectedMatchDayId || ''}
+                onChange={(e) => setSelectedMatchDayId(e.target.value || null)}
+                className="pl-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem',
+                }}
+              >
+                {indyMatchDays.map((day) => (
+                  <option key={day.id} value={day.id}>
+                    {formatMatchDayDate(day.date)}
+                  </option>
+                ))}
+              </select>
+            )}
+            {divisions && divisions.length > 1 && (
+              <select
+                value={selectedDivisionId || ''}
+                onChange={(e) => setSelectedDivisionId(e.target.value)}
+                className="pl-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '1rem',
+                }}
+              >
+                {divisions.map((d: any) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Standings table (same as admin dashboard) */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Match Day</CardTitle>
+              <CardTitle className="text-base">
+                Standings {indyViewMode === 'DAY_ONLY' ? '(this day only)' : '(all dates)'}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {indyMatchDays.length === 0 ? (
-                <div className="text-sm text-gray-500">No match days available.</div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={selectedMatchDayId || ''}
-                    onChange={(e) => setSelectedMatchDayId(e.target.value || null)}
-                    className="pl-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem] bg-white appearance-none bg-no-repeat bg-[length:1rem] bg-[position:right_0.75rem_center]"
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-                    }}
-                  >
-                    {indyMatchDays.map((day) => (
-                      <option key={day.id} value={day.id}>
-                        {formatUsDateShort(day.date)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2">#</th>
+                      <th className="text-left py-2">Team</th>
+                      <th className="text-center py-2">W</th>
+                      <th className="text-center py-2">L</th>
+                      <th className="text-center py-2">PF</th>
+                      <th className="text-center py-2">PA</th>
+                      <th className="text-center py-2">Diff</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {indyStandings.length > 0 ? (
+                      indyStandings.map((team: any, index: number) => (
+                        <tr key={team.teamId} className="border-b hover:bg-gray-50">
+                          <td className="py-2 font-medium">{index + 1}</td>
+                          <td className="py-2 font-medium">{team.teamName}</td>
+                          <td className="py-2 text-center">{team.wins}</td>
+                          <td className="py-2 text-center">{team.losses}</td>
+                          <td className="py-2 text-center">{team.pointsFor}</td>
+                          <td className="py-2 text-center">{team.pointsAgainst}</td>
+                          <td className="py-2 text-center">
+                            <span className={team.pointDiff >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {team.pointDiff > 0 ? '+' : ''}{team.pointDiff}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-gray-500">
+                          No standings for this selection.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
 
-          {indyMatchupsLoading ? (
+          {/* Match results by day (optional detail) */}
+          {indyViewMode === 'DAY_ONLY' && selectedMatchDayId && (
             <Card>
-              <CardContent className="py-6 text-center text-gray-500">Loading matchups...</CardContent>
-            </Card>
-          ) : indyMatchups.length === 0 ? (
-            <Card>
-              <CardContent className="py-6 text-center text-gray-500">No matchups for this day.</CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(indyMatchupsByDivision).map(([divisionName, matchups]) => (
-                <Card key={divisionName}>
-                  <CardHeader>
-                    <CardTitle className="text-base">{divisionName}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {(matchups as any[]).map((matchup: any) => {
-                        const isExpanded = expandedIndyMatchupId === matchup.id
-                        const homeActivePlayers = getActiveRosterPlayers(matchup, matchup.homeTeamId)
-                        const awayActivePlayers = getActiveRosterPlayers(matchup, matchup.awayTeamId)
-
-                        return (
-                          <div key={matchup.id}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedIndyMatchupId((prev) => (prev === matchup.id ? null : matchup.id))
-                              }
-                              className={`w-full border p-3 text-left transition-colors hover:bg-gray-50 ${isExpanded ? 'rounded-t-lg' : 'rounded-lg'}`}
-                            >
-                              <div className="flex items-center justify-between gap-4">
-                                <div>
-                                  <div className="font-medium">
-                                    {matchup.homeTeam.name} vs {matchup.awayTeam.name}
-                                  </div>
-                                  <div className="text-sm text-gray-500 mt-1">
-                                    {matchup.gamesWonHome} - {matchup.gamesWonAway}
-                                    {matchup.court?.name ? ` • Court ${matchup.court.name}` : ''}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary">{matchup.status}</Badge>
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-4 w-4 text-gray-500" />
-                                  ) : (
-                                    <ChevronDown className="h-4 w-4 text-gray-500" />
-                                  )}
-                                </div>
-                              </div>
-                            </button>
-
-                            {isExpanded && (
-                              <div className="border border-t-0 rounded-b-lg bg-gray-50 p-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div>
-                                    <div className="text-sm font-semibold text-gray-900 mb-2">
-                                      {matchup.homeTeam.name}
+              <CardHeader>
+                <CardTitle className="text-base">Match results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {indyMatchupsLoading ? (
+                  <div className="py-6 text-center text-gray-500">Loading matchups...</div>
+                ) : indyMatchups.length === 0 ? (
+                  <div className="py-6 text-center text-gray-500">No matchups for this day.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {Object.entries(indyMatchupsByDivision).map(([divisionName, matchups]) => (
+                      <div key={divisionName}>
+                        <div className="text-sm font-medium text-gray-700 mb-2">{divisionName}</div>
+                        <div className="space-y-2">
+                          {(matchups as any[]).map((matchup: any) => {
+                            const isExpanded = expandedIndyMatchupId === matchup.id
+                            const homeActivePlayers = getActiveRosterPlayers(matchup, matchup.homeTeamId)
+                            const awayActivePlayers = getActiveRosterPlayers(matchup, matchup.awayTeamId)
+                            return (
+                              <div key={matchup.id}>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedIndyMatchupId((prev) => (prev === matchup.id ? null : matchup.id))
+                                  }
+                                  className={`w-full border p-3 text-left transition-colors hover:bg-gray-50 rounded-lg ${isExpanded ? 'rounded-b-none' : ''}`}
+                                >
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                      <div className="font-medium">
+                                        {matchup.homeTeam.name} vs {matchup.awayTeam.name}
+                                      </div>
+                                      <div className="text-sm text-gray-500 mt-1">
+                                        {matchup.gamesWonHome} - {matchup.gamesWonAway}
+                                        {matchup.court?.name ? ` • Court ${matchup.court.name}` : ''}
+                                      </div>
                                     </div>
-                                    {homeActivePlayers.length > 0 ? (
-                                      <div className="space-y-1">
-                                        {homeActivePlayers.map((player) => (
-                                          <div
-                                            key={`home-${matchup.id}-${player.id}-${player.letter}`}
-                                            className="text-sm text-gray-700"
-                                          >
-                                            {player.letter}: {player.name}
-                                          </div>
-                                        ))}
-                                      </div>
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-4 w-4 text-gray-500" />
                                     ) : (
-                                      <div className="text-sm text-gray-500">
-                                        No active players with letters.
-                                      </div>
+                                      <ChevronDown className="h-4 w-4 text-gray-500" />
                                     )}
                                   </div>
-
-                                  <div>
-                                    <div className="text-sm font-semibold text-gray-900 mb-2">
-                                      {matchup.awayTeam.name}
-                                    </div>
-                                    {awayActivePlayers.length > 0 ? (
-                                      <div className="space-y-1">
-                                        {awayActivePlayers.map((player) => (
-                                          <div
-                                            key={`away-${matchup.id}-${player.id}-${player.letter}`}
-                                            className="text-sm text-gray-700"
-                                          >
+                                </button>
+                                {isExpanded && (
+                                  <div className="border border-t-0 rounded-b-lg bg-gray-50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                      <div className="text-sm font-semibold text-gray-900 mb-2">{matchup.homeTeam.name}</div>
+                                      {homeActivePlayers.length > 0 ? (
+                                        homeActivePlayers.map((player) => (
+                                          <div key={`h-${player.id}-${player.letter}`} className="text-sm text-gray-700">
                                             {player.letter}: {player.name}
                                           </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div className="text-sm text-gray-500">
-                                        No active players with letters.
-                                      </div>
-                                    )}
+                                        ))
+                                      ) : (
+                                        <div className="text-sm text-gray-500">No active players with letters.</div>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <div className="text-sm font-semibold text-gray-900 mb-2">{matchup.awayTeam.name}</div>
+                                      {awayActivePlayers.length > 0 ? (
+                                        awayActivePlayers.map((player) => (
+                                          <div key={`a-${player.id}-${player.letter}`} className="text-sm text-gray-700">
+                                            {player.letter}: {player.name}
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="text-sm text-gray-500">No active players with letters.</div>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
@@ -587,7 +674,7 @@ export default function PublicCoursePage() {
                           <tbody>
                             {standings.map((team: TeamStanding) => (
                               <React.Fragment key={team.teamId}>
-                                <tr className="border-b hover:bg-gray-50">
+                                <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-100' : 'hover:bg-gray-50'}`}>
                                   <td className="py-2 font-medium">{team.rank}</td>
                                   <td className="py-2 font-medium">
                                     {is1v1 ? (
@@ -616,7 +703,7 @@ export default function PublicCoursePage() {
                                   </td>
                                 </tr>
                                 {!is1v1 && expandedTeamId === team.teamId && (
-                                  <tr key={`${team.teamId}-roster`} className="border-b bg-gray-50/70">
+                                  <tr key={`${team.teamId}-roster`} className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-50' : 'bg-gray-50/70'}`}>
                                     <td colSpan={7} className="py-2 px-4">
                                       <div className="text-sm text-gray-600 pl-6 space-y-0.5">
                                         {getTeamRoster(team.teamId).map((name, idx) => (
@@ -808,7 +895,7 @@ export default function PublicCoursePage() {
                           <tbody>
                             {standings.map((team: TeamStanding) => (
                               <React.Fragment key={team.teamId}>
-                                <tr className="border-b hover:bg-gray-50">
+                                <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-100' : 'hover:bg-gray-50'}`}>
                                   <td className="py-2 font-medium">{team.rank}</td>
                                   <td className="py-2 font-medium">
                                     {is1v1 ? (
@@ -837,7 +924,7 @@ export default function PublicCoursePage() {
                                   </td>
                                 </tr>
                                 {!is1v1 && expandedTeamId === team.teamId && (
-                                  <tr className="border-b bg-gray-50/70">
+                                  <tr className={`border-b ${team.teamId === highlightTeamId ? 'bg-green-50' : 'bg-gray-50/70'}`}>
                                     <td colSpan={7} className="py-2 px-4">
                                       <div className="text-sm text-gray-600 pl-6 space-y-0.5">
                                         {getTeamRoster(team.teamId).map((name, idx) => (
