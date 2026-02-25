@@ -2150,7 +2150,7 @@ function ClubMembersAdminCard({
                           if (!confirm('Approve this join request?')) return
                           try {
                             await approveJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                            toast({ title: 'Approved', description: 'User joined the club.' })
+                            toast({ title: 'Approved', description: 'User joined the club.', variant: 'success' })
                           } catch (err: any) {
                             toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                           }
@@ -2167,7 +2167,7 @@ function ClubMembersAdminCard({
                           if (!confirm('Reject this join request?')) return
                           try {
                             await rejectJoinRequest.mutateAsync({ clubId, userId: r.userId })
-                            toast({ title: 'Rejected', description: 'Request rejected.' })
+                            toast({ title: 'Rejected', description: 'Request rejected.', variant: 'success' })
                           } catch (err: any) {
                             toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                           }
@@ -2248,7 +2248,7 @@ function ClubMembersAdminCard({
                             if (!confirm('Ban this user? They will not be able to re-join.')) return
                             try {
                               await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
-                              toast({ title: 'Banned', description: 'User banned.' })
+                              toast({ title: 'Banned', description: 'User banned.', variant: 'success' })
                             } catch (err: any) {
                               toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                             }
@@ -2296,7 +2296,7 @@ function ClubMembersAdminCard({
                           if (!confirm('Unban this user?')) return
                           try {
                             await unbanUser.mutateAsync({ clubId, userId: b.userId })
-                            toast({ title: 'Unbanned', description: 'User can join again.' })
+                            toast({ title: 'Unbanned', description: 'User can join again.', variant: 'success' })
                           } catch (err: any) {
                             toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
                           }
