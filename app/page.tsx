@@ -111,7 +111,7 @@ function HomePageContent() {
   const [sortBy, setSortBy] = useState<SortType>('date-desc')
   const [searchQuery, setSearchQuery] = useState('')
   const [baseUrl, setBaseUrl] = useState<string>('')
-  const { data: tournaments, isLoading } = trpc.public.listBoards.useQuery()
+  const { data: tournaments, isLoading } = trpc.public.listEvents.useQuery()
 
   // Set base URL on client side only to avoid hydration mismatch
   useEffect(() => {
@@ -235,7 +235,7 @@ function HomePageContent() {
       // Invalidate and refetch ratings after mutation to ensure consistency
       utils.rating.getTournamentRatings.invalidate({ tournamentIds })
       // Also refetch tournaments to update karma sorting
-      utils.public.listBoards.invalidate()
+      utils.public.listEvents.invalidate()
     },
   })
 

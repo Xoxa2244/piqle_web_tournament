@@ -13,6 +13,89 @@ const hasMissingTournamentOptionalColumns = (error: unknown) => {
 }
 
 export const publicRouter = createTRPCRouter({
+  listEvents: publicProcedure.query(async ({ ctx }) => {
+    const baseSelect = {
+      id: true,
+      title: true,
+      description: true,
+      format: true,
+      venueName: true,
+      venueAddress: true,
+      startDate: true,
+      endDate: true,
+      entryFee: true,
+      publicSlug: true,
+      image: true,
+      isPublicBoardEnabled: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          email: true,
+        },
+      },
+      divisions: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      tournamentRatings: {
+        select: {
+          rating: true,
+        },
+      },
+    } as const
+
+    let tournaments: any[]
+    try {
+      tournaments = await ctx.prisma.tournament.findMany({
+        select: {
+          ...baseSelect,
+          timezone: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+        },
+      })
+    } catch (error) {
+      if (!hasMissingTournamentOptionalColumns(error)) {
+        throw error
+      }
+      const fallback = await ctx.prisma.tournament.findMany({
+        select: baseSelect,
+      })
+      tournaments = fallback.map((item) => ({
+        ...item,
+        timezone: null,
+        registrationStartDate: null,
+        registrationEndDate: null,
+      }))
+    }
+
+    const tournamentsWithKarma = tournaments.map((tournament) => {
+      const likes = tournament.tournamentRatings.filter((r: any) => r.rating === 'LIKE').length
+      const dislikes = tournament.tournamentRatings.filter((r: any) => r.rating === 'DISLIKE').length
+      const karma = likes - dislikes
+
+      return {
+        ...tournament,
+        karma,
+        likes,
+        dislikes,
+      }
+    })
+
+    tournamentsWithKarma.sort((a, b) => {
+      if (a.karma !== b.karma) {
+        return b.karma - a.karma
+      }
+      return new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+    })
+
+    return tournamentsWithKarma.map(({ tournamentRatings, ...tournament }) => tournament)
+  }),
+
   listBoards: publicProcedure.query(async ({ ctx }) => {
     const baseSelect = {
       id: true,
@@ -138,7 +221,7 @@ export const publicRouter = createTRPCRouter({
       let tournament: any
       try {
         tournament = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: {
             ...baseSelect,
             timezone: true,
@@ -151,7 +234,7 @@ export const publicRouter = createTRPCRouter({
           throw error
         }
         const fallback = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: baseSelect,
         })
         tournament = fallback
