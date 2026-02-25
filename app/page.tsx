@@ -23,6 +23,7 @@ import { useToast } from '@/components/ui/use-toast'
 import ShareButton from '@/components/ShareButton'
 import TournamentModal from '@/components/TournamentModal'
 import CancelRegistrationModal from '@/components/CancelRegistrationModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TournamentsMapContent } from '@/components/TournamentsMapContent'
 
@@ -103,6 +104,7 @@ function HomePageContent() {
   const [filter, setFilter] = useState<FilterType>('all')
   const [mapFocusTournamentId, setMapFocusTournamentId] = useState<string | null>(null)
   const [cancelModalTournament, setCancelModalTournament] = useState<{ tournamentId: string; isPaid: boolean } | null>(null)
+  const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
   const [filterUpcoming, setFilterUpcoming] = useState(true)
   const [filterInProgress, setFilterInProgress] = useState(true)
   const [filterPast, setFilterPast] = useState(false)
@@ -720,9 +722,7 @@ function HomePageContent() {
                               }
                               if (status === 'waitlisted') {
                                 const divisionId = registrationStatuses?.[tournament.id]?.divisionId
-                                if (divisionId && confirm('Leave waitlist?')) {
-                                  leaveWaitlist.mutate({ divisionId })
-                                }
+                                if (divisionId) setLeaveWaitlistDivisionId(divisionId)
                                 return
                               }
                               router.push(`/tournaments/${tournament.id}/register`)
@@ -768,6 +768,20 @@ function HomePageContent() {
         }}
         isPending={cancelRegistration.isPending}
         isPaidTournament={cancelModalTournament?.isPaid ?? false}
+      />
+
+      <ConfirmModal
+        open={!!leaveWaitlistDivisionId}
+        onClose={() => setLeaveWaitlistDivisionId(null)}
+        onConfirm={() => {
+          if (!leaveWaitlistDivisionId) return
+          leaveWaitlist.mutate({ divisionId: leaveWaitlistDivisionId })
+          setLeaveWaitlistDivisionId(null)
+        }}
+        isPending={leaveWaitlist.isPending}
+        title="Leave waitlist?"
+        description="You will lose your waitlist spot for this division."
+        confirmText={leaveWaitlist.isPending ? 'Leaving…' : 'Leave waitlist'}
       />
 
       <TournamentModal

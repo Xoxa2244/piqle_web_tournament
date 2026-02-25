@@ -14,6 +14,7 @@ import Link from 'next/link'
 import AvatarCropper from '@/components/AvatarCropper'
 import CityAutocomplete from '@/components/CityAutocomplete'
 import DUPRLoginModal from '@/components/DUPRLoginModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
 
@@ -41,6 +42,7 @@ export default function ProfilePage() {
   const [isLinkingDUPR, setIsLinkingDUPR] = useState(false)
   const [isRefreshingRatings, setIsRefreshingRatings] = useState(false)
   const [isUnlinkingDUPR, setIsUnlinkingDUPR] = useState(false)
+  const [showUnlinkDUPRConfirm, setShowUnlinkDUPRConfirm] = useState(false)
   const [payoutStatus, setPayoutStatus] = useState<{
     hasAccount: boolean
     payoutsActive: boolean
@@ -181,11 +183,9 @@ export default function ProfilePage() {
     }
   }
 
-  const handleUnlinkDUPR = async () => {
-    if (!confirm('Are you sure you want to unlink your DUPR account? You will need to reconnect it to use DUPR features.')) {
-      return
-    }
+  const handleUnlinkDUPRClick = () => setShowUnlinkDUPRConfirm(true)
 
+  const handleUnlinkDUPRConfirm = async () => {
     setIsUnlinkingDUPR(true)
     try {
       const response = await fetch('/api/dupr/unlink', {
@@ -202,6 +202,7 @@ export default function ProfilePage() {
 
       // Refresh profile data
       await refetch()
+      setShowUnlinkDUPRConfirm(false)
     } catch (error: any) {
       console.error('Error unlinking DUPR:', error)
       toast({ title: 'Error', description: error.message || 'Failed to unlink DUPR account. Please try again.', variant: 'destructive' })
@@ -531,7 +532,7 @@ export default function ProfilePage() {
                         Linked: <span className="font-medium">{profile.duprId}</span>
                       </div>
                       <Button
-                        onClick={handleUnlinkDUPR}
+                        onClick={handleUnlinkDUPRClick}
                         disabled={isUnlinkingDUPR}
                         variant="outline"
                         size="sm"
@@ -709,6 +710,16 @@ export default function ProfilePage() {
           isOpen={showDUPRModal}
           onClose={() => setShowDUPRModal(false)}
           onSuccess={handleDUPRSuccess}
+        />
+        <ConfirmModal
+          open={showUnlinkDUPRConfirm}
+          onClose={() => setShowUnlinkDUPRConfirm(false)}
+          onConfirm={handleUnlinkDUPRConfirm}
+          isPending={isUnlinkingDUPR}
+          destructive
+          title="Unlink DUPR account?"
+          description="Are you sure you want to unlink your DUPR account? You will need to reconnect it to use DUPR features."
+          confirmText={isUnlinkingDUPR ? 'Unlinking…' : 'Unlink'}
         />
       </div>
     </div>

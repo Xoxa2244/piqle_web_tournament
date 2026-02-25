@@ -13,6 +13,7 @@ import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import CancelRegistrationModal from '@/components/CancelRegistrationModal'
+import ConfirmModal from '@/components/ConfirmModal'
 import { toast } from '@/components/ui/use-toast'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
@@ -73,6 +74,7 @@ export default function TournamentRegistrationPage() {
   const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
   const [saveCardLoading, setSaveCardLoading] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
+  const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
   const utils = trpc.useUtils()
 
   useEffect(() => {
@@ -413,16 +415,7 @@ export default function TournamentRegistrationPage() {
                 }
               }}
               onLeaveWaitlist={async () => {
-                if (!confirm('Leave waitlist?')) return
-                try {
-                  await leaveWaitlistMutation.mutateAsync({ divisionId: division.id })
-                  await Promise.all([
-                    utils.registration.getMyStatus.invalidate({ tournamentId }),
-                    utils.registration.getWaitlist.invalidate({ divisionId: division.id }),
-                  ])
-                } catch (error: any) {
-                  toast({ title: 'Error', description: error.message || 'Failed to leave waitlist', variant: 'destructive' })
-                }
+                setLeaveWaitlistDivisionId(division.id)
               }}
               currentUserId={session?.user?.id}
             />
@@ -436,6 +429,27 @@ export default function TournamentRegistrationPage() {
         onConfirm={handleCancel}
         isPending={cancelRegistrationMutation.isPending}
         isPaidTournament={isPaidTournament}
+      />
+      <ConfirmModal
+        open={!!leaveWaitlistDivisionId}
+        onClose={() => setLeaveWaitlistDivisionId(null)}
+        onConfirm={async () => {
+          if (!leaveWaitlistDivisionId) return
+          try {
+            await leaveWaitlistMutation.mutateAsync({ divisionId: leaveWaitlistDivisionId })
+            await Promise.all([
+              utils.registration.getMyStatus.invalidate({ tournamentId }),
+              utils.registration.getWaitlist.invalidate({ divisionId: leaveWaitlistDivisionId }),
+            ])
+            setLeaveWaitlistDivisionId(null)
+          } catch (error: any) {
+            toast({ title: 'Error', description: error.message || 'Failed to leave waitlist', variant: 'destructive' })
+          }
+        }}
+        isPending={leaveWaitlistMutation.isPending}
+        title="Leave waitlist?"
+        description="You will lose your waitlist spot for this division."
+        confirmText={leaveWaitlistMutation.isPending ? 'Leaving…' : 'Leave waitlist'}
       />
     </div>
   )

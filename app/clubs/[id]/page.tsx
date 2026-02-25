@@ -23,6 +23,7 @@ import Image from 'next/image'
 import QRCode from 'react-qr-code'
 import TournamentModal from '@/components/TournamentModal'
 import CreateClubModal from '@/components/CreateClubModal'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -194,6 +195,7 @@ export default function ClubDetailPage() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [cancelJoinOpen, setCancelJoinOpen] = useState(false)
   const [descriptionModalOpen, setDescriptionModalOpen] = useState(false)
+  const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
   const [modalTournamentId, setModalTournamentId] = useState<string | null>(null)
   const [editClubModalOpen, setEditClubModalOpen] = useState(false)
   const [deleteClubOpen, setDeleteClubOpen] = useState(false)
@@ -345,15 +347,19 @@ export default function ClubDetailPage() {
   }
 
   const handleDeleteAnnouncement = async (announcementId: string) => {
-    if (!isLoggedIn) return
-    if (!confirm('Delete this announcement?')) return
+    setAnnouncementToDelete(announcementId)
+  }
+
+  const confirmDeleteAnnouncement = async () => {
+    if (!isLoggedIn || !announcementToDelete) return
     try {
-      await deleteAnnouncement.mutateAsync({ clubId, announcementId })
+      await deleteAnnouncement.mutateAsync({ clubId, announcementId: announcementToDelete })
       toast({ title: 'Deleted', description: 'Announcement removed.' })
-      if (editingAnnouncementId === announcementId) {
+      if (editingAnnouncementId === announcementToDelete) {
         cancelEditAnnouncement()
       }
       await utils.club.get.invalidate({ id: clubId })
+      setAnnouncementToDelete(null)
     } catch (err: any) {
       toast({ title: 'Failed to delete', description: err?.message || 'Try again', variant: 'destructive' })
     }
@@ -859,6 +865,17 @@ export default function ClubDetailPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={!!announcementToDelete}
+        onClose={() => setAnnouncementToDelete(null)}
+        onConfirm={confirmDeleteAnnouncement}
+        isPending={deleteAnnouncement.isPending}
+        destructive
+        title="Delete announcement?"
+        description="This announcement will be permanently removed."
+        confirmText={deleteAnnouncement.isPending ? 'Deleting…' : 'Delete'}
+      />
 
       {/* Invite Modal */}
       {inviteOpen && (club.isFollowing || club.isAdmin) && (
@@ -1775,6 +1792,7 @@ function ClubChatCard({
   })
 
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const canPost = canView
@@ -1814,6 +1832,7 @@ function ClubChatCard({
   }, [draft, canPost, sendMessage, clubId, scrollToBottom, toast])
 
   return (
+    <>
     <Card className="flex h-full max-h-full min-h-0 flex-1 flex-col overflow-hidden">
       <CardHeader className="shrink-0 py-3 px-4">
         <CardTitle className="text-base flex items-center gap-2">
@@ -1914,10 +1933,7 @@ function ClubChatCard({
                                 variant="ghost"
                                 className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
                                 disabled={deleteMessage.isPending}
-                                onClick={async () => {
-                                  if (!confirm('Delete this message?')) return
-                                  await deleteMessage.mutateAsync({ messageId: m.id })
-                                }}
+                                onClick={() => setMessageToDelete(m.id)}
                                 title="Delete"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1996,6 +2012,21 @@ function ClubChatCard({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+  </>
   )
 }
 
@@ -2045,6 +2076,10 @@ function ClubMembersAdminCard({
   })
 
   const [query, setQuery] = useState('')
+  const [kickTarget, setKickTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banTarget, setBanTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banReason, setBanReason] = useState('')
+  const [unbanTarget, setUnbanTarget] = useState<{ userId: string; name: string } | null>(null)
   const q = query.trim().toLowerCase()
 
   const joinRequests = useMemo(() => {
@@ -2223,15 +2258,7 @@ function ClubMembersAdminCard({
                           variant="outline"
                           className="gap-2"
                           disabled={kickMember.isPending || banUser.isPending}
-                          onClick={async () => {
-                            if (!confirm('Remove this member from the club?')) return
-                            try {
-                              await kickMember.mutateAsync({ clubId, userId: m.userId })
-                              toast({ title: 'Removed', description: 'Member removed from the club.' })
-                            } catch (err: any) {
-                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                            }
-                          }}
+                          onClick={() => setKickTarget({ userId: m.userId, name: m.user?.name || 'User' })}
                         >
                           <UserMinus className="h-4 w-4" />
                           Kick
@@ -2241,15 +2268,9 @@ function ClubMembersAdminCard({
                           size="sm"
                           className="gap-2"
                           disabled={kickMember.isPending || banUser.isPending}
-                          onClick={async () => {
-                            const reason = prompt('Ban reason (optional):') || ''
-                            if (!confirm('Ban this user? They will not be able to re-join.')) return
-                            try {
-                              await banUser.mutateAsync({ clubId, userId: m.userId, reason: reason || undefined })
-                              toast({ title: 'Banned', description: 'User banned.', variant: 'success' })
-                            } catch (err: any) {
-                              toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                            }
+                          onClick={() => {
+                            setBanReason('')
+                            setBanTarget({ userId: m.userId, name: m.user?.name || 'User' })
                           }}
                         >
                           <Ban className="h-4 w-4" />
@@ -2290,15 +2311,7 @@ function ClubMembersAdminCard({
                         size="sm"
                         variant="outline"
                         disabled={unbanUser.isPending}
-                        onClick={async () => {
-                          if (!confirm('Unban this user?')) return
-                          try {
-                            await unbanUser.mutateAsync({ clubId, userId: b.userId })
-                            toast({ title: 'Unbanned', description: 'User can join again.', variant: 'success' })
-                          } catch (err: any) {
-                            toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
-                          }
-                        }}
+                        onClick={() => setUnbanTarget({ userId: b.userId, name: b.user?.name || 'User' })}
                       >
                         Unban
                       </Button>
@@ -2312,5 +2325,76 @@ function ClubMembersAdminCard({
         </div>
       </CardContent>
     </Card>
+    
+    <ConfirmModal
+      open={!!kickTarget}
+      onClose={() => setKickTarget(null)}
+      onConfirm={async () => {
+        if (!kickTarget) return
+        try {
+          await kickMember.mutateAsync({ clubId, userId: kickTarget.userId })
+          toast({ title: 'Removed', description: 'Member removed from the club.', variant: 'success' })
+          setKickTarget(null)
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={kickMember.isPending}
+      destructive
+      title="Remove member?"
+      description={`Remove ${kickTarget?.name ?? 'this user'} from the club?`}
+      confirmText={kickMember.isPending ? 'Removing…' : 'Remove'}
+    />
+
+    <ConfirmModal
+      open={!!banTarget}
+      onClose={() => setBanTarget(null)}
+      onConfirm={async () => {
+        if (!banTarget) return
+        try {
+          await banUser.mutateAsync({
+            clubId,
+            userId: banTarget.userId,
+            reason: banReason.trim() || undefined,
+          })
+          toast({ title: 'Banned', description: 'User banned.', variant: 'success' })
+          setBanTarget(null)
+          setBanReason('')
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={banUser.isPending}
+      destructive
+      title="Ban user?"
+      description={`${banTarget?.name ?? 'This user'} will not be able to re-join the club.`}
+      confirmText={banUser.isPending ? 'Banning…' : 'Ban'}
+    >
+      <Input
+        placeholder="Reason (optional)"
+        value={banReason}
+        onChange={(e) => setBanReason(e.target.value)}
+      />
+    </ConfirmModal>
+
+    <ConfirmModal
+      open={!!unbanTarget}
+      onClose={() => setUnbanTarget(null)}
+      onConfirm={async () => {
+        if (!unbanTarget) return
+        try {
+          await unbanUser.mutateAsync({ clubId, userId: unbanTarget.userId })
+          toast({ title: 'Unbanned', description: 'User can join again.', variant: 'success' })
+          setUnbanTarget(null)
+        } catch (err: any) {
+          toast({ title: 'Failed', description: err?.message || 'Try again', variant: 'destructive' })
+        }
+      }}
+      isPending={unbanUser.isPending}
+      destructive
+      title="Unban user?"
+      description={`Allow ${unbanTarget?.name ?? 'this user'} to join the club again?`}
+      confirmText={unbanUser.isPending ? 'Unbanning…' : 'Unban'}
+    />
   )
 }

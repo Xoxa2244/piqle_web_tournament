@@ -39,6 +39,7 @@ import Link from 'next/link'
 import { getTeamDisplayName, cn } from '@/lib/utils'
 import { formatUsDateShort, formatMatchDayDate } from '@/lib/dateFormat'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 // Helper function to check roster changes (moved outside component to avoid React hooks issues)
 const getRosterWarning = (games: any[], homePlayers: any[], awayPlayers: any[]) => {
@@ -228,6 +229,9 @@ function DivisionStageManagementContent() {
 
   // For IndyLeague, get match days and matchups
   const [selectedMatchDayId, setSelectedMatchDayId] = useState<string>('')
+  const [showGenerateAllConfirm, setShowGenerateAllConfirm] = useState(false)
+  const [regenerateDivisionMatchupIds, setRegenerateDivisionMatchupIds] = useState<string[] | null>(null)
+  const [regenerateMatchupId, setRegenerateMatchupId] = useState<string | null>(null)
   const { data: matchDays } = trpc.matchDay.list.useQuery(
     { tournamentId },
     { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
@@ -1343,11 +1347,7 @@ function DivisionStageManagementContent() {
         {isIndyLeague && (
           <div className="mt-4 flex justify-end">
             <Button
-              onClick={() => {
-                if (confirm('Generate games for all READY matchups across all days and divisions?')) {
-                  generateGamesForTournament.mutate({ tournamentId })
-                }
-              }}
+              onClick={() => setShowGenerateAllConfirm(true)}
               disabled={generateGamesForTournament.isPending}
               className="flex items-center space-x-2"
             >
@@ -1420,28 +1420,12 @@ function DivisionStageManagementContent() {
                             </p>
                           </div>
                           <Button
-                            onClick={async () => {
+                            onClick={() => {
                               if (!hasGames) {
                                 toast({ description: 'No games to regenerate for this division. Use "Generate All Games" above first.', variant: 'destructive' })
                                 return
                               }
-                              if (confirm('Regenerate games for all matchups in this division? This will delete all existing games and reset all scores.')) {
-                                try {
-                                  suppressRegenerateAlertRef.current = true
-                                  // Regenerate games for each matchup that has games
-                                  await Promise.all(
-                                    matchupsWithGames.map((matchup: any) =>
-                                      regenerateGames.mutateAsync({ matchupId: matchup.id })
-                                    )
-                                  )
-                                  refetchMatchups()
-                                  toast({ description: `Games regenerated successfully. All scores for ${matchupsWithGames.length} matchups have been reset.`, variant: 'success' })
-                                } catch (error: any) {
-                                  toast({ title: 'Error', description: 'Error regenerating games: ' + (error?.message || 'Unknown error'), variant: 'destructive' })
-                                } finally {
-                                  suppressRegenerateAlertRef.current = false
-                                }
-                              }
+                              setRegenerateDivisionMatchupIds(matchupsWithGames.map((m: any) => m.id))
                             }}
                             disabled={regenerateGames.isPending}
                             className="flex items-center space-x-2"
@@ -1529,11 +1513,7 @@ function DivisionStageManagementContent() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
-                                  if (confirm('Regenerate games for this matchup? This will reset all scores for this matchup.')) {
-                                    regenerateGames.mutate({ matchupId: matchup.id })
-                                  }
-                                }}
+                                onClick={() => setRegenerateMatchupId(matchup.id)}
                                 disabled={regenerateGames.isPending}
                                 className="flex items-center space-x-1"
                               >
@@ -3068,6 +3048,61 @@ function DivisionStageManagementContent() {
         isUploading={isUploadingToDupr}
         onRetry={handleRetryDuprSubmission}
         retryingMatchIds={retryingMatchIds}
+      />
+
+      <ConfirmModal
+        open={showGenerateAllConfirm}
+        onClose={() => setShowGenerateAllConfirm(false)}
+        onConfirm={() => {
+          generateGamesForTournament.mutate({ tournamentId })
+          setShowGenerateAllConfirm(false)
+        }}
+        isPending={generateGamesForTournament.isPending}
+        title="Generate all games?"
+        description="Generate games for all READY matchups across all days and divisions?"
+        confirmText={generateGamesForTournament.isPending ? 'Generating…' : 'Generate'}
+      />
+
+      <ConfirmModal
+        open={regenerateDivisionMatchupIds !== null && regenerateDivisionMatchupIds.length > 0}
+        onClose={() => setRegenerateDivisionMatchupIds(null)}
+        onConfirm={async () => {
+          if (!regenerateDivisionMatchupIds?.length) return
+          try {
+            suppressRegenerateAlertRef.current = true
+            await Promise.all(
+              regenerateDivisionMatchupIds.map((id) => regenerateGames.mutateAsync({ matchupId: id }))
+            )
+            refetchMatchups()
+            toast({ description: `Games regenerated successfully. All scores for ${regenerateDivisionMatchupIds.length} matchups have been reset.`, variant: 'success' })
+          } catch (error: any) {
+            toast({ title: 'Error', description: 'Error regenerating games: ' + (error?.message || 'Unknown error'), variant: 'destructive' })
+          } finally {
+            suppressRegenerateAlertRef.current = false
+            setRegenerateDivisionMatchupIds(null)
+          }
+        }}
+        isPending={regenerateGames.isPending}
+        destructive
+        title="Regenerate games for division?"
+        description="Regenerate games for all matchups in this division? This will delete all existing games and reset all scores."
+        confirmText={regenerateGames.isPending ? 'Regenerating…' : 'Regenerate'}
+      />
+
+      <ConfirmModal
+        open={!!regenerateMatchupId}
+        onClose={() => setRegenerateMatchupId(null)}
+        onConfirm={() => {
+          if (regenerateMatchupId) {
+            regenerateGames.mutate({ matchupId: regenerateMatchupId })
+            setRegenerateMatchupId(null)
+          }
+        }}
+        isPending={regenerateGames.isPending}
+        destructive
+        title="Regenerate games for this matchup?"
+        description="This will reset all scores for this matchup."
+        confirmText={regenerateGames.isPending ? 'Regenerating…' : 'Regenerate'}
       />
     </div>
   )

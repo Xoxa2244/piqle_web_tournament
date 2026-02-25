@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 
@@ -19,6 +20,8 @@ export default function SuperAdminPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string>('')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
   // Check authentication on mount
   useEffect(() => {
@@ -72,23 +75,16 @@ export default function SuperAdminPage() {
     authenticate.mutate({ login, password })
   }
 
-  const handleDelete = (tournamentId: string, tournamentTitle: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete the tournament "${tournamentTitle}"?\n\n` +
-      `This action cannot be undone and will permanently remove:\n` +
-      `• All tournament data\n` +
-      `• All divisions and teams\n` +
-      `• All matches and results\n` +
-      `• All player information\n\n` +
-      `Type "DELETE" to confirm:`
-    )
+  const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
+    setDeleteTarget({ id: tournamentId, title: tournamentTitle })
+    setDeleteConfirmText('')
+  }
 
-    if (confirmed) {
-      const userInput = window.prompt('Type "DELETE" to confirm:')
-      if (userInput === 'DELETE') {
-        deleteTournament.mutate({ id: tournamentId })
-      }
-    }
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return
+    deleteTournament.mutate({ id: deleteTarget.id })
+    setDeleteTarget(null)
+    setDeleteConfirmText('')
   }
 
   if (!isAuthenticated) {
@@ -283,7 +279,7 @@ export default function SuperAdminPage() {
                       Manage
                     </Link>
                     <button
-                      onClick={() => handleDelete(tournament.id, tournament.title)}
+                      onClick={() => handleDeleteClick(tournament.id, tournament.title)}
                       disabled={deleteTournament.isLoading}
                       className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 px-3 rounded transition-colors"
                     >
@@ -301,6 +297,26 @@ export default function SuperAdminPage() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteConfirmText('') }}
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteTournament.isPending}
+        destructive
+        confirmDisabled={deleteConfirmText !== 'DELETE'}
+        title="Delete tournament?"
+        description={deleteTarget ? `Are you sure you want to delete the tournament "${deleteTarget.title}"? This action cannot be undone and will permanently remove all tournament data, divisions, teams, matches, and player information.` : ''}
+        confirmText={deleteTournament.isPending ? 'Deleting…' : 'Delete'}
+      >
+        {deleteTarget ? (
+          <Input
+            placeholder='Type "DELETE" to confirm'
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            className="mt-2"
+          />
+        ) : null}
+      </ConfirmModal>
     </div>
   )
 }

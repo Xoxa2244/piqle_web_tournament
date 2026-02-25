@@ -17,6 +17,7 @@ import { getTournamentTypeLabel } from '@/lib/tournamentType'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import ConfirmModal from '@/components/ConfirmModal'
 import {
   Calendar,
   MapPin,
@@ -140,6 +141,8 @@ export default function TournamentModal({
     authorEmail: string
   } | null>(null)
   const [showCancelRegistrationModal, setShowCancelRegistrationModal] = useState(false)
+  const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null)
 
   const { data: tournament, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
     { id: tournamentId! },
@@ -379,9 +382,7 @@ export default function TournamentModal({
                         }
                         if (status === 'waitlisted') {
                           const divisionId = registrationStatuses?.[tournament.id]?.divisionId
-                          if (divisionId && confirm('Leave waitlist?')) {
-                            leaveWaitlist.mutate({ divisionId })
-                          }
+                          if (divisionId) setLeaveWaitlistDivisionId(divisionId)
                           return
                         }
                         router.push(`/tournaments/${tournament.id}/register`)
@@ -648,11 +649,7 @@ export default function TournamentModal({
                                             <button
                                               onClick={() => {
                                                 setOpenCommentMenu(null)
-                                                if (
-                                                  confirm('Are you sure you want to delete this comment?')
-                                                ) {
-                                                  deleteComment.mutate({ commentId: comment.id })
-                                                }
+                                                setCommentToDelete(comment.id)
                                               }}
                                               className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
                                             >
@@ -775,6 +772,35 @@ export default function TournamentModal({
         }}
         isPending={cancelRegistration.isPending}
         isPaidTournament={entryFeeNum > 0}
+      />
+
+      <ConfirmModal
+        open={!!leaveWaitlistDivisionId}
+        onClose={() => setLeaveWaitlistDivisionId(null)}
+        onConfirm={() => {
+          if (!leaveWaitlistDivisionId) return
+          leaveWaitlist.mutate({ divisionId: leaveWaitlistDivisionId })
+          setLeaveWaitlistDivisionId(null)
+        }}
+        isPending={leaveWaitlist.isPending}
+        title="Leave waitlist?"
+        description="You will lose your waitlist spot for this division."
+        confirmText={leaveWaitlist.isPending ? 'Leaving…' : 'Leave waitlist'}
+      />
+
+      <ConfirmModal
+        open={!!commentToDelete}
+        onClose={() => setCommentToDelete(null)}
+        onConfirm={() => {
+          if (!commentToDelete) return
+          deleteComment.mutate({ commentId: commentToDelete })
+          setCommentToDelete(null)
+        }}
+        isPending={deleteComment.isPending}
+        destructive
+        title="Delete comment?"
+        description="Are you sure you want to delete this comment? This cannot be undone."
+        confirmText={deleteComment.isPending ? 'Deleting…' : 'Delete'}
       />
 
       {reportCommentModal && tournamentId && (

@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -602,6 +603,7 @@ function ClubChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const { data: messages, isLoading, error } = trpc.clubChat.list.useQuery({ clubId, limit })
@@ -648,6 +650,7 @@ function ClubChatPanel({
   }
 
   return (
+    <>
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
@@ -727,10 +730,7 @@ function ClubChatPanel({
                             variant="ghost"
                             className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
                             disabled={deleteMessage.isPending}
-                            onClick={async () => {
-                              if (!confirm('Delete this message?')) return
-                              await deleteMessage.mutateAsync({ messageId: m.id })
-                            }}
+                            onClick={() => setMessageToDelete(m.id)}
                             title="Delete message"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -764,6 +764,21 @@ function ClubChatPanel({
         </div>
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }
 
@@ -781,6 +796,7 @@ function TournamentChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const canView = Boolean(permission?.canView)
   const canPost = Boolean(permission?.canPost)
@@ -833,6 +849,7 @@ function TournamentChatPanel({
   }
 
   return (
+    <>
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
@@ -920,10 +937,7 @@ function TournamentChatPanel({
                                 variant="ghost"
                                 className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
                                 disabled={deleteMessage.isPending}
-                                onClick={async () => {
-                                  if (!confirm('Delete this message?')) return
-                                  await deleteMessage.mutateAsync({ messageId: m.id })
-                                }}
+                                onClick={() => setMessageToDelete(m.id)}
                                 title="Delete message"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -965,6 +979,21 @@ function TournamentChatPanel({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }
 
@@ -984,6 +1013,7 @@ function DivisionChatPanel({
   const limit = 100
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const canView = Boolean(permission?.canView)
   const canPost = Boolean(permission?.canPost)
@@ -1036,6 +1066,7 @@ function DivisionChatPanel({
   }
 
   return (
+    <>
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0 space-y-2">
         <CardTitle className="flex items-center gap-2 text-base">
@@ -1123,10 +1154,7 @@ function DivisionChatPanel({
                                 variant="ghost"
                                 className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
                                 disabled={deleteMessage.isPending}
-                                onClick={async () => {
-                                  if (!confirm('Delete this message?')) return
-                                  await deleteMessage.mutateAsync({ messageId: m.id })
-                                }}
+                                onClick={() => setMessageToDelete(m.id)}
                                 title="Delete message"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1168,5 +1196,20 @@ function DivisionChatPanel({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={!!messageToDelete}
+      onClose={() => setMessageToDelete(null)}
+      onConfirm={async () => {
+        if (!messageToDelete) return
+        await deleteMessage.mutateAsync({ messageId: messageToDelete })
+        setMessageToDelete(null)
+      }}
+      isPending={deleteMessage.isPending}
+      destructive
+      title="Delete this message?"
+      description="This message will be permanently removed."
+      confirmText={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+    />
+    </>
   )
 }

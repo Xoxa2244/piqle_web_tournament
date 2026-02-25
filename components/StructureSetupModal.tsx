@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import ConfirmModal from '@/components/ConfirmModal'
 import { Plus, Layers } from 'lucide-react'
 
 type ConstraintRange = {
@@ -174,6 +175,7 @@ export default function StructureSetupModal({
   onSave,
 }: StructureSetupModalProps) {
   const [divisions, setDivisions] = useState<DivisionForm[]>([defaultDivision(0)])
+  const [divisionIndexToRemove, setDivisionIndexToRemove] = useState<number | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -279,11 +281,17 @@ export default function StructureSetupModal({
       !division.constraints.gender.enabled
 
     if (!isDefault) {
-      const confirmRemove = window.confirm('Remove this division? All entered settings will be lost.')
-      if (!confirmRemove) return
+      setDivisionIndexToRemove(index)
+      return
     }
 
     setDivisions((prev) => prev.filter((_, idx) => idx !== index))
+  }
+
+  const confirmRemoveDivision = () => {
+    if (divisionIndexToRemove === null) return
+    setDivisions((prev) => prev.filter((_, idx) => idx !== divisionIndexToRemove))
+    setDivisionIndexToRemove(null)
   }
 
   const handleDivisionChange = (index: number, updater: (division: DivisionForm) => DivisionForm) => {
@@ -717,6 +725,15 @@ export default function StructureSetupModal({
           </Button>
         </div>
       </div>
+      <ConfirmModal
+        open={divisionIndexToRemove !== null}
+        onClose={() => setDivisionIndexToRemove(null)}
+        onConfirm={confirmRemoveDivision}
+        destructive
+        title="Remove this division?"
+        description="All entered settings for this division will be lost."
+        confirmText="Remove"
+      />
     </div>
   )
 }
