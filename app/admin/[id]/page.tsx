@@ -816,6 +816,15 @@ export default function TournamentDetailPage() {
                   <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
                     {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
                   </span>
+                  <span
+                    className={`inline-block px-2 py-1 rounded text-xs font-medium border ${
+                      tournament.isPro
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                    }`}
+                  >
+                    {tournament.isPro ? 'Pro' : 'Basic'}
+                  </span>
                 </div>
 
                 {/* Description */}
