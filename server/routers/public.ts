@@ -138,7 +138,7 @@ export const publicRouter = createTRPCRouter({
       let tournament: any
       try {
         tournament = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: {
             ...baseSelect,
             timezone: true,
@@ -151,7 +151,7 @@ export const publicRouter = createTRPCRouter({
           throw error
         }
         const fallback = await ctx.prisma.tournament.findUnique({
-          where: { id: input.id, isPublicBoardEnabled: true },
+          where: { id: input.id },
           select: baseSelect,
         })
         tournament = fallback

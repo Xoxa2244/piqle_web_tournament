@@ -241,7 +241,7 @@ export default function TournamentModal({
 
   if (!tournamentId) return null
 
-  if (tournamentLoading || !tournament) {
+  if (tournamentLoading) {
     return (
       <div
         className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -252,6 +252,30 @@ export default function TournamentModal({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!tournament) {
+    return (
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament not found</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            This tournament is unavailable or was removed.
+          </p>
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </div>
         </div>
       </div>
     )
