@@ -1146,15 +1146,16 @@ export const indyMatchupRouter = createTRPCRouter({
 
       await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, game.matchup.divisionId)
 
-      // Validate: no ties allowed
+      // Validate: ties are not allowed, except 0-0 used as "No score" marker.
       if (
         input.homeScore !== null &&
         input.awayScore !== null &&
-        input.homeScore === input.awayScore
+        input.homeScore === input.awayScore &&
+        !(input.homeScore === 0 && input.awayScore === 0)
       ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Ties are not allowed in games',
+          message: 'Ties are not allowed in games (use 0-0 for No score)',
         })
       }
 
