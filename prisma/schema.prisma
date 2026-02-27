@@ -15,7 +15,7 @@ model User {
   emailVerified            DateTime?
   passwordHash             String?                   @map("password_hash")
   role                     UserRole                  @default(TD)
-  organizerTier            OrganizerTier             @default(BASIC) @map("organizer_tier")
+  organizerTier            OrganizerTier             @default(PRO) @map("organizer_tier")
   isActive                 Boolean                   @default(true)
   gender                   Gender?
   city                     String?
