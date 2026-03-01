@@ -1146,11 +1146,18 @@ export const indyMatchupRouter = createTRPCRouter({
 
       await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, game.matchup.divisionId)
 
+      // Treat 0-0 as "No score" (clear score) for Indy games.
+      // DB has a no-tie constraint, so explicit 0-0 must be normalized to nulls.
+      const normalizedHomeScore =
+        input.homeScore === 0 && input.awayScore === 0 ? null : input.homeScore
+      const normalizedAwayScore =
+        input.homeScore === 0 && input.awayScore === 0 ? null : input.awayScore
+
       // Validate: no ties allowed
       if (
-        input.homeScore !== null &&
-        input.awayScore !== null &&
-        input.homeScore === input.awayScore
+        normalizedHomeScore !== null &&
+        normalizedAwayScore !== null &&
+        normalizedHomeScore === normalizedAwayScore
       ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -1161,8 +1168,8 @@ export const indyMatchupRouter = createTRPCRouter({
       const updated = await ctx.prisma.indyGame.update({
         where: { id: input.gameId },
         data: {
-          homeScore: input.homeScore,
-          awayScore: input.awayScore,
+          homeScore: normalizedHomeScore,
+          awayScore: normalizedAwayScore,
         },
       })
 
