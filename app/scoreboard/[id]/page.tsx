@@ -155,6 +155,11 @@ export default function PublicCoursePage() {
     },
     { enabled: isIndy && !!tournamentId && !!currentDivision?.id }
   )
+
+  const { data: indyMatchups = [], isLoading: indyMatchupsLoading } = trpc.public.getIndyMatchupsByDay.useQuery(
+    { matchDayId: selectedMatchDayId || '' },
+    { enabled: !!selectedMatchDayId && isIndy }
+  )
   const indyStandings = indyStandingsData?.standings ?? []
   const hasTeamsInCurrentDivision = ((currentDivision as any)?.teams?.length ?? 0) > 0
   const hasAnyIndyScoredGames = (indyMatchups as any[]).some((matchup: any) =>
@@ -172,11 +177,6 @@ export default function PublicCoursePage() {
       publicIndyStandingsLoading ||
       (indyViewMode === 'DAY_ONLY' && (indyMatchupsLoading || hasAnyIndyScoredGames))
     )
-
-  const { data: indyMatchups = [], isLoading: indyMatchupsLoading } = trpc.public.getIndyMatchupsByDay.useQuery(
-    { matchDayId: selectedMatchDayId || '' },
-    { enabled: !!selectedMatchDayId && isIndy }
-  )
 
   const indyMatchupsByDivision = useMemo(() => {
     const grouped: Record<string, any[]> = {}
