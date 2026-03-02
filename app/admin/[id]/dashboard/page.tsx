@@ -179,7 +179,7 @@ function DivisionDashboardContent() {
     { enabled: (isIndyLeague || isLeagueRoundRobin) && !!tournamentId }
   )
   
-  const { data: indyStandingsData } = trpc.indyStandings.get.useQuery(
+  const { data: indyStandingsData, isLoading: indyStandingsLoading } = trpc.indyStandings.get.useQuery(
     {
       tournamentId,
       divisionId: selectedDivisionId || undefined,
@@ -188,11 +188,29 @@ function DivisionDashboardContent() {
     },
     { enabled: isIndyLeague && !!tournamentId && !!selectedDivisionId }
   )
+  const { data: indyDayMatchups = [], isLoading: indyDayMatchupsLoading } = trpc.indyMatchup.list.useQuery(
+    { matchDayId: selectedDayId || '' },
+    { enabled: isIndyLeague && !!selectedDayId }
+  )
 
   // Extract standings and debug info
   const indyStandings = Array.isArray(indyStandingsData) 
     ? indyStandingsData 
     : indyStandingsData?.standings || []
+  const hasTeamsInCurrentDivision = ((currentDivision as any)?.teams?.length ?? 0) > 0
+  const hasAnyIndyScoredGames = (indyDayMatchups as any[]).some((matchup: any) =>
+    (matchup.games || []).some(
+      (game: any) =>
+        game.homeScore !== null &&
+        game.awayScore !== null &&
+        !(game.homeScore === 0 && game.awayScore === 0)
+    )
+  )
+  const showIndyStandingsLoadingState =
+    isIndyLeague &&
+    indyStandings.length === 0 &&
+    hasTeamsInCurrentDivision &&
+    (indyStandingsLoading || indyDayMatchupsLoading || hasAnyIndyScoredGames)
 
   // Log debug info to browser console
   if (indyStandingsData && typeof indyStandingsData === 'object' && 'debug' in indyStandingsData) {
@@ -429,6 +447,15 @@ function DivisionDashboardContent() {
                                 </td>
                               </tr>
                             ))
+                          ) : showIndyStandingsLoadingState ? (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-gray-500">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                                  <span>Updating standings...</span>
+                                </div>
+                              </td>
+                            </tr>
                           ) : (
                             <tr>
                               <td colSpan={7} className="py-8 text-center text-gray-500">
