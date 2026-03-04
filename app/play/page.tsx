@@ -22,6 +22,7 @@ import {
   RefreshCw,
   ArrowRight,
   Settings,
+  Navigation,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
@@ -362,6 +363,26 @@ export default function PlayDashboard() {
             </div>
           </div>
         )}
+
+        {/* Drop-In Marketplace */}
+        <Link href="/play/marketplace">
+          <Card className="border-lime-200 bg-gradient-to-r from-lime-50 to-green-50 hover:border-lime-300 transition-colors cursor-pointer">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-lime-100 rounded-lg">
+                    <Navigation className="w-5 h-5 text-lime-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Drop-In Courts Near You</p>
+                    <p className="text-xs text-muted-foreground">Play at any club, no membership needed</p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-lime-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
         {/* Settings Link */}
         <Link href="/play/preferences">

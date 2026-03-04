@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
-import { Brain, Sparkles, Users, Calendar, Clock, TrendingUp, ChevronLeft, AlertCircle, Activity, Target, BarChart3, ArrowRight } from 'lucide-react'
+import { Brain, Sparkles, Users, Calendar, Clock, TrendingUp, ChevronLeft, AlertCircle, Activity, Target, BarChart3, ArrowRight, Upload, DollarSign, Package, Trophy, Globe } from 'lucide-react'
 
 // Mock data - represents what tRPC would return
 const mockSessions = [
@@ -159,6 +159,38 @@ export default function ClubIntelligencePage() {
                 <h1 className="text-3xl font-bold text-foreground">Club Intelligence</h1>
               </div>
               <p className="text-muted-foreground">AI-powered member management and session optimization</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/clubs/${clubId}/intelligence/revenue`}>
+                <Button variant="outline" className="gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Revenue
+                </Button>
+              </Link>
+              <Link href={`/clubs/${clubId}/intelligence/packages`}>
+                <Button variant="outline" className="gap-2">
+                  <Package className="w-4 h-4" />
+                  Packages
+                </Button>
+              </Link>
+              <Link href={`/clubs/${clubId}/intelligence/events`}>
+                <Button variant="outline" className="gap-2">
+                  <Trophy className="w-4 h-4" />
+                  Events
+                </Button>
+              </Link>
+              <Link href={`/clubs/${clubId}/intelligence/marketplace`}>
+                <Button variant="outline" className="gap-2">
+                  <Globe className="w-4 h-4" />
+                  Drop-In
+                </Button>
+              </Link>
+              <Link href={`/clubs/${clubId}/intelligence/import`}>
+                <Button variant="outline" className="gap-2">
+                  <Upload className="w-4 h-4" />
+                  Import
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
