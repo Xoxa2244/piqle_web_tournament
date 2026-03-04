@@ -67,6 +67,7 @@ const mockPast = [
     court: 'Court 2',
     format: 'SOCIAL',
     skillLevel: 'ALL_LEVELS',
+    bookedAt: '',
   },
   {
     id: 'p2',
@@ -76,6 +77,7 @@ const mockPast = [
     court: 'Court 4',
     format: 'DRILL',
     skillLevel: 'ADVANCED',
+    bookedAt: '',
   },
 ]
 
