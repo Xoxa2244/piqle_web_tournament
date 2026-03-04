@@ -145,7 +145,7 @@ export default function EventGeneratorPage() {
   const totalPlayers = aiEvents.reduce((s, e) => s + e.matchedPlayers.length, 0)
 
   const handleCreate = (id: string) => {
-    setCreatedIds(prev => new Set([...prev, id]))
+    setCreatedIds(prev => new Set([...Array.from(prev), id]))
   }
 
   const getUrgencyBadge = (u: 'high' | 'medium' | 'low') => {

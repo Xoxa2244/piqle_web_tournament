@@ -96,7 +96,7 @@ export default function ReactivationPage() {
   const handleSendReengagement = (memberId: string, memberName: string) => {
     setIsLoading(true)
     setTimeout(() => {
-      setEngagedMembers((prev) => new Set([...prev, memberId]))
+      setEngagedMembers((prev) => new Set([...Array.from(prev), memberId]))
       setIsLoading(false)
       toast({
         title: 'Re-engagement offer sent!',

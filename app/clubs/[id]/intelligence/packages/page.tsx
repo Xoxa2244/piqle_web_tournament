@@ -205,7 +205,7 @@ export default function SmartPackagesPage() {
   const totalMembers = aiRecommendations.reduce((s, r) => s + r.matchedMembers.length, 0)
 
   const handleLaunch = (id: string) => {
-    setLaunchedIds(prev => new Set([...prev, id]))
+    setLaunchedIds(prev => new Set([...Array.from(prev), id]))
   }
 
   return (
