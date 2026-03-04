@@ -305,7 +305,7 @@ export default function MarketplacePage() {
   }, [searchQuery, filterFormat, filterSkill, sortBy])
 
   const handleBook = (id: string) => {
-    setBookedIds(prev => new Set([...prev, id]))
+    setBookedIds(prev => new Set([...Array.from(prev), id]))
   }
 
   const lastMinuteCount = mockSlots.filter(s => s.isLastMinute).length
