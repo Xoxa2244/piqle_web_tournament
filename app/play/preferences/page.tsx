@@ -172,7 +172,7 @@ export default function PreferencesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Skill Level</CardTitle>
-            <CardDescription>What's your current playing level?</CardDescription>
+            <CardDescription>What&apos;s your current playing level?</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">

@@ -287,7 +287,7 @@ export default function ReactivationPage() {
               <p className="text-2xl font-bold text-gray-600">
                 {mockCandidates.filter((c) => c.daysInactive > 60).length}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">inactive for >60 days</p>
+              <p className="text-xs text-muted-foreground mt-1">inactive for {'>'}60 days</p>
             </CardContent>
           </Card>
         </div>

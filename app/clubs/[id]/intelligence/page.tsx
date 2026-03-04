@@ -353,7 +353,7 @@ export default function ClubIntelligencePage() {
                   <div>
                     <CardTitle className="text-base text-amber-900">Inactive Members</CardTitle>
                     <CardDescription className="text-amber-700 mt-1">
-                      {mockStats.inactiveMembers} members haven't booked in 21+ days
+                      {mockStats.inactiveMembers} members haven&apos;t booked in 21+ days
                     </CardDescription>
                   </div>
                 </div>
