@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
-import { Brain, Sparkles, Users, Calendar, Clock, TrendingUp, ChevronLeft, AlertCircle, Activity, Target, BarChart3, ArrowRight, Upload, DollarSign, Package, Trophy, Globe } from 'lucide-react'
+import { Brain, Sparkles, Users, Calendar, Clock, TrendingUp, ChevronLeft, AlertCircle, Activity, Target, BarChart3, ArrowRight, Upload, DollarSign, Package, Trophy, Globe, MessageSquare } from 'lucide-react'
 
 // Mock data - represents what tRPC would return
 const mockSessions = [
@@ -183,6 +183,12 @@ export default function ClubIntelligencePage() {
                 <Button variant="outline" className="gap-2">
                   <Globe className="w-4 h-4" />
                   Drop-In
+                </Button>
+              </Link>
+              <Link href={`/clubs/${clubId}/intelligence/advisor`}>
+                <Button variant="outline" className="gap-2 border-lime-300 text-lime-700 hover:bg-lime-50">
+                  <MessageSquare className="w-4 h-4" />
+                  AI Advisor
                 </Button>
               </Link>
               <Link href={`/clubs/${clubId}/intelligence/import`}>
