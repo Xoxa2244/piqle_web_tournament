@@ -144,10 +144,11 @@ export default function TournamentModal({
   const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null)
 
-  const { data: tournament, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
+  const { data: _tournamentData, isLoading: tournamentLoading } = trpc.public.getBoardById.useQuery(
     { id: tournamentId! },
     { enabled: !!tournamentId }
   )
+  const tournament: any = _tournamentData
 
   const tournamentIds = tournamentId ? [tournamentId] : []
   const { data: registrationStatuses } = trpc.registration.getMyStatuses.useQuery(
@@ -318,7 +319,7 @@ export default function TournamentModal({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(tournament as { user?: { id: string } }).user?.id === session?.user?.id && (
+              {tournament.user?.id === session?.user?.id && (
                 <Link href={`/admin/${tournament.id}`}>
                   <Button className="bg-gray-900 hover:bg-gray-800 text-white">Manage</Button>
                 </Link>
@@ -367,7 +368,7 @@ export default function TournamentModal({
                 const isActiveUnpaid =
                   status === 'active' &&
                   entryFeeNum > 0 &&
-                  !(registrationStatuses?.[tournament.id] as { isPaid?: boolean } | undefined)?.isPaid
+                  !registrationStatuses?.[tournament.id]?.isPaid
                 const label =
                   status === 'active'
                     ? 'Cancel Registration'
@@ -479,7 +480,7 @@ export default function TournamentModal({
                       {getTournamentStatusLabel(getTournamentStatus(tournament))}
                     </span>
                     <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
-                      {getTournamentTypeLabel((tournament as { format?: string | null }).format)}
+                      {getTournamentTypeLabel(tournament.format)}
                     </span>
                   </div>
                   {tournament.description && (
@@ -506,26 +507,21 @@ export default function TournamentModal({
                       <div className="flex items-center text-sm text-gray-600">
                         <Calendar className="h-4 w-4 mr-2" />
                         <span>
-                          {formatUsDateTimeShort(tournament.startDate, { timeZone: (tournament as any).timezone })} -{' '}
-                          {formatUsDateTimeShort(tournament.endDate, { timeZone: (tournament as any).timezone })}
+                          {formatUsDateTimeShort(tournament.startDate, { timeZone: tournament.timezone })} -{' '}
+                          {formatUsDateTimeShort(tournament.endDate, { timeZone: tournament.timezone })}
                         </span>
                       </div>
-                      {((tournament as { registrationStartDate?: string | null }).registrationStartDate ||
-                        (tournament as { registrationEndDate?: string | null }).registrationEndDate) && (
+                      {(tournament.registrationStartDate || tournament.registrationEndDate) && (
                         <div className="flex items-center text-sm text-gray-600">
                           <ClipboardList className="h-4 w-4 mr-2" />
                           <span>
                             Registration:{' '}
-                            {(tournament as { registrationStartDate?: string }).registrationStartDate
-                              ? new Date(
-                                  (tournament as { registrationStartDate: string }).registrationStartDate
-                                ).toLocaleDateString()
+                            {tournament.registrationStartDate
+                              ? new Date(tournament.registrationStartDate).toLocaleDateString()
                               : '—'}{' '}
                             –{' '}
-                            {(tournament as { registrationEndDate?: string }).registrationEndDate
-                              ? new Date(
-                                  (tournament as { registrationEndDate: string }).registrationEndDate
-                                ).toLocaleDateString()
+                            {tournament.registrationEndDate
+                              ? new Date(tournament.registrationEndDate).toLocaleDateString()
                               : '—'}
                           </span>
                         </div>
@@ -553,7 +549,7 @@ export default function TournamentModal({
                                 }
                               : undefined
                           }
-                          className={`flex items-center text-sm ${onVenueClick ? 'cursor-pointer hover:underline' : ''} ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
+                          className={`flex items-center text-sm ${onVenueClick ? 'cursor-pointer hover:underline' : ''} ${tournament.venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
                         >
                           <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
                           <span>{tournament.venueName}</span>
@@ -585,33 +581,26 @@ export default function TournamentModal({
                       </div>
                     </div>
                   )}
-                  {(tournament as { user?: { id: string; name?: string | null; image?: string | null; email?: string | null } }).user && (
+                  {tournament.user && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Director</h3>
                       <Link
                         href={
                           session?.user?.id &&
-                          String((tournament as { user: { id: string } }).user.id) === String(session.user.id)
+                          String(tournament.user.id) === String(session.user.id)
                             ? '/profile'
-                            : `/profile/${(tournament as { user: { id: string } }).user.id}`
+                            : `/profile/${tournament.user.id}`
                         }
                         className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
                       >
                         <AvatarImage
-                          src={(tournament as { user: { image?: string | null } }).user.image}
-                          alt={
-                            (tournament as { user: { name?: string | null; email?: string | null } }).user
-                              .name ||
-                            (tournament as { user: { email?: string | null } }).user.email ||
-                            'TD'
-                          }
-                          userId={(tournament as { user: { id: string } }).user.id}
+                          src={tournament.user.image}
+                          alt={tournament.user.name || tournament.user.email || 'TD'}
+                          userId={tournament.user.id}
                           size={32}
                         />
                         <span className="font-medium">
-                          {(tournament as { user: { name?: string | null; email?: string | null } }).user
-                            .name ||
-                            (tournament as { user: { email?: string | null } }).user.email}
+                          {tournament.user.name || tournament.user.email}
                         </span>
                       </Link>
                     </div>
@@ -756,21 +745,21 @@ export default function TournamentModal({
             {modalTab === 'view-results' && (
               <div className="flex-1 min-h-0 flex flex-col">
                 {registrationStatuses?.[tournament.id]?.status === 'active' &&
-                  (registrationStatuses[tournament.id] as { divisionName?: string; teamName?: string; divisionId?: string; teamId?: string }).divisionName &&
-                  (registrationStatuses[tournament.id] as { teamName?: string }).teamName && (
+                  registrationStatuses[tournament.id]?.divisionName &&
+                  registrationStatuses[tournament.id]?.teamName && (
                   <div className="flex-shrink-0 px-6 pt-4 pb-2 border-b border-gray-200">
                     <div className="rounded-lg bg-green-100 border border-green-200 px-3 py-2 text-sm text-green-900 text-left">
                       <span className="font-medium">You&apos;re registered:</span>{' '}
-                      {(registrationStatuses[tournament.id] as { divisionName: string }).divisionName} ·{' '}
-                      {(registrationStatuses[tournament.id] as { teamName: string }).teamName}
+                      {registrationStatuses[tournament.id]?.divisionName} ·{' '}
+                      {registrationStatuses[tournament.id]?.teamName}
                     </div>
                   </div>
                 )}
                 <div className="flex-1 min-h-0">
                   <iframe
                     src={(() => {
-                      const divId = (registrationStatuses?.[tournament.id] as { divisionId?: string } | undefined)?.divisionId
-                      const teamId = (registrationStatuses?.[tournament.id] as { teamId?: string } | undefined)?.teamId
+                      const divId = registrationStatuses?.[tournament.id]?.divisionId
+                      const teamId = registrationStatuses?.[tournament.id]?.teamId
                       const params = new URLSearchParams()
                       if (divId) params.set('divisionId', divId)
                       if (teamId) params.set('teamId', teamId)
