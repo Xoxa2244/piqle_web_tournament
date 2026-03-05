@@ -645,6 +645,13 @@ export const indyMatchupRouter = createTRPCRouter({
         },
       })
 
+      await sendPartnerWebhookForTournament(
+        ctx.prisma,
+        matchup.matchDay.tournament.id,
+        'schedule.updated',
+        { matchDayId: matchup.matchDayId, matchupId: input.matchupId }
+      )
+
       return updated
     }),
 
@@ -783,6 +790,13 @@ export const indyMatchupRouter = createTRPCRouter({
               payload: {},
             },
           })
+
+          await sendPartnerWebhookForTournament(
+            ctx.prisma,
+            division.tournament.id,
+            'schedule.updated',
+            { matchDayId: input.matchDayId, matchupId: matchup.id }
+          )
 
           results.push({
             matchupId: matchup.id,
@@ -934,6 +948,13 @@ export const indyMatchupRouter = createTRPCRouter({
               payload: {},
             },
           })
+
+          await sendPartnerWebhookForTournament(
+            ctx.prisma,
+            tournament.id,
+            'schedule.updated',
+            { matchDayId: matchup.matchDayId, matchupId: matchup.id }
+          )
 
           results.push({
             matchupId: matchup.id,

@@ -106,6 +106,14 @@ export async function GET(
               homeTeam: true,
               awayTeam: true,
               court: true,
+              games: {
+                orderBy: { order: 'asc' },
+              },
+              rosters: {
+                where: { isActive: true },
+                include: { player: true },
+                orderBy: { letter: 'asc' },
+              },
             },
             orderBy: { createdAt: 'asc' },
           },
@@ -117,6 +125,7 @@ export async function GET(
       const matchupIds: string[] = []
       const divisionIds = new Set<string>()
       const teamIds = new Set<string>()
+      const playerIds = new Set<string>()
 
       for (const day of matchDays) {
         for (const matchup of day.matchups) {
@@ -124,15 +133,19 @@ export async function GET(
           divisionIds.add(matchup.divisionId)
           teamIds.add(matchup.homeTeamId)
           teamIds.add(matchup.awayTeamId)
+          for (const roster of matchup.rosters) {
+            playerIds.add(roster.playerId)
+          }
         }
       }
 
-      const [dayExternalIds, matchupExternalIds, divisionExternalIds, teamExternalIds] =
+      const [dayExternalIds, matchupExternalIds, divisionExternalIds, teamExternalIds, playerExternalIds] =
         await Promise.all([
           getExternalIdMap(context.partnerId, 'MATCH_DAY', matchDayIds),
           getExternalIdMap(context.partnerId, 'MATCHUP', matchupIds),
           getExternalIdMap(context.partnerId, 'DIVISION', Array.from(divisionIds)),
           getExternalIdMap(context.partnerId, 'TEAM', Array.from(teamIds)),
+          getExternalIdMap(context.partnerId, 'PLAYER', Array.from(playerIds)),
         ])
 
       for (const day of matchDays) {
@@ -195,6 +208,31 @@ export async function GET(
                 ? { id: matchup.court.id, name: matchup.court.name }
                 : null,
               status: matchup.status,
+              homeRoster: matchup.rosters
+                .filter((r) => r.teamId === matchup.homeTeamId && r.letter)
+                .map((r) => ({
+                  letter: r.letter,
+                  externalPlayerId: playerExternalIds.get(r.playerId) || null,
+                  firstName: r.player.firstName,
+                  lastName: r.player.lastName,
+                })),
+              awayRoster: matchup.rosters
+                .filter((r) => r.teamId === matchup.awayTeamId && r.letter)
+                .map((r) => ({
+                  letter: r.letter,
+                  externalPlayerId: playerExternalIds.get(r.playerId) || null,
+                  firstName: r.player.firstName,
+                  lastName: r.player.lastName,
+                })),
+              gamesGenerated: matchup.games.length > 0,
+              games: matchup.games.map((game) => ({
+                gameOrder: game.order,
+                court: game.court,
+                homePair: game.homePair,
+                awayPair: game.awayPair,
+                homeScore: game.homeScore,
+                awayScore: game.awayScore,
+              })),
             }
           }),
         })),

@@ -313,12 +313,56 @@ Email турнирного директора: director@example.com
               </CardContent>
             </Card>
 
+            {/* Отправка результатов через API */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5" />
+                  <CardTitle>7. Отправка результатов игр через API (НОВОЕ)</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-gray-700">
+                  Помимо ввода результатов через веб-интерфейс Piqle, партнер теперь может отправлять счёт отдельных игр 
+                  напрямую через API. Это сценарий, когда капитаны команд на стороне партнера вводят результаты своих игр.
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Как это работает:</h4>
+                  <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                    <li>Каждый матчап содержит 12 игр (order 1–12), которые генерирует турнирный директор когда матч готов к старту</li>
+                    <li>При генерации игр отправляется webhook <code className="bg-gray-100 px-1 py-0.5 rounded">schedule.updated</code> — запросите <code className="bg-gray-100 px-1 py-0.5 rounded">/schedule</code> чтобы увидеть игры с их <code className="bg-gray-100 px-1 py-0.5 rounded">gameOrder</code>, <code className="bg-gray-100 px-1 py-0.5 rounded">homePair</code> и <code className="bg-gray-100 px-1 py-0.5 rounded">awayPair</code></li>
+                    <li>Партнер идентифицирует матчап по <code className="bg-gray-100 px-1 py-0.5 rounded">externalMatchupId</code>, а каждую игру по <code className="bg-gray-100 px-1 py-0.5 rounded">gameOrder</code> (1–12)</li>
+                    <li>Капитан знает свою букву (A/B/C/D) и находит свои игры по <code className="bg-gray-100 px-1 py-0.5 rounded">homePair</code>/<code className="bg-gray-100 px-1 py-0.5 rounded">awayPair</code></li>
+                    <li>Капитан отправляет <code className="bg-gray-100 px-1 py-0.5 rounded">homeScore</code> и <code className="bg-gray-100 px-1 py-0.5 rounded">awayScore</code> за одну или несколько игр за раз</li>
+                    <li>Система автоматически пересчитывает <code className="bg-gray-100 px-1 py-0.5 rounded">gamesWonHome</code> / <code className="bg-gray-100 px-1 py-0.5 rounded">gamesWonAway</code></li>
+                    <li>Если счёт 6-6, партнер также должен отправить <code className="bg-gray-100 px-1 py-0.5 rounded">tieBreakWinnerSide</code> (&quot;home&quot; или &quot;away&quot;)</li>
+                  </ol>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-900 mb-2">Важно:</h4>
+                  <ul className="list-disc list-inside space-y-1 text-blue-800">
+                    <li>Ничейные счета (например, 11-11) не допускаются и будут отклонены</li>
+                    <li>Нельзя отправить результаты для завершённого матчапа (status = COMPLETED)</li>
+                    <li>Статус матчапа НЕ ставится автоматически в COMPLETED — турнирный директор должен завершить его вручную</li>
+                    <li>При отправке первого результата статус матчапа меняется с PENDING на IN_PROGRESS</li>
+                  </ul>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-yellow-800">
+                    <strong>Эндпоинт:</strong>{' '}
+                    <code className="bg-yellow-100 px-2 py-1 rounded">POST /results/submit</code>{' '}
+                    — полное описание запроса/ответа во вкладке API Endpoints.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Изменение данных */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-5 h-5" />
-                  <CardTitle>7. Изменение данных со стороны партнера</CardTitle>
+                  <CardTitle>8. Изменение данных со стороны партнера</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -358,7 +402,7 @@ Email турнирного директора: director@example.com
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Download className="w-5 h-5" />
-                  <CardTitle>8. Получение результатов</CardTitle>
+                  <CardTitle>9. Получение результатов</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -406,8 +450,10 @@ Email турнирного директора: director@example.com
                     <h4 className="font-semibold mb-3 text-blue-900">Полный цикл:</h4>
                     <ol className="list-decimal list-inside space-y-2">
                       <li>Партнер создает турнир и наполняет его данными через API</li>
-                      <li>Турнирный директор назначает буквы игрокам и вводит результаты через веб-интерфейс</li>
-                      <li>Партнер получает результаты через API</li>
+                      <li>Турнирный директор назначает буквы игрокам через веб-интерфейс</li>
+                      <li>Результаты игр вводятся через API капитанами команд (POST /results/submit) или вручную турнирным директором в веб-интерфейсе</li>
+                      <li>Турнирный директор помечает матчапы как COMPLETED когда все результаты финализированы</li>
+                      <li>Партнер получает агрегированные результаты через API</li>
                       <li>Партнер может обновлять данные (команды, игроки, расписание) в любое время</li>
                       <li>Цикл повторяется для каждого дня турнира</li>
                     </ol>
@@ -871,6 +917,80 @@ Email турнирного директора: director@example.com
                 </CardContent>
               </Card>
 
+              {/* Submit Game Results */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-green-600">POST</Badge>
+                    <CardTitle className="mb-0">Отправка результатов игр (НОВОЕ)</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-gray-700">
+                    Отправляет счёт отдельных игр для матчапа. Партнер идентифицирует матчап по <code className="bg-gray-100 px-2 py-1 rounded">externalMatchupId</code> и 
+                    каждую игру по <code className="bg-gray-100 px-2 py-1 rounded">gameOrder</code> (1–12). Можно отправить одну или несколько игр за один запрос.
+                    Система автоматически пересчитывает <code className="bg-gray-100 px-2 py-1 rounded">gamesWonHome</code> / <code className="bg-gray-100 px-2 py-1 rounded">gamesWonAway</code>.
+                    При счёте 6-6 необходимо также указать <code className="bg-gray-100 px-2 py-1 rounded">tieBreakWinnerSide</code>.
+                    Статус матчапа НЕ ставится автоматически в COMPLETED — турнирный директор завершает его вручную.
+                  </p>
+                  <div>
+                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">/results/submit</code>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Тело запроса:</h3>
+                    <CodeBlock
+                      id="submit-results-request"
+                      code={JSON.stringify({
+                        externalMatchupId: "matchup-001",
+                        games: [
+                          { gameOrder: 1, homeScore: 11, awayScore: 5 },
+                          { gameOrder: 2, homeScore: 8, awayScore: 11 },
+                          { gameOrder: 3, homeScore: 11, awayScore: 9 }
+                        ],
+                        tieBreakWinnerSide: "home"
+                      }, null, 2)}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Описание полей:</h3>
+                    <ul className="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">externalMatchupId</code> (обязательное) — ID матчапа из <code className="bg-gray-100 px-1 py-0.5 rounded">/matchups/upsert</code></li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">games</code> (обязательное, 1–12 элементов) — массив результатов игр</li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">games[].gameOrder</code> (обязательное, 1–12) — порядковый номер игры в матчапе</li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">games[].homeScore</code> (обязательное, &gt;= 0) — счёт домашней команды</li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">games[].awayScore</code> (обязательное, &gt;= 0) — счёт гостевой команды (не должен равняться homeScore)</li>
+                      <li><code className="bg-gray-100 px-1 py-0.5 rounded">tieBreakWinnerSide</code> (опциональное, &quot;home&quot; | &quot;away&quot;) — обязательно при счёте 6-6</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Ответ (200):</h3>
+                    <CodeBlock
+                      id="submit-results-response"
+                      code={JSON.stringify({
+                        externalMatchupId: "matchup-001",
+                        gamesUpdated: 3,
+                        gamesWonHome: 2,
+                        gamesWonAway: 1,
+                        status: "IN_PROGRESS",
+                        updated: [
+                          { gameOrder: 1, homeScore: 11, awayScore: 5 },
+                          { gameOrder: 2, homeScore: 8, awayScore: 11 },
+                          { gameOrder: 3, homeScore: 11, awayScore: 9 }
+                        ]
+                      }, null, 2)}
+                    />
+                  </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-yellow-900 mb-2">Коды ошибок для этого эндпоинта:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-yellow-800 text-sm">
+                      <li><code className="bg-yellow-100 px-1 py-0.5 rounded">MATCHUP_NOT_FOUND</code> — матчап с указанным externalMatchupId не найден</li>
+                      <li><code className="bg-yellow-100 px-1 py-0.5 rounded">MATCHUP_COMPLETED</code> — нельзя обновить результаты завершённого матчапа</li>
+                      <li><code className="bg-yellow-100 px-1 py-0.5 rounded">GAMES_NOT_GENERATED</code> — игры ещё не сгенерированы (сначала назначьте ростеры и буквы)</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Get Day Results */}
               <Card>
                 <CardHeader>
@@ -973,6 +1093,93 @@ Email турнирного директора: director@example.com
                         isReady: false
                       }, null, 2)}
                     />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Tournament Schedule */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="bg-blue-600">GET</Badge>
+                    <CardTitle className="mb-0">Расписание турнира (с играми)</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-gray-700">
+                    Возвращает полное расписание турнира: дни, матчапы, дивизионы, команды, корты и игры.
+                    Каждый матчап содержит флаг <code className="bg-gray-100 px-1 py-0.5 rounded">gamesGenerated</code> и массив <code className="bg-gray-100 px-1 py-0.5 rounded">games</code>.
+                    Когда игры сгенерированы, массив содержит все 12 игр с <code className="bg-gray-100 px-1 py-0.5 rounded">gameOrder</code>, <code className="bg-gray-100 px-1 py-0.5 rounded">homePair</code>, <code className="bg-gray-100 px-1 py-0.5 rounded">awayPair</code> и текущими счетами.
+                    Используйте эти данные чтобы определить, какой <code className="bg-gray-100 px-1 py-0.5 rounded">gameOrder</code> передавать в <code className="bg-gray-100 px-1 py-0.5 rounded">POST /results/submit</code>.
+                  </p>
+                  <div>
+                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">/tournaments/{`{externalTournamentId}`}/schedule</code>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Пример запроса:</h3>
+                    <CodeBlock
+                      id="schedule-request"
+                      code={`GET /api/v1/partners/indyleague/tournaments/tournament-001/schedule`}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-2">Ответ (200):</h3>
+                    <CodeBlock
+                      id="schedule-response"
+                      code={JSON.stringify({
+                        externalTournamentId: "tournament-001",
+                        tournamentName: "IndyLeague - Spring 2024",
+                        generatedAt: "2024-03-15T12:34:56.000Z",
+                        days: [
+                          {
+                            externalDayId: "day-001",
+                            date: "2024-03-15",
+                            status: "IN_PROGRESS",
+                            matchups: [
+                              {
+                                externalMatchupId: "matchup-001",
+                                division: { externalId: "div-001", name: "Main Division" },
+                                homeTeam: { externalId: "team-001", name: "Team Alpha" },
+                                awayTeam: { externalId: "team-002", name: "Team Beta" },
+                                court: { name: "Court #1" },
+                                status: "IN_PROGRESS",
+                                homeRoster: [
+                                  { letter: "A", externalPlayerId: "player-001", firstName: "John", lastName: "Doe" },
+                                  { letter: "B", externalPlayerId: "player-002", firstName: "Jane", lastName: "Smith" },
+                                  { letter: "C", externalPlayerId: "player-003", firstName: "Mike", lastName: "Brown" },
+                                  { letter: "D", externalPlayerId: "player-004", firstName: "Lisa", lastName: "White" }
+                                ],
+                                awayRoster: [
+                                  { letter: "A", externalPlayerId: "player-005", firstName: "Bob", lastName: "Green" },
+                                  { letter: "B", externalPlayerId: "player-006", firstName: "Alice", lastName: "Black" },
+                                  { letter: "C", externalPlayerId: "player-007", firstName: "Tom", lastName: "Gray" },
+                                  { letter: "D", externalPlayerId: "player-008", firstName: "Sara", lastName: "Red" }
+                                ],
+                                gamesGenerated: true,
+                                games: [
+                                  { gameOrder: 1, court: 1, homePair: "AB", awayPair: "AB", homeScore: null, awayScore: null },
+                                  { gameOrder: 2, court: 2, homePair: "CD", awayPair: "CD", homeScore: null, awayScore: null },
+                                  { gameOrder: 3, court: 1, homePair: "AB", awayPair: "CD", homeScore: null, awayScore: null }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }, null, 2)}
+                    />
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-blue-900 mb-2">Ростеры и пары:</h4>
+                    <p className="text-blue-800 text-sm mb-2">
+                      Каждый матчап включает <code className="bg-blue-100 px-1 py-0.5 rounded">homeRoster</code> и <code className="bg-blue-100 px-1 py-0.5 rounded">awayRoster</code> — 
+                      массивы из 4 активных игроков с буквой (A/B/C/D), <code className="bg-blue-100 px-1 py-0.5 rounded">externalPlayerId</code> и именем.
+                      Поля <code className="bg-blue-100 px-1 py-0.5 rounded">homePair</code>/<code className="bg-blue-100 px-1 py-0.5 rounded">awayPair</code> в каждой игре ссылаются на эти буквы.
+                      Например, <code className="bg-blue-100 px-1 py-0.5 rounded">homePair: &quot;AB&quot;</code> означает игроки с буквами A и B из ростера домашней команды.
+                    </p>
+                    <p className="text-blue-800 text-sm">
+                      <strong>Уведомление:</strong> При генерации игр отправляется webhook <code className="bg-blue-100 px-1 py-0.5 rounded">schedule.updated</code>.
+                      После его получения запросите <code className="bg-blue-100 px-1 py-0.5 rounded">/schedule</code> чтобы увидеть ростеры, игры и пары.
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -1139,6 +1346,9 @@ X-Piqle-Signature: sha256=...`}
                     <li><code className="bg-gray-100 px-2 py-1 rounded">VALIDATION_ERROR</code> - Request validation failed</li>
                     <li><code className="bg-gray-100 px-2 py-1 rounded">TOURNAMENT_NOT_FOUND</code> - Tournament with external ID not found</li>
                     <li><code className="bg-gray-100 px-2 py-1 rounded">MATCH_DAY_NOT_FOUND</code> - Match day with external ID not found</li>
+                    <li><code className="bg-gray-100 px-2 py-1 rounded">MATCHUP_NOT_FOUND</code> - Матчап с указанным external ID не найден</li>
+                    <li><code className="bg-gray-100 px-2 py-1 rounded">MATCHUP_COMPLETED</code> - Нельзя изменить завершённый матчап</li>
+                    <li><code className="bg-gray-100 px-2 py-1 rounded">GAMES_NOT_GENERATED</code> - Игры ещё не сгенерированы для этого матчапа</li>
                     <li><code className="bg-gray-100 px-2 py-1 rounded">RATE_LIMIT_EXCEEDED</code> - Too many requests</li>
                     <li><code className="bg-gray-100 px-2 py-1 rounded">INTERNAL_ERROR</code> - Server error</li>
                   </ul>
