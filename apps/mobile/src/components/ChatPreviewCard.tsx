@@ -1,8 +1,9 @@
+import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatDateTime } from '../lib/formatters'
-import { palette, spacing } from '../lib/theme'
-import { Pill, SurfaceCard } from './ui'
+import { palette, radius, spacing } from '../lib/theme'
+import { AvatarBadge, Pill, SurfaceCard } from './ui'
 
 export const ChatPreviewCard = ({
   title,
@@ -17,11 +18,17 @@ export const ChatPreviewCard = ({
 }) => {
   return (
     <Pressable onPress={onPress}>
-      <SurfaceCard>
+      <SurfaceCard tone="soft" style={styles.previewCard}>
         <View style={styles.row}>
+          <AvatarBadge label={title} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.subtitle}>{subtitle}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>{title}</Text>
+              <Feather name="chevron-right" size={16} color={palette.textMuted} />
+            </View>
+            <Text numberOfLines={1} style={styles.subtitle}>
+              {subtitle}
+            </Text>
           </View>
           {unreadCount ? <Pill label={`${unreadCount}`} tone="primary" /> : null}
         </View>
@@ -53,15 +60,25 @@ export const ChatMessageBubble = ({
 }
 
 const styles = StyleSheet.create({
+  previewCard: {
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     color: palette.text,
     fontSize: 16,
     fontWeight: '700',
+    flex: 1,
   },
   subtitle: {
     marginTop: 4,
@@ -76,16 +93,19 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '90%',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 4,
+    borderWidth: 1,
   },
   messageMine: {
     backgroundColor: palette.primary,
+    borderColor: 'transparent',
   },
   messageOther: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
   },
   author: {
     color: palette.textMuted,
@@ -98,13 +118,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   bodyMine: {
-    color: '#fffdf8',
+    color: palette.white,
   },
   time: {
     color: palette.textMuted,
     fontSize: 11,
   },
   timeMine: {
-    color: '#daf0e8',
+    color: 'rgba(255, 255, 255, 0.72)',
   },
 })

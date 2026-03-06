@@ -40,7 +40,7 @@ export default function ClubDetailScreen() {
 
   return (
     <Screen title={club.name} subtitle={formatLocation([club.address, club.city, club.state, club.country])}>
-      <SurfaceCard>
+      <SurfaceCard tone="hero">
         <View style={styles.pillRow}>
           <Pill label={club.kind === 'VENUE' ? 'Venue' : 'Community'} />
           {club.isVerified ? <Pill label="Verified" tone="primary" /> : null}
@@ -84,7 +84,7 @@ export default function ClubDetailScreen() {
         <View style={{ gap: 12 }}>
           <SectionTitle title="Announcements" subtitle="These posts come from the same club admin tools available on web." />
           {club.announcements.map((announcement) => (
-            <SurfaceCard key={announcement.id}>
+            <SurfaceCard key={announcement.id} tone="soft">
               {announcement.title ? <Text style={styles.announcementTitle}>{announcement.title}</Text> : null}
               <Text style={styles.body}>{announcement.body}</Text>
               <Text style={styles.smallMeta}>Posted {formatDateTime(announcement.createdAt)}{announcement.createdByUser?.name ? ` · ${announcement.createdByUser.name}` : ''}</Text>
@@ -97,7 +97,7 @@ export default function ClubDetailScreen() {
         <View style={{ gap: 12 }}>
           <SectionTitle title="Upcoming tournaments" subtitle="Club events can still be private on web; the mobile app reuses the same list." />
           {club.tournaments.map((tournament) => (
-            <SurfaceCard key={tournament.id}>
+            <SurfaceCard key={tournament.id} tone="soft">
               <Pressable onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })}>
                 <Text style={styles.eventTitle}>{tournament.title}</Text>
                 <Text style={styles.smallMeta}>{formatDateTime(tournament.startDate)} · {tournament.format}</Text>
@@ -107,7 +107,7 @@ export default function ClubDetailScreen() {
         </View>
       ) : null}
 
-      <SurfaceCard>
+      <SurfaceCard tone="soft">
         <SectionTitle title="Open on web" subtitle="For full member moderation and club management, the web interface remains the source of truth." />
         <ActionButton label="Open club page in browser" variant="secondary" onPress={() => Linking.openURL(buildWebUrl(`/clubs/${club.id}`))} />
       </SurfaceCard>

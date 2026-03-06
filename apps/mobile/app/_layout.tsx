@@ -25,12 +25,12 @@ const RootNavigator = () => {
         <Stack.Screen name="index" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="tournaments/[id]" />
+        <Stack.Screen name="tournaments/[id]/index" />
         <Stack.Screen name="tournaments/[id]/register" />
-        <Stack.Screen name="clubs/[id]" />
-        <Stack.Screen name="chats/club/[clubId]" />
-        <Stack.Screen name="chats/event/tournament/[tournamentId]" />
-        <Stack.Screen name="chats/event/division/[divisionId]" />
+        <Stack.Screen name="clubs/[id]/index" />
+        <Stack.Screen name="chats/club/[clubId]/index" />
+        <Stack.Screen name="chats/event/tournament/[tournamentId]/index" />
+        <Stack.Screen name="chats/event/division/[divisionId]/index" />
       </Stack>
     </>
   )

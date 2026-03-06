@@ -7,7 +7,17 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
-  plugins: ['expo-router'],
+  plugins: [
+    'expo-router',
+    [
+      'expo-build-properties',
+      {
+        android: {
+          kotlinVersion: '1.9.25',
+        },
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
@@ -19,6 +29,9 @@ const config: ExpoConfig = {
   },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
+    eas: {
+      projectId: 'e2ceb0ec-cbc2-4497-9c29-4ad79e930362',
+    },
   },
 }
 

@@ -38,6 +38,17 @@ export const publicRouter = createTRPCRouter({
         select: {
           id: true,
           name: true,
+          maxTeams: true,
+          _count: {
+            select: {
+              teams: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          players: true,
         },
       },
       tournamentRatings: {
@@ -131,6 +142,30 @@ export const publicRouter = createTRPCRouter({
           select: {
             id: true,
             name: true,
+            maxTeams: true,
+            teamKind: true,
+            _count: {
+              select: {
+                teams: true,
+              },
+            },
+          },
+        },
+        prizes: {
+          orderBy: {
+            place: 'asc',
+          },
+          select: {
+            id: true,
+            place: true,
+            label: true,
+            amount: true,
+            kind: true,
+          },
+        },
+        _count: {
+          select: {
+            players: true,
           },
         },
       } as const

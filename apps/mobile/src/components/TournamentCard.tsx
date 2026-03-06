@@ -1,8 +1,54 @@
+import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { formatDateRange, formatLocation, formatMoney } from '../lib/formatters'
-import { palette, spacing } from '../lib/theme'
-import { AvatarBadge, Pill, SurfaceCard } from './ui'
+import { formatLocation, formatMoney } from '../lib/formatters'
+import { palette, radius, spacing } from '../lib/theme'
+import { OptionalLinearGradient } from './OptionalLinearGradient'
+import { Pill, SurfaceCard } from './ui'
+
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+})
+
+const formatTournamentDateRange = (start?: string | Date | null, end?: string | Date | null) => {
+  if (!start) return 'Date TBD'
+
+  const startDate = new Date(start)
+  if (!end) return dateFormatter.format(startDate)
+
+  const endDate = new Date(end)
+  const sameMonth =
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth()
+
+  if (sameMonth) {
+    return `${startDate.toLocaleString('en-US', { month: 'short' })} ${startDate.getDate()}-${endDate.getDate()}`
+  }
+
+  return `${dateFormatter.format(startDate)} - ${dateFormatter.format(endDate)}`
+}
+
+const formatTournamentFormat = (format?: string | null) => {
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return 'Single Elimination'
+    case 'ROUND_ROBIN':
+      return 'Round Robin'
+    case 'MLP':
+      return 'MLP'
+    case 'INDY_LEAGUE':
+      return 'Indy League'
+    case 'LEAGUE_ROUND_ROBIN':
+      return 'League Round Robin'
+    case 'ONE_DAY_LADDER':
+      return 'One Day Ladder'
+    case 'LADDER_LEAGUE':
+      return 'Ladder League'
+    default:
+      return 'Tournament'
+  }
+}
 
 type TournamentSummary = {
   id: string
@@ -13,9 +59,14 @@ type TournamentSummary = {
   venueAddress?: string | null
   entryFee?: string | number | null
   entryFeeCents?: number | null
-  divisions: Array<{ id: string; name: string }>
-  likes?: number
-  dislikes?: number
+  format?: string | null
+  divisions: Array<{
+    id: string
+    name: string
+    maxTeams?: number | null
+    _count?: { teams?: number }
+  }>
+  _count?: { players?: number }
   user?: {
     id: string
     name?: string | null
@@ -27,96 +78,239 @@ export const TournamentCard = ({
   tournament,
   onPress,
   statusLabel,
-  secondaryStatus,
+  statusTone = 'success',
 }: {
   tournament: TournamentSummary
   onPress: () => void
   statusLabel?: string | null
-  secondaryStatus?: string | null
+  statusTone?: 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 }) => {
-  const fee = typeof tournament.entryFeeCents === 'number'
+  const feeLabel = typeof tournament.entryFeeCents === 'number'
     ? formatMoney(tournament.entryFeeCents)
     : tournament.entryFee && Number(tournament.entryFee) > 0
     ? `$${Number(tournament.entryFee).toFixed(2)}`
     : 'Free'
+  const teamCount = tournament.divisions.reduce((sum, division) => sum + Number(division._count?.teams ?? 0), 0)
+  const teamCapacity = tournament.divisions.reduce((sum, division) => sum + Number(division.maxTeams ?? 0), 0)
+  const playerCount = Number(tournament._count?.players ?? 0)
+  const progress = teamCapacity > 0 ? Math.min(100, (teamCount / teamCapacity) * 100) : 0
+  const spotsLeft = teamCapacity > 0 ? Math.max(0, teamCapacity - teamCount) : null
+  const occupancyLabel =
+    teamCapacity > 0
+      ? `${teamCount} / ${teamCapacity} teams`
+      : playerCount > 0
+      ? `${playerCount} players registered`
+      : 'Open registration'
+  const progressWidth = progress > 0 ? `${Math.max(progress, 8)}%` : '0%'
 
   return (
     <Pressable onPress={onPress}>
-      <SurfaceCard>
-        <View style={styles.cardHeader}>
-          <AvatarBadge label={tournament.title} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{tournament.title}</Text>
-            <Text style={styles.meta}>{formatDateRange(tournament.startDate, tournament.endDate)}</Text>
+      <SurfaceCard padded={false}>
+        <View style={styles.hero}>
+          <OptionalLinearGradient
+            pointerEvents="none"
+            colors={['rgba(40, 205, 65, 0.18)', 'rgba(82, 224, 104, 0.12)', 'rgba(255, 255, 255, 0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGradient}
+          />
+          <View style={styles.heroHeader}>
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={styles.title}>
+                {tournament.title}
+              </Text>
+              <View style={styles.formatRow}>
+                <Feather name="award" size={14} color={palette.textMuted} />
+                <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
+              </View>
+            </View>
+            {statusLabel ? <Pill label={statusLabel} tone={statusTone} /> : null}
           </View>
         </View>
 
-        <View style={styles.pillRow}>
-          {statusLabel ? <Pill label={statusLabel} tone="primary" /> : null}
-          {secondaryStatus ? <Pill label={secondaryStatus} /> : null}
-          <Pill label={fee} tone={fee === 'Free' ? 'success' : 'muted'} />
-        </View>
-
-        <View style={styles.infoBlock}>
-          <Text style={styles.label}>Venue</Text>
-          <Text style={styles.value}>{formatLocation([tournament.venueName, tournament.venueAddress])}</Text>
-        </View>
-
-        {tournament.divisions?.length ? (
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Divisions</Text>
-            <Text style={styles.value}>{tournament.divisions.slice(0, 4).map((division) => division.name).join(' · ')}</Text>
+        <View style={styles.body}>
+          <View style={styles.metaGrid}>
+            <View style={styles.metaCell}>
+              <Feather name="calendar" size={16} color={palette.primary} />
+              <Text style={styles.metaText}>{formatTournamentDateRange(tournament.startDate, tournament.endDate)}</Text>
+            </View>
+            <View style={styles.metaCell}>
+              <Feather name="map-pin" size={16} color={palette.accent} />
+              <Text numberOfLines={1} style={styles.metaText}>
+                {formatLocation([tournament.venueName, tournament.venueAddress])}
+              </Text>
+            </View>
           </View>
-        ) : null}
 
-        {tournament.user ? (
-          <Text style={styles.footer}>Director: {tournament.user.name || tournament.user.email || 'Organizer'}</Text>
-        ) : null}
+          {tournament.divisions?.length ? (
+            <View style={styles.divisionRow}>
+              {tournament.divisions.slice(0, 3).map((division) => (
+                <Pill key={division.id} label={division.name} />
+              ))}
+              {tournament.divisions.length > 3 ? <Pill label={`+${tournament.divisions.length - 3}`} /> : null}
+            </View>
+          ) : null}
+
+          <View style={styles.progressBlock}>
+            <View style={styles.progressHeader}>
+              <View style={styles.progressMetric}>
+                <Feather name="users" size={16} color={palette.textMuted} />
+                <Text style={styles.progressText}>{occupancyLabel}</Text>
+              </View>
+              <View style={styles.priceTag}>
+                <Feather name="dollar-sign" size={16} color={palette.primary} />
+                <Text style={styles.priceText}>{feeLabel}</Text>
+              </View>
+            </View>
+            {teamCapacity > 0 ? (
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: progressWidth }]} />
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.footerRow}>
+            <Text style={styles.footer}>
+              {spotsLeft !== null ? `${spotsLeft} spots left` : 'View registration details'}
+            </Text>
+            <View style={styles.footerAction}>
+              <Text style={styles.footerActionText}>View Details</Text>
+              <Feather name="arrow-right" size={16} color={palette.primary} />
+            </View>
+          </View>
+        </View>
       </SurfaceCard>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  cardHeader: {
+  hero: {
+    position: 'relative',
+    overflow: 'hidden',
+    padding: spacing.md,
+    minHeight: 88,
+    justifyContent: 'center',
+    backgroundColor: palette.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.brandPrimaryBorder,
+  },
+  heroGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  heroHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     gap: spacing.md,
-    alignItems: 'center',
   },
   title: {
     color: palette.text,
     fontSize: 18,
     fontWeight: '700',
   },
-  meta: {
-    marginTop: 4,
-    color: palette.textMuted,
+  formatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
   },
-  pillRow: {
+  formatText: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  body: {
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  metaGrid: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  metaCell: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  metaText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    flex: 1,
+  },
+  divisionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: spacing.md,
   },
-  infoBlock: {
-    marginTop: spacing.md,
-    gap: 4,
+  progressBlock: {
+    gap: 10,
   },
-  label: {
-    color: palette.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  value: {
-    color: palette.text,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '600',
+  progressMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
   },
-  footer: {
-    marginTop: spacing.md,
+  progressText: {
     color: palette.textMuted,
     fontSize: 13,
+    flexShrink: 1,
+  },
+  priceTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  priceText: {
+    color: palette.primary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: palette.surfaceMuted,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radius.pill,
+    backgroundColor: palette.primary,
+  },
+  footerRow: {
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  footer: {
+    color: palette.textMuted,
+    fontSize: 13,
+    flex: 1,
+  },
+  footerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  footerActionText: {
+    color: palette.primary,
+    fontWeight: '700',
   },
 })

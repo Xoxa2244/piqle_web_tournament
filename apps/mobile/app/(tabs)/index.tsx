@@ -1,258 +1,287 @@
-import { useMemo, useState } from 'react'
+import { Feather } from '@expo/vector-icons'
+import { useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
-import { TournamentCard } from '../../src/components/TournamentCard'
-import { ActionButton, EmptyState, InputField, LoadingBlock, Screen, SectionTitle, SurfaceCard } from '../../src/components/ui'
+import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
+import { formatDateRange, formatLocation } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 
 const statusLabel = (status?: string | null) => {
-  if (status === 'active') return 'Registered'
-  if (status === 'waitlisted') return 'Waitlist'
-  return null
+  if (status === 'active') return 'Confirmed'
+  if (status === 'waitlisted') return 'Pending'
+  return 'Open'
 }
 
 export default function HomeTab() {
-  const { token, user } = useAuth()
+  const { token } = useAuth()
   const isAuthenticated = Boolean(token)
-  const [mode, setMode] = useState<'discover' | 'mine'>('discover')
-  const [search, setSearch] = useState('')
-  const utils = trpc.useUtils()
+  const api = trpc as any
 
-  const tournamentsQuery = trpc.public.listBoards.useQuery()
+  const tournamentsQuery = api.public.listBoards.useQuery()
   const tournamentIds = useMemo(
-    () => tournamentsQuery.data?.map((item) => item.id) ?? [],
+    () => ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id),
     [tournamentsQuery.data]
   )
-  const ratingsQuery = trpc.rating.getTournamentRatings.useQuery(
-    { tournamentIds },
-    { enabled: tournamentIds.length > 0 }
-  )
-  const commentCountsQuery = trpc.comment.getTournamentCommentCounts.useQuery(
-    { tournamentIds },
-    { enabled: tournamentIds.length > 0 }
-  )
-  const registrationStatusesQuery = trpc.registration.getMyStatuses.useQuery(
+  const registrationStatusesQuery = api.registration.getMyStatuses.useQuery(
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
   )
-  const notificationsQuery = trpc.notification.list.useQuery(
-    { limit: 8 },
-    { enabled: isAuthenticated }
-  )
 
-  const acceptInvitation = trpc.tournamentInvitation.accept.useMutation({
-    onSuccess: async (result) => {
-      await Promise.all([
-        utils.notification.list.invalidate(),
-        utils.registration.getMyStatuses.invalidate({ tournamentIds }),
-      ])
-      router.push({ pathname: '/tournaments/[id]/register', params: { id: result.tournamentId } })
-    },
-  })
-  const declineInvitation = trpc.tournamentInvitation.decline.useMutation({
-    onSuccess: async () => {
-      await utils.notification.list.invalidate()
-    },
-  })
+  const myEvents = useMemo(() => {
+    const items = (tournamentsQuery.data ?? []) as any[]
+    if (!items.length) return []
 
-  const filtered = useMemo(() => {
-    const source = tournamentsQuery.data ?? []
-    const searchTerm = search.trim().toLowerCase()
-    const searched = searchTerm
-      ? source.filter((item) => item.title.toLowerCase().includes(searchTerm))
-      : source
+    if (!isAuthenticated) {
+      return items.slice(0, 3)
+    }
 
-    if (mode === 'discover') return searched
-    if (!isAuthenticated || !user) return []
-
-    return searched.filter((item) => {
-      const myStatus = registrationStatusesQuery.data?.[item.id]?.status
-      const isOwner = item.user?.id === user.id
-      return Boolean(isOwner || myStatus === 'active' || myStatus === 'waitlisted')
+    const filtered = items.filter((item) => {
+      const status = registrationStatusesQuery.data?.[item.id]?.status
+      return status === 'active' || status === 'waitlisted'
     })
-  }, [mode, search, tournamentsQuery.data, registrationStatusesQuery.data, isAuthenticated, user])
 
-  const invitationItems = (notificationsQuery.data?.items ?? []).filter(
-    (item) => item.type === 'TOURNAMENT_INVITATION'
-  )
+    return filtered.length ? filtered.slice(0, 3) : items.slice(0, 3)
+  }, [isAuthenticated, registrationStatusesQuery.data, tournamentsQuery.data])
+
+  const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string }>
+  const confirmed = Object.values(statuses).filter((value) => value.status === 'active').length
+  const waitlists = Object.values(statuses).filter((value) => value.status === 'waitlisted').length
 
   return (
-    <Screen
-      title="Tournaments"
-      subtitle={
-        isAuthenticated
-          ? 'Your player dashboard for public events, invitations, and registration status.'
-          : 'Browse public tournaments. Sign in to register, comment, and join chats.'
-      }
-      right={
-        isAuthenticated ? (
-          <ActionButton label={user?.name?.split(' ')[0] || 'Profile'} variant="secondary" onPress={() => router.push('/(tabs)/profile')} />
-        ) : (
-          <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
-        )
-      }
-    >
-      <SurfaceCard>
-        <InputField value={search} onChangeText={setSearch} placeholder="Search tournaments" />
-        <View style={styles.modeSwitch}>
-          {(['discover', 'mine'] as const).map((value) => {
-            const active = mode === value
-            return (
-              <Pressable
-                key={value}
-                onPress={() => setMode(value)}
-                style={[styles.modeButton, active && styles.modeButtonActive]}
-              >
-                <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{value === 'discover' ? 'Discover' : 'My events'}</Text>
-              </Pressable>
-            )
-          })}
-        </View>
-      </SurfaceCard>
+    <PageLayout>
+      <View style={styles.headerSection}>
+        <Text style={styles.welcomeTitle}>Welcome back!</Text>
+        <Text style={styles.welcomeSubtitle}>Here&apos;s what&apos;s coming up</Text>
+      </View>
 
-      {isAuthenticated && invitationItems.length > 0 ? (
-        <View style={{ gap: spacing.md }}>
-          <SectionTitle title="Pending invitations" subtitle="Accept to jump straight into registration." />
-          {invitationItems.map((item) => (
-            <SurfaceCard key={item.id}>
-              <Text style={styles.inviteTitle}>{item.title}</Text>
-              <Text style={styles.inviteBody}>{item.body}</Text>
-              <View style={styles.inviteActions}>
-                <ActionButton
-                  label="Accept"
-                  loading={acceptInvitation.isPending}
-                  onPress={() => acceptInvitation.mutate({ invitationId: item.invitationId })}
-                />
-                <ActionButton
-                  label="Decline"
-                  variant="secondary"
-                  loading={declineInvitation.isPending}
-                  onPress={() => declineInvitation.mutate({ invitationId: item.invitationId })}
-                />
+      <Pressable onPress={() => router.push('/ai')}>
+        <SurfaceCard style={styles.aiBanner}>
+          <OptionalLinearGradient
+            pointerEvents="none"
+            colors={['rgba(82, 224, 104, 0.20)', 'rgba(31, 160, 53, 0.14)', 'rgba(255, 255, 255, 0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bannerGradient}
+          />
+          <View style={styles.aiRow}>
+            <View style={styles.aiIcon}>
+              <Feather name="zap" size={20} color={palette.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiTitle}>AI Assistant</Text>
+              <Text style={styles.aiSubtitle}>Get help with strategies, rules, and more</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={palette.textMuted} />
+          </View>
+        </SurfaceCard>
+      </Pressable>
+
+      <SectionTitle
+        title="My Events"
+        action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
+      />
+
+      {tournamentsQuery.isLoading ? <LoadingBlock label="Loading events…" /> : null}
+
+      {!tournamentsQuery.isLoading && myEvents.length === 0 ? (
+        <EmptyState title="No upcoming events" body="Register for a tournament to get started." />
+      ) : null}
+
+      {myEvents.map((event) => {
+        const status = registrationStatusesQuery.data?.[event.id]?.status
+        return (
+          <Pressable
+            key={event.id}
+            onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: event.id } })}
+          >
+            <SurfaceCard>
+              <View style={styles.eventRow}>
+                <View style={styles.eventIcon}>
+                  <Feather name="award" size={20} color={palette.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.eventTopRow}>
+                    <Text style={styles.eventTitle}>{event.title}</Text>
+                    <Pill label={statusLabel(status)} tone={status === 'waitlisted' ? 'warning' : 'success'} />
+                  </View>
+                  <View style={styles.eventMetaRow}>
+                    <Feather name="calendar" size={14} color={palette.textMuted} />
+                    <Text style={styles.eventMeta}>{formatDateRange(event.startDate, event.endDate)}</Text>
+                  </View>
+                  <View style={styles.eventMetaRow}>
+                    <Feather name="map-pin" size={14} color={palette.textMuted} />
+                    <Text numberOfLines={1} style={styles.eventMeta}>
+                      {formatLocation([event.venueName, event.venueAddress])}
+                    </Text>
+                  </View>
+                  {event.divisions?.length ? (
+                    <View style={styles.badgeRow}>
+                      <Pill label={event.divisions[0].name} />
+                      {event.divisions[1] ? <Pill label={event.divisions[1].name} /> : null}
+                    </View>
+                  ) : null}
+                </View>
               </View>
             </SurfaceCard>
-          ))}
-        </View>
-      ) : null}
-
-      {tournamentsQuery.isLoading ? <LoadingBlock label="Loading tournaments…" /> : null}
-
-      {!tournamentsQuery.isLoading && filtered.length === 0 ? (
-        <EmptyState
-          title={mode === 'mine' ? 'No tournaments yet' : 'Nothing matched this search'}
-          body={
-            mode === 'mine'
-              ? isAuthenticated
-                ? 'Register for a public event and it will appear here.'
-                : 'Sign in to see tournaments where you are registered.'
-              : 'Try another name or remove the filter.'
-          }
-        />
-      ) : null}
-
-      {filtered.map((tournament) => {
-        const rating = ratingsQuery.data?.[tournament.id]
-        const comments = commentCountsQuery.data?.[tournament.id] ?? 0
-        const myStatus = registrationStatusesQuery.data?.[tournament.id]
-        const feeCents = typeof tournament.entryFee === 'string' ? Math.round(Number(tournament.entryFee) * 100) : null
-        const social = `${rating?.likes ?? tournament.likes ?? 0} likes · ${comments} comments`
-
-        return (
-          <TournamentCard
-            key={tournament.id}
-            tournament={{
-              ...tournament,
-              entryFeeCents: feeCents,
-            }}
-            statusLabel={statusLabel(myStatus?.status)}
-            secondaryStatus={social}
-            onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })}
-          />
+          </Pressable>
         )
       })}
 
-      {isAuthenticated ? (
-        <SurfaceCard>
-          <Text style={styles.metaHeadline}>Quick snapshot</Text>
-          <Text style={styles.metaBody}>
-            {registrationStatusesQuery.data
-              ? Object.values(registrationStatusesQuery.data).filter((value) => value.status === 'active').length
-              : 0}{' '}
-            registered events ·{' '}
-            {Object.values(registrationStatusesQuery.data ?? {}).filter((value) => value.status === 'waitlisted').length} waitlists
-          </Text>
-          <Text style={styles.metaSubtle}>
-            Fees are handled via the same web backend. Paid events open Stripe checkout from the app.
-          </Text>
-        </SurfaceCard>
-      ) : (
-        <SurfaceCard>
-          <Text style={styles.metaHeadline}>Guest mode</Text>
-          <Text style={styles.metaBody}>You can browse public events now and sign in when you want to register or chat.</Text>
-          <Text style={styles.metaSubtle}>Email/password is wired for mobile. Google mobile sign-in still needs native OAuth client setup.</Text>
-        </SurfaceCard>
-      )}
-    </Screen>
+      <SurfaceCard tone="hero" style={styles.monthCard}>
+        <Text style={styles.monthTitle}>This Month</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{myEvents.length}</Text>
+            <Text style={styles.statLabel}>Events</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{confirmed}</Text>
+            <Text style={styles.statLabel}>Confirmed</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{waitlists}</Text>
+            <Text style={styles.statLabel}>Waitlist</Text>
+          </View>
+        </View>
+      </SurfaceCard>
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  modeSwitch: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: palette.surfaceMuted,
-    padding: 6,
-    borderRadius: radius.pill,
+  headerSection: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  modeButton: {
-    flex: 1,
+  welcomeTitle: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: palette.text,
+    letterSpacing: -0.8,
+  },
+  welcomeSubtitle: {
+    marginTop: 6,
+    color: palette.textMuted,
+    fontSize: 15,
+  },
+  aiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  aiBanner: {
+    position: 'relative',
+    backgroundColor: palette.surface,
+    borderColor: palette.brandPurpleBorder,
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
+  bannerGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+  },
+  aiIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: radius.pill,
+    backgroundColor: palette.brandAccent,
   },
-  modeButtonActive: {
-    backgroundColor: palette.surface,
-  },
-  modeLabel: {
-    color: palette.textMuted,
-    fontWeight: '700',
-  },
-  modeLabelActive: {
-    color: palette.text,
-  },
-  inviteTitle: {
+  aiTitle: {
     color: palette.text,
     fontWeight: '700',
     fontSize: 17,
   },
-  inviteBody: {
-    marginTop: 8,
+  aiSubtitle: {
+    marginTop: 4,
     color: palette.textMuted,
-    lineHeight: 20,
+    fontSize: 13,
   },
-  inviteActions: {
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  eventIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.brandPrimaryTint,
+    borderWidth: 1,
+    borderColor: palette.brandPrimaryBorder,
+  },
+  monthCard: {
+    position: 'relative',
+    shadowColor: 'transparent',
+    elevation: 0,
+  },
+  eventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  eventTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  eventMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  eventMeta: {
+    color: palette.textMuted,
+    fontSize: 13,
+    flex: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: spacing.sm,
+  },
+  monthTitle: {
+    color: palette.text,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  statsRow: {
     marginTop: spacing.md,
-    gap: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  metaHeadline: {
-    color: palette.text,
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
     fontWeight: '700',
-    fontSize: 17,
+    color: palette.primary,
   },
-  metaBody: {
-    marginTop: 8,
-    color: palette.text,
-    lineHeight: 22,
-  },
-  metaSubtle: {
-    marginTop: 8,
+  statLabel: {
+    marginTop: 4,
+    fontSize: 12,
     color: palette.textMuted,
-    lineHeight: 20,
+  },
+  statDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: palette.border,
   },
 })
 

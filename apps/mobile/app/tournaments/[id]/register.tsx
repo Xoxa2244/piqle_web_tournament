@@ -3,11 +3,11 @@ import { Linking, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
-import { ActionButton, EmptyState, LoadingBlock, Pill, Screen, SectionTitle, SurfaceCard } from '../../../../src/components/ui'
-import { formatDateRange, formatMoney, formatPlayerName } from '../../../../src/lib/formatters'
-import { trpc } from '../../../../src/lib/trpc'
-import { palette, spacing } from '../../../../src/lib/theme'
-import { useAuth } from '../../../../src/providers/AuthProvider'
+import { ActionButton, EmptyState, LoadingBlock, Pill, Screen, SectionTitle, SurfaceCard } from '../../../src/components/ui'
+import { formatDateRange, formatMoney, formatPlayerName } from '../../../src/lib/formatters'
+import { trpc } from '../../../src/lib/trpc'
+import { palette, spacing } from '../../../src/lib/theme'
+import { useAuth } from '../../../src/providers/AuthProvider'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -106,7 +106,7 @@ export default function TournamentRegistrationScreen() {
 
   return (
     <Screen title={seatMap.title} subtitle={formatDateRange(seatMap.registrationStartDate || seatMap.startDate, seatMap.registrationEndDate || seatMap.startDate)}>
-      <SurfaceCard>
+      <SurfaceCard tone="hero">
         <SectionTitle title="Registration overview" subtitle={registrationOpen ? 'Registration window is open' : 'Registration is closed'} />
         <View style={styles.badges}>
           <Pill label={isPaidTournament ? formatMoney(seatMap.entryFeeCents) : 'Free'} tone={isPaidTournament ? 'muted' : 'success'} />
@@ -143,7 +143,7 @@ export default function TournamentRegistrationScreen() {
       {seatMap.divisions.map((division: any) => {
         const slotCount = getSlotCount(division.teamKind, seatMap.format)
         return (
-          <SurfaceCard key={division.id}>
+          <SurfaceCard key={division.id} tone="soft">
             <SectionTitle title={division.name} subtitle={`${division.teams.length} teams`} />
             <View style={{ marginTop: spacing.md, gap: 12 }}>
               {division.teams.map((team: any) => {
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.border,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: palette.surface,
   },
   teamName: {
     color: palette.text,
@@ -246,5 +246,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 })
+
 
 
