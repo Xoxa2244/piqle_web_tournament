@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Settings,
   Navigation,
+  ClipboardCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
@@ -379,6 +380,26 @@ export default function PlayDashboard() {
                   </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-lime-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        {/* Post-Match Review */}
+        <Link href="/play/review">
+          <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 hover:border-amber-300 transition-colors cursor-pointer">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <ClipboardCheck className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Post-Match Review</p>
+                    <p className="text-xs text-muted-foreground">Rate your match, earn XP, help AI learn your game</p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-amber-600" />
               </div>
             </CardContent>
           </Card>
