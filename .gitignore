@@ -38,3 +38,8 @@ next-env.d.ts
 
 # prisma
 /prisma/migrations/
+
+# expo mobile
+apps/mobile/node_modules
+apps/mobile/.expo
+apps/mobile/dist

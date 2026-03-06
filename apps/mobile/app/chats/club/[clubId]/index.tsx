@@ -1,0 +1,100 @@
+import { useEffect, useState } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
+import { router } from 'expo-router'
+
+import { ChatMessageBubble } from '../../../../src/components/ChatPreviewCard'
+import { ActionButton, EmptyState, InputField, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
+import { trpc } from '../../../../src/lib/trpc'
+import { palette, spacing } from '../../../../src/lib/theme'
+import { useAuth } from '../../../../src/providers/AuthProvider'
+
+export default function ClubChatScreen() {
+  const params = useLocalSearchParams<{ clubId: string; name?: string }>()
+  const clubId = params.clubId
+  const clubName = params.name || 'Club chat'
+  const { token, user } = useAuth()
+  const isAuthenticated = Boolean(token)
+  const utils = trpc.useUtils()
+  const [draft, setDraft] = useState('')
+
+  const messagesQuery = trpc.clubChat.list.useQuery(
+    { clubId, limit: 100 },
+    { enabled: Boolean(clubId) && isAuthenticated }
+  )
+  const markRead = trpc.clubChat.markRead.useMutation({
+    onSuccess: async () => {
+      await utils.club.listMyChatClubs.invalidate()
+    },
+  })
+  const sendMessage = trpc.clubChat.send.useMutation({
+    onSuccess: async () => {
+      setDraft('')
+      await Promise.all([
+        messagesQuery.refetch(),
+        utils.club.listMyChatClubs.invalidate(),
+      ])
+    },
+  })
+  const deleteMessage = trpc.clubChat.delete.useMutation({
+    onSuccess: async () => {
+      await messagesQuery.refetch()
+    },
+  })
+
+  useEffect(() => {
+    if (!clubId || !isAuthenticated) return
+    markRead.mutate({ clubId })
+  }, [clubId, isAuthenticated])
+
+  if (!isAuthenticated) {
+    return (
+      <Screen title={clubName} subtitle="Sign in to access club messages.">
+        <EmptyState title="Authentication required" body="Club chat follows the same membership and moderation rules as the web app." />
+        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+      </Screen>
+    )
+  }
+
+  if (messagesQuery.isLoading) {
+    return <Screen title={clubName}><LoadingBlock label="Loading chat…" /></Screen>
+  }
+
+  return (
+    <Screen title={clubName} subtitle="Only joined members and admins can view or post here.">
+      {messagesQuery.error ? <SurfaceCard><Text style={styles.error}>{messagesQuery.error.message}</Text></SurfaceCard> : null}
+
+      {(messagesQuery.data?.length ?? 0) === 0 ? (
+        <EmptyState title="No messages yet" body="Start the conversation or wait for the next club update." />
+      ) : null}
+
+      {messagesQuery.data?.map((message) => (
+        <View key={message.id} style={{ gap: 8 }}>
+          <ChatMessageBubble
+            author={message.user?.name || 'Player'}
+            text={message.isDeleted ? 'Message removed' : message.text || ''}
+            createdAt={message.createdAt}
+            isMine={message.userId === user?.id}
+          />
+          {message.userId === user?.id && !message.isDeleted ? (
+            <ActionButton label="Delete" variant="secondary" loading={deleteMessage.isPending} onPress={() => deleteMessage.mutate({ messageId: message.id })} />
+          ) : null}
+        </View>
+      ))}
+
+      <SurfaceCard>
+        <InputField value={draft} onChangeText={setDraft} placeholder="Write a message" multiline />
+        <View style={{ marginTop: spacing.md }}>
+          <ActionButton label="Send message" loading={sendMessage.isPending} onPress={() => sendMessage.mutate({ clubId, text: draft.trim() })} />
+        </View>
+      </SurfaceCard>
+    </Screen>
+  )
+}
+
+const styles = StyleSheet.create({
+  error: {
+    color: palette.danger,
+    lineHeight: 20,
+  },
+})

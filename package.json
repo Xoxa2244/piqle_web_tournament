@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "mobile:dev": "npm --prefix apps/mobile run dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -91,3 +92,5 @@
     "vitest": "^1.1.0"
   }
 }
+
+
