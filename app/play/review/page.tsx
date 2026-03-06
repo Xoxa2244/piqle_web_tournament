@@ -38,7 +38,7 @@ function PostMatchReview() {
   const [matchRating, setMatchRating] = useState(0);
   const [competitive, setCompetitive] = useState<string | null>(null);
   const [playAgain, setPlayAgain] = useState<string | null>(null);
-  const [highlight, setHighlight] = useState<string | null>(null);
+  const [highlights, setHighlights] = useState<string[]>([]);
   const [xp, setXp] = useState(0);
 
   const addXp = (points: number) => setXp(prev => prev + points);
@@ -215,11 +215,11 @@ function PostMatchReview() {
         </div>
       )}
 
-      {/* Step 4: Highlight */}
+      {/* Step 4: Highlights (multi-select) */}
       {step === 'highlight' && (
         <div className="text-center">
-          <h2 className="text-xl font-bold mb-2">Match highlight?</h2>
-          <p className="text-muted-foreground text-sm mb-6">Optional — what stood out?</p>
+          <h2 className="text-xl font-bold mb-2">Match highlights?</h2>
+          <p className="text-muted-foreground text-sm mb-6">Optional — select all that stood out</p>
           <div className="grid grid-cols-2 gap-3 mb-8">
             {[
               { value: 'rally', emoji: '🔥', label: 'Epic rallies' },
@@ -231,10 +231,12 @@ function PostMatchReview() {
             ].map((opt) => (
               <button
                 key={opt.value}
-                onClick={() => setHighlight(opt.value)}
+                onClick={() => setHighlights(prev =>
+                  prev.includes(opt.value) ? prev.filter(v => v !== opt.value) : [...prev, opt.value]
+                )}
                 className={cn(
                   'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all',
-                  highlight === opt.value
+                  highlights.includes(opt.value)
                     ? 'border-lime-400 bg-lime-50'
                     : 'border-gray-200 bg-white hover:border-gray-300'
                 )}
@@ -246,9 +248,9 @@ function PostMatchReview() {
           </div>
           <Button
             className="w-full bg-lime-600 hover:bg-lime-700"
-            onClick={() => { addXp(highlight ? 15 : 5); nextStep(); }}
+            onClick={() => { addXp(highlights.length > 0 ? 15 : 5); nextStep(); }}
           >
-            {highlight ? 'Submit Review' : 'Skip & Finish'}
+            {highlights.length > 0 ? `Submit Review (${highlights.length} selected)` : 'Skip & Finish'}
           </Button>
         </div>
       )}
