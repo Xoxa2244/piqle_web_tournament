@@ -130,7 +130,7 @@ Total Revenue: $2,100
 
 Thank you to all players, volunteers, and sponsors who made the Spring Championship 2025 a success!`;
 
-const BENCHMARKS = {
+const BENCHMARKS: Record<string, { current: number; average: number; percentile: string; label: string; inverse?: boolean }> = {
   fillRate: {
     current: 100,
     average: 78,
