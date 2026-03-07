@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,15 +14,13 @@ import { MetricCard } from './_components/metric-card'
 import { OccupancyBar, OccupancyBadge } from './_components/charts'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
+import { useDashboard } from './_hooks/use-intelligence'
 
 export default function IntelligenceDashboardPage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data, isLoading, error } = trpc.intelligence.getDashboard.useQuery(
-    { clubId },
-    { enabled: !!clubId }
-  )
+  const { data, isLoading, error } = useDashboard(clubId)
 
   if (isLoading) return <DashboardSkeleton />
 
