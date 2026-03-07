@@ -2,7 +2,6 @@
 
 import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
-import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +14,7 @@ import ConfirmModal from '@/components/ConfirmModal'
 import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
+import { useDashboard, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
 
 export default function SlotFillerPage() {
   const params = useParams()
@@ -30,25 +30,25 @@ export default function SlotFillerPage() {
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
   // Get dashboard for session list
-  const { data: dashboard, isLoading: loadingDashboard } = trpc.intelligence.getDashboard.useQuery(
-    { clubId },
-    { enabled: !!clubId }
-  )
+  const { data: dashboard, isLoading: loadingDashboard } = useDashboard(clubId)
 
   // Get recommendations for selected session
-  const { data: recommendations, isLoading: loadingRecs } = trpc.intelligence.getSlotFillerRecommendations.useQuery(
-    { sessionId: selectedSessionId!, limit: 15 },
-    { enabled: !!selectedSessionId }
-  )
+  const { data: recommendations, isLoading: loadingRecs } = useSlotFillerRecommendations(selectedSessionId, 15)
 
   // Send invites mutation
-  const sendInvitesMutation = trpc.intelligence.sendInvites.useMutation({
-    onSuccess: () => {
-      setInviteSent(true)
-      setSelectedUserIds(new Set())
-      setShowConfirm(false)
+  const sendInvitesMutationRaw = useSendInvites()
+  const sendInvitesMutation = {
+    ...sendInvitesMutationRaw,
+    mutate: (input: any) => {
+      sendInvitesMutationRaw.mutate(input, {
+        onSuccess: () => {
+          setInviteSent(true)
+          setSelectedUserIds(new Set())
+          setShowConfirm(false)
+        },
+      })
     },
-  })
+  }
 
   const underfilledSessions = dashboard?.underfilledSessions || []
   const allSessions = dashboard?.upcomingSessions || []

@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
-import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +15,7 @@ import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import ConfirmModal from '@/components/ConfirmModal'
+import { useReactivationCandidates } from '../_hooks/use-intelligence'
 
 const INACTIVITY_OPTIONS = [
   { value: 14, label: '14 days' },
@@ -34,10 +34,7 @@ export default function ReactivationPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
 
-  const { data, isLoading } = trpc.intelligence.getReactivationCandidates.useQuery(
-    { clubId, inactivityDays, limit: 20 },
-    { enabled: !!clubId }
-  )
+  const { data, isLoading } = useReactivationCandidates(clubId, inactivityDays)
 
   // Filter by search
   const filteredCandidates = useMemo(() => {

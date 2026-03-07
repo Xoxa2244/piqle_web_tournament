@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation'
 import { useMemo } from 'react'
-import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -14,20 +13,15 @@ import { MetricCard } from '../_components/metric-card'
 import { HorizontalBarChart, VerticalBarChart } from '../_components/charts'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
+import { useDashboard, useListSessions } from '../_hooks/use-intelligence'
 
 export default function RevenueIntelligencePage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data: dashboard, isLoading: loadingDash } = trpc.intelligence.getDashboard.useQuery(
-    { clubId },
-    { enabled: !!clubId }
-  )
+  const { data: dashboard, isLoading: loadingDash } = useDashboard(clubId)
 
-  const { data: sessions, isLoading: loadingSessions } = trpc.intelligence.listSessions.useQuery(
-    { clubId },
-    { enabled: !!clubId }
-  )
+  const { data: sessions, isLoading: loadingSessions } = useListSessions(clubId)
 
   const isLoading = loadingDash || loadingSessions
 
