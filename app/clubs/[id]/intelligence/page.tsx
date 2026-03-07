@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,9 @@ import { useDashboard } from './_hooks/use-intelligence'
 
 export default function IntelligenceDashboardPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
+  const demoSuffix = searchParams.get('demo') === 'true' ? '?demo=true' : ''
 
   const { data, isLoading, error } = useDashboard(clubId)
 
@@ -86,7 +88,7 @@ export default function IntelligenceDashboardPage() {
       {/* ── Quick Actions ── */}
       <div className="grid md:grid-cols-3 gap-3">
         <QuickActionCard
-          href={`/clubs/${clubId}/intelligence/slot-filler`}
+          href={`/clubs/${clubId}/intelligence/slot-filler${demoSuffix}`}
           icon={TrendingUp}
           iconColor="text-green-500"
           title="Smart Slot Filler"
@@ -99,14 +101,14 @@ export default function IntelligenceDashboardPage() {
           badgeVariant="warning"
         />
         <QuickActionCard
-          href={`/clubs/${clubId}/intelligence/reactivation`}
+          href={`/clubs/${clubId}/intelligence/reactivation${demoSuffix}`}
           icon={UserMinus}
           iconColor="text-orange-500"
           title="Member Reactivation"
           description="Spot disengaging members before they cancel."
         />
         <QuickActionCard
-          href={`/clubs/${clubId}/intelligence/revenue`}
+          href={`/clubs/${clubId}/intelligence/revenue${demoSuffix}`}
           icon={DollarSign}
           iconColor="text-blue-500"
           title="Revenue Intelligence"
@@ -161,7 +163,7 @@ export default function IntelligenceDashboardPage() {
                         {session.spotsRemaining} open
                       </div>
                     </div>
-                    <Link href={`/clubs/${clubId}/intelligence/slot-filler?session=${session.id}`}>
+                    <Link href={`/clubs/${clubId}/intelligence/slot-filler?session=${session.id}${demoSuffix ? '&demo=true' : ''}`}>
                       <Button size="sm" variant="outline" className="gap-1 text-xs h-7">
                         <Zap className="h-3 w-3" /> Fill
                       </Button>

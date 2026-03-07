@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, usePathname } from 'next/navigation'
+import { useParams, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,8 +23,10 @@ export default function IntelligenceLayout({
 }) {
   const params = useParams()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
   const basePath = `/clubs/${clubId}/intelligence`
+  const demoSuffix = searchParams.get('demo') === 'true' ? '?demo=true' : ''
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -58,7 +60,7 @@ export default function IntelligenceLayout({
           const Icon = item.icon
 
           return (
-            <Link key={item.href} href={fullPath}>
+            <Link key={item.href} href={fullPath + demoSuffix}>
               <button
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
