@@ -1,399 +1,292 @@
 'use client'
 
-import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { trpc } from '@/lib/trpc'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/components/ui/use-toast'
-import { cn } from '@/lib/utils'
-import { Brain, Sparkles, Users, Calendar, Clock, TrendingUp, ChevronLeft, AlertCircle, Activity, Target, BarChart3, ArrowRight, Upload, DollarSign, Package, Trophy, Globe, MessageSquare, Swords } from 'lucide-react'
+import {
+  Users, BarChart3, DollarSign, Zap, Calendar,
+  TrendingUp, UserMinus, ArrowRight, AlertTriangle,
+  CalendarPlus
+} from 'lucide-react'
+import { MetricCard } from './_components/metric-card'
+import { OccupancyBar, OccupancyBadge } from './_components/charts'
+import { DashboardSkeleton } from './_components/skeleton'
+import { EmptyState } from './_components/empty-state'
 
-// Mock data - represents what tRPC would return
-const mockSessions = [
-  {
-    id: '1',
-    title: 'Wednesday Morning Doubles',
-    date: 'Wed, Mar 5',
-    startTime: '09:00',
-    endTime: '11:00',
-    format: 'OPEN_PLAY',
-    skillLevel: 'INTERMEDIATE',
-    maxPlayers: 8,
-    confirmedCount: 3,
-    courtName: 'Court 1'
-  },
-  {
-    id: '2',
-    title: 'Thursday Evening Clinic',
-    date: 'Thu, Mar 6',
-    startTime: '18:00',
-    endTime: '20:00',
-    format: 'CLINIC',
-    skillLevel: 'BEGINNER',
-    maxPlayers: 8,
-    confirmedCount: 2,
-    courtName: 'Court 3'
-  },
-  {
-    id: '3',
-    title: 'Friday Social Play',
-    date: 'Fri, Mar 7',
-    startTime: '17:00',
-    endTime: '19:00',
-    format: 'SOCIAL',
-    skillLevel: 'ALL_LEVELS',
-    maxPlayers: 12,
-    confirmedCount: 4,
-    courtName: 'Court 2'
-  },
-  {
-    id: '4',
-    title: 'Saturday Competitive Drill',
-    date: 'Sat, Mar 8',
-    startTime: '08:00',
-    endTime: '10:00',
-    format: 'DRILL',
-    skillLevel: 'ADVANCED',
-    maxPlayers: 6,
-    confirmedCount: 1,
-    courtName: 'Court 4'
-  },
-]
-
-const mockStats = {
-  activeMembers: 20,
-  sessionsThisWeek: 8,
-  avgOccupancy: 62,
-  inactiveMembers: 5
-}
-
-const getFormatBadgeColor = (format: string) => {
-  switch (format) {
-    case 'OPEN_PLAY':
-      return 'bg-blue-100 text-blue-800'
-    case 'CLINIC':
-      return 'bg-purple-100 text-purple-800'
-    case 'DRILL':
-      return 'bg-orange-100 text-orange-800'
-    case 'SOCIAL':
-      return 'bg-green-100 text-green-800'
-    case 'LEAGUE_PLAY':
-      return 'bg-red-100 text-red-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
-}
-
-const getSkillLevelBadgeColor = (level: string) => {
-  switch (level) {
-    case 'BEGINNER':
-      return 'bg-emerald-100 text-emerald-700'
-    case 'INTERMEDIATE':
-      return 'bg-amber-100 text-amber-700'
-    case 'ADVANCED':
-      return 'bg-red-100 text-red-700'
-    case 'ALL_LEVELS':
-      return 'bg-gray-100 text-gray-700'
-    default:
-      return 'bg-gray-100 text-gray-700'
-  }
-}
-
-const getFormatDisplayName = (format: string) => {
-  return format.replace(/_/g, ' ')
-}
-
-const getSkillLevelDisplayName = (level: string) => {
-  return level.replace(/_/g, ' ')
-}
-
-export default function ClubIntelligencePage() {
+export default function IntelligenceDashboardPage() {
   const params = useParams()
-  const router = useRouter()
-  const { data: session } = useSession()
-  const { toast } = useToast()
-  const [isLoading, setIsLoading] = useState(false)
-
   const clubId = params.id as string
 
-  // Calculate underfilled sessions (those with available spots)
-  const underfilled = mockSessions.filter(s => s.confirmedCount < s.maxPlayers)
+  const { data, isLoading, error } = trpc.intelligence.getDashboard.useQuery(
+    { clubId },
+    { enabled: !!clubId }
+  )
 
-  const handleFillWithAI = (sessionId: string) => {
-    setIsLoading(true)
-    // Simulate navigation delay
-    setTimeout(() => {
-      setIsLoading(false)
-      router.push(`/clubs/${clubId}/intelligence/slot-filler?sessionId=${sessionId}`)
-    }, 300)
+  if (isLoading) return <DashboardSkeleton />
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title="Access Required"
+        description={error.message || 'You need club admin or member access to view intelligence data.'}
+      />
+    )
   }
 
-  const handleReactivationClick = () => {
-    router.push(`/clubs/${clubId}/intelligence/reactivation`)
+  if (!data) return null
+
+  const { metrics, upcomingSessions, underfilledSessions } = data
+  const hasAnySessions = upcomingSessions.length > 0
+
+  // ── No data onboarding ──
+  if (!hasAnySessions && metrics.totalMembers === 0) {
+    return (
+      <EmptyState
+        icon={CalendarPlus}
+        title="No Data Yet"
+        description="Import your club's schedule and member data to unlock AI-powered insights. Intelligence needs sessions and bookings to analyze."
+        actionLabel="Learn How to Import"
+      />
+    )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4 mb-6">
-            <Link
-              href={`/clubs/${clubId}`}
-              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="text-sm">Back to Club</span>
-            </Link>
-          </div>
-
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg">
-                  <Brain className="w-6 h-6 text-primary" />
-                </div>
-                <h1 className="text-3xl font-bold text-foreground">Club Intelligence</h1>
-              </div>
-              <p className="text-muted-foreground">AI-powered member management and session optimization</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href={`/clubs/${clubId}/intelligence/revenue`}>
-                <Button variant="outline" className="gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  Revenue
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/packages`}>
-                <Button variant="outline" className="gap-2">
-                  <Package className="w-4 h-4" />
-                  Packages
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/events`}>
-                <Button variant="outline" className="gap-2">
-                  <Trophy className="w-4 h-4" />
-                  Events
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/marketplace`}>
-                <Button variant="outline" className="gap-2">
-                  <Globe className="w-4 h-4" />
-                  Drop-In
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/advisor`}>
-                <Button variant="outline" className="gap-2 border-lime-300 text-lime-700 hover:bg-lime-50">
-                  <MessageSquare className="w-4 h-4" />
-                  AI Advisor
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/tournament-ai`}>
-                <Button variant="outline" className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50">
-                  <Swords className="w-4 h-4" />
-                  Tournament AI
-                </Button>
-              </Link>
-              <Link href={`/clubs/${clubId}/intelligence/import`}>
-                <Button variant="outline" className="gap-2">
-                  <Upload className="w-4 h-4" />
-                  Import
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* ── Key Metrics ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard
+          icon={Users}
+          label="Members"
+          value={metrics.totalMembers}
+          subtitle={`${metrics.totalCourts} courts`}
+        />
+        <MetricCard
+          icon={BarChart3}
+          label="Avg Occupancy"
+          value={`${metrics.avgOccupancy}%`}
+          subtitle={`${metrics.recentBookings} bookings (30d)`}
+          variant={metrics.avgOccupancy >= 70 ? 'success' : metrics.avgOccupancy >= 40 ? 'warning' : 'danger'}
+        />
+        <MetricCard
+          icon={DollarSign}
+          label="Est. Lost Revenue"
+          value={`$${metrics.estimatedLostRevenue.toLocaleString()}`}
+          subtitle={`${metrics.emptySlots} empty slots`}
+          variant="danger"
+        />
+        <MetricCard
+          icon={Zap}
+          label="AI Actions"
+          value={metrics.aiRecommendationsThisWeek}
+          subtitle="this week"
+        />
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          {/* Active Members */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Active Members</CardTitle>
-                <Users className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{mockStats.activeMembers}</div>
-              <p className="text-xs text-muted-foreground mt-1">booked sessions this month</p>
-            </CardContent>
-          </Card>
+      {/* ── Quick Actions ── */}
+      <div className="grid md:grid-cols-3 gap-3">
+        <QuickActionCard
+          href={`/clubs/${clubId}/intelligence/slot-filler`}
+          icon={TrendingUp}
+          iconColor="text-green-500"
+          title="Smart Slot Filler"
+          description="AI recommends members to fill empty courts."
+          badge={
+            underfilledSessions.length > 0
+              ? `${underfilledSessions.length} need attention`
+              : undefined
+          }
+          badgeVariant="warning"
+        />
+        <QuickActionCard
+          href={`/clubs/${clubId}/intelligence/reactivation`}
+          icon={UserMinus}
+          iconColor="text-orange-500"
+          title="Member Reactivation"
+          description="Spot disengaging members before they cancel."
+        />
+        <QuickActionCard
+          href={`/clubs/${clubId}/intelligence/revenue`}
+          icon={DollarSign}
+          iconColor="text-blue-500"
+          title="Revenue Intelligence"
+          description="Occupancy patterns and pricing opportunities."
+        />
+      </div>
 
-          {/* Sessions This Week */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Sessions This Week</CardTitle>
-                <Calendar className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{mockStats.sessionsThisWeek}</div>
-              <p className="text-xs text-muted-foreground mt-1">upcoming sessions</p>
-            </CardContent>
-          </Card>
-
-          {/* Avg Occupancy */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Avg Occupancy</CardTitle>
-                <BarChart3 className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{mockStats.avgOccupancy}%</div>
-              <p className="text-xs text-muted-foreground mt-1">across all sessions</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Underfilled Sessions Section */}
-        <div className="mb-8">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <Target className="w-5 h-5 text-primary" />
-              Underfilled Sessions
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Sessions with available spots. Use AI to fill empty court time.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-            {underfilled.map((session) => {
-              const occupancyPercent = Math.round((session.confirmedCount / session.maxPlayers) * 100)
-              const spotsRemaining = session.maxPlayers - session.confirmedCount
-
-              return (
-                <Card key={session.id} className="flex flex-col">
-                  <CardHeader>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <CardTitle className="text-base">{session.title}</CardTitle>
-                        <CardDescription className="mt-1">{session.courtName}</CardDescription>
-                      </div>
-                      <Badge className={getFormatBadgeColor(session.format)}>
-                        {getFormatDisplayName(session.format)}
-                      </Badge>
+      {/* ── Underfilled Sessions Alert ── */}
+      {underfilledSessions.length > 0 && (
+        <Card className="border-orange-200 bg-orange-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
+              Sessions Below 50% Capacity
+              <Badge variant="secondary" className="ml-1 text-xs font-mono">
+                {underfilledSessions.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="divide-y">
+              {underfilledSessions.slice(0, 5).map((session: any) => (
+                <div
+                  key={session.id}
+                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{session.title}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      {new Date(session.date).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      <span className="text-muted-foreground/40">|</span>
+                      {session.startTime}–{session.endTime}
+                      {session.courtName && (
+                        <>
+                          <span className="text-muted-foreground/40">|</span>
+                          {session.courtName}
+                        </>
+                      )}
                     </div>
-
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {session.date}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        {session.startTime}–{session.endTime}
-                      </div>
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="flex-1">
-                    <div className="space-y-4">
-                      {/* Skill Level Badge */}
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-2">Skill Level</p>
-                        <Badge variant="outline" className={getSkillLevelBadgeColor(session.skillLevel)}>
-                          {getSkillLevelDisplayName(session.skillLevel)}
-                        </Badge>
-                      </div>
-
-                      {/* Occupancy Progress */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs text-muted-foreground">Occupancy</p>
-                          <p className="text-xs font-medium">
-                            {session.confirmedCount}/{session.maxPlayers} spots
-                          </p>
-                        </div>
-                        <div className="w-full bg-secondary rounded-full h-2">
-                          <div
-                            className="bg-primary rounded-full h-2 transition-all"
-                            style={{ width: `${occupancyPercent}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {spotsRemaining} {spotsRemaining === 1 ? 'spot' : 'spots'} available
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-
-                  <div className="px-6 py-4 border-t border-border">
-                    <Button
-                      onClick={() => handleFillWithAI(session.id)}
-                      className="w-full"
-                      disabled={isLoading}
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Fill with AI
-                    </Button>
                   </div>
-                </Card>
-              )
-            })}
-          </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-orange-600 tabular-nums">
+                        {session.confirmedCount}/{session.maxPlayers}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {session.spotsRemaining} open
+                      </div>
+                    </div>
+                    <Link href={`/clubs/${clubId}/intelligence/slot-filler?session=${session.id}`}>
+                      <Button size="sm" variant="outline" className="gap-1 text-xs h-7">
+                        <Zap className="h-3 w-3" /> Fill
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {underfilled.length === 0 && (
-            <Card className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-secondary rounded-lg mb-4">
-                <Target className="w-6 h-6 text-muted-foreground" />
-              </div>
-              <p className="text-muted-foreground">All sessions are well-filled this week!</p>
-            </Card>
+      {/* ── Upcoming Sessions ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Upcoming Sessions
+            </CardTitle>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {upcomingSessions.length} scheduled
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {upcomingSessions.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              No upcoming sessions scheduled.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {upcomingSessions.slice(0, 10).map((session: any) => (
+                <div
+                  key={session.id}
+                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm truncate">{session.title}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      {new Date(session.date).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      <span className="text-muted-foreground/40">|</span>
+                      {session.startTime}–{session.endTime}
+                      {session.courtName && (
+                        <>
+                          <span className="text-muted-foreground/40">|</span>
+                          {session.courtName}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    <div className="w-24">
+                      <OccupancyBar value={session.occupancyPercent} />
+                    </div>
+                    <div className="text-right w-16">
+                      <OccupancyBadge value={session.occupancyPercent} />
+                    </div>
+                    <div className="text-xs text-muted-foreground tabular-nums w-10 text-right">
+                      {session.confirmedCount}/{session.maxPlayers}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
-
-        {/* Inactive Members Alert */}
-        <div>
-          <Card className="border-amber-200 bg-amber-50">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="mt-1">
-                    <AlertCircle className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base text-amber-900">Inactive Members</CardTitle>
-                    <CardDescription className="text-amber-700 mt-1">
-                      {mockStats.inactiveMembers} members haven&apos;t booked in 21+ days
-                    </CardDescription>
-                  </div>
-                </div>
-                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
-                  {mockStats.inactiveMembers} members
-                </Badge>
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              <p className="text-sm text-amber-700 mb-4">
-                Re-engage your best members with personalized session recommendations and special offers.
-              </p>
-            </CardContent>
-
-            <div className="px-6 py-4 border-t border-amber-200">
-              <Button
-                onClick={handleReactivationClick}
-                variant="outline"
-                className="border-amber-300 text-amber-900 hover:bg-amber-100"
-              >
-                View Reactivation
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </Card>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
+  )
+}
+
+// ── Quick Action Card ──
+function QuickActionCard({
+  href,
+  icon: Icon,
+  iconColor,
+  title,
+  description,
+  badge,
+  badgeVariant = 'default',
+}: {
+  href: string
+  icon: any
+  iconColor: string
+  title: string
+  description: string
+  badge?: string
+  badgeVariant?: 'default' | 'warning'
+}) {
+  return (
+    <Link href={href}>
+      <Card className="hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer h-full group">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-2">
+            <div className={`h-9 w-9 rounded-lg bg-muted flex items-center justify-center`}>
+              <Icon className={`h-5 w-5 ${iconColor}`} />
+            </div>
+            {badge && (
+              <Badge
+                variant="secondary"
+                className={
+                  badgeVariant === 'warning'
+                    ? 'bg-orange-100 text-orange-700 border-orange-200 text-[10px]'
+                    : 'text-[10px]'
+                }
+              >
+                {badge}
+              </Badge>
+            )}
+          </div>
+          <div className="font-semibold text-sm mb-1">{title}</div>
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3">{description}</p>
+          <div className="flex items-center text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            Explore <ArrowRight className="h-3 w-3 ml-1" />
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   )
 }

@@ -1,483 +1,420 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { ChevronLeft, Send, Sparkles, Eye, EyeOff, Users, Mail, ChevronDown, ChevronUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { cn } from '@/lib/utils';
-
-type PlayerPersona = 'COMPETITIVE' | 'SOCIAL' | 'IMPROVER' | 'CASUAL' | 'TEAM_PLAYER';
-
-interface Member {
-  id: string;
-  name: string;
-  dupr: number;
-  score: number;
-  likelihood: 'high' | 'medium' | 'low';
-  persona: PlayerPersona;
-  reasons: string[];
-  avatar: string;
-}
-
-interface InvitePreview {
-  subject: string;
-  headline: string;
-  body: string;
-  cta: string;
-  tone: string;
-}
-
-// Mock session data
-const mockSession = {
-  id: 'session-1',
-  title: 'Morning Open Play',
-  date: 'Wednesday, March 5, 2025',
-  time: '8:00 AM - 10:00 AM',
-  format: 'OPEN_PLAY',
-  skillLevel: 'Intermediate',
-  court: 'Court 3',
-  maxPlayers: 8,
-  confirmedPlayers: 5,
-  confirmedNames: ['Alex Johnson', 'Pat Wilson'],
-};
-
-// Mock member recommendations
-const mockRecommendations: Member[] = [
-  {
-    id: 'u1',
-    name: 'Maria Santos',
-    dupr: 4.2,
-    score: 92,
-    likelihood: 'high',
-    persona: 'COMPETITIVE',
-    reasons: ['Prefers Wednesdays in the morning — perfect match', 'Intermediate player — exact match for this session'],
-    avatar: 'MS',
-  },
-  {
-    id: 'u2',
-    name: 'James Chen',
-    dupr: 3.8,
-    score: 85,
-    likelihood: 'high',
-    persona: 'SOCIAL',
-    reasons: ['Enjoys morning sessions but Wednesday isn\'t a preferred day', '1/3 sessions this week — 2 more to reach goal'],
-    avatar: 'JC',
-  },
-  {
-    id: 'u3',
-    name: 'Sarah Kim',
-    dupr: 4.0,
-    score: 78,
-    likelihood: 'medium',
-    persona: 'IMPROVER',
-    reasons: ['Intermediate player — exact match', 'Last played 5 days ago — very active'],
-    avatar: 'SK',
-  },
-  {
-    id: 'u4',
-    name: 'David Lopez',
-    dupr: 3.5,
-    score: 65,
-    likelihood: 'medium',
-    persona: 'TEAM_PLAYER',
-    reasons: ['Close to the intermediate level', 'Enjoys Open Play format'],
-    avatar: 'DL',
-  },
-  {
-    id: 'u5',
-    name: 'Emma Taylor',
-    dupr: 4.5,
-    score: 52,
-    likelihood: 'low',
-    persona: 'CASUAL',
-    reasons: ['Advanced player — skill gap with this intermediate session', 'Wednesday morning doesn\'t match usual schedule'],
-    avatar: 'ET',
-  },
-];
-
-function getPersonaStyles(persona: PlayerPersona) {
-  const styles: Record<PlayerPersona, { bg: string; text: string; emoji: string; label: string; borderColor: string; accentColor: string }> = {
-    COMPETITIVE: {
-      bg: 'bg-red-100',
-      text: 'text-red-700',
-      emoji: '🏆',
-      label: 'Competitor',
-      borderColor: 'border-l-red-400',
-      accentColor: 'text-red-600',
-    },
-    SOCIAL: {
-      bg: 'bg-blue-100',
-      text: 'text-blue-700',
-      emoji: '🤝',
-      label: 'Social Player',
-      borderColor: 'border-l-blue-400',
-      accentColor: 'text-blue-600',
-    },
-    IMPROVER: {
-      bg: 'bg-green-100',
-      text: 'text-green-700',
-      emoji: '📈',
-      label: 'Skill Builder',
-      borderColor: 'border-l-green-400',
-      accentColor: 'text-green-600',
-    },
-    CASUAL: {
-      bg: 'bg-amber-100',
-      text: 'text-amber-700',
-      emoji: '☀️',
-      label: 'Casual Player',
-      borderColor: 'border-l-amber-400',
-      accentColor: 'text-amber-600',
-    },
-    TEAM_PLAYER: {
-      bg: 'bg-purple-100',
-      text: 'text-purple-700',
-      emoji: '👥',
-      label: 'Team Player',
-      borderColor: 'border-l-purple-400',
-      accentColor: 'text-purple-600',
-    },
-  };
-  return styles[persona];
-}
-
-function generatePersonalizedInvite(member: Member): InvitePreview {
-  const firstName = member.name.split(' ')[0];
-  const spotsRemaining = mockSession.maxPlayers - mockSession.confirmedPlayers;
-
-  switch (member.persona) {
-    case 'COMPETITIVE':
-      return {
-        subject: `${firstName}, competitive spot open — ${mockSession.title}`,
-        headline: `Ready for a challenge, ${firstName}?`,
-        body: `There's a spot in ${mockSession.title} on ${mockSession.date} at ${mockSession.time}. ${mockSession.confirmedPlayers} players confirmed — ${mockSession.skillLevel} level play. ${spotsRemaining} spot${spotsRemaining > 1 ? 's' : ''} left.`,
-        cta: 'Claim Your Spot',
-        tone: 'competitive',
-      };
-
-    case 'SOCIAL':
-      return {
-        subject: `${firstName}, the crew is playing ${mockSession.date}!`,
-        headline: `Great group coming together, ${firstName}!`,
-        body: `${mockSession.title} on ${mockSession.date} at ${mockSession.time} is shaping up nicely — ${mockSession.confirmedPlayers} players already confirmed including ${mockSession.confirmedNames.slice(0, 2).join(' and ')}. Come join the fun! ${spotsRemaining} spot${spotsRemaining > 1 ? 's' : ''} available.`,
-        cta: 'Join the Group',
-        tone: 'social',
-      };
-
-    case 'IMPROVER':
-      return {
-        subject: `${firstName}, level up at ${mockSession.title}`,
-        headline: `Great opportunity to improve, ${firstName}!`,
-        body: `${mockSession.title} on ${mockSession.date} (${mockSession.time}) — a solid session to apply what you've been working on. ${mockSession.skillLevel} level play with ${mockSession.confirmedPlayers} players confirmed. ${spotsRemaining} spot${spotsRemaining > 1 ? 's' : ''} left.`,
-        cta: 'Book & Improve',
-        tone: 'motivational',
-      };
-
-    case 'CASUAL':
-      return {
-        subject: `${firstName}, easy pickup game this Wednesday`,
-        headline: `Hey ${firstName}, feel like playing?`,
-        body: `${mockSession.title} on ${mockSession.date} at ${mockSession.time}. No pressure, just good pickleball. ${spotsRemaining} spot${spotsRemaining > 1 ? 's' : ''} open on ${mockSession.court}. Drop in if it works for your schedule!`,
-        cta: 'I\'m In',
-        tone: 'relaxed',
-      };
-
-    case 'TEAM_PLAYER':
-      return {
-        subject: `${firstName}, the team needs you — ${mockSession.date}`,
-        headline: `Your group is counting on you, ${firstName}!`,
-        body: `${mockSession.title} on ${mockSession.date} at ${mockSession.time}. ${mockSession.confirmedPlayers} of ${mockSession.maxPlayers} spots filled — ${
-          spotsRemaining <= 2
-            ? `almost there, just need ${spotsRemaining} more to complete the group!`
-            : `your spot is waiting. The group plays best when the regulars show up.`
-        }`,
-        cta: 'Count Me In',
-        tone: 'team-oriented',
-      };
-
-    default:
-      return {
-        subject: `${firstName}, session available — ${mockSession.title}`,
-        headline: `Hi ${firstName}!`,
-        body: `There's a spot in ${mockSession.title} on ${mockSession.date} at ${mockSession.time}. ${spotsRemaining} spots remaining.`,
-        cta: 'Book Now',
-        tone: 'neutral',
-      };
-  }
-}
+import { useParams, useSearchParams } from 'next/navigation'
+import { useState, useMemo } from 'react'
+import { trpc } from '@/lib/trpc'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import {
+  Zap, Calendar, Send, CheckCircle, Star, Clock, Search,
+  Users, ChevronDown, ChevronUp, CalendarPlus
+} from 'lucide-react'
+import ConfirmModal from '@/components/ConfirmModal'
+import { OccupancyBadge } from '../_components/charts'
+import { ListSkeleton } from '../_components/skeleton'
+import { EmptyState } from '../_components/empty-state'
 
 export default function SlotFillerPage() {
-  const { toast } = useToast();
-  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const clubId = params.id as string
+  const preSelectedSessionId = searchParams.get('session')
 
-  const spotsRemaining = mockSession.maxPlayers - mockSession.confirmedPlayers;
-  const topThree = mockRecommendations.slice(0, 3);
-  const invitedCount = invitedIds.size;
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(preSelectedSessionId)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [inviteSent, setInviteSent] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
-  const handleSendInvite = (memberId: string, memberName: string) => {
-    const newInvited = new Set(invitedIds);
-    newInvited.add(memberId);
-    setInvitedIds(newInvited);
-    toast({
-      title: 'Invite sent',
-      description: `Personalized invite sent to ${memberName}`,
-    });
-  };
+  // Get dashboard for session list
+  const { data: dashboard, isLoading: loadingDashboard } = trpc.intelligence.getDashboard.useQuery(
+    { clubId },
+    { enabled: !!clubId }
+  )
 
-  const handleSendBulk = () => {
-    const newInvited = new Set(invitedIds);
-    topThree.forEach((member) => newInvited.add(member.id));
-    setInvitedIds(newInvited);
-    toast({
-      title: 'Bulk invites sent',
-      description: `Personalized invites sent to ${topThree.length} top members`,
-    });
-  };
+  // Get recommendations for selected session
+  const { data: recommendations, isLoading: loadingRecs } = trpc.intelligence.getSlotFillerRecommendations.useQuery(
+    { sessionId: selectedSessionId!, limit: 15 },
+    { enabled: !!selectedSessionId }
+  )
 
-  const toggleExpandPreview = (memberId: string) => {
-    const newExpanded = new Set(expandedIds);
-    if (newExpanded.has(memberId)) {
-      newExpanded.delete(memberId);
-    } else {
-      newExpanded.add(memberId);
-    }
-    setExpandedIds(newExpanded);
-  };
+  // Send invites mutation
+  const sendInvitesMutation = trpc.intelligence.sendInvites.useMutation({
+    onSuccess: () => {
+      setInviteSent(true)
+      setSelectedUserIds(new Set())
+      setShowConfirm(false)
+    },
+  })
 
-  const handleCustomize = (memberName: string) => {
-    toast({
-      title: 'Customize invite',
-      description: `Customize invite for ${memberName} (feature coming soon)`,
-    });
-  };
+  const underfilledSessions = dashboard?.underfilledSessions || []
+  const allSessions = dashboard?.upcomingSessions || []
+  const sessionsToShow = underfilledSessions.length > 0 ? underfilledSessions : allSessions
 
-  const getLikelihoodColor = (likelihood: string) => {
-    switch (likelihood) {
-      case 'high':
-        return 'text-green-600';
-      case 'medium':
-        return 'text-yellow-600';
-      case 'low':
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
+  // Filter recommendations by search
+  const filteredRecs = useMemo(() => {
+    if (!recommendations?.recommendations) return []
+    if (!searchQuery.trim()) return recommendations.recommendations
+    const q = searchQuery.toLowerCase()
+    return recommendations.recommendations.filter((rec: any) =>
+      (rec.member.name || '').toLowerCase().includes(q) ||
+      (rec.member.email || '').toLowerCase().includes(q)
+    )
+  }, [recommendations, searchQuery])
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <div className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4 mb-4">
-            <button className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 transition">
-              <ChevronLeft className="w-5 h-5" />
-              <span className="text-sm font-medium">Back</span>
-            </button>
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-1">{mockSession.title}</h1>
-            <p className="text-slate-600 text-sm">
-              {mockSession.date} • {mockSession.time} • {mockSession.skillLevel} • {mockSession.court}
-            </p>
-          </div>
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const selectAll = () => {
+    if (!filteredRecs.length) return
+    setSelectedUserIds(new Set(filteredRecs.map((r: any) => r.member.id)))
+  }
+
+  const deselectAll = () => setSelectedUserIds(new Set())
+
+  const handleSendInvites = () => {
+    if (!selectedSessionId || selectedUserIds.size === 0) return
+    sendInvitesMutation.mutate({
+      sessionId: selectedSessionId,
+      userIds: Array.from(selectedUserIds),
+    })
+  }
+
+  const selectedSession = recommendations?.session
+
+  // ── Session selector state ──
+  if (!selectedSessionId) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold mb-1">Select a Session</h2>
+          <p className="text-sm text-muted-foreground">
+            Choose a session to see AI-recommended members to invite.
+          </p>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Session Info Card */}
-        <Card className="mb-8 bg-white">
-          <div className="p-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-slate-500 text-xs font-semibold uppercase mb-2">Players Confirmed</p>
-                <p className="text-2xl font-bold text-slate-900">{mockSession.confirmedPlayers}</p>
+        {loadingDashboard ? (
+          <ListSkeleton rows={4} />
+        ) : sessionsToShow.length === 0 ? (
+          <EmptyState
+            icon={CalendarPlus}
+            title="No Sessions Available"
+            description="All upcoming sessions have great occupancy, or no sessions are scheduled yet."
+          />
+        ) : (
+          <div className="space-y-2">
+            {underfilledSessions.length > 0 && (
+              <div className="text-xs font-medium text-orange-600 uppercase tracking-wide mb-1">
+                Needs Attention — Below 50% capacity
               </div>
-              <div>
-                <p className="text-slate-500 text-xs font-semibold uppercase mb-2">Spots Remaining</p>
-                <p className="text-2xl font-bold text-blue-600">{spotsRemaining}</p>
-              </div>
-              <div>
-                <p className="text-slate-500 text-xs font-semibold uppercase mb-2">Recommendations</p>
-                <p className="text-2xl font-bold text-slate-900">{mockRecommendations.length}</p>
-              </div>
-              <div>
-                <p className="text-slate-500 text-xs font-semibold uppercase mb-2">Invites Sent</p>
-                <p className="text-2xl font-bold text-slate-900">{invitedCount}</p>
-              </div>
+            )}
+            {sessionsToShow.map((session: any) => {
+              const occ = session.maxPlayers > 0
+                ? Math.round((session.confirmedCount / session.maxPlayers) * 100)
+                : 0
+
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => {
+                    setSelectedSessionId(session.id)
+                    setInviteSent(false)
+                    setSelectedUserIds(new Set())
+                  }}
+                  className="w-full flex items-center justify-between p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left group"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm group-hover:text-primary transition-colors">
+                      {session.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      {new Date(session.date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      <Clock className="h-3 w-3 ml-1 shrink-0" />
+                      {session.startTime}–{session.endTime}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    <OccupancyBadge value={occ} size="md" />
+                    <div className="text-right">
+                      <div className="text-sm font-semibold tabular-nums">
+                        {session.confirmedCount}/{session.maxPlayers}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {session.spotsRemaining} to fill
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Recommendations state ──
+  return (
+    <div className="space-y-4">
+      {/* Session header */}
+      {selectedSession && (
+        <div className="flex items-start justify-between gap-4 p-4 rounded-lg border bg-card">
+          <div className="min-w-0">
+            <div className="font-semibold">{selectedSession.title}</div>
+            <div className="text-sm text-muted-foreground mt-0.5">
+              {new Date(selectedSession.date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric',
+              })}
+              {' '}· {selectedSession.startTime}–{selectedSession.endTime}
+              {' '}· {selectedSession.format.replace(/_/g, ' ')}
+              {' '}· {selectedSession.skillLevel.replace(/_/g, ' ')}
             </div>
           </div>
-        </Card>
-
-        {/* Bulk Action Bar */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900 mb-1">Member Recommendations</h2>
-            <p className="text-sm text-slate-600">Smart matches based on availability, skill, and play style</p>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <div className="text-lg font-bold text-green-600 tabular-nums">
+                {selectedSession.spotsRemaining}
+              </div>
+              <div className="text-[10px] text-muted-foreground">spots open</div>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSelectedSessionId(null)
+                setSelectedUserIds(new Set())
+                setInviteSent(false)
+                setSearchQuery('')
+              }}
+              className="text-xs"
+            >
+              Change
+            </Button>
           </div>
-          <Button
-            onClick={handleSendBulk}
-            disabled={invitedCount >= 3}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Send Personalized Invites to Top 3
-          </Button>
         </div>
+      )}
 
-        {/* Recommendations Grid */}
-        <div className="grid grid-cols-1 gap-6">
-          {mockRecommendations.map((member) => {
-            const personaStyles = getPersonaStyles(member.persona);
-            const invite = generatePersonalizedInvite(member);
-            const isInvited = invitedIds.has(member.id);
-            const isExpanded = expandedIds.has(member.id);
+      {/* Success alert */}
+      {inviteSent && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-green-200 bg-green-50/50">
+          <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+          <div className="text-sm">
+            <span className="font-medium text-green-800">Invites sent!</span>{' '}
+            <span className="text-green-600">
+              {sendInvitesMutation.data?.invitedCount} members were invited to this session.
+            </span>
+          </div>
+        </div>
+      )}
 
-            return (
-              <Card key={member.id} className="bg-white overflow-hidden hover:shadow-lg transition">
-                {/* Member Card */}
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start gap-4">
-                      {/* Avatar */}
-                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-slate-300 to-slate-400 flex items-center justify-center text-white font-semibold text-lg">
-                        {member.avatar}
+      {/* Loading */}
+      {loadingRecs && <ListSkeleton rows={5} />}
+
+      {/* Recommendations list */}
+      {!loadingRecs && recommendations && (
+        <>
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search members..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {recommendations.totalCandidatesScored} scored · {filteredRecs.length} shown
+            </div>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={selectAll} className="text-xs h-7">
+                Select all
+              </Button>
+              {selectedUserIds.size > 0 && (
+                <Button size="sm" variant="ghost" onClick={deselectAll} className="text-xs h-7">
+                  Clear
+                </Button>
+              )}
+              <Button
+                size="sm"
+                onClick={() => setShowConfirm(true)}
+                disabled={selectedUserIds.size === 0}
+                className="gap-1.5"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Invite ({selectedUserIds.size})
+              </Button>
+            </div>
+          </div>
+
+          {/* Cards */}
+          {filteredRecs.length === 0 ? (
+            <div className="text-center py-12 text-sm text-muted-foreground">
+              {searchQuery ? 'No members match your search.' : 'No recommendations available for this session.'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredRecs.map((rec: any, index: number) => {
+                const isSelected = selectedUserIds.has(rec.member.id)
+                const isExpanded = expandedCard === rec.member.id
+
+                return (
+                  <div
+                    key={rec.member.id}
+                    className={`rounded-lg border bg-card transition-all ${
+                      isSelected ? 'border-primary ring-1 ring-primary/20' : 'hover:border-muted-foreground/20'
+                    }`}
+                  >
+                    {/* Main row */}
+                    <div
+                      className="flex items-center gap-3 p-3 cursor-pointer"
+                      onClick={() => toggleUser(rec.member.id)}
+                    >
+                      {/* Rank/score circle */}
+                      <div className="relative shrink-0">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                          rec.score >= 75 ? 'bg-green-500' :
+                          rec.score >= 50 ? 'bg-amber-500' : 'bg-gray-400'
+                        }`}>
+                          {rec.score}
+                        </div>
+                        {index < 3 && (
+                          <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold">
+                            {index + 1}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Member Info */}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-slate-900">{member.name}</h3>
-                          <Badge className={cn(personaStyles.bg, personaStyles.text, 'text-xs font-medium')}>
-                            {personaStyles.emoji} {personaStyles.label}
-                          </Badge>
-                        </div>
-
-                        {/* DUPR & Match Quality */}
-                        <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
-                          <span className="font-medium">DUPR: {member.dupr}</span>
-                          <span>Match Quality: {member.score}%</span>
-                          <span className={cn('font-semibold', getLikelihoodColor(member.likelihood))}>
-                            {member.likelihood.charAt(0).toUpperCase() + member.likelihood.slice(1)} Likelihood
+                      {/* Name & details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm truncate">
+                            {rec.member.name || rec.member.email}
                           </span>
+                          {rec.estimatedLikelihood === 'high' && (
+                            <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                          )}
                         </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {rec.member.duprRatingDoubles
+                            ? `DUPR ${rec.member.duprRatingDoubles}`
+                            : 'No rating'}
+                          {rec.member.gender && ` · ${rec.member.gender === 'M' ? 'Male' : 'Female'}`}
+                          {' '}· {rec.estimatedLikelihood} likelihood
+                        </div>
+                      </div>
 
-                        {/* Reasons */}
-                        <ul className="space-y-1">
-                          {member.reasons.map((reason, idx) => (
-                            <li key={idx} className="text-xs text-slate-500 flex items-center">
-                              <span className="w-1 h-1 bg-slate-400 rounded-full mr-2" />
-                              {reason}
-                            </li>
+                      {/* Score pills (compact) */}
+                      <div className="hidden sm:flex items-center gap-1 shrink-0">
+                        {Object.entries(rec.reasoning.components || {})
+                          .sort(([, a]: any, [, b]: any) => b.score - a.score)
+                          .slice(0, 3)
+                          .map(([key, comp]: [string, any]) => (
+                            <span
+                              key={key}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                comp.score >= 70
+                                  ? 'bg-green-100 text-green-700'
+                                  : comp.score >= 40
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-gray-100 text-gray-500'
+                              }`}
+                            >
+                              {key.replace(/_/g, ' ')}
+                            </span>
                           ))}
-                        </ul>
+                      </div>
+
+                      {/* Expand toggle */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setExpandedCard(isExpanded ? null : rec.member.id)
+                        }}
+                        className="p-1 rounded hover:bg-muted shrink-0"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+
+                      {/* Checkbox */}
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                      }`}>
+                        {isSelected && <CheckCircle className="h-3.5 w-3.5 text-primary-foreground" />}
                       </div>
                     </div>
 
-                    {/* Action Button */}
-                    <Button
-                      onClick={() => handleSendInvite(member.id, member.name)}
-                      disabled={isInvited}
-                      className={cn(
-                        'whitespace-nowrap',
-                        isInvited
-                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      )}
-                    >
-                      {isInvited ? (
-                        <>
-                          <Mail className="w-4 h-4 mr-2" />
-                          Invited
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4 mr-2" />
-                          Send Invite
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Invite Preview Section */}
-                  <div className="mt-4 border-t pt-4">
-                    <button
-                      onClick={() => toggleExpandPreview(member.id)}
-                      className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition"
-                    >
-                      <div className="flex items-center gap-2 text-left">
-                        <Sparkles className={cn('w-4 h-4', personaStyles.accentColor)} />
-                        <span className="text-sm font-semibold text-slate-900">Personalized Invite Preview</span>
-                      </div>
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-slate-600" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-slate-600" />
-                      )}
-                    </button>
-
-                    {/* Expanded Preview */}
+                    {/* Expanded details */}
                     {isExpanded && (
-                      <div
-                        className={cn(
-                          'mt-3 p-4 rounded-lg border-l-4 bg-slate-50',
-                          personaStyles.borderColor
-                        )}
-                      >
-                        <div className="space-y-3">
-                          {/* Subject */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Subject</p>
-                            <p className="text-sm text-slate-900 font-medium">{invite.subject}</p>
-                          </div>
-
-                          {/* Headline */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Headline</p>
-                            <p className={cn('text-sm font-semibold', personaStyles.text)}>
-                              {invite.headline}
-                            </p>
-                          </div>
-
-                          {/* Body */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Message Body</p>
-                            <p className="text-sm text-slate-700 leading-relaxed">{invite.body}</p>
-                          </div>
-
-                          {/* CTA Button Preview */}
-                          <div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Call to Action</p>
-                            <div className={cn('inline-block px-4 py-2 rounded font-medium text-sm', personaStyles.bg, personaStyles.text)}>
-                              {invite.cta}
-                            </div>
-                          </div>
-
-                          {/* Customize Button */}
-                          <div className="flex gap-2 pt-2 border-t">
-                            <Button
-                              onClick={() => handleCustomize(member.name)}
-                              variant="outline"
-                              size="sm"
-                              className="flex-1"
-                            >
-                              Customize
-                            </Button>
-                          </div>
+                      <div className="px-3 pb-3 pt-0 border-t mx-3 mt-0 pt-3">
+                        <div className="text-sm text-muted-foreground mb-3">
+                          {rec.reasoning.summary}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {Object.entries(rec.reasoning.components || {}).map(
+                            ([key, comp]: [string, any]) => (
+                              <div key={key} className="text-xs p-2 rounded-md bg-muted/50">
+                                <div className="text-muted-foreground capitalize mb-0.5">
+                                  {key.replace(/_/g, ' ')}
+                                </div>
+                                <div className="font-semibold tabular-nums">
+                                  <span className={
+                                    comp.score >= 70 ? 'text-green-600' :
+                                    comp.score >= 40 ? 'text-amber-600' : 'text-gray-500'
+                                  }>
+                                    {comp.score}
+                                  </span>
+                                  <span className="text-muted-foreground font-normal">/100</span>
+                                  <span className="text-muted-foreground font-normal ml-1">
+                                    (×{comp.weight})
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        open={showConfirm}
+        title="Send Invitations"
+        description={`Invite ${selectedUserIds.size} member${selectedUserIds.size !== 1 ? 's' : ''} to this session? They'll receive a notification to join.`}
+        confirmText={`Send ${selectedUserIds.size} Invite${selectedUserIds.size !== 1 ? 's' : ''}`}
+        isPending={sendInvitesMutation.isPending}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={handleSendInvites}
+      />
     </div>
-  );
+  )
 }

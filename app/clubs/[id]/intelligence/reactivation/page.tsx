@@ -1,315 +1,307 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { useParams } from 'next/navigation'
+import { useState, useMemo } from 'react'
+import { trpc } from '@/lib/trpc'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/components/ui/use-toast'
-import { cn } from '@/lib/utils'
-import { ChevronLeft, Send, AlertCircle, Activity, Target, Calendar } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import {
+  UserMinus, Calendar, Clock, Search, Users,
+  TrendingDown, Mail, MessageSquare, ChevronDown, ChevronUp,
+  Smile
+} from 'lucide-react'
+import { MetricCard } from '../_components/metric-card'
+import { ListSkeleton } from '../_components/skeleton'
+import { EmptyState } from '../_components/empty-state'
+import ConfirmModal from '@/components/ConfirmModal'
 
-// Mock reactivation candidates - represents what tRPC would return
-const mockCandidates = [
-  {
-    id: 'u10',
-    name: 'Robert Park',
-    dupr: 3.9,
-    score: 88,
-    daysInactive: 25,
-    totalBookings: 12,
-    reasons: [
-      '12 total bookings — was a very active member',
-      'Inactive for 25 days — still in the window to re-engage'
-    ],
-    suggestedSessions: ['Wednesday Morning Doubles', 'Friday Social Play'],
-    avatar: 'RP'
-  },
-  {
-    id: 'u11',
-    name: 'Lisa Chang',
-    dupr: 3.2,
-    score: 72,
-    daysInactive: 35,
-    totalBookings: 7,
-    reasons: ['7 past bookings — moderately active', '3 matching sessions this week'],
-    suggestedSessions: ['Thursday Evening Clinic'],
-    avatar: 'LC'
-  },
-  {
-    id: 'u12',
-    name: 'Mike Johnson',
-    dupr: 4.1,
-    score: 58,
-    daysInactive: 50,
-    totalBookings: 4,
-    reasons: [
-      'Inactive for 50 days — getting further away, act soon',
-      'Only 4 past bookings — light engagement'
-    ],
-    suggestedSessions: ['Saturday Competitive Drill'],
-    avatar: 'MJ'
-  },
-  {
-    id: 'u13',
-    name: 'Ana Rodriguez',
-    dupr: 2.8,
-    score: 45,
-    daysInactive: 68,
-    totalBookings: 2,
-    reasons: ['Inactive for 68 days — will need compelling offer', 'Partial preferences on file'],
-    suggestedSessions: [],
-    avatar: 'AR'
-  },
+const INACTIVITY_OPTIONS = [
+  { value: 14, label: '14 days' },
+  { value: 21, label: '21 days' },
+  { value: 30, label: '30 days' },
+  { value: 45, label: '45 days' },
 ]
-
-const getScoreColor = (score: number) => {
-  if (score >= 80) return 'bg-green-100 text-green-800'
-  if (score >= 60) return 'bg-amber-100 text-amber-800'
-  return 'bg-gray-100 text-gray-800'
-}
-
-const getUrgencyColor = (daysInactive: number) => {
-  if (daysInactive <= 30) return 'bg-red-100 text-red-800'
-  if (daysInactive <= 60) return 'bg-orange-100 text-orange-800'
-  return 'bg-gray-100 text-gray-800'
-}
-
-const getUrgencyLabel = (daysInactive: number) => {
-  return `Inactive for ${daysInactive} days`
-}
 
 export default function ReactivationPage() {
   const params = useParams()
-  const router = useRouter()
-  const { data: session } = useSession()
-  const { toast } = useToast()
-  const [engagedMembers, setEngagedMembers] = useState<Set<string>>(new Set())
-  const [isLoading, setIsLoading] = useState(false)
-
   const clubId = params.id as string
-  const inactiveCount = mockCandidates.length
-  const totalMembers = 25 // Mock total members
 
-  const handleSendReengagement = (memberId: string, memberName: string) => {
-    setIsLoading(true)
-    setTimeout(() => {
-      setEngagedMembers((prev) => new Set([...Array.from(prev), memberId]))
-      setIsLoading(false)
-      toast({
-        title: 'Re-engagement offer sent!',
-        description: `${memberName} has been sent a personalized offer to return to play.`,
-      })
-    }, 400)
-  }
+  const [inactivityDays, setInactivityDays] = useState(21)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedCard, setExpandedCard] = useState<string | null>(null)
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [showEmailConfirm, setShowEmailConfirm] = useState(false)
+
+  const { data, isLoading } = trpc.intelligence.getReactivationCandidates.useQuery(
+    { clubId, inactivityDays, limit: 20 },
+    { enabled: !!clubId }
+  )
+
+  // Filter by search
+  const filteredCandidates = useMemo(() => {
+    if (!data?.candidates) return []
+    if (!searchQuery.trim()) return data.candidates
+    const q = searchQuery.toLowerCase()
+    return data.candidates.filter(
+      (c: any) =>
+        (c.member.name || '').toLowerCase().includes(q) ||
+        (c.member.email || '').toLowerCase().includes(q)
+    )
+  }, [data, searchQuery])
+
+  const churnRate =
+    data && data.totalClubMembers > 0
+      ? Math.round((data.totalInactiveMembers / data.totalClubMembers) * 100)
+      : 0
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <Link
-            href={`/clubs/${clubId}/intelligence`}
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span className="text-sm">Back to Intelligence</span>
-          </Link>
-
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Member Reactivation</h1>
-              <p className="text-muted-foreground">
-                {inactiveCount} of {totalMembers} members inactive. Ranked by re-engagement potential.
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-foreground">{inactiveCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">need re-engagement</p>
-            </div>
-          </div>
+    <div className="space-y-5">
+      {/* ── Filters ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="text-sm text-muted-foreground">Inactive for:</div>
+        <div className="flex gap-1 p-0.5 bg-muted/50 rounded-lg">
+          {INACTIVITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setInactivityDays(opt.value)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                inactivityDays === opt.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <div className="relative min-w-[200px] max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search members..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-9"
+          />
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-4">
-          {mockCandidates.map((candidate) => {
-            const hasEngaged = engagedMembers.has(candidate.id)
-            const displayedReasons = candidate.reasons.slice(0, 2)
+      {/* ── Metrics ── */}
+      {data && (
+        <div className="grid grid-cols-3 gap-3">
+          <MetricCard
+            icon={Users}
+            label="Total Members"
+            value={data.totalClubMembers}
+          />
+          <MetricCard
+            icon={UserMinus}
+            label={`Inactive (${inactivityDays}d+)`}
+            value={data.totalInactiveMembers}
+            variant={data.totalInactiveMembers > 0 ? 'warning' : 'success'}
+          />
+          <MetricCard
+            icon={TrendingDown}
+            label="Churn Risk"
+            value={`${churnRate}%`}
+            variant={churnRate >= 20 ? 'danger' : churnRate >= 10 ? 'warning' : 'success'}
+          />
+        </div>
+      )}
 
-            return (
-              <Card key={candidate.id} className={cn('transition-colors', hasEngaged && 'bg-green-50')}>
-                <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-                    {/* Left Section: Avatar & Member Info */}
-                    <div className="md:col-span-2">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/40 to-primary/20 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-semibold text-primary">{candidate.avatar}</span>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-                          <p className="text-xs text-muted-foreground">DUPR {candidate.dupr}</p>
-                        </div>
+      {/* ── Loading ── */}
+      {isLoading && <ListSkeleton rows={5} />}
+
+      {/* ── Empty: all active ── */}
+      {data && data.candidates.length === 0 && (
+        <EmptyState
+          icon={Smile}
+          title="All Members Active!"
+          description={`No members have been inactive for more than ${inactivityDays} days. Your engagement is strong.`}
+        />
+      )}
+
+      {/* ── Candidate list ── */}
+      {data && filteredCandidates.length > 0 && (
+        <>
+          <div className="text-xs text-muted-foreground">
+            {filteredCandidates.length} member{filteredCandidates.length !== 1 ? 's' : ''} to re-engage
+          </div>
+
+          <div className="space-y-2">
+            {filteredCandidates.map((candidate: any) => {
+              const isExpanded = expandedCard === candidate.member.id
+              const daysAgo = candidate.daysSinceLastActivity
+              const urgency =
+                daysAgo >= 45 ? 'critical' : daysAgo >= 30 ? 'high' : daysAgo >= 21 ? 'medium' : 'low'
+              const urgencyColor = {
+                critical: 'bg-red-500',
+                high: 'bg-orange-500',
+                medium: 'bg-amber-500',
+                low: 'bg-yellow-500',
+              }[urgency]
+
+              return (
+                <div key={candidate.member.id} className="rounded-lg border bg-card">
+                  {/* Main row */}
+                  <div className="flex items-center gap-3 p-3">
+                    {/* Days badge */}
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 ${urgencyColor}`}>
+                      {daysAgo}d
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {candidate.member.name || candidate.member.email}
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Last active {daysAgo} days ago
+                        {candidate.member.duprRatingDoubles && (
+                          <>
+                            <span className="text-muted-foreground/40">|</span>
+                            DUPR {candidate.member.duprRatingDoubles}
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {/* Center Section: Scores & Metrics */}
-                    <div className="md:col-span-3">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">Reactivation Score</p>
-                          <Badge className={getScoreColor(candidate.score)}>
-                            {candidate.score}/100
-                          </Badge>
-                        </div>
+                    {/* Badges */}
+                    <Badge variant="secondary" className="text-xs tabular-nums shrink-0">
+                      Score: {candidate.score}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs tabular-nums shrink-0 ${
+                        candidate.totalHistoricalBookings >= 10
+                          ? 'border-green-200 text-green-700'
+                          : ''
+                      }`}
+                    >
+                      {candidate.totalHistoricalBookings} bookings
+                    </Badge>
 
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">Status</p>
-                          <Badge className={getUrgencyColor(candidate.daysInactive)}>
-                            {getUrgencyLabel(candidate.daysInactive)}
-                          </Badge>
-                        </div>
+                    {/* Expand */}
+                    <button
+                      onClick={() => setExpandedCard(isExpanded ? null : candidate.member.id)}
+                      className="p-1 rounded hover:bg-muted shrink-0"
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </button>
+                  </div>
 
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Total Bookings</p>
-                          <p className="text-sm font-medium text-foreground">{candidate.totalBookings} sessions</p>
-                        </div>
+                  {/* Expanded */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 space-y-3">
+                      <div className="border-t pt-3" />
+
+                      {/* AI reasoning */}
+                      <div className="text-sm text-muted-foreground">
+                        {candidate.reasoning.summary}
                       </div>
-                    </div>
 
-                    {/* Right Section: Reasons & Suggestions */}
-                    <div className="md:col-span-4">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">Re-engagement Factors</p>
-                          <div className="space-y-1">
-                            {displayedReasons.map((reason, idx) => (
-                              <p key={idx} className="text-xs text-muted-foreground leading-relaxed">
-                                • {reason}
-                              </p>
+                      {/* Score breakdown */}
+                      {candidate.reasoning.components && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {Object.entries(candidate.reasoning.components).map(
+                            ([key, comp]: [string, any]) => (
+                              <div key={key} className="text-xs p-2 rounded-md bg-muted/50">
+                                <div className="text-muted-foreground capitalize mb-0.5">
+                                  {key.replace(/_/g, ' ')}
+                                </div>
+                                <div className="font-semibold tabular-nums">
+                                  <span className={
+                                    comp.score >= 70 ? 'text-green-600' :
+                                    comp.score >= 40 ? 'text-amber-600' : 'text-gray-500'
+                                  }>
+                                    {comp.score}
+                                  </span>
+                                  <span className="text-muted-foreground font-normal">/100</span>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {/* Suggested sessions */}
+                      {candidate.suggestedSessions?.length > 0 && (
+                        <div className="p-3 rounded-md bg-green-50/50 border border-green-100">
+                          <div className="text-xs font-medium text-green-700 mb-2 flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Suggested Sessions
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {candidate.suggestedSessions.slice(0, 3).map((session: any) => (
+                              <Badge
+                                key={session.id}
+                                variant="outline"
+                                className="text-green-700 border-green-200 bg-white text-xs"
+                              >
+                                {session.title}
+                              </Badge>
                             ))}
                           </div>
                         </div>
+                      )}
 
-                        {candidate.suggestedSessions.length > 0 && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-2">Suggested Sessions</p>
-                            <div className="space-y-1">
-                              {candidate.suggestedSessions.map((session, idx) => (
-                                <div
-                                  key={idx}
-                                  className="text-xs bg-secondary px-2 py-1 rounded text-foreground font-medium"
-                                >
-                                  {session}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-xs"
+                          onClick={() => {
+                            setSelectedMemberId(candidate.member.id)
+                            setShowEmailConfirm(true)
+                          }}
+                        >
+                          <Mail className="h-3 w-3" /> Send Re-engagement Email
+                        </Button>
+                        <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-muted-foreground" disabled>
+                          <MessageSquare className="h-3 w-3" /> Push Notification
+                          <Badge variant="secondary" className="text-[9px] px-1 py-0 ml-1">Soon</Badge>
+                        </Button>
                       </div>
                     </div>
-
-                    {/* Action Button */}
-                    <div className="md:col-span-3 flex items-end justify-end md:pt-2">
-                      <Button
-                        onClick={() => handleSendReengagement(candidate.id, candidate.name)}
-                        variant={hasEngaged ? 'outline' : 'outline'}
-                        size="sm"
-                        disabled={hasEngaged || isLoading}
-                        className={cn(
-                          hasEngaged && 'bg-green-100 text-green-700 border-green-300 hover:bg-green-100 cursor-default'
-                        )}
-                      >
-                        {hasEngaged ? (
-                          <>
-                            <Send className="w-3 h-3 mr-1.5" />
-                            Offer Sent
-                          </>
-                        ) : (
-                          <>
-                            <Send className="w-3 h-3 mr-1.5" />
-                            Send Offer
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-
-        {/* Summary Stats at Bottom */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                High Priority
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-red-600">
-                {mockCandidates.filter((c) => c.daysInactive <= 30).length}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">inactive for ≤30 days</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Medium Priority
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-amber-600">
-                {mockCandidates.filter((c) => c.daysInactive > 30 && c.daysInactive <= 60).length}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">inactive for 31–60 days</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Low Priority
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-gray-600">
-                {mockCandidates.filter((c) => c.daysInactive > 60).length}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">inactive for {'>'}60 days</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Offers Sent Counter */}
-        {engagedMembers.size > 0 && (
-          <Card className="mt-8 bg-green-50 border-green-200">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-green-900">
-                    {engagedMembers.size} re-engagement offer{engagedMembers.size === 1 ? '' : 's'} sent
-                  </p>
-                  <p className="text-xs text-green-700 mt-1">
-                    Follow up with these members over the next 7 days
-                  </p>
+                  )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Search no results */}
+      {data && data.candidates.length > 0 && filteredCandidates.length === 0 && searchQuery && (
+        <div className="text-center py-8 text-sm text-muted-foreground">
+          No members match &ldquo;{searchQuery}&rdquo;
+        </div>
+      )}
+
+      {/* Email confirm modal */}
+      <ConfirmModal
+        open={showEmailConfirm}
+        title="Send Re-engagement Email"
+        description="Send a personalized re-engagement email to this member with session recommendations?"
+        confirmText="Send Email"
+        onClose={() => {
+          setShowEmailConfirm(false)
+          setSelectedMemberId(null)
+        }}
+        onConfirm={() => {
+          // TODO: implement email sending
+          setShowEmailConfirm(false)
+          setSelectedMemberId(null)
+        }}
+      />
     </div>
   )
 }
