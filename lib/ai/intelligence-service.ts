@@ -136,7 +136,7 @@ export async function getSlotFillerRecommendations(
     },
   });
 
-  const alreadyBookedUserIds = new Set(session.bookings.map((b: any) => b.userId));
+  const alreadyBookedUserIds: Set<string> = new Set(session.bookings.map((b: any) => b.userId));
 
   // Get all club members with preferences
   const clubMembers = await prisma.clubFollower.findMany({
@@ -179,12 +179,16 @@ export async function getSlotFillerRecommendations(
   await prisma.aIRecommendationLog.create({
     data: {
       clubId: session.clubId,
-      playSessionId: session.id,
+      userId: membersWithData[0]?.member?.id || 'system',
+      sessionId: session.id,
       type: 'SLOT_FILLER',
-      inputData: { sessionId: session.id, memberCount: membersWithData.length },
-      recommendations: recommendations.slice(0, input.limit).map(r => ({
-        userId: r.member.id, score: r.score, likelihood: r.estimatedLikelihood,
-      })),
+      reasoning: {
+        inputSessionId: session.id,
+        memberCount: membersWithData.length,
+        topRecommendations: recommendations.slice(0, input.limit).map(r => ({
+          userId: r.member.id, score: r.score, likelihood: r.estimatedLikelihood,
+        })),
+      },
     },
   });
 
@@ -255,10 +259,10 @@ export async function getWeeklyPlan(prisma: any, input: z.infer<typeof weeklyPla
   // Get user's existing bookings
   const existingBookings = await prisma.playSessionBooking.findMany({
     where: { userId, status: 'CONFIRMED', playSession: { clubId, date: { gte: now } } },
-    select: { playSessionId: true },
+    select: { sessionId: true },
   });
 
-  const existingBookingSessionIds = new Set(existingBookings.map((b: any) => b.playSessionId));
+  const existingBookingSessionIds: Set<string> = new Set(existingBookings.map((b: any) => b.sessionId));
 
   // Get booking history
   const history = await buildBookingHistory(prisma, userId);
@@ -281,10 +285,12 @@ export async function getWeeklyPlan(prisma: any, input: z.infer<typeof weeklyPla
       clubId,
       userId,
       type: 'WEEKLY_PLAN',
-      inputData: { userId, clubId, targetSessions: preference.targetSessionsPerWeek },
-      recommendations: plan.recommendedSessions.map(r => ({
-        sessionId: r.session.id, score: r.score,
-      })),
+      reasoning: {
+        targetSessions: preference.targetSessionsPerWeek,
+        recommendedSessions: plan.recommendedSessions.map(r => ({
+          sessionId: r.session.id, score: r.score,
+        })),
+      },
     },
   });
 
