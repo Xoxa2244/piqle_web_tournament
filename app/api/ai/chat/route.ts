@@ -96,34 +96,32 @@ export async function POST(req: Request) {
       return new Response('Forbidden: not a member of this club', { status: 403 });
     }
 
-    // 4. Get or create conversation + detect language
+    // 4. Get or create conversation + detect language per message
     step = 'conversation';
     let convId = conversationId;
     const lastUserText = getMessageText(messages[messages.length - 1]);
-    let conversationLanguage: SupportedLanguage = 'en';
+    // Always detect from the latest message so language can switch mid-conversation
+    const conversationLanguage: SupportedLanguage = detectLanguage(lastUserText);
 
     try {
       if (!convId) {
-        // New conversation — detect language, load cross-session memory
-        const detectedLang = detectLanguage(lastUserText);
+        // New conversation
         const newConv = await prisma.aIConversation.create({
           data: {
             clubId,
             userId: session.userId,
             title: lastUserText.slice(0, 100) || 'New conversation',
-            language: detectedLang,
+            language: conversationLanguage,
           },
         });
         convId = newConv.id;
-        conversationLanguage = detectedLang;
-        console.log(`[AI Chat] New conversation ${convId}, lang=${detectedLang}`);
+        console.log(`[AI Chat] New conversation ${convId}, lang=${conversationLanguage}`);
       } else {
-        // Existing conversation — load stored language
-        const conv = await prisma.aIConversation.findUnique({
+        // Existing conversation — update language to match latest message
+        await prisma.aIConversation.update({
           where: { id: convId },
-          select: { language: true },
-        });
-        conversationLanguage = (conv?.language as SupportedLanguage) || 'en';
+          data: { language: conversationLanguage },
+        }).catch(() => {}); // non-critical
         console.log(`[AI Chat] Existing conversation ${convId}, lang=${conversationLanguage}`);
       }
     } catch (convError) {

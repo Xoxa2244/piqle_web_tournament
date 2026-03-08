@@ -41,5 +41,5 @@ export function getLanguageLabel(lang: SupportedLanguage): string {
 export function getLanguageInstruction(lang: SupportedLanguage): string {
   if (lang === 'en') return '';
   const label = LANGUAGE_LABELS[lang];
-  return `\n\nIMPORTANT LANGUAGE RULE: The user communicates in ${label}. You MUST respond entirely in ${label}, including all follow-up suggestions inside <suggested> tags. Never switch to English unless the user explicitly asks.`;
+  return `\n\nIMPORTANT LANGUAGE RULE: The user's latest message is in ${label}. Respond entirely in ${label}, including all follow-up suggestions inside <suggested> tags. Always match the language of the user's most recent message.`;
 }
