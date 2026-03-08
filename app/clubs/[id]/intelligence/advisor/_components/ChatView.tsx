@@ -96,14 +96,22 @@ function InlineChart({ json }: { json: string }) {
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
+  // Complete block: extract questions and remove from text
   const match = text.match(/<suggested>\s*([\s\S]*?)\s*<\/suggested>/)
-  if (!match) return { cleanText: text, suggestions: [] }
-  const suggestions = match[1]
-    .split('\n')
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && s.length < 80)
-  const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd()
-  return { cleanText, suggestions }
+  if (match) {
+    const suggestions = match[1]
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && s.length < 80)
+    const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd()
+    return { cleanText, suggestions }
+  }
+  // Incomplete block (during streaming): hide partial <suggested> tag
+  const partialIdx = text.indexOf('<suggested>')
+  if (partialIdx !== -1) {
+    return { cleanText: text.slice(0, partialIdx).trimEnd(), suggestions: [] }
+  }
+  return { cleanText: text, suggestions: [] }
 }
 
 // ── Parse message into text + chart segments ──
