@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -63,8 +63,13 @@ export function FilePreviewView({
   previousStatus,
 }: FilePreviewViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
-    return new Set(sessions.filter(s => s.occupancyPercent < 80).map(s => s.id))
+    return new Set(sessions.map(s => s.id))
   })
+
+  // Reset selection when sessions change (e.g. sheet switch)
+  useEffect(() => {
+    setSelectedIds(new Set(sessions.map(s => s.id)))
+  }, [sessions])
 
   // Recompute when sessions change (e.g. sheet switch)
   const totalSlots = sessions.reduce((s, x) => s + x.capacity, 0)
@@ -90,9 +95,9 @@ export function FilePreviewView({
   const selectUnderfilled = () => setSelectedIds(new Set(underfilledSessions.map(s => s.id)))
   const deselectAll = () => setSelectedIds(new Set())
 
-  const handleImport = useCallback(() => {
+  const handleImport = () => {
     onImport(selectedSessions, fileName)
-  }, [onImport, selectedSessions, fileName])
+  }
 
   return (
     <div className="space-y-6">

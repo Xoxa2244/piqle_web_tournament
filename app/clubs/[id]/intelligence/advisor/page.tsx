@@ -136,8 +136,16 @@ export default function AIAdvisorPage() {
   }
 
   if (state === 'file_preview' || state === 'importing') {
-    // If no sessions yet (user clicked "Upload Data" but hasn't dropped file)
-    if (fileParser.sessions.length === 0 && !fileParser.parseError) {
+    // Still parsing, or no sessions yet → show onboarding/drop zone
+    if (fileParser.sessions.length === 0) {
+      if (fileParser.isLoading) {
+        return (
+          <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-lime-600" />
+            <p className="text-sm text-muted-foreground">Parsing your file...</p>
+          </div>
+        )
+      }
       return (
         <OnboardingView
           onFile={handleFile}
