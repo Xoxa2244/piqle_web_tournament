@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import {
-  ChevronLeft, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
+  Upload, FileSpreadsheet, AlertTriangle, CheckCircle2,
   X, Download, Sparkles, Calendar, Clock, Users, ArrowRight, Info
 } from 'lucide-react'
 
@@ -307,20 +306,56 @@ export default function ImportSchedulePage() {
   const selectUnderfilled = () => setSelectedIds(new Set(underfilledSessions.map(s => s.id)))
   const deselectAll = () => setSelectedIds(new Set())
 
-  const handleImport = () => {
+  const [importError, setImportError] = useState('')
+  const [importStats, setImportStats] = useState<{ embeddingsCreated: number; playersIndexed: number } | null>(null)
+
+  const handleImport = async () => {
     setState('importing')
-    // Simulate import — in real app this would call tRPC to create PlaySession records
-    setTimeout(() => {
+    setImportError('')
+
+    try {
+      const sessionsToImport = sessions
+        .filter(s => selectedIds.has(s.id))
+        .map(s => ({
+          date: s.date,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          court: s.court,
+          format: s.format,
+          skillLevel: s.skillLevel,
+          registered: s.registered,
+          capacity: s.capacity,
+          playerNames: s.playerNames,
+        }))
+
+      const res = await fetch('/api/ai/import-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clubId, sessions: sessionsToImport }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setImportError(data.error || 'Failed to import sessions')
+        setState('preview')
+        return
+      }
+
+      setImportStats({ embeddingsCreated: data.embeddingsCreated, playersIndexed: data.playersIndexed })
       setState('done')
       toast({
-        title: 'Schedule imported!',
-        description: `${selectedSessions.length} sessions imported. ${selectedSessions.filter(s => s.occupancyPercent < 80).length} underfilled sessions ready for AI recommendations.`,
+        title: 'Schedule imported & AI trained!',
+        description: `${data.sessionsProcessed} sessions processed. ${data.embeddingsCreated} AI embeddings created. ${data.playersIndexed} players indexed.`,
       })
-    }, 1500)
+    } catch (err) {
+      setImportError('Network error. Please try again.')
+      setState('preview')
+    }
   }
 
   const handleGoToAI = () => {
-    router.push(`/clubs/${clubId}/intelligence`)
+    router.push(`/clubs/${clubId}/intelligence/advisor`)
   }
 
   const handleReset = () => {
@@ -334,37 +369,21 @@ export default function ImportSchedulePage() {
   // ── Render ──
 
   return (
-    <div className="min-h-screen bg-background">
+    <div>
       {/* Header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4 mb-6">
-            <Link
-              href={`/clubs/${clubId}/intelligence`}
-              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="text-sm">Back to Intelligence</span>
-            </Link>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-500/10 rounded-lg">
+            <FileSpreadsheet className="w-6 h-6 text-blue-600" />
           </div>
-
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-500/10 rounded-lg">
-                  <FileSpreadsheet className="w-6 h-6 text-blue-600" />
-                </div>
-                <h1 className="text-3xl font-bold text-foreground">Import Schedule</h1>
-              </div>
-              <p className="text-muted-foreground">
-                Upload your CourtReserve or court schedule CSV to find empty slots for AI to fill
-              </p>
-            </div>
-          </div>
+          <h2 className="text-2xl font-bold text-foreground">Import Schedule</h2>
         </div>
+        <p className="text-muted-foreground">
+          Upload your CourtReserve or court schedule CSV to find empty slots for AI to fill
+        </p>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div>
 
         {/* ── IDLE: Upload Zone ── */}
         {state === 'idle' && (
@@ -449,6 +468,16 @@ export default function ImportSchedulePage() {
         {/* ── PREVIEW: Parsed Sessions ── */}
         {(state === 'preview' || state === 'importing') && (
           <div className="space-y-6">
+            {/* Import Error */}
+            {importError && (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="flex items-center gap-3 py-4">
+                  <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{importError}</p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Summary Bar */}
             <Card>
               <CardContent className="py-4">
@@ -643,16 +672,16 @@ export default function ImportSchedulePage() {
                 <div className="p-3 bg-green-100 rounded-full mb-4">
                   <CheckCircle2 className="w-8 h-8 text-green-600" />
                 </div>
-                <h2 className="text-xl font-semibold text-green-900 mb-2">Schedule Imported!</h2>
+                <h2 className="text-xl font-semibold text-green-900 mb-2">Schedule Imported & AI Trained!</h2>
                 <p className="text-sm text-green-700 text-center max-w-md mb-6">
-                  {selectedSessions.length} sessions imported successfully.
-                  {' '}{selectedSessions.filter(s => s.occupancyPercent < 80).length} underfilled sessions
-                  are ready for AI slot-filling recommendations.
+                  {selectedSessions.length} sessions processed.
+                  {importStats && ` ${importStats.embeddingsCreated} AI knowledge chunks created, ${importStats.playersIndexed} players indexed.`}
+                  {' '}Your AI Advisor is now ready to answer questions about your schedule.
                 </p>
                 <div className="flex gap-3">
                   <Button onClick={handleGoToAI} className="gap-2">
                     <Sparkles className="w-4 h-4" />
-                    Fill Empty Slots with AI
+                    Ask AI Advisor
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                   <Button variant="outline" onClick={handleReset}>
@@ -668,7 +697,7 @@ export default function ImportSchedulePage() {
                 <CardTitle className="text-sm">Import Summary</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <p className="text-2xl font-bold">{selectedSessions.length}</p>
                     <p className="text-xs text-muted-foreground">Sessions</p>
@@ -680,10 +709,16 @@ export default function ImportSchedulePage() {
                     <p className="text-xs text-muted-foreground">Empty Slots</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-primary">
-                      {selectedSessions.filter(s => s.occupancyPercent < 80).length}
+                    <p className="text-2xl font-bold text-blue-600">
+                      {importStats?.embeddingsCreated || 0}
                     </p>
-                    <p className="text-xs text-muted-foreground">Ready for AI</p>
+                    <p className="text-xs text-muted-foreground">AI Chunks</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-primary">
+                      {importStats?.playersIndexed || 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Players Indexed</p>
                   </div>
                 </div>
               </CardContent>

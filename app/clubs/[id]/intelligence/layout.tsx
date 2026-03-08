@@ -5,16 +5,18 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
-  ChevronLeft, Zap, MessageSquare
+  ChevronLeft, Zap, MessageSquare, FileSpreadsheet, CalendarPlus
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
+  { label: 'Import', href: '/import', icon: FileSpreadsheet },
   { label: 'AI Advisor', href: '/advisor', icon: MessageSquare },
   { label: 'Slot Filler', href: '/slot-filler', icon: TrendingUp },
   { label: 'Reactivation', href: '/reactivation', icon: UserMinus },
   { label: 'Revenue', href: '/revenue', icon: DollarSign },
+  { label: 'Events', href: '/events', icon: CalendarPlus },
 ]
 
 export default function IntelligenceLayout({

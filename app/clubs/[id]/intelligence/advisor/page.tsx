@@ -66,6 +66,7 @@ export default function AIAdvisorPage() {
     messages,
     sendMessage,
     status,
+    error,
     setMessages,
   } = useChat({
     transport,
@@ -263,6 +264,19 @@ export default function AIAdvisorPage() {
                   )}
                 </div>
               ))
+            )}
+
+            {/* Error display */}
+            {error && (
+              <div className="flex gap-3">
+                <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                  <Bot className="h-4 w-4 text-destructive" />
+                </div>
+                <div className="bg-destructive/10 rounded-xl px-4 py-2.5 max-w-[75%]">
+                  <p className="text-sm text-destructive font-medium">Error</p>
+                  <p className="text-sm text-destructive/80 mt-1">{error.message || 'Failed to get a response. Please try again.'}</p>
+                </div>
+              </div>
             )}
 
             {/* Loading indicator */}

@@ -64,24 +64,34 @@ export async function POST(req: Request) {
       return new Response('Forbidden: not a member of this club', { status: 403 });
     }
 
-    // 4. Get or create conversation
+    // 4. Get or create conversation (gracefully handle if table not ready)
     let convId = conversationId;
-    if (!convId) {
-      const newConv = await prisma.aIConversation.create({
-        data: {
-          clubId,
-          userId: session.userId,
-          title: messages[messages.length - 1]?.content?.slice(0, 100) || 'New conversation',
-        },
-      });
-      convId = newConv.id;
+    try {
+      if (!convId) {
+        const newConv = await prisma.aIConversation.create({
+          data: {
+            clubId,
+            userId: session.userId,
+            title: messages[messages.length - 1]?.content?.slice(0, 100) || 'New conversation',
+          },
+        });
+        convId = newConv.id;
+      }
+    } catch (convError) {
+      console.warn('[AI Chat] Failed to create conversation (continuing without persistence):', convError);
+      convId = null;
     }
 
-    // 5. RAG: retrieve relevant context
-    const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
-    const ragChunks = lastUserMessage
-      ? await retrieveContext(lastUserMessage.content, clubId, { limit: 6, threshold: 0.6 })
-      : [];
+    // 5. RAG: retrieve relevant context (gracefully handle failures)
+    let ragChunks: Awaited<ReturnType<typeof retrieveContext>> = [];
+    try {
+      const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
+      if (lastUserMessage) {
+        ragChunks = await retrieveContext(lastUserMessage.content, clubId, { limit: 6, threshold: 0.6 });
+      }
+    } catch (ragError) {
+      console.warn('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
+    }
 
     const ragContext = buildRAGContext(ragChunks);
 
@@ -103,7 +113,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         messages,
         maxOutputTokens: 1500,
         onFinish: async (event) => {
-          // Persist messages after stream completes
+          if (!convId) return; // skip persistence if no conversation
           try {
             const userMsg = messages[messages.length - 1];
             await prisma.aIMessage.createMany({
@@ -128,7 +138,6 @@ Use the data above to answer the user's question. If the data doesn't contain re
               ],
             });
 
-            // Update conversation title if first message
             const msgCount = await prisma.aIMessage.count({ where: { conversationId: convId } });
             if (msgCount <= 2) {
               await prisma.aIConversation.update({
@@ -157,6 +166,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         messages,
         maxOutputTokens: 1500,
         onFinish: async (event) => {
+          if (!convId) return;
           try {
             const userMsg = messages[messages.length - 1];
             await prisma.aIMessage.createMany({
@@ -184,13 +194,14 @@ Use the data above to answer the user's question. If the data doesn't contain re
     // 8. Return streaming response with conversation ID header
     const response = result.toTextStreamResponse();
 
-    // Add conversation ID to response headers so client can track it
-    const headers = new Headers(response.headers);
-    headers.set('X-Conversation-Id', convId);
+    const responseHeaders = new Headers(response.headers);
+    if (convId) {
+      responseHeaders.set('X-Conversation-Id', convId);
+    }
 
     return new Response(response.body, {
       status: response.status,
-      headers,
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error('[AI Chat] Unexpected error:', error);
