@@ -19,10 +19,10 @@ export function chunkClubInfo(club: {
   address?: string | null;
   city?: string | null;
   state?: string | null;
-  courts?: Array<{ name: string; surface: string | null; isIndoor: boolean }>;
+  courts?: Array<{ name: string; courtType: string | null; isIndoor: boolean }>;
 }): TextChunk[] {
   const courtInfo = club.courts?.length
-    ? `Courts: ${club.courts.map(c => `${c.name} (${c.surface || 'unknown surface'}, ${c.isIndoor ? 'indoor' : 'outdoor'})`).join('; ')}.`
+    ? `Courts: ${club.courts.map(c => `${c.name} (${c.courtType || 'unknown type'}, ${c.isIndoor ? 'indoor' : 'outdoor'})`).join('; ')}.`
     : '';
 
   const location = [club.address, club.city, club.state].filter(Boolean).join(', ');

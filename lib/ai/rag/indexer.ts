@@ -55,7 +55,7 @@ export async function indexClub(clubId: string): Promise<number> {
     state: club.state,
     courts: club.clubCourts.map(c => ({
       name: c.name,
-      surface: c.surface,
+      courtType: c.courtType,
       isIndoor: c.isIndoor,
     })),
   });
