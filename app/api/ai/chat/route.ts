@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { streamText, convertToModelMessages } from 'ai';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -9,7 +9,6 @@ import { parse as parseCookie } from 'cookie';
 
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
-  // Try getServerSession first (works with Next.js cookies)
   try {
     const nextAuthSession = await getServerSession(authOptions);
     if (nextAuthSession?.user?.id) {
@@ -19,7 +18,6 @@ async function getSessionFromRequest(req: Request) {
     console.warn('[AI Chat] getServerSession failed, falling back to cookie:', e);
   }
 
-  // Fallback: manual cookie parsing
   const cookieHeader = req.headers.get('cookie');
   if (!cookieHeader) return null;
 
@@ -39,11 +37,7 @@ async function getSessionFromRequest(req: Request) {
   });
 
   if (!dbSession || dbSession.expires < new Date()) return null;
-
-  return {
-    userId: dbSession.userId,
-    user: dbSession.user,
-  };
+  return { userId: dbSession.userId, user: dbSession.user };
 }
 
 // ── Verify club membership ──
@@ -53,6 +47,20 @@ async function verifyClubAccess(clubId: string, userId: string) {
     prisma.clubFollower.findFirst({ where: { clubId, userId } }),
   ]);
   return !!(admin || follower);
+}
+
+// ── Extract text from a UIMessage (v6 uses parts[], not content) ──
+function getMessageText(msg: any): string {
+  // v6 UIMessage format: { parts: [{ type: 'text', text: '...' }] }
+  if (msg.parts && Array.isArray(msg.parts)) {
+    return msg.parts
+      .filter((p: any) => p.type === 'text')
+      .map((p: any) => p.text)
+      .join('');
+  }
+  // Fallback for legacy format or plain content string
+  if (typeof msg.content === 'string') return msg.content;
+  return '';
 }
 
 export async function POST(req: Request) {
@@ -79,13 +87,15 @@ export async function POST(req: Request) {
 
     // 4. Get or create conversation (gracefully handle if table not ready)
     let convId = conversationId;
+    const lastUserText = getMessageText(messages[messages.length - 1]);
+
     try {
       if (!convId) {
         const newConv = await prisma.aIConversation.create({
           data: {
             clubId,
             userId: session.userId,
-            title: messages[messages.length - 1]?.content?.slice(0, 100) || 'New conversation',
+            title: lastUserText.slice(0, 100) || 'New conversation',
           },
         });
         convId = newConv.id;
@@ -99,8 +109,9 @@ export async function POST(req: Request) {
     let ragChunks: Awaited<ReturnType<typeof retrieveContext>> = [];
     try {
       const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
-      if (lastUserMessage) {
-        ragChunks = await retrieveContext(lastUserMessage.content, clubId, { limit: 6, threshold: 0.6 });
+      const queryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
+      if (queryText) {
+        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.6 });
       }
     } catch (ragError) {
       console.warn('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
@@ -118,31 +129,24 @@ ${ragContext}
 Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
     // 7. Verify API key is available
-    const hasOpenAI = !!process.env.OPENAI_API_KEY;
-    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-    console.log('[AI Chat] API keys check:', {
-      hasOpenAI,
-      hasAnthropic,
-      openAIKeyPrefix: process.env.OPENAI_API_KEY?.substring(0, 8) || 'NOT_SET',
-      nodeEnv: process.env.NODE_ENV,
-    });
-
-    if (!hasOpenAI && !hasAnthropic) {
-      console.error('[AI Chat] No API keys configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY in Vercel env vars.');
+    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      console.error('[AI Chat] No API keys configured');
       return Response.json({
         error: 'AI service not configured',
-        hint: 'OPENAI_API_KEY and ANTHROPIC_API_KEY are not set. Add them in Vercel Settings → Environment Variables.',
+        hint: 'Set OPENAI_API_KEY or ANTHROPIC_API_KEY in Vercel env vars.',
       }, { status: 503 });
     }
 
-    // 8. Stream response — persistence callback
+    // 8. Convert UIMessages to model messages (required in AI SDK v6)
+    const modelMessages = await convertToModelMessages(messages);
+
+    // 9. Persistence callback
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
       if (!convId) return;
       try {
-        const userMsg = messages[messages.length - 1];
         await prisma.aIMessage.createMany({
           data: [
-            { conversationId: convId, role: 'user', content: userMsg.content, metadata: {} },
+            { conversationId: convId, role: 'user', content: lastUserText, metadata: {} },
             {
               conversationId: convId, role: 'assistant', content: event.text,
               metadata: {
@@ -160,7 +164,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         if (msgCount <= 2) {
           await prisma.aIConversation.update({
             where: { id: convId },
-            data: { title: userMsg.content.slice(0, 100), updatedAt: new Date() },
+            data: { title: lastUserText.slice(0, 100), updatedAt: new Date() },
           });
         } else {
           await prisma.aIConversation.update({
@@ -173,7 +177,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
       }
     };
 
-    // 9. Stream with primary model, fallback on error
+    // 10. Stream with primary model, fallback on error
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o-mini';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
@@ -182,7 +186,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
       result = streamText({
         model: getModel('standard'),
         system: systemPrompt,
-        messages,
+        messages: modelMessages,
         maxOutputTokens: 1500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
@@ -191,13 +195,13 @@ Use the data above to answer the user's question. If the data doesn't contain re
       result = streamText({
         model: getFallbackModel('standard'),
         system: systemPrompt,
-        messages,
+        messages: modelMessages,
         maxOutputTokens: 1500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
     }
 
-    // 10. Return streaming response directly (avoid wrapping in new Response)
+    // 11. Return streaming response
     const responseHeaders: Record<string, string> = {};
     if (convId) {
       responseHeaders['X-Conversation-Id'] = convId;
