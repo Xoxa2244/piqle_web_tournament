@@ -73,7 +73,8 @@ export default function AIAdvisorPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setImportError(data.error || 'Failed to import sessions')
+        const details = data.details ? `: ${data.details}` : ''
+        setImportError((data.error || 'Failed to import sessions') + details)
         setIsImporting(false)
         return
       }

@@ -138,11 +138,19 @@ export async function POST(req: Request) {
     }
 
     // 4. Delete old imported session embeddings for this club
-    await supabaseAdmin
+    const { error: deleteError } = await supabaseAdmin
       .from('document_embeddings')
       .delete()
       .eq('club_id', clubId)
       .eq('source_table', 'csv_import');
+
+    if (deleteError) {
+      console.error('[Import] Failed to delete old embeddings:', JSON.stringify(deleteError));
+      return Response.json({
+        error: 'Failed to prepare import (delete old data)',
+        details: deleteError.message || JSON.stringify(deleteError),
+      }, { status: 500 });
+    }
 
     // 5. Build text chunks for embedding
     const chunks: { text: string; contentType: string; metadata: Record<string, unknown>; sourceId: string }[] = [];
@@ -215,7 +223,16 @@ export async function POST(req: Request) {
 
     // 6. Generate embeddings in batch
     const texts = chunks.map(c => c.text);
+    console.log(`[Import] Generating embeddings for ${texts.length} chunks...`);
     const embeddings = await generateEmbeddings(texts);
+    console.log(`[Import] Generated ${embeddings.length} embeddings, dim=${embeddings[0]?.length}`);
+
+    if (embeddings.length !== texts.length) {
+      return Response.json({
+        error: 'Embedding count mismatch',
+        details: `Expected ${texts.length} embeddings, got ${embeddings.length}`,
+      }, { status: 500 });
+    }
 
     // 7. Insert into document_embeddings via Supabase
     const rows = chunks.map((chunk, i) => ({
@@ -237,10 +254,10 @@ export async function POST(req: Request) {
         .insert(batch);
 
       if (error) {
-        console.error('[Import] Failed to insert embeddings batch:', error);
+        console.error('[Import] Failed to insert embeddings batch:', JSON.stringify(error));
         return Response.json({
           error: 'Failed to save embeddings',
-          details: error.message,
+          details: error.message || error.code || JSON.stringify(error),
         }, { status: 500 });
       }
     }
