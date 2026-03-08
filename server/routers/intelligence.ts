@@ -37,6 +37,7 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({
       sessionId: z.string().uuid(),
       limit: z.number().int().min(1).max(20).default(5),
+      enhance: z.boolean().default(false),
     }))
     .query(async ({ ctx, input }) => {
       // Get session to find clubId
@@ -48,19 +49,52 @@ export const intelligenceRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
       }
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
-      return getSlotFillerRecommendations(ctx.prisma, input)
+      const result = await getSlotFillerRecommendations(ctx.prisma, input)
+
+      // Optional: enhance with LLM
+      if (input.enhance && result.recommendations.length > 0) {
+        try {
+          const { enhanceSlotFillerWithLLM } = await import('@/lib/ai/llm/enhancer')
+          const enhancements = await enhanceSlotFillerWithLLM(
+            result.recommendations,
+            result.session as any
+          )
+          return {
+            ...result,
+            aiEnhancements: enhancements,
+          }
+        } catch (err) {
+          console.error('[Intelligence] Slot filler LLM enhancement failed:', err)
+        }
+      }
+
+      return { ...result, aiEnhancements: [] }
     }),
 
   // ── Weekly Plan: Personalized session plan for a player ──
   getWeeklyPlan: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
+      enhance: z.boolean().default(false),
     }))
     .query(async ({ ctx, input }) => {
-      return getWeeklyPlan(ctx.prisma, {
+      const result = await getWeeklyPlan(ctx.prisma, {
         userId: ctx.session.user.id,
         clubId: input.clubId,
       })
+
+      // Optional: enhance with LLM
+      if (input.enhance && result.plan && result.plan.recommendedSessions.length > 0) {
+        try {
+          const { enhanceWeeklyPlanWithLLM } = await import('@/lib/ai/llm/enhancer')
+          const enhancement = await enhanceWeeklyPlanWithLLM(result.plan)
+          return { ...result, aiEnhancement: enhancement }
+        } catch (err) {
+          console.error('[Intelligence] Weekly plan LLM enhancement failed:', err)
+        }
+      }
+
+      return { ...result, aiEnhancement: null }
     }),
 
   // ── Reactivation: Identify inactive members ──
@@ -69,10 +103,24 @@ export const intelligenceRouter = createTRPCRouter({
       clubId: z.string().uuid(),
       inactivityDays: z.number().int().min(7).default(21),
       limit: z.number().int().min(1).max(20).default(10),
+      enhance: z.boolean().default(false),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      return getReactivationCandidates(ctx.prisma, input)
+      const result = await getReactivationCandidates(ctx.prisma, input)
+
+      // Optional: enhance with LLM
+      if (input.enhance && result.candidates.length > 0) {
+        try {
+          const { enhanceReactivationWithLLM } = await import('@/lib/ai/llm/enhancer')
+          const enhancements = await enhanceReactivationWithLLM(result.candidates)
+          return { ...result, aiEnhancements: enhancements }
+        } catch (err) {
+          console.error('[Intelligence] Reactivation LLM enhancement failed:', err)
+        }
+      }
+
+      return { ...result, aiEnhancements: [] }
     }),
 
   // ── Send Invites: Invite recommended users to a session ──
@@ -282,5 +330,96 @@ export const intelligenceRouter = createTRPCRouter({
         where: { clubId: input.clubId },
         orderBy: { name: 'asc' },
       })
+    }),
+
+  // ── AI Advisor: Conversation management ──
+  listConversations: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(50).default(20),
+    }))
+    .query(async ({ ctx, input }) => {
+      return ctx.prisma.aIConversation.findMany({
+        where: {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: input.limit,
+        include: {
+          _count: { select: { messages: true } },
+        },
+      })
+    }),
+
+  getConversation: protectedProcedure
+    .input(z.object({
+      conversationId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const conversation = await ctx.prisma.aIConversation.findUnique({
+        where: { id: input.conversationId },
+        include: {
+          messages: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      })
+      if (!conversation) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+      }
+      if (conversation.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
+      }
+      return conversation
+    }),
+
+  createConversation: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      title: z.string().max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.prisma.aIConversation.create({
+        data: {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          title: input.title || 'New conversation',
+        },
+      })
+    }),
+
+  deleteConversation: protectedProcedure
+    .input(z.object({
+      conversationId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const conversation = await ctx.prisma.aIConversation.findUnique({
+        where: { id: input.conversationId },
+      })
+      if (!conversation) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+      }
+      if (conversation.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
+      }
+      await ctx.prisma.aIConversation.delete({
+        where: { id: input.conversationId },
+      })
+      return { success: true }
+    }),
+
+  // ── RAG: Trigger embedding index for a club ──
+  reindexClub: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { isAdmin } = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can reindex' })
+      }
+      const { indexAll } = await import('@/lib/ai/rag/indexer')
+      return indexAll(input.clubId)
     }),
 })

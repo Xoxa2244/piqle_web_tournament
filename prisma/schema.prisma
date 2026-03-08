@@ -72,6 +72,9 @@ model User {
   aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
 
+  // AI Advisor conversations
+  aiConversations          AIConversation[]           @relation("UserAIConversations")
+
   @@map("users")
 }
 
@@ -228,6 +231,10 @@ model Club {
   playSessions            PlaySession[]
   userPlayPreferences     UserPlayPreference[]
   aiRecommendationLogs    AIRecommendationLog[]
+
+  // AI features
+  documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
+  aiConversations         AIConversation[]           @relation("ClubAIConversations")
 
   @@map("clubs")
 }
@@ -1403,6 +1410,11 @@ enum AIRecommendationType {
   REACTIVATION
   WEEKLY_PLAN
   DYNAMIC_PRICING
+  REBOOKING
+  AI_ADVISOR
+  CHURN_PREDICTION
+  GROUP_CHEMISTRY
+  AUTOPILOT
 }
 
 // ── Intelligence Module: Models ──
@@ -1514,4 +1526,59 @@ model AIRecommendationLog {
   createdAt        DateTime                @default(now())
 
   @@map("ai_recommendation_logs")
+}
+
+// ── AI Embeddings (RAG) ──
+model DocumentEmbedding {
+  id          String   @id @default(uuid())
+  clubId      String   @map("club_id")
+  content     String
+  contentType String   @map("content_type")  // 'club_info', 'session', 'member_pattern', 'booking_trend', 'faq'
+  metadata    Json     @default("{}")
+  embedding   Unsupported("vector(1536)")
+  sourceId    String?  @map("source_id")
+  sourceTable String?  @map("source_table")
+  chunkIndex  Int      @default(0) @map("chunk_index")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  club Club @relation("ClubEmbeddings", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([contentType])
+  @@index([sourceId, sourceTable])
+  @@map("document_embeddings")
+}
+
+// ── AI Conversations ──
+model AIConversation {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  club     Club         @relation("ClubAIConversations", fields: [clubId], references: [id], onDelete: Cascade)
+  user     User         @relation("UserAIConversations", fields: [userId], references: [id], onDelete: Cascade)
+  messages AIMessage[]  @relation("ConversationMessages")
+
+  @@index([clubId, userId])
+  @@index([updatedAt(sort: Desc)])
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user', 'assistant', 'system'
+  content        String
+  metadata       Json?    @default("{}")  // token counts, model used, latency_ms
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AIConversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("ai_messages")
 }
