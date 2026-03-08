@@ -177,6 +177,10 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   // Track conversation ID from API response without triggering transport re-creation mid-stream
   const convIdRef = useRef<string | null>(null)
   const pendingConvIdRef = useRef<string | null>(null)
+  // Skip DB load right after streaming (onFinish might not have persisted yet)
+  const justStreamedRef = useRef(false)
+  // Track if user explicitly switched conversation (vs got ID from streaming)
+  const loadFromDbRef = useRef(false)
   convIdRef.current = activeConversationId
 
   const conversationsQuery = trpc.intelligence.listConversations.useQuery(
@@ -234,6 +238,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   // Apply pending conversation ID after streaming ends
   useEffect(() => {
     if (!isBusy && pendingConvIdRef.current) {
+      justStreamedRef.current = true
       setActiveConversationId(pendingConvIdRef.current)
       pendingConvIdRef.current = null
       conversationsQuery.refetch()
@@ -242,12 +247,13 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
 
   const conversationQuery = trpc.intelligence.getConversation.useQuery(
     { conversationId: activeConversationId! },
-    { enabled: !!activeConversationId }
+    { enabled: !!activeConversationId && loadFromDbRef.current }
   )
 
+  // Load messages from DB only when user explicitly switches conversation (sidebar click)
   useEffect(() => {
-    // Don't overwrite messages while streaming — only load from DB when idle
-    if (conversationQuery.data?.messages && !isBusy) {
+    if (conversationQuery.data?.messages && !isBusy && loadFromDbRef.current) {
+      loadFromDbRef.current = false
       setMessages(
         conversationQuery.data.messages
           .filter((m: { role: string }) => m.role !== 'system')
@@ -275,6 +281,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   }
 
   const handleSelectConversation = (convId: string) => {
+    loadFromDbRef.current = true
     setActiveConversationId(convId)
   }
 
