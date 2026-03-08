@@ -9,6 +9,9 @@ import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
 
+// Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
+export const maxDuration = 60;
+
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
   try {
@@ -68,14 +71,17 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }>; c
 const MAX_HISTORY_MESSAGES = 100;
 
 export async function POST(req: Request) {
+  let step = 'init';
   try {
     // 1. Authenticate
+    step = 'auth';
     const session = await getSessionFromRequest(req);
     if (!session) {
       return new Response('Unauthorized', { status: 401 });
     }
 
     // 2. Parse request
+    step = 'parse';
     const body = await req.json();
     const { messages, clubId, conversationId } = body;
 
@@ -84,12 +90,14 @@ export async function POST(req: Request) {
     }
 
     // 3. Verify club access
+    step = 'access';
     const hasAccess = await verifyClubAccess(clubId, session.userId);
     if (!hasAccess) {
       return new Response('Forbidden: not a member of this club', { status: 403 });
     }
 
     // 4. Get or create conversation + detect language
+    step = 'conversation';
     let convId = conversationId;
     const lastUserText = getMessageText(messages[messages.length - 1]);
     let conversationLanguage: SupportedLanguage = 'en';
@@ -108,6 +116,7 @@ export async function POST(req: Request) {
         });
         convId = newConv.id;
         conversationLanguage = detectedLang;
+        console.log(`[AI Chat] New conversation ${convId}, lang=${detectedLang}`);
       } else {
         // Existing conversation — load stored language
         const conv = await prisma.aIConversation.findUnique({
@@ -115,13 +124,15 @@ export async function POST(req: Request) {
           select: { language: true },
         });
         conversationLanguage = (conv?.language as SupportedLanguage) || 'en';
+        console.log(`[AI Chat] Existing conversation ${convId}, lang=${conversationLanguage}`);
       }
     } catch (convError) {
-      console.warn('[AI Chat] Failed to create/load conversation (continuing without persistence):', convError);
+      console.warn('[AI Chat] Failed to create/load conversation (continuing without persistence):', convError instanceof Error ? convError.message : convError);
       convId = null;
     }
 
     // 4.5 Load prior conversation messages for multi-turn context
+    step = 'history';
     let fullMessages = messages;
     if (convId && conversationId) {
       try {
@@ -151,11 +162,12 @@ export async function POST(req: Request) {
           console.log(`[AI Chat] Loaded ${priorMessages.length} prior messages (capped to ${capped.length}), total context: ${fullMessages.length} messages`);
         }
       } catch (err) {
-        console.warn('[AI Chat] Failed to load conversation history, using client messages only:', err);
+        console.warn('[AI Chat] Failed to load conversation history, using client messages only:', err instanceof Error ? err.message : err);
       }
     }
 
     // 4.6 Load cross-session summaries for new conversations
+    step = 'cross-session';
     let crossSessionContext = '';
     if (!conversationId) {
       try {
@@ -178,12 +190,14 @@ export async function POST(req: Request) {
             '\n--- End of Previous Conversations ---\n' +
             'Use these summaries for context if the user references past discussions. Do not proactively mention them.';
         }
+        console.log(`[AI Chat] Cross-session: ${recentConvs.length} prior summaries loaded`);
       } catch (err) {
-        console.warn('[AI Chat] Failed to load cross-session context:', err);
+        console.warn('[AI Chat] Failed to load cross-session context:', err instanceof Error ? err.message : err);
       }
     }
 
     // 5. RAG: retrieve relevant context (gracefully handle failures)
+    step = 'rag';
     let ragChunks: Awaited<ReturnType<typeof retrieveContext>> = [];
     let ragStatus = 'skipped';
     let ragQueryText = '';
@@ -194,20 +208,27 @@ export async function POST(req: Request) {
       if (ragQueryText) {
         ragChunks = await retrieveContext(ragQueryText, clubId, { limit: 10, threshold: 0.3 });
         ragStatus = ragChunks.length > 0 ? 'ok' : 'empty';
-        console.log(`[AI Chat] RAG retrieved ${ragChunks.length} chunks, similarities: [${ragChunks.map(c => c.similarity.toFixed(3)).join(', ')}]`);
+        console.log(`[AI Chat] RAG retrieved ${ragChunks.length} chunks`);
       } else {
         ragStatus = 'no_query_text';
         console.warn(`[AI Chat] RAG skipped: no query text extracted from message`);
       }
     } catch (ragError) {
       ragStatus = 'error';
-      console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
+      console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError instanceof Error ? ragError.message : ragError);
     }
 
-    const ragContext = buildRAGContext(ragChunks);
+    // 6. Build system prompt with RAG context + language + cross-session memory
+    step = 'prompt';
+    let ragContext: string;
+    try {
+      ragContext = buildRAGContext(ragChunks || []);
+    } catch (ragBuildError) {
+      console.error('[AI Chat] buildRAGContext failed:', ragBuildError instanceof Error ? ragBuildError.message : ragBuildError);
+      ragContext = 'No relevant data found in the knowledge base.';
+    }
     console.log(`[AI Chat] RAG status=${ragStatus}, chunks=${ragChunks.length}, contextLen=${ragContext.length}, lang=${conversationLanguage}`);
 
-    // 6. Build system prompt with RAG context + language + cross-session memory
     const languageInstruction = getLanguageInstruction(conversationLanguage);
 
     const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}${languageInstruction}
@@ -220,6 +241,7 @@ ${crossSessionContext}
 Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
     // 7. Verify API key is available
+    step = 'apikey';
     if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
       console.error('[AI Chat] No API keys configured');
       return Response.json({
@@ -229,11 +251,13 @@ Use the data above to answer the user's question. If the data doesn't contain re
     }
 
     // 8. Convert UIMessages to model messages (required in AI SDK v6)
+    step = 'convert';
     let modelMessages;
     try {
       modelMessages = await convertToModelMessages(fullMessages);
+      console.log(`[AI Chat] Converted ${fullMessages.length} UIMessages to ${modelMessages.length} model messages`);
     } catch (convertError) {
-      console.error('[AI Chat] convertToModelMessages failed:', convertError, 'fullMessages sample:', JSON.stringify(fullMessages.slice(0, 2)).slice(0, 500));
+      console.error('[AI Chat] convertToModelMessages failed:', convertError instanceof Error ? convertError.message : convertError, 'fullMessages sample:', JSON.stringify(fullMessages.slice(0, 2)).slice(0, 500));
       return Response.json({ error: 'Failed to process messages' }, { status: 400 });
     }
 
@@ -278,11 +302,12 @@ Use the data above to answer the user's question. If the data doesn't contain re
           );
         }
       } catch (err) {
-        console.error('[AI Chat] Failed to persist messages:', err);
+        console.error('[AI Chat] Failed to persist messages:', err instanceof Error ? err.message : err);
       }
     };
 
     // 10. Stream with primary model, fallback on error
+    step = 'stream';
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
@@ -295,8 +320,9 @@ Use the data above to answer the user's question. If the data doesn't contain re
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
+      console.log(`[AI Chat] Stream started with model=${primaryModel}`);
     } catch (error) {
-      console.warn('[AI Chat] Primary model failed, trying fallback:', error);
+      console.warn('[AI Chat] Primary model failed, trying fallback:', error instanceof Error ? error.message : error);
       result = streamText({
         model: getFallbackModel('standard'),
         system: systemPrompt,
@@ -304,9 +330,11 @@ Use the data above to answer the user's question. If the data doesn't contain re
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
+      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}`);
     }
 
     // 11. Return streaming response
+    step = 'response';
     const responseHeaders: Record<string, string> = {
       'X-RAG-Status': ragStatus,
       'X-RAG-Chunks': String(ragChunks.length),
@@ -323,9 +351,10 @@ Use the data above to answer the user's question. If the data doesn't contain re
     });
   } catch (error) {
     const errMsg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
-    console.error('[AI Chat] Unexpected error:', errMsg);
+    console.error(`[AI Chat] FATAL at step="${step}":`, errMsg);
     return Response.json({
       error: 'Internal server error',
+      step,
       detail: process.env.NODE_ENV === 'development' ? errMsg : undefined,
     }, { status: 500 });
   }
