@@ -1,10 +1,21 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateEmbeddings } from '@/lib/ai/rag/embeddings';
 import { parse as parseCookie } from 'cookie';
 
-// ── Auth helper ──
+// ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
+  try {
+    const nextAuthSession = await getServerSession(authOptions);
+    if (nextAuthSession?.user?.id) {
+      return { userId: nextAuthSession.user.id, user: nextAuthSession.user };
+    }
+  } catch (e) {
+    console.warn('[Import] getServerSession failed, falling back to cookie:', e);
+  }
+
   const cookieHeader = req.headers.get('cookie');
   if (!cookieHeader) return null;
 

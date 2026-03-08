@@ -1,12 +1,25 @@
 import { streamText } from 'ai';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getModel, getFallbackModel } from '@/lib/ai/llm/provider';
 import { ADVISOR_SYSTEM_PROMPT } from '@/lib/ai/llm/prompts';
 import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
 import { parse as parseCookie } from 'cookie';
 
-// ── Auth helper (mirrors server/trpc.ts pattern) ──
+// ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
+  // Try getServerSession first (works with Next.js cookies)
+  try {
+    const nextAuthSession = await getServerSession(authOptions);
+    if (nextAuthSession?.user?.id) {
+      return { userId: nextAuthSession.user.id, user: nextAuthSession.user };
+    }
+  } catch (e) {
+    console.warn('[AI Chat] getServerSession failed, falling back to cookie:', e);
+  }
+
+  // Fallback: manual cookie parsing
   const cookieHeader = req.headers.get('cookie');
   if (!cookieHeader) return null;
 
