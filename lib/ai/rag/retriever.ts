@@ -29,40 +29,26 @@ export async function retrieveContext(
   console.log(`[RAG] Embedding generated, dim=${queryEmbedding.length}, clubId=${clubId}, threshold=${threshold}, limit=${limit}`);
 
   try {
-    // Direct SQL similarity search — bypasses PostgREST cache issues
+    // Inline all parameters to bypass PgBouncer prepared_statements=false issues
+    // All values are internally generated (embedding from OpenAI, clubId validated as UUID)
     let rows: { id: string; content: string; content_type: string; metadata: any; similarity: number }[];
 
-    if (contentTypes && contentTypes.length > 0) {
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT id::text, content, content_type, metadata,
-                (1 - (embedding <=> $1::vector))::float as similarity
+    const contentTypeFilter = contentTypes && contentTypes.length > 0
+      ? `AND content_type IN (${contentTypes.map(t => `'${t}'`).join(',')})`
+      : '';
+
+    const sql = `SELECT id::text, content, content_type, metadata,
+                (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
          FROM document_embeddings
-         WHERE club_id = $2::uuid
-           AND content_type = ANY($3::text[])
-           AND (1 - (embedding <=> $1::vector)) > $4
-         ORDER BY embedding <=> $1::vector
-         LIMIT $5`,
-        embeddingStr,
-        clubId,
-        contentTypes,
-        threshold,
-        limit,
-      );
-    } else {
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT id::text, content, content_type, metadata,
-                (1 - (embedding <=> $1::vector))::float as similarity
-         FROM document_embeddings
-         WHERE club_id = $2::uuid
-           AND (1 - (embedding <=> $1::vector)) > $3
-         ORDER BY embedding <=> $1::vector
-         LIMIT $4`,
-        embeddingStr,
-        clubId,
-        threshold,
-        limit,
-      );
-    }
+         WHERE club_id = '${clubId}'::uuid
+           ${contentTypeFilter}
+           AND (1 - (embedding <=> '${embeddingStr}'::vector)) > ${threshold}
+         ORDER BY embedding <=> '${embeddingStr}'::vector
+         LIMIT ${limit}`;
+
+    console.log(`[RAG] Executing similarity search (inline params), clubId=${clubId}`);
+    rows = await prisma.$queryRawUnsafe(sql);
+    console.log(`[RAG] Similarity search returned ${rows.length} rows`);
 
     return rows.map(r => ({
       id: r.id,
@@ -73,18 +59,16 @@ export async function retrieveContext(
     }));
   } catch (err) {
     console.error('[RAG] Similarity search failed:', err instanceof Error ? err.message : err);
-    // Fallback: try simple text search without vector similarity
+    // Fallback: fetch by recency without vector similarity
     try {
       console.log('[RAG] Attempting fallback: direct content fetch without similarity');
-      const fallbackRows: { id: string; content: string; content_type: string; metadata: any }[] = await prisma.$queryRawUnsafe(
-        `SELECT id::text, content, content_type, metadata
+      const fallbackSql = `SELECT id::text, content, content_type, metadata
          FROM document_embeddings
-         WHERE club_id = $1::uuid
+         WHERE club_id = '${clubId}'::uuid
          ORDER BY created_at DESC
-         LIMIT $2`,
-        clubId,
-        limit,
-      );
+         LIMIT ${limit}`;
+      const fallbackRows: { id: string; content: string; content_type: string; metadata: any }[] =
+        await prisma.$queryRawUnsafe(fallbackSql);
       console.log(`[RAG] Fallback returned ${fallbackRows.length} rows`);
       return fallbackRows.map(r => ({
         id: r.id,
