@@ -196,8 +196,16 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   const transport = useMemo(() => {
     return new TextStreamChatTransport({
       api: '/api/ai/chat',
-      body: { clubId, conversationId: activeConversationId },
+      body: { clubId },
       fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
+        // Inject current conversationId from ref (avoids transport re-creation on ID change)
+        if (init?.body) {
+          try {
+            const bodyObj = JSON.parse(init.body as string)
+            bodyObj.conversationId = convIdRef.current
+            init = { ...init, body: JSON.stringify(bodyObj) }
+          } catch { /* keep original body */ }
+        }
         const response = await globalThis.fetch(url, init)
         const newConvId = response.headers.get('X-Conversation-Id')
         if (newConvId && !convIdRef.current) {
@@ -211,7 +219,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
         return response
       },
     })
-  }, [clubId, activeConversationId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clubId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     messages,
