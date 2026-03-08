@@ -1,398 +1,186 @@
 'use client'
 
+import { useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useChat } from '@ai-sdk/react'
-import { TextStreamChatTransport } from 'ai'
-import { trpc } from '@/lib/trpc'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Send, Plus, Trash2, Loader2,
-  Sparkles, MessageSquare, FileText, Database,
-  CheckCircle2, ChevronRight
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-
-// ── Mini Bar Chart (inline in AI responses) ──
-function MiniBarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const max = Math.max(...data.map(d => d.value))
-  return (
-    <div className="flex items-end gap-2 h-32 mt-4 mb-2 px-2">
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-          <span className="text-xs font-bold" style={{ color: d.color }}>{d.value}%</span>
-          <div
-            className="w-full rounded-t-md transition-all duration-500"
-            style={{
-              height: `${(d.value / max) * 80}px`,
-              backgroundColor: d.color,
-              minHeight: '4px',
-            }}
-          />
-          <span className="text-xs text-muted-foreground font-medium">{d.label}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── Parse bold text (**text**) ──
-function renderBoldText(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/).map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>
-    }
-    return <span key={i}>{part}</span>
-  })
-}
-
-// ── Suggested Questions ──
-const suggestedQuestions = [
-  { icon: '📊', text: 'What is my weakest day of the week?' },
-  { icon: '🚪', text: 'What does my churn look like?' },
-  { icon: '🏆', text: 'Which sessions are underfilled?' },
-  { icon: '⏰', text: 'When are my peak and dead hours?' },
-  { icon: '💰', text: 'How can I improve revenue?' },
-  { icon: '👥', text: 'Who are my most active members?' },
-]
-
-// ── Get text content from message parts (AI SDK v6) ──
-function getMessageText(message: { parts?: Array<{ type: string; text?: string }> }): string {
-  return message.parts
-    ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('') || ''
-}
+import { useToast } from '@/components/ui/use-toast'
+import { Loader2 } from 'lucide-react'
+import { useAdvisorState } from './_hooks/useAdvisorState'
+import { useFileParser } from './_hooks/useFileParser'
+import { OnboardingView } from './_components/OnboardingView'
+import { ChatView } from './_components/ChatView'
+import { FilePreviewView } from './_components/FilePreviewView'
+import { ImportDoneView } from './_components/ImportDoneView'
+import type { ParsedSession } from './_hooks/useFileParser'
 
 export default function AIAdvisorPage() {
   const params = useParams()
   const clubId = params.id as string
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
 
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
-  const [inputValue, setInputValue] = useState('')
+  const { state, dataStatus, isLoadingStatus, setState, refetchStatus } = useAdvisorState(clubId)
+  const fileParser = useFileParser()
 
-  // Track conversation ID for the fetch wrapper
-  const convIdRef = useRef<string | null>(null)
-  convIdRef.current = activeConversationId
+  // Import state
+  const [importError, setImportError] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [importStats, setImportStats] = useState<{
+    sessionsImported: number
+    embeddingsCreated: number
+    playersIndexed: number
+  } | null>(null)
 
-  // Fetch conversations
-  const conversationsQuery = trpc.intelligence.listConversations.useQuery(
-    { clubId, limit: 20 },
-    { enabled: !!clubId }
-  )
+  // Handle file drop/select → go to preview
+  const handleFile = (file: File) => {
+    fileParser.processFile(file)
+    setState('file_preview')
+  }
 
-  // Delete conversation
-  const deleteConversation = trpc.intelligence.deleteConversation.useMutation({
-    onSuccess: () => {
-      conversationsQuery.refetch()
-      if (activeConversationId) {
-        setActiveConversationId(null)
+  // Handle skip onboarding → go to chat without data
+  const handleSkipOnboarding = () => {
+    setState('chat_ready')
+  }
+
+  // Handle upload data from chat → go to file preview
+  const handleUploadData = () => {
+    fileParser.reset()
+    setState('file_preview')
+  }
+
+  // Handle import sessions
+  const handleImport = async (selectedSessions: ParsedSession[], fileName: string) => {
+    setIsImporting(true)
+    setImportError('')
+
+    try {
+      const sessionsToImport = selectedSessions.map(s => ({
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        court: s.court,
+        format: s.format,
+        skillLevel: s.skillLevel,
+        registered: s.registered,
+        capacity: s.capacity,
+        playerNames: s.playerNames,
+      }))
+
+      const res = await fetch('/api/ai/import-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clubId, sessions: sessionsToImport, fileName }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setImportError(data.error || 'Failed to import sessions')
+        setIsImporting(false)
+        return
       }
-    },
-  })
 
-  // Create transport with custom fetch to capture conversation ID header
-  const transport = useMemo(() => {
-    return new TextStreamChatTransport({
-      api: '/api/ai/chat',
-      body: { clubId, conversationId: activeConversationId },
-      fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
-        const response = await globalThis.fetch(url, init)
-        const newConvId = response.headers.get('X-Conversation-Id')
-        if (newConvId && !convIdRef.current) {
-          setActiveConversationId(newConvId)
-          conversationsQuery.refetch()
-        }
-        return response
-      },
-    })
-  }, [clubId, activeConversationId]) // eslint-disable-line react-hooks/exhaustive-deps
+      setImportStats({
+        sessionsImported: data.sessionsProcessed,
+        embeddingsCreated: data.embeddingsCreated,
+        playersIndexed: data.playersIndexed,
+      })
+      setState('import_done')
+      refetchStatus()
+      toast({
+        title: 'Schedule imported & AI trained!',
+        description: `${data.sessionsProcessed} sessions processed. ${data.embeddingsCreated} AI embeddings created.`,
+      })
+    } catch {
+      setImportError('Network error. Please try again.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
 
-  // AI Chat hook (v6 API)
-  const {
-    messages,
-    sendMessage,
-    status,
-    error,
-    setMessages,
-  } = useChat({ transport })
+  // Handle cancel file preview → go back
+  const handleCancelPreview = () => {
+    fileParser.reset()
+    setState(dataStatus?.hasData ? 'chat_ready' : 'onboarding')
+  }
 
-  const isBusy = status === 'submitted' || status === 'streaming'
+  // Handle start chat after import
+  const handleStartChat = () => {
+    fileParser.reset()
+    setState('chat_ready')
+  }
 
-  // Load conversation messages when switching
-  const conversationQuery = trpc.intelligence.getConversation.useQuery(
-    { conversationId: activeConversationId! },
-    { enabled: !!activeConversationId }
-  )
+  // Handle import more
+  const handleImportMore = () => {
+    fileParser.reset()
+    setImportStats(null)
+    setState('file_preview')
+  }
 
-  // Sync loaded conversation messages
-  useEffect(() => {
-    if (conversationQuery.data?.messages) {
-      setMessages(
-        conversationQuery.data.messages
-          .filter((m: { role: string }) => m.role !== 'system')
-          .map((m: { id: string; role: string; content: string }) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            parts: [{ type: 'text' as const, text: m.content }],
-            createdAt: new Date(),
-          }))
+  // ── Render ──
+
+  if (state === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (state === 'onboarding') {
+    return (
+      <OnboardingView
+        onFile={handleFile}
+        onSkip={handleSkipOnboarding}
+        parseError={fileParser.parseError}
+      />
+    )
+  }
+
+  if (state === 'file_preview' || state === 'importing') {
+    // If no sessions yet (user clicked "Upload Data" but hasn't dropped file)
+    if (fileParser.sessions.length === 0 && !fileParser.parseError) {
+      return (
+        <OnboardingView
+          onFile={handleFile}
+          onSkip={handleCancelPreview}
+          parseError={fileParser.parseError}
+        />
       )
     }
-  }, [conversationQuery.data, setMessages])
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
-
-  // Start new conversation
-  const handleNewConversation = () => {
-    setActiveConversationId(null)
-    setMessages([])
-    setInputValue('')
-    inputRef.current?.focus()
+    return (
+      <FilePreviewView
+        sessions={fileParser.sessions}
+        fileName={fileParser.fileName}
+        sheets={fileParser.sheets}
+        selectedSheet={fileParser.selectedSheet}
+        onSelectSheet={fileParser.selectSheet}
+        onImport={handleImport}
+        onCancel={handleCancelPreview}
+        importError={importError}
+        isImporting={isImporting}
+        previousStatus={dataStatus}
+      />
+    )
   }
 
-  // Select existing conversation
-  const handleSelectConversation = (convId: string) => {
-    setActiveConversationId(convId)
+  if (state === 'import_done' && importStats) {
+    return (
+      <ImportDoneView
+        sessionsImported={importStats.sessionsImported}
+        embeddingsCreated={importStats.embeddingsCreated}
+        playersIndexed={importStats.playersIndexed}
+        onStartChat={handleStartChat}
+        onImportMore={handleImportMore}
+      />
+    )
   }
 
-  // Send message handler
-  const handleSend = useCallback((text?: string) => {
-    const msg = text || inputValue.trim()
-    if (!msg || isBusy) return
-    sendMessage({ text: msg })
-    setInputValue('')
-  }, [inputValue, isBusy, sendMessage])
-
-  // Key handler
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
+  // chat_ready (default)
   return (
-    <div className="flex h-[calc(100vh-220px)] gap-4">
-      {/* Sidebar — conversation list */}
-      <div className="w-64 flex-shrink-0 flex flex-col">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Conversations</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleNewConversation}
-            className="h-7 gap-1 text-xs"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {conversationsQuery.data?.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => handleSelectConversation(conv.id)}
-              className={cn(
-                'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group',
-                'hover:bg-muted/60',
-                activeConversationId === conv.id
-                  ? 'bg-lime-50 dark:bg-lime-950/20 text-foreground border border-lime-200 dark:border-lime-800'
-                  : 'text-muted-foreground'
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="truncate flex-1">{conv.title || 'New conversation'}</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    deleteConversation.mutate({ conversationId: conv.id })
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-destructive transition-opacity"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="text-xs text-muted-foreground/60 mt-0.5">
-                {(conv as any)._count?.messages || 0} messages
-              </div>
-            </button>
-          ))}
-
-          {conversationsQuery.data?.length === 0 && (
-            <p className="text-xs text-muted-foreground/60 text-center py-4">
-              No conversations yet
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header bar */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold leading-none">AI Club Advisor</h2>
-              <p className="text-xs text-muted-foreground">Powered by your club data</p>
-            </div>
-          </div>
-          <Badge variant="outline" className="gap-1 text-lime-700 dark:text-lime-400 border-lime-300 dark:border-lime-700 bg-lime-50 dark:bg-lime-950/20">
-            <Database className="w-3 h-3" />
-            RAG-powered
-          </Badge>
-        </div>
-
-        {/* Chat card */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-card border rounded-xl">
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-6">
-            {messages.length === 0 && !isBusy ? (
-              /* Empty state */
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-6 shadow-lg shadow-lime-500/20">
-                  <Sparkles className="w-8 h-8 text-white" />
-                </div>
-                <h2 className="text-xl font-bold mb-2">AI Club Advisor</h2>
-                <p className="text-sm text-muted-foreground max-w-md mb-8">
-                  Ask me anything about your club — sessions, members, occupancy, engagement strategies, and more.
-                  Import your data first for the best insights.
-                </p>
-
-                <div className="w-full max-w-xl">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                    Suggested Questions
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {suggestedQuestions.map((q, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleSend(q.text)}
-                        className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-left group"
-                      >
-                        <span className="text-lg">{q.icon}</span>
-                        <span className="text-sm font-medium text-foreground group-hover:text-lime-700 dark:group-hover:text-lime-400">
-                          {q.text}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Message list */
-              <>
-                {messages.map((message) => {
-                  const text = getMessageText(message)
-
-                  return (
-                    <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
-                      {message.role === 'user' ? (
-                        <div className="bg-primary text-primary-foreground px-4 py-3 rounded-2xl rounded-tr-md max-w-[80%] text-sm">
-                          {text}
-                        </div>
-                      ) : (
-                        <div className="max-w-[90%]">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
-                              <Sparkles className="w-3 h-3 text-white" />
-                            </div>
-                            <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
-                          </div>
-                          <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <div className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm max-w-none">
-                              {renderBoldText(text)}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-
-                {/* Error display */}
-                {error && (
-                  <div className="mb-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 rounded-md bg-destructive/20 flex items-center justify-center">
-                        <Sparkles className="w-3 h-3 text-destructive" />
-                      </div>
-                      <span className="text-xs font-semibold text-destructive">Error</span>
-                    </div>
-                    <div className="bg-destructive/10 border border-destructive/20 rounded-2xl rounded-tl-md px-5 py-4">
-                      <p className="text-sm text-destructive">{error.message || 'Failed to get a response. Please try again.'}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Typing indicator */}
-                {isBusy && messages[messages.length - 1]?.role === 'user' && (
-                  <div className="mb-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
-                        <Sparkles className="w-3 h-3 text-white" />
-                      </div>
-                      <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
-                    </div>
-                    <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4 inline-block">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="w-4 h-4 animate-spin text-lime-600" />
-                        Analyzing your data...
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Input Bar */}
-          <div className="border-t bg-background/80 backdrop-blur-sm p-4">
-            <div className="flex items-center gap-2 bg-card border rounded-xl px-4 py-2 focus-within:border-lime-400 focus-within:ring-2 focus-within:ring-lime-400/20 transition-all">
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask anything about your club..."
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                disabled={isBusy}
-                autoFocus
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => handleSend()}
-                disabled={!inputValue.trim() || isBusy}
-                className={cn(
-                  'h-8 w-8 p-0 rounded-lg transition-colors',
-                  inputValue.trim() && !isBusy
-                    ? 'bg-lime-600 text-white hover:bg-lime-700'
-                    : 'text-muted-foreground'
-                )}
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-center text-xs text-muted-foreground mt-2">
-              AI responses are based on your club data and may not always be accurate
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ChatView
+      clubId={clubId}
+      dataStatus={dataStatus}
+      onUploadData={handleUploadData}
+    />
   )
 }

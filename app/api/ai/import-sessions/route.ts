@@ -125,7 +125,7 @@ export async function POST(req: Request) {
 
     // 2. Parse request
     const body = await req.json();
-    const { clubId, sessions } = body as { clubId: string; sessions: ImportedSession[] };
+    const { clubId, sessions, fileName } = body as { clubId: string; sessions: ImportedSession[]; fileName?: string };
 
     if (!clubId || !sessions || !Array.isArray(sessions) || sessions.length === 0) {
       return Response.json({ error: 'clubId and sessions array are required' }, { status: 400 });
@@ -147,11 +147,21 @@ export async function POST(req: Request) {
     // 5. Build text chunks for embedding
     const chunks: { text: string; contentType: string; metadata: Record<string, unknown>; sourceId: string }[] = [];
 
+    // Count unique players for metadata
+    const allPlayersSet = new Set<string>();
+    sessions.forEach(s => s.playerNames.forEach(p => allPlayersSet.add(p)));
+
     // Add overall summary
     chunks.push({
       text: buildImportSummary(sessions),
-      contentType: 'booking_trend',
-      metadata: { type: 'import_summary', sessionCount: sessions.length },
+      contentType: 'club_info',
+      metadata: {
+        type: 'import_summary',
+        sessionCount: sessions.length,
+        playerCount: allPlayersSet.size,
+        sourceFileName: fileName || null,
+        importedAt: new Date().toISOString(),
+      },
       sourceId: `import-summary-${clubId}`,
     });
 

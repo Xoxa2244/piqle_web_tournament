@@ -9,6 +9,7 @@ import {
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
+import { supabaseAdmin } from '@/lib/supabase'
 
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
@@ -32,6 +33,67 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
 }
 
 export const intelligenceRouter = createTRPCRouter({
+  // ── Club Data Status: Check if club has AI data ──
+  getClubDataStatus: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Query Supabase directly — Prisma can't handle vector columns
+      const { data, error } = await supabaseAdmin
+        .from('document_embeddings')
+        .select('id, content_type, metadata, created_at')
+        .eq('club_id', input.clubId)
+
+      if (error) {
+        console.error('[Intelligence] getClubDataStatus failed:', error)
+        return {
+          hasData: false,
+          totalEmbeddings: 0,
+          lastImportAt: null,
+          sessionCount: 0,
+          playerCount: 0,
+          sourceFileName: null,
+        }
+      }
+
+      const embeddings = data || []
+      const totalEmbeddings = embeddings.length
+
+      // Extract import metadata from summary embedding
+      let lastImportAt: string | null = null
+      let sessionCount = 0
+      let playerCount = 0
+      let sourceFileName: string | null = null
+
+      // Find the most recent embedding to determine last import time
+      if (embeddings.length > 0) {
+        const sorted = embeddings.sort(
+          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        lastImportAt = sorted[0].created_at
+
+        // Look for summary embedding with metadata
+        const summaryEmbed = embeddings.find(
+          (e: any) => e.content_type === 'club_info' && e.metadata?.sessionCount
+        )
+        if (summaryEmbed?.metadata) {
+          sessionCount = (summaryEmbed.metadata as any).sessionCount || 0
+          playerCount = (summaryEmbed.metadata as any).playerCount || 0
+          sourceFileName = (summaryEmbed.metadata as any).sourceFileName || null
+        }
+      }
+
+      return {
+        hasData: totalEmbeddings > 0,
+        totalEmbeddings,
+        lastImportAt,
+        sessionCount,
+        playerCount,
+        sourceFileName,
+      }
+    }),
+
   // ── Slot Filler: Recommend members for underfilled sessions ──
   getSlotFillerRecommendations: protectedProcedure
     .input(z.object({

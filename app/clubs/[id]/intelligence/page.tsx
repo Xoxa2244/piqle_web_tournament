@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Users, BarChart3, DollarSign, Zap, Calendar,
   TrendingUp, UserMinus, ArrowRight, AlertTriangle,
-  CalendarPlus
+  CalendarPlus, Brain, Sparkles
 } from 'lucide-react'
 import { MetricCard } from './_components/metric-card'
 import { OccupancyBar, OccupancyBadge } from './_components/charts'
@@ -41,15 +41,25 @@ export default function IntelligenceDashboardPage() {
   const { metrics, upcomingSessions, underfilledSessions } = data
   const hasAnySessions = upcomingSessions.length > 0
 
-  // ── No data onboarding ──
+  // ── No data onboarding — CTA to Advisor ──
   if (!hasAnySessions && metrics.totalMembers === 0) {
     return (
-      <EmptyState
-        icon={CalendarPlus}
-        title="No Data Yet"
-        description="Import your club's schedule and member data to unlock AI-powered insights. Intelligence needs sessions and bookings to analyze."
-        actionLabel="Learn How to Import"
-      />
+      <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-6 shadow-lg shadow-lime-500/20">
+          <Brain className="w-8 h-8 text-white" />
+        </div>
+        <h3 className="text-xl font-bold mb-2">Set Up AI Intelligence</h3>
+        <p className="text-sm text-muted-foreground max-w-md mb-6">
+          Upload your court schedule to unlock AI-powered insights about occupancy, member engagement, revenue opportunities, and more.
+        </p>
+        <Link href={`/clubs/${clubId}/intelligence/advisor`}>
+          <Button className="gap-2">
+            <Sparkles className="w-4 h-4" />
+            Go to AI Advisor
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+        </Link>
+      </div>
     )
   }
 
