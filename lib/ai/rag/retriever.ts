@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase';
+import { prisma } from '@/lib/prisma';
 import { generateEmbedding } from './embeddings';
 import type { ContentType } from './chunker';
 
@@ -25,22 +25,55 @@ export async function retrieveContext(
 
   // Generate embedding for the query
   const queryEmbedding = await generateEmbedding(query);
+  const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
-  // Call the Supabase RPC function for similarity search
-  const { data, error } = await supabaseAdmin.rpc('match_documents', {
-    query_embedding: JSON.stringify(queryEmbedding),
-    match_club_id: clubId,
-    match_content_types: contentTypes || null,
-    match_count: limit,
-    match_threshold: threshold,
-  });
+  try {
+    // Direct SQL similarity search — bypasses PostgREST cache issues
+    let rows: { id: string; content: string; content_type: string; metadata: any; similarity: number }[];
 
-  if (error) {
-    console.error('[RAG] Similarity search failed:', error);
+    if (contentTypes && contentTypes.length > 0) {
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT id::text, content, content_type, metadata,
+                (1 - (embedding <=> $1::vector))::float as similarity
+         FROM document_embeddings
+         WHERE club_id = $2::uuid
+           AND content_type = ANY($3::text[])
+           AND (1 - (embedding <=> $1::vector)) > $4
+         ORDER BY embedding <=> $1::vector
+         LIMIT $5`,
+        embeddingStr,
+        clubId,
+        contentTypes,
+        threshold,
+        limit,
+      );
+    } else {
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT id::text, content, content_type, metadata,
+                (1 - (embedding <=> $1::vector))::float as similarity
+         FROM document_embeddings
+         WHERE club_id = $2::uuid
+           AND (1 - (embedding <=> $1::vector)) > $3
+         ORDER BY embedding <=> $1::vector
+         LIMIT $4`,
+        embeddingStr,
+        clubId,
+        threshold,
+        limit,
+      );
+    }
+
+    return rows.map(r => ({
+      id: r.id,
+      content: r.content,
+      contentType: r.content_type as ContentType,
+      metadata: r.metadata,
+      similarity: r.similarity,
+    }));
+  } catch (err) {
+    console.error('[RAG] Similarity search failed:', err);
     return [];
   }
-
-  return (data || []) as RetrievedChunk[];
 }
 
 // Build context string from retrieved chunks for LLM prompt
