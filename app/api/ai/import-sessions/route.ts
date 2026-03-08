@@ -501,16 +501,23 @@ export async function POST(req: Request) {
           return;
         }
 
-        // Phase 4: Insert into DB with progress
+        // Phase 4: Insert into DB in batches (50 rows per query)
         const insertBatchSize = 50;
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          const embeddingStr = `[${allEmbeddings[i].join(',')}]`;
+        for (let batchStart = 0; batchStart < chunks.length; batchStart += insertBatchSize) {
+          const batchEnd = Math.min(batchStart + insertBatchSize, chunks.length);
+          const batchChunks = chunks.slice(batchStart, batchEnd);
 
-          try {
-            await prisma.$executeRawUnsafe(
-              `INSERT INTO document_embeddings (club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
-               VALUES ($1::uuid, $2, $3, $4::jsonb, $5::vector, $6, $7, $8)`,
+          const params: unknown[] = [];
+          const valuesClauses: string[] = [];
+
+          batchChunks.forEach((chunk, j) => {
+            const globalIdx = batchStart + j;
+            const offset = j * 8;
+            const embeddingStr = `[${allEmbeddings[globalIdx].join(',')}]`;
+            valuesClauses.push(
+              `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5}::vector, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+            );
+            params.push(
               clubId,
               chunk.text,
               chunk.contentType,
@@ -518,23 +525,28 @@ export async function POST(req: Request) {
               embeddingStr,
               chunk.sourceId,
               'csv_import',
-              i,
+              globalIdx,
+            );
+          });
+
+          try {
+            await prisma.$executeRawUnsafe(
+              `INSERT INTO document_embeddings (club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
+               VALUES ${valuesClauses.join(', ')}`,
+              ...params,
             );
           } catch (insertErr) {
-            send({ phase: 'error', message: `Failed to save embedding ${i}: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}` });
+            send({ phase: 'error', message: `Failed to save batch at ${batchStart}: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}` });
             controller.close();
             return;
           }
 
-          // Send progress every insertBatchSize rows
-          if ((i + 1) % insertBatchSize === 0 || i === chunks.length - 1) {
-            send({
-              phase: 'saving',
-              current: i + 1,
-              total: totalChunks,
-              message: `Saving to database... (${i + 1}/${totalChunks})`,
-            });
-          }
+          send({
+            phase: 'saving',
+            current: batchEnd,
+            total: totalChunks,
+            message: `Saving to database... (${batchEnd}/${totalChunks})`,
+          });
         }
 
         // Phase 5: Done
