@@ -117,7 +117,54 @@ ${ragContext}
 
 Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
-    // 7. Stream response with fallback
+    // 7. Verify API key is available
+    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      console.error('[AI Chat] No API keys configured');
+      return Response.json({ error: 'AI service not configured' }, { status: 503 });
+    }
+
+    // 8. Stream response — persistence callback
+    const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
+      if (!convId) return;
+      try {
+        const userMsg = messages[messages.length - 1];
+        await prisma.aIMessage.createMany({
+          data: [
+            { conversationId: convId, role: 'user', content: userMsg.content, metadata: {} },
+            {
+              conversationId: convId, role: 'assistant', content: event.text,
+              metadata: {
+                model: modelName,
+                inputTokens: event.usage.inputTokens,
+                outputTokens: event.usage.outputTokens,
+                ragChunksUsed: ragChunks.length,
+                ...(isFallback ? { fallback: true } : {}),
+              },
+            },
+          ],
+        });
+
+        const msgCount = await prisma.aIMessage.count({ where: { conversationId: convId } });
+        if (msgCount <= 2) {
+          await prisma.aIConversation.update({
+            where: { id: convId },
+            data: { title: userMsg.content.slice(0, 100), updatedAt: new Date() },
+          });
+        } else {
+          await prisma.aIConversation.update({
+            where: { id: convId },
+            data: { updatedAt: new Date() },
+          });
+        }
+      } catch (err) {
+        console.error('[AI Chat] Failed to persist messages:', err);
+      }
+    };
+
+    // 9. Stream with primary model, fallback on error
+    const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o-mini';
+    const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
+
     let result;
     try {
       result = streamText({
@@ -125,51 +172,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         system: systemPrompt,
         messages,
         maxOutputTokens: 1500,
-        onFinish: async (event) => {
-          if (!convId) return; // skip persistence if no conversation
-          try {
-            const userMsg = messages[messages.length - 1];
-            await prisma.aIMessage.createMany({
-              data: [
-                {
-                  conversationId: convId,
-                  role: 'user',
-                  content: userMsg.content,
-                  metadata: {},
-                },
-                {
-                  conversationId: convId,
-                  role: 'assistant',
-                  content: event.text,
-                  metadata: {
-                    model: process.env.AI_PRIMARY_MODEL || 'gpt-4o-mini',
-                    inputTokens: event.usage.inputTokens,
-                    outputTokens: event.usage.outputTokens,
-                    ragChunksUsed: ragChunks.length,
-                  },
-                },
-              ],
-            });
-
-            const msgCount = await prisma.aIMessage.count({ where: { conversationId: convId } });
-            if (msgCount <= 2) {
-              await prisma.aIConversation.update({
-                where: { id: convId },
-                data: {
-                  title: userMsg.content.slice(0, 100),
-                  updatedAt: new Date(),
-                },
-              });
-            } else {
-              await prisma.aIConversation.update({
-                where: { id: convId },
-                data: { updatedAt: new Date() },
-              });
-            }
-          } catch (err) {
-            console.error('[AI Chat] Failed to persist messages:', err);
-          }
-        },
+        onFinish: async (event) => persistMessages(event, primaryModel),
       });
     } catch (error) {
       console.warn('[AI Chat] Primary model failed, trying fallback:', error);
@@ -178,42 +181,17 @@ Use the data above to answer the user's question. If the data doesn't contain re
         system: systemPrompt,
         messages,
         maxOutputTokens: 1500,
-        onFinish: async (event) => {
-          if (!convId) return;
-          try {
-            const userMsg = messages[messages.length - 1];
-            await prisma.aIMessage.createMany({
-              data: [
-                { conversationId: convId, role: 'user', content: userMsg.content, metadata: {} },
-                {
-                  conversationId: convId, role: 'assistant', content: event.text,
-                  metadata: {
-                    model: process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku',
-                    inputTokens: event.usage.inputTokens,
-                    outputTokens: event.usage.outputTokens,
-                    ragChunksUsed: ragChunks.length,
-                    fallback: true,
-                  },
-                },
-              ],
-            });
-          } catch (err) {
-            console.error('[AI Chat] Failed to persist messages (fallback):', err);
-          }
-        },
+        onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
     }
 
-    // 8. Return streaming response with conversation ID header
-    const response = result.toTextStreamResponse();
-
-    const responseHeaders = new Headers(response.headers);
+    // 10. Return streaming response directly (avoid wrapping in new Response)
+    const responseHeaders: Record<string, string> = {};
     if (convId) {
-      responseHeaders.set('X-Conversation-Id', convId);
+      responseHeaders['X-Conversation-Id'] = convId;
     }
 
-    return new Response(response.body, {
-      status: response.status,
+    return result.toTextStreamResponse({
       headers: responseHeaders,
     });
   } catch (error) {

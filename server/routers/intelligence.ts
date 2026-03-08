@@ -189,7 +189,6 @@ export const intelligenceRouter = createTRPCRouter({
         upcomingSessions,
         recentBookings,
         underfilled,
-        aiLogs,
       ] = await Promise.all([
         ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
         ctx.prisma.clubCourt.count({ where: { clubId: input.clubId, isActive: true } }),
@@ -226,14 +225,20 @@ export const intelligenceRouter = createTRPCRouter({
           },
           orderBy: { date: 'asc' },
         }),
-        // Recent AI recommendations
-        ctx.prisma.aIRecommendationLog.count({
+      ])
+
+      // Recent AI recommendations (gracefully handle if table not ready)
+      let aiLogs = 0
+      try {
+        aiLogs = await ctx.prisma.aIRecommendationLog.count({
           where: {
             clubId: input.clubId,
             createdAt: { gte: sevenDaysAgo },
           },
-        }),
-      ])
+        })
+      } catch (err) {
+        console.warn('[Intelligence] aIRecommendationLog query failed:', err)
+      }
 
       // Calculate occupancy stats
       const underfilledSessions = underfilled.filter(
@@ -339,17 +344,22 @@ export const intelligenceRouter = createTRPCRouter({
       limit: z.number().int().min(1).max(50).default(20),
     }))
     .query(async ({ ctx, input }) => {
-      return ctx.prisma.aIConversation.findMany({
-        where: {
-          clubId: input.clubId,
-          userId: ctx.session.user.id,
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: input.limit,
-        include: {
-          _count: { select: { messages: true } },
-        },
-      })
+      try {
+        return await ctx.prisma.aIConversation.findMany({
+          where: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: input.limit,
+          include: {
+            _count: { select: { messages: true } },
+          },
+        })
+      } catch (err) {
+        console.warn('[Intelligence] listConversations failed:', err)
+        return []
+      }
     }),
 
   getConversation: protectedProcedure
@@ -357,21 +367,27 @@ export const intelligenceRouter = createTRPCRouter({
       conversationId: z.string().uuid(),
     }))
     .query(async ({ ctx, input }) => {
-      const conversation = await ctx.prisma.aIConversation.findUnique({
-        where: { id: input.conversationId },
-        include: {
-          messages: {
-            orderBy: { createdAt: 'asc' },
+      try {
+        const conversation = await ctx.prisma.aIConversation.findUnique({
+          where: { id: input.conversationId },
+          include: {
+            messages: {
+              orderBy: { createdAt: 'asc' },
+            },
           },
-        },
-      })
-      if (!conversation) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+        })
+        if (!conversation) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+        }
+        if (conversation.userId !== ctx.session.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
+        }
+        return conversation
+      } catch (err) {
+        if (err instanceof TRPCError) throw err
+        console.warn('[Intelligence] getConversation failed:', err)
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to load conversation' })
       }
-      if (conversation.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
-      }
-      return conversation
     }),
 
   createConversation: protectedProcedure
@@ -380,13 +396,18 @@ export const intelligenceRouter = createTRPCRouter({
       title: z.string().max(100).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.aIConversation.create({
-        data: {
-          clubId: input.clubId,
-          userId: ctx.session.user.id,
-          title: input.title || 'New conversation',
-        },
-      })
+      try {
+        return await ctx.prisma.aIConversation.create({
+          data: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            title: input.title || 'New conversation',
+          },
+        })
+      } catch (err) {
+        console.warn('[Intelligence] createConversation failed:', err)
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' })
+      }
     }),
 
   deleteConversation: protectedProcedure
@@ -394,19 +415,25 @@ export const intelligenceRouter = createTRPCRouter({
       conversationId: z.string().uuid(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const conversation = await ctx.prisma.aIConversation.findUnique({
-        where: { id: input.conversationId },
-      })
-      if (!conversation) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+      try {
+        const conversation = await ctx.prisma.aIConversation.findUnique({
+          where: { id: input.conversationId },
+        })
+        if (!conversation) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found' })
+        }
+        if (conversation.userId !== ctx.session.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
+        }
+        await ctx.prisma.aIConversation.delete({
+          where: { id: input.conversationId },
+        })
+        return { success: true }
+      } catch (err) {
+        if (err instanceof TRPCError) throw err
+        console.warn('[Intelligence] deleteConversation failed:', err)
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete conversation' })
       }
-      if (conversation.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Not your conversation' })
-      }
-      await ctx.prisma.aIConversation.delete({
-        where: { id: input.conversationId },
-      })
-      return { success: true }
     }),
 
   // ── RAG: Trigger embedding index for a club ──
