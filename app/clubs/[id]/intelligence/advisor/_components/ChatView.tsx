@@ -75,7 +75,9 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
 
+  // Track conversation ID from API response without triggering transport re-creation mid-stream
   const convIdRef = useRef<string | null>(null)
+  const pendingConvIdRef = useRef<string | null>(null)
   convIdRef.current = activeConversationId
 
   const conversationsQuery = trpc.intelligence.listConversations.useQuery(
@@ -100,8 +102,8 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
         const response = await globalThis.fetch(url, init)
         const newConvId = response.headers.get('X-Conversation-Id')
         if (newConvId && !convIdRef.current) {
-          setActiveConversationId(newConvId)
-          conversationsQuery.refetch()
+          // Don't update state during streaming — store in ref, apply after stream ends
+          pendingConvIdRef.current = newConvId
         }
         return response
       },
@@ -118,13 +120,23 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
 
   const isBusy = status === 'submitted' || status === 'streaming'
 
+  // Apply pending conversation ID after streaming ends
+  useEffect(() => {
+    if (!isBusy && pendingConvIdRef.current) {
+      setActiveConversationId(pendingConvIdRef.current)
+      pendingConvIdRef.current = null
+      conversationsQuery.refetch()
+    }
+  }, [isBusy]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const conversationQuery = trpc.intelligence.getConversation.useQuery(
     { conversationId: activeConversationId! },
     { enabled: !!activeConversationId }
   )
 
   useEffect(() => {
-    if (conversationQuery.data?.messages) {
+    // Don't overwrite messages while streaming — only load from DB when idle
+    if (conversationQuery.data?.messages && !isBusy) {
       setMessages(
         conversationQuery.data.messages
           .filter((m: { role: string }) => m.role !== 'system')
@@ -136,7 +148,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
           }))
       )
     }
-  }, [conversationQuery.data, setMessages])
+  }, [conversationQuery.data, setMessages, isBusy])
 
   useEffect(() => {
     if (scrollRef.current) {
