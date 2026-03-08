@@ -44,13 +44,12 @@ function stripSuggestedTags(text: string): string {
     .trimEnd()
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getMessageText(message: any): string {
+function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
   // Try parts first (AI SDK UIMessage format)
   if (message.parts && Array.isArray(message.parts)) {
     const fromParts = message.parts
-      .filter((p: { type: string }) => p.type === 'text')
-      .map((p: { text: string }) => p.text)
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
       .join('')
     if (fromParts) return fromParts
   }
