@@ -94,6 +94,18 @@ function InlineChart({ json }: { json: string }) {
   }
 }
 
+// ── Extract suggested follow-up questions ──
+function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
+  const match = text.match(/<suggested>\s*([\s\S]*?)\s*<\/suggested>/)
+  if (!match) return { cleanText: text, suggestions: [] }
+  const suggestions = match[1]
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && s.length < 80)
+  const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd()
+  return { cleanText, suggestions }
+}
+
 // ── Parse message into text + chart segments ──
 type MessageSegment =
   | { type: 'text'; content: string }
@@ -415,8 +427,12 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
               </div>
             ) : (
               <>
-                {messages.map((message) => {
+                {messages.map((message, msgIdx) => {
                   const text = getMessageText(message)
+                  const isLastAssistant = message.role === 'assistant' && msgIdx === messages.length - 1
+                  const { cleanText, suggestions } = message.role === 'assistant'
+                    ? extractSuggestions(text)
+                    : { cleanText: text, suggestions: [] }
                   return (
                     <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
@@ -433,9 +449,22 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none">
-                              {renderMessage(text)}
+                              {renderMessage(cleanText)}
                             </div>
                           </div>
+                          {isLastAssistant && suggestions.length > 0 && !isBusy && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {suggestions.map((q, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => handleSend(q)}
+                                  className="text-xs px-3 py-1.5 rounded-full border bg-background hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-muted-foreground hover:text-foreground"
+                                >
+                                  {q}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
