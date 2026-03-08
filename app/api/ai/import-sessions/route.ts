@@ -445,8 +445,7 @@ export async function POST(req: Request) {
         });
 
         const topPlayers = Object.entries(playerFrequency)
-          .sort((a, b) => b[1].count - a[1].count)
-          .slice(0, 50);
+          .sort((a, b) => b[1].count - a[1].count);
 
         topPlayers.forEach(([name, data]) => {
           chunks.push({

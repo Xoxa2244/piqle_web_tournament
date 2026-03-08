@@ -29,29 +29,49 @@ export async function retrieveContext(
   console.log(`[RAG] Embedding generated, dim=${queryEmbedding.length}, clubId=${clubId}, threshold=${threshold}, limit=${limit}`);
 
   try {
-    // Inline all parameters to bypass PgBouncer prepared_statements=false issues
-    // All values are internally generated (embedding from OpenAI, clubId validated as UUID)
-    let rows: { id: string; content: string; content_type: string; metadata: any; similarity: number }[];
+    let rows: { id: string; content: string; content_type: string; metadata: any; similarity: number; source_id: string }[];
 
     const contentTypeFilter = contentTypes && contentTypes.length > 0
       ? `AND content_type IN (${contentTypes.map(t => `'${t}'`).join(',')})`
       : '';
 
-    // No threshold filter — always return top-N most relevant chunks.
-    // text-embedding-3-small produces low cosine similarities (0.2-0.4 for related content).
-    const sql = `SELECT id::text, content, content_type, metadata,
+    // Phase 1: Always fetch all analytical summary chunks (they contain pre-computed aggregations).
+    // Without these, the LLM only sees individual sessions and can't answer aggregate questions.
+    const analyticsSql = `SELECT id::text, content, content_type, metadata, source_id,
                 (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
          FROM document_embeddings
          WHERE club_id = '${clubId}'::uuid
-           ${contentTypeFilter}
-         ORDER BY embedding <=> '${embeddingStr}'::vector
-         LIMIT ${limit}`;
+           AND source_id LIKE 'analytics-%'
+         ORDER BY embedding <=> '${embeddingStr}'::vector`;
 
-    console.log(`[RAG] Executing similarity search (inline params), clubId=${clubId}`);
-    rows = await prisma.$queryRawUnsafe(sql);
-    console.log(`[RAG] Similarity search returned ${rows.length} rows`);
+    console.log(`[RAG] Phase 1: fetching analytics chunks, clubId=${clubId}`);
+    const analyticsRows: typeof rows = await prisma.$queryRawUnsafe(analyticsSql);
+    console.log(`[RAG] Phase 1: found ${analyticsRows.length} analytics chunks`);
 
-    return rows.map(r => ({
+    // Phase 2: Fetch top-N most similar non-analytics chunks to fill remaining slots
+    const remainingSlots = Math.max(0, limit - analyticsRows.length);
+    let similarityRows: typeof rows = [];
+
+    if (remainingSlots > 0) {
+      const excludeAnalytics = `AND source_id NOT LIKE 'analytics-%'`;
+      const similaritySql = `SELECT id::text, content, content_type, metadata, source_id,
+                (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
+           FROM document_embeddings
+           WHERE club_id = '${clubId}'::uuid
+             ${excludeAnalytics}
+             ${contentTypeFilter}
+           ORDER BY embedding <=> '${embeddingStr}'::vector
+           LIMIT ${remainingSlots}`;
+
+      console.log(`[RAG] Phase 2: similarity search for ${remainingSlots} remaining slots`);
+      similarityRows = await prisma.$queryRawUnsafe(similaritySql);
+      console.log(`[RAG] Phase 2: found ${similarityRows.length} similarity chunks`);
+    }
+
+    const allRows = [...analyticsRows, ...similarityRows];
+    console.log(`[RAG] Total: ${allRows.length} chunks (${analyticsRows.length} analytics + ${similarityRows.length} similarity)`);
+
+    return allRows.map(r => ({
       id: r.id,
       content: r.content,
       contentType: r.content_type as ContentType,
