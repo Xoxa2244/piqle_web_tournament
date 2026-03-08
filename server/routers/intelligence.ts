@@ -9,7 +9,6 @@ import {
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
-import { supabaseAdmin } from '@/lib/supabase'
 
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
@@ -39,14 +38,16 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      // Query Supabase directly — Prisma can't handle vector columns
-      const { data, error } = await supabaseAdmin
-        .from('document_embeddings')
-        .select('id, content_type, metadata, created_at')
-        .eq('club_id', input.clubId)
-
-      if (error) {
-        console.error('[Intelligence] getClubDataStatus failed:', error)
+      // Query via raw SQL — Prisma can't model vector columns, PostgREST may cache stale schema
+      let embeddings: { id: string; content_type: string; metadata: any; created_at: Date }[] = []
+      try {
+        embeddings = await ctx.prisma.$queryRaw`
+          SELECT id::text, content_type, metadata, created_at
+          FROM document_embeddings
+          WHERE club_id = ${input.clubId}::uuid
+        `
+      } catch (err) {
+        console.error('[Intelligence] getClubDataStatus failed:', err)
         return {
           hasData: false,
           totalEmbeddings: 0,
@@ -56,8 +57,6 @@ export const intelligenceRouter = createTRPCRouter({
           sourceFileName: null,
         }
       }
-
-      const embeddings = data || []
       const totalEmbeddings = embeddings.length
 
       // Extract import metadata from summary embedding
@@ -71,7 +70,7 @@ export const intelligenceRouter = createTRPCRouter({
         const sorted = embeddings.sort(
           (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         )
-        lastImportAt = sorted[0].created_at
+        lastImportAt = sorted[0].created_at.toISOString()
 
         // Look for summary embedding with metadata
         const summaryEmbed = embeddings.find(

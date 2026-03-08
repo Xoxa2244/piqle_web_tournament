@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { supabaseAdmin } from '@/lib/supabase';
 import { generateEmbeddings } from '@/lib/ai/rag/embeddings';
 import { parse as parseCookie } from 'cookie';
 
@@ -137,18 +136,17 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Only club admins can import sessions' }, { status: 403 });
     }
 
-    // 4. Delete old imported session embeddings for this club
-    const { error: deleteError } = await supabaseAdmin
-      .from('document_embeddings')
-      .delete()
-      .eq('club_id', clubId)
-      .eq('source_table', 'csv_import');
-
-    if (deleteError) {
-      console.error('[Import] Failed to delete old embeddings:', JSON.stringify(deleteError));
+    // 4. Delete old imported session embeddings for this club (direct SQL, bypasses PostgREST cache)
+    try {
+      await prisma.$executeRaw`
+        DELETE FROM document_embeddings
+        WHERE club_id = ${clubId}::uuid AND source_table = 'csv_import'
+      `;
+    } catch (deleteErr) {
+      console.error('[Import] Failed to delete old embeddings:', deleteErr);
       return Response.json({
         error: 'Failed to prepare import (delete old data)',
-        details: deleteError.message || JSON.stringify(deleteError),
+        details: deleteErr instanceof Error ? deleteErr.message : String(deleteErr),
       }, { status: 500 });
     }
 
@@ -234,37 +232,36 @@ export async function POST(req: Request) {
       }, { status: 500 });
     }
 
-    // 7. Insert into document_embeddings via Supabase
-    const rows = chunks.map((chunk, i) => ({
-      club_id: clubId,
-      content: chunk.text,
-      content_type: chunk.contentType,
-      metadata: chunk.metadata,
-      embedding: JSON.stringify(embeddings[i]),
-      source_id: chunk.sourceId,
-      source_table: 'csv_import',
-      chunk_index: i,
-    }));
+    // 7. Insert into document_embeddings via direct SQL (bypasses PostgREST cache)
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const embeddingStr = `[${embeddings[i].join(',')}]`;
 
-    // Insert in batches of 50
-    for (let i = 0; i < rows.length; i += 50) {
-      const batch = rows.slice(i, i + 50);
-      const { error } = await supabaseAdmin
-        .from('document_embeddings')
-        .insert(batch);
-
-      if (error) {
-        console.error('[Import] Failed to insert embeddings batch:', JSON.stringify(error));
+      try {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO document_embeddings (club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
+           VALUES ($1::uuid, $2, $3, $4::jsonb, $5::vector, $6, $7, $8)`,
+          clubId,
+          chunk.text,
+          chunk.contentType,
+          JSON.stringify(chunk.metadata),
+          embeddingStr,
+          chunk.sourceId,
+          'csv_import',
+          i,
+        );
+      } catch (insertErr) {
+        console.error(`[Import] Failed to insert embedding ${i}:`, insertErr);
         return Response.json({
           error: 'Failed to save embeddings',
-          details: error.message || error.code || JSON.stringify(error),
+          details: insertErr instanceof Error ? insertErr.message : String(insertErr),
         }, { status: 500 });
       }
     }
 
     return Response.json({
       success: true,
-      embeddingsCreated: rows.length,
+      embeddingsCreated: chunks.length,
       sessionsProcessed: sessions.length,
       playersIndexed: topPlayers.length,
     });

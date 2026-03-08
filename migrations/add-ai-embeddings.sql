@@ -8,8 +8,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- 2. Document embeddings table for RAG
 CREATE TABLE "document_embeddings" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "club_id" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "club_id" UUID NOT NULL,
     "content" TEXT NOT NULL,
     "content_type" TEXT NOT NULL,  -- 'club_info', 'session', 'member_pattern', 'booking_trend', 'faq'
     "metadata" JSONB NOT NULL DEFAULT '{}',
@@ -38,8 +38,8 @@ ALTER TABLE "document_embeddings"
 
 -- 3. AI Conversation history for the Advisor chatbot
 CREATE TABLE "ai_conversations" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "club_id" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "club_id" UUID NOT NULL,
     "user_id" TEXT NOT NULL,
     "title" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -60,8 +60,8 @@ ALTER TABLE "ai_conversations"
 
 -- 4. AI Messages within conversations
 CREATE TABLE "ai_messages" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
-    "conversation_id" TEXT NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "conversation_id" UUID NOT NULL,
     "role" TEXT NOT NULL,  -- 'user', 'assistant', 'system'
     "content" TEXT NOT NULL,
     "metadata" JSONB DEFAULT '{}',  -- token counts, model used, latency_ms
@@ -96,13 +96,13 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT
-        de.id,
+        de.id::text,
         de.content,
         de.content_type,
         de.metadata,
         (1 - (de.embedding <=> query_embedding))::float as similarity
     FROM document_embeddings de
-    WHERE de.club_id = match_club_id
+    WHERE de.club_id = match_club_id::uuid
       AND (match_content_types IS NULL OR de.content_type = ANY(match_content_types))
       AND (1 - (de.embedding <=> query_embedding)) > match_threshold
     ORDER BY de.embedding <=> query_embedding
