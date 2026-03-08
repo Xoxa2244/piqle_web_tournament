@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       const queryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
       console.log(`[AI Chat] RAG query: "${queryText?.slice(0, 80)}", clubId: ${clubId}`);
       if (queryText) {
-        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.5 });
+        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.3 });
         console.log(`[AI Chat] RAG retrieved ${ragChunks.length} chunks, similarities: [${ragChunks.map(c => c.similarity.toFixed(3)).join(', ')}]`);
       }
     } catch (ragError) {

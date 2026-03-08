@@ -21,7 +21,7 @@ export async function retrieveContext(
   clubId: string,
   options: RetrievalOptions = {}
 ): Promise<RetrievedChunk[]> {
-  const { contentTypes, limit = 5, threshold = 0.7 } = options;
+  const { contentTypes, limit = 5, threshold = 0.3 } = options;
 
   // Generate embedding for the query
   const queryEmbedding = await generateEmbedding(query);
