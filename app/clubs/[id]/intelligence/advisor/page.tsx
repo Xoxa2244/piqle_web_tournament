@@ -5,14 +5,65 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { TextStreamChatTransport } from 'ai'
 import { trpc } from '@/lib/trpc'
-import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Send, Plus, Trash2, Loader2,
-  Bot, User, Sparkles, ChevronRight
+  Sparkles, MessageSquare, FileText, Database,
+  CheckCircle2, ChevronRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// ── Mini Bar Chart (inline in AI responses) ──
+function MiniBarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
+  const max = Math.max(...data.map(d => d.value))
+  return (
+    <div className="flex items-end gap-2 h-32 mt-4 mb-2 px-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+          <span className="text-xs font-bold" style={{ color: d.color }}>{d.value}%</span>
+          <div
+            className="w-full rounded-t-md transition-all duration-500"
+            style={{
+              height: `${(d.value / max) * 80}px`,
+              backgroundColor: d.color,
+              minHeight: '4px',
+            }}
+          />
+          <span className="text-xs text-muted-foreground font-medium">{d.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Parse bold text (**text**) ──
+function renderBoldText(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>
+    }
+    return <span key={i}>{part}</span>
+  })
+}
+
+// ── Suggested Questions ──
+const suggestedQuestions = [
+  { icon: '📊', text: 'What is my weakest day of the week?' },
+  { icon: '🚪', text: 'What does my churn look like?' },
+  { icon: '🏆', text: 'Which sessions are underfilled?' },
+  { icon: '⏰', text: 'When are my peak and dead hours?' },
+  { icon: '💰', text: 'How can I improve revenue?' },
+  { icon: '👥', text: 'Who are my most active members?' },
+]
+
+// ── Get text content from message parts (AI SDK v6) ──
+function getMessageText(message: { parts?: Array<{ type: string; text?: string }> }): string {
+  return message.parts
+    ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('') || ''
+}
 
 export default function AIAdvisorPage() {
   const params = useParams()
@@ -21,10 +72,9 @@ export default function AIAdvisorPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
-  const [sidebarOpen] = useState(true)
   const [inputValue, setInputValue] = useState('')
 
-  // Use a ref to track conversation ID for the fetch wrapper
+  // Track conversation ID for the fetch wrapper
   const convIdRef = useRef<string | null>(null)
   convIdRef.current = activeConversationId
 
@@ -68,9 +118,7 @@ export default function AIAdvisorPage() {
     status,
     error,
     setMessages,
-  } = useChat({
-    transport,
-  })
+  } = useChat({ transport })
 
   const isBusy = status === 'submitted' || status === 'streaming'
 
@@ -124,198 +172,226 @@ export default function AIAdvisorPage() {
     setInputValue('')
   }, [inputValue, isBusy, sendMessage])
 
-  // Form submit handler
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault()
-    handleSend()
-  }, [handleSend])
-
-  // Quick prompts for empty state
-  const quickPrompts = [
-    'Which sessions are underfilled this week?',
-    'Who are my most active members?',
-    'How can I improve Tuesday evening attendance?',
-    'Show me occupancy trends for the last month',
-  ]
-
-  // Get text content from message parts
-  const getMessageText = (message: (typeof messages)[number]) => {
-    return message.parts
-      ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-      .map((p) => p.text)
-      .join('') || ''
+  // Key handler
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   return (
     <div className="flex h-[calc(100vh-220px)] gap-4">
       {/* Sidebar — conversation list */}
-      {sidebarOpen && (
-        <div className="w-72 flex-shrink-0 flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-muted-foreground">Conversations</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              className="h-7 gap-1 text-xs"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New
-            </Button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {conversationsQuery.data?.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => handleSelectConversation(conv.id)}
-                className={cn(
-                  'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group',
-                  'hover:bg-muted/60',
-                  activeConversationId === conv.id
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="truncate flex-1">{conv.title || 'New conversation'}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteConversation.mutate({ conversationId: conv.id })
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-destructive transition-opacity"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div className="text-xs text-muted-foreground/60 mt-0.5">
-                  {(conv as any)._count?.messages || 0} messages
-                </div>
-              </button>
-            ))}
-
-            {conversationsQuery.data?.length === 0 && (
-              <p className="text-xs text-muted-foreground/60 text-center py-4">
-                No conversations yet
-              </p>
-            )}
-          </div>
+      <div className="w-64 flex-shrink-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground">Conversations</h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewConversation}
+            className="h-7 gap-1 text-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
         </div>
-      )}
+
+        <div className="flex-1 overflow-y-auto space-y-1">
+          {conversationsQuery.data?.map((conv) => (
+            <button
+              key={conv.id}
+              onClick={() => handleSelectConversation(conv.id)}
+              className={cn(
+                'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group',
+                'hover:bg-muted/60',
+                activeConversationId === conv.id
+                  ? 'bg-lime-50 dark:bg-lime-950/20 text-foreground border border-lime-200 dark:border-lime-800'
+                  : 'text-muted-foreground'
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="truncate flex-1">{conv.title || 'New conversation'}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteConversation.mutate({ conversationId: conv.id })
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-destructive transition-opacity"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">
+                {(conv as any)._count?.messages || 0} messages
+              </div>
+            </button>
+          ))}
+
+          {conversationsQuery.data?.length === 0 && (
+            <p className="text-xs text-muted-foreground/60 text-center py-4">
+              No conversations yet
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Card className="flex-1 flex flex-col overflow-hidden">
+        {/* Header bar */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold leading-none">AI Club Advisor</h2>
+              <p className="text-xs text-muted-foreground">Powered by your club data</p>
+            </div>
+          </div>
+          <Badge variant="outline" className="gap-1 text-lime-700 dark:text-lime-400 border-lime-300 dark:border-lime-700 bg-lime-50 dark:bg-lime-950/20">
+            <Database className="w-3 h-3" />
+            RAG-powered
+          </Badge>
+        </div>
+
+        {/* Chat card */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-card border rounded-xl">
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-6">
+            {messages.length === 0 && !isBusy ? (
               /* Empty state */
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                  <Sparkles className="h-8 w-8 text-primary" />
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-6 shadow-lg shadow-lime-500/20">
+                  <Sparkles className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-lg font-semibold mb-1">AI Advisor</h2>
-                <p className="text-sm text-muted-foreground mb-6 max-w-md">
+                <h2 className="text-xl font-bold mb-2">AI Club Advisor</h2>
+                <p className="text-sm text-muted-foreground max-w-md mb-8">
                   Ask me anything about your club — sessions, members, occupancy, engagement strategies, and more.
+                  Import your data first for the best insights.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg">
-                  {quickPrompts.map((prompt) => (
-                    <button
-                      key={prompt}
-                      onClick={() => handleSend(prompt)}
-                      className="text-left px-3 py-2 rounded-lg border text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors flex items-center gap-2"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span>{prompt}</span>
-                    </button>
-                  ))}
+
+                <div className="w-full max-w-xl">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                    Suggested Questions
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {suggestedQuestions.map((q, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSend(q.text)}
+                        className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-left group"
+                      >
+                        <span className="text-lg">{q.icon}</span>
+                        <span className="text-sm font-medium text-foreground group-hover:text-lime-700 dark:group-hover:text-lime-400">
+                          {q.text}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             ) : (
               /* Message list */
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    'flex gap-3',
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}
-                >
-                  {message.role === 'assistant' && (
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      'max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed',
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    )}
-                  >
-                    <div className="whitespace-pre-wrap">{getMessageText(message)}</div>
-                  </div>
-                  {message.role === 'user' && (
-                    <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
+              <>
+                {messages.map((message) => {
+                  const text = getMessageText(message)
 
-            {/* Error display */}
-            {error && (
-              <div className="flex gap-3">
-                <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                  <Bot className="h-4 w-4 text-destructive" />
-                </div>
-                <div className="bg-destructive/10 rounded-xl px-4 py-2.5 max-w-[75%]">
-                  <p className="text-sm text-destructive font-medium">Error</p>
-                  <p className="text-sm text-destructive/80 mt-1">{error.message || 'Failed to get a response. Please try again.'}</p>
-                </div>
-              </div>
-            )}
+                  return (
+                    <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
+                      {message.role === 'user' ? (
+                        <div className="bg-primary text-primary-foreground px-4 py-3 rounded-2xl rounded-tr-md max-w-[80%] text-sm">
+                          {text}
+                        </div>
+                      ) : (
+                        <div className="max-w-[90%]">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
+                              <Sparkles className="w-3 h-3 text-white" />
+                            </div>
+                            <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
+                          </div>
+                          <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
+                            <div className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm max-w-none">
+                              {renderBoldText(text)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
 
-            {/* Loading indicator */}
-            {isBusy && messages[messages.length - 1]?.role === 'user' && (
-              <div className="flex gap-3">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Bot className="h-4 w-4 text-primary" />
-                </div>
-                <div className="bg-muted rounded-xl px-4 py-2.5">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Thinking...
+                {/* Error display */}
+                {error && (
+                  <div className="mb-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-md bg-destructive/20 flex items-center justify-center">
+                        <Sparkles className="w-3 h-3 text-destructive" />
+                      </div>
+                      <span className="text-xs font-semibold text-destructive">Error</span>
+                    </div>
+                    <div className="bg-destructive/10 border border-destructive/20 rounded-2xl rounded-tl-md px-5 py-4">
+                      <p className="text-sm text-destructive">{error.message || 'Failed to get a response. Please try again.'}</p>
+                    </div>
                   </div>
-                </div>
-              </div>
+                )}
+
+                {/* Typing indicator */}
+                {isBusy && messages[messages.length - 1]?.role === 'user' && (
+                  <div className="mb-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
+                        <Sparkles className="w-3 h-3 text-white" />
+                      </div>
+                      <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
+                    </div>
+                    <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4 inline-block">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin text-lime-600" />
+                        Analyzing your data...
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* Input */}
-          <div className="border-t p-4">
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
+          {/* Input Bar */}
+          <div className="border-t bg-background/80 backdrop-blur-sm p-4">
+            <div className="flex items-center gap-2 bg-card border rounded-xl px-4 py-2 focus-within:border-lime-400 focus-within:ring-2 focus-within:ring-lime-400/20 transition-all">
+              <input
                 ref={inputRef}
+                type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask about your club..."
+                onKeyDown={handleKeyDown}
+                placeholder="Ask anything about your club..."
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 disabled={isBusy}
-                className="flex-1"
                 autoFocus
               />
-              <Button type="submit" size="icon" disabled={isBusy || !inputValue.trim()}>
-                <Send className="h-4 w-4" />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleSend()}
+                disabled={!inputValue.trim() || isBusy}
+                className={cn(
+                  'h-8 w-8 p-0 rounded-lg transition-colors',
+                  inputValue.trim() && !isBusy
+                    ? 'bg-lime-600 text-white hover:bg-lime-700'
+                    : 'text-muted-foreground'
+                )}
+              >
+                <Send className="w-4 h-4" />
               </Button>
-            </form>
-            <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-center">
-              AI responses are based on your club data and may not always be accurate.
+            </div>
+            <p className="text-center text-xs text-muted-foreground mt-2">
+              AI responses are based on your club data and may not always be accurate
             </p>
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   )
