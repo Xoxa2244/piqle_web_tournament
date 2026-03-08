@@ -118,9 +118,21 @@ ${ragContext}
 Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
     // 7. Verify API key is available
-    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-      console.error('[AI Chat] No API keys configured');
-      return Response.json({ error: 'AI service not configured' }, { status: 503 });
+    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+    console.log('[AI Chat] API keys check:', {
+      hasOpenAI,
+      hasAnthropic,
+      openAIKeyPrefix: process.env.OPENAI_API_KEY?.substring(0, 8) || 'NOT_SET',
+      nodeEnv: process.env.NODE_ENV,
+    });
+
+    if (!hasOpenAI && !hasAnthropic) {
+      console.error('[AI Chat] No API keys configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY in Vercel env vars.');
+      return Response.json({
+        error: 'AI service not configured',
+        hint: 'OPENAI_API_KEY and ANTHROPIC_API_KEY are not set. Add them in Vercel Settings → Environment Variables.',
+      }, { status: 503 });
     }
 
     // 8. Stream response — persistence callback
