@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
-    "test:eval": "vitest run tests/ai-eval/eval.test.ts",
+    "test:eval": "vitest run --config vitest.eval.config.ts",
     "test:e2e": "playwright test",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

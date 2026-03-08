@@ -5,10 +5,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
-    // AI eval tests use node environment and don't need DOM setup
-    environmentMatchGlobs: [
-      ['tests/ai-eval/**', 'node'],
-    ],
+    // Exclude AI eval tests — they run with their own config via npm run test:eval
+    exclude: ['tests/ai-eval/**', '**/node_modules/**'],
   },
   resolve: {
     alias: {
