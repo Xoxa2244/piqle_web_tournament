@@ -1556,6 +1556,8 @@ model AIConversation {
   clubId    String   @map("club_id")
   userId    String   @map("user_id")
   title     String?
+  language  String?  @map("language")   // auto-detected: 'en', 'ru', 'es'
+  summary   String?  @map("summary")    // LLM-generated summary for cross-session memory
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 

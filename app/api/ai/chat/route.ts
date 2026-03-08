@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { getModel, getFallbackModel } from '@/lib/ai/llm/provider';
 import { ADVISOR_SYSTEM_PROMPT } from '@/lib/ai/llm/prompts';
 import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
+import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '@/lib/ai/llm/language';
+import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
 
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
@@ -50,18 +52,20 @@ async function verifyClubAccess(clubId: string, userId: string) {
 }
 
 // ── Extract text from a UIMessage (v6 uses parts[], not content) ──
-function getMessageText(msg: any): string {
-  // v6 UIMessage format: { parts: [{ type: 'text', text: '...' }] }
+function getMessageText(msg: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
   if (msg.parts && Array.isArray(msg.parts)) {
-    return msg.parts
-      .filter((p: any) => p.type === 'text')
-      .map((p: any) => p.text)
+    const text = msg.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text || '')
       .join('');
+    if (text) return text;
   }
-  // Fallback for legacy format or plain content string
   if (typeof msg.content === 'string') return msg.content;
   return '';
 }
+
+// ── Max messages to load from DB for conversation context ──
+const MAX_HISTORY_MESSAGES = 100;
 
 export async function POST(req: Request) {
   try {
@@ -85,24 +89,98 @@ export async function POST(req: Request) {
       return new Response('Forbidden: not a member of this club', { status: 403 });
     }
 
-    // 4. Get or create conversation (gracefully handle if table not ready)
+    // 4. Get or create conversation + detect language
     let convId = conversationId;
     const lastUserText = getMessageText(messages[messages.length - 1]);
+    let conversationLanguage: SupportedLanguage = 'en';
 
     try {
       if (!convId) {
+        // New conversation — detect language, load cross-session memory
+        const detectedLang = detectLanguage(lastUserText);
         const newConv = await prisma.aIConversation.create({
           data: {
             clubId,
             userId: session.userId,
             title: lastUserText.slice(0, 100) || 'New conversation',
+            language: detectedLang,
           },
         });
         convId = newConv.id;
+        conversationLanguage = detectedLang;
+      } else {
+        // Existing conversation — load stored language
+        const conv = await prisma.aIConversation.findUnique({
+          where: { id: convId },
+          select: { language: true },
+        });
+        conversationLanguage = (conv?.language as SupportedLanguage) || 'en';
       }
     } catch (convError) {
-      console.warn('[AI Chat] Failed to create conversation (continuing without persistence):', convError);
+      console.warn('[AI Chat] Failed to create/load conversation (continuing without persistence):', convError);
       convId = null;
+    }
+
+    // 4.5 Load prior conversation messages for multi-turn context
+    let fullMessages = messages;
+    if (convId && conversationId) {
+      try {
+        const priorMessages = await prisma.aIMessage.findMany({
+          where: { conversationId: convId },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (priorMessages.length > 0) {
+          const dbMessages = priorMessages
+            .filter(m => m.role !== 'system')
+            .map(m => ({
+              id: m.id,
+              role: m.role as 'user' | 'assistant',
+              parts: [{ type: 'text' as const, text: m.content }],
+            }));
+
+          // Cap very long conversations: keep first 2 + most recent messages
+          const capped = dbMessages.length > MAX_HISTORY_MESSAGES
+            ? [...dbMessages.slice(0, 2), ...dbMessages.slice(-(MAX_HISTORY_MESSAGES - 2))]
+            : dbMessages;
+
+          // Append only the NEW user message from client
+          const newUserMsg = messages[messages.length - 1];
+          fullMessages = [...capped, newUserMsg];
+
+          console.log(`[AI Chat] Loaded ${priorMessages.length} prior messages (capped to ${capped.length}), total context: ${fullMessages.length} messages`);
+        }
+      } catch (err) {
+        console.warn('[AI Chat] Failed to load conversation history, using client messages only:', err);
+      }
+    }
+
+    // 4.6 Load cross-session summaries for new conversations
+    let crossSessionContext = '';
+    if (!conversationId) {
+      try {
+        const recentConvs = await prisma.aIConversation.findMany({
+          where: {
+            clubId,
+            userId: session.userId,
+            summary: { not: null },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 5,
+          select: { title: true, summary: true, updatedAt: true },
+        });
+
+        if (recentConvs.length > 0) {
+          crossSessionContext = '\n\n--- Previous Conversations (for context) ---\n' +
+            recentConvs.map(c =>
+              `[${c.updatedAt.toLocaleDateString()}] ${c.title || 'Untitled'}: ${c.summary}`
+            ).join('\n') +
+            '\n--- End of Previous Conversations ---\n' +
+            'Use these summaries for context if the user references past discussions. Do not proactively mention them.';
+        }
+      } catch (err) {
+        console.warn('[AI Chat] Failed to load cross-session context:', err);
+      }
     }
 
     // 5. RAG: retrieve relevant context (gracefully handle failures)
@@ -110,9 +188,9 @@ export async function POST(req: Request) {
     let ragStatus = 'skipped';
     let ragQueryText = '';
     try {
-      const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
+      const lastUserMessage = messages.filter((m: { role: string }) => m.role === 'user').pop();
       ragQueryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
-      console.log(`[AI Chat] RAG query: "${ragQueryText?.slice(0, 80)}", clubId: ${clubId}, msgFormat: ${JSON.stringify(lastUserMessage).slice(0, 200)}`);
+      console.log(`[AI Chat] RAG query: "${ragQueryText?.slice(0, 80)}", clubId: ${clubId}`);
       if (ragQueryText) {
         ragChunks = await retrieveContext(ragQueryText, clubId, { limit: 10, threshold: 0.3 });
         ragStatus = ragChunks.length > 0 ? 'ok' : 'empty';
@@ -127,14 +205,17 @@ export async function POST(req: Request) {
     }
 
     const ragContext = buildRAGContext(ragChunks);
-    console.log(`[AI Chat] RAG status=${ragStatus}, chunks=${ragChunks.length}, contextLen=${ragContext.length}`);
+    console.log(`[AI Chat] RAG status=${ragStatus}, chunks=${ragChunks.length}, contextLen=${ragContext.length}, lang=${conversationLanguage}`);
 
-    // 6. Build system prompt with RAG context
-    const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}
+    // 6. Build system prompt with RAG context + language + cross-session memory
+    const languageInstruction = getLanguageInstruction(conversationLanguage);
+
+    const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}${languageInstruction}
 
 --- Club Data (retrieved from knowledge base) ---
 ${ragContext}
 --- End of Club Data ---
+${crossSessionContext}
 
 Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
@@ -148,7 +229,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
     }
 
     // 8. Convert UIMessages to model messages (required in AI SDK v6)
-    const modelMessages = await convertToModelMessages(messages);
+    const modelMessages = await convertToModelMessages(fullMessages);
 
     // 9. Persistence callback
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
@@ -164,6 +245,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
                 inputTokens: event.usage.inputTokens,
                 outputTokens: event.usage.outputTokens,
                 ragChunksUsed: ragChunks.length,
+                language: conversationLanguage,
                 ...(isFallback ? { fallback: true } : {}),
               },
             },
@@ -182,13 +264,20 @@ Use the data above to answer the user's question. If the data doesn't contain re
             data: { updatedAt: new Date() },
           });
         }
+
+        // Generate/update conversation summary after enough messages (fire-and-forget)
+        if (msgCount >= 6 && msgCount % 4 === 0) {
+          generateConversationSummary(convId).catch(err =>
+            console.error('[AI Chat] Summary generation failed:', err)
+          );
+        }
       } catch (err) {
         console.error('[AI Chat] Failed to persist messages:', err);
       }
     };
 
     // 10. Stream with primary model, fallback on error
-    const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o-mini';
+    const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
     let result;
@@ -217,6 +306,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
       'X-RAG-Chunks': String(ragChunks.length),
       'X-RAG-Context-Length': String(ragContext.length),
       'X-RAG-Query': ragQueryText.slice(0, 100),
+      'X-Conversation-Language': conversationLanguage,
     };
     if (convId) {
       responseHeaders['X-Conversation-Id'] = convId;
