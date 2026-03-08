@@ -16,29 +16,47 @@ import type { ClubDataStatus } from '../_hooks/useAdvisorState'
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
-  // Complete block: extract questions and remove from text
-  const match = text.match(/<suggested>\s*([\s\S]*?)\s*<\/suggested>/)
+  // Complete block: extract questions and remove from text (case-insensitive)
+  const match = text.match(/<suggested>\s*([\s\S]*?)\s*<\/suggested>/i)
   if (match) {
     const suggestions = match[1]
       .split('\n')
       .map(s => s.trim())
       .filter(s => s.length > 0 && s.length < 80)
-    const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd()
+    const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/gi, '').trimEnd()
     return { cleanText, suggestions }
   }
   // Incomplete block (during streaming): hide partial <suggested> tag
-  const partialIdx = text.indexOf('<suggested>')
+  const lowerText = text.toLowerCase()
+  const partialIdx = lowerText.indexOf('<suggested>')
   if (partialIdx !== -1) {
     return { cleanText: text.slice(0, partialIdx).trimEnd(), suggestions: [] }
   }
+  // Safety: strip any stray tags that might remain
   return { cleanText: text, suggestions: [] }
 }
 
-function getMessageText(message: { parts?: Array<{ type: string; text?: string }> }): string {
-  return message.parts
-    ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('') || ''
+// Safety net: remove any residual suggested tags before rendering
+function stripSuggestedTags(text: string): string {
+  return text
+    .replace(/<\/?suggested>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd()
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getMessageText(message: any): string {
+  // Try parts first (AI SDK UIMessage format)
+  if (message.parts && Array.isArray(message.parts)) {
+    const fromParts = message.parts
+      .filter((p: { type: string }) => p.type === 'text')
+      .map((p: { text: string }) => p.text)
+      .join('')
+    if (fromParts) return fromParts
+  }
+  // Fallback: content property (DB-loaded or legacy format)
+  if (typeof message.content === 'string') return message.content
+  return ''
 }
 
 const suggestedQuestions = [
@@ -332,9 +350,11 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                 {messages.map((message, msgIdx) => {
                   const text = getMessageText(message)
                   const isLastAssistant = message.role === 'assistant' && msgIdx === messages.length - 1
-                  const { cleanText, suggestions } = message.role === 'assistant'
+                  const { cleanText: rawClean, suggestions } = message.role === 'assistant'
                     ? extractSuggestions(text)
                     : { cleanText: text, suggestions: [] }
+                  // Safety net: strip any residual <suggested> tags before rendering
+                  const cleanText = message.role === 'assistant' ? stripSuggestedTags(rawClean) : rawClean
                   return (
                     <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
