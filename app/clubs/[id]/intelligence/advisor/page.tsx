@@ -23,6 +23,12 @@ export default function AIAdvisorPage() {
   // Import state
   const [importError, setImportError] = useState('')
   const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<{
+    phase: string
+    current: number
+    total: number
+    message: string
+  } | null>(null)
   const [importStats, setImportStats] = useState<{
     sessionsImported: number
     embeddingsCreated: number
@@ -46,10 +52,11 @@ export default function AIAdvisorPage() {
     setState('file_preview')
   }
 
-  // Handle import sessions
+  // Handle import sessions (SSE streaming with progress)
   const handleImport = async (selectedSessions: ParsedSession[], fileName: string) => {
     setIsImporting(true)
     setImportError('')
+    setImportProgress(null)
 
     try {
       const sessionsToImport = selectedSessions.map(s => ({
@@ -70,30 +77,77 @@ export default function AIAdvisorPage() {
         body: JSON.stringify({ clubId, sessions: sessionsToImport, fileName }),
       })
 
-      const data = await res.json()
-
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
         const details = data.details ? `: ${data.details}` : ''
         setImportError((data.error || 'Failed to import sessions') + details)
         setIsImporting(false)
         return
       }
 
-      setImportStats({
-        sessionsImported: data.sessionsProcessed,
-        embeddingsCreated: data.embeddingsCreated,
-        playersIndexed: data.playersIndexed,
-      })
-      setState('import_done')
-      refetchStatus()
-      toast({
-        title: 'Schedule imported & AI trained!',
-        description: `${data.sessionsProcessed} sessions processed. ${data.embeddingsCreated} AI embeddings created.`,
-      })
+      // Read SSE stream
+      const reader = res.body?.getReader()
+      if (!reader) {
+        setImportError('Stream not available')
+        setIsImporting(false)
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6))
+
+              if (event.phase === 'error') {
+                setImportError(event.message || 'Import failed')
+                setIsImporting(false)
+                return
+              }
+
+              if (event.phase === 'done') {
+                setImportStats({
+                  sessionsImported: event.sessionsProcessed,
+                  embeddingsCreated: event.embeddingsCreated,
+                  playersIndexed: event.playersIndexed,
+                })
+                setState('import_done')
+                refetchStatus()
+                toast({
+                  title: 'Schedule imported & AI trained!',
+                  description: `${event.sessionsProcessed} sessions processed. ${event.embeddingsCreated} AI embeddings created.`,
+                })
+              } else {
+                setImportProgress({
+                  phase: event.phase,
+                  current: event.current || 0,
+                  total: event.total || 0,
+                  message: event.message || '',
+                })
+              }
+            } catch {
+              // skip malformed events
+            }
+          }
+        }
+      }
     } catch {
       setImportError('Network error. Please try again.')
     } finally {
       setIsImporting(false)
+      setImportProgress(null)
     }
   }
 
@@ -167,6 +221,7 @@ export default function AIAdvisorPage() {
         onCancel={handleCancelPreview}
         importError={importError}
         isImporting={isImporting}
+        importProgress={importProgress}
         previousStatus={dataStatus}
       />
     )

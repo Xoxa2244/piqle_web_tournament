@@ -37,6 +37,13 @@ const getOccupancyColor = (pct: number) => {
 
 const formatLabel = (f: string) => f.replace(/_/g, ' ')
 
+export type ImportProgress = {
+  phase: string
+  current: number
+  total: number
+  message: string
+}
+
 type FilePreviewViewProps = {
   sessions: ParsedSession[]
   fileName: string
@@ -47,7 +54,15 @@ type FilePreviewViewProps = {
   onCancel: () => void
   importError: string
   isImporting: boolean
+  importProgress: ImportProgress | null
   previousStatus: ClubDataStatus | null
+}
+
+const phaseLabels: Record<string, string> = {
+  deleting: 'Cleaning up old data...',
+  preparing: 'Preparing data...',
+  embedding: 'Generating AI embeddings...',
+  saving: 'Saving to database...',
 }
 
 export function FilePreviewView({
@@ -60,6 +75,7 @@ export function FilePreviewView({
   onCancel,
   importError,
   isImporting,
+  importProgress,
   previousStatus,
 }: FilePreviewViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
@@ -276,39 +292,77 @@ export function FilePreviewView({
         })}
       </div>
 
-      {/* Import Button */}
+      {/* Import Button / Progress */}
       <div className="sticky bottom-4 z-10">
         <Card className="shadow-lg border-primary/20">
           <CardContent className="py-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">
-                  {selectedIds.size} sessions selected
-                  {selectedIds.size > 0 && (
-                    <span className="text-muted-foreground ml-1">
-                      · {selectedSessions.reduce((s, x) => s + x.emptySlots, 0)} empty slots to fill
+            {isImporting && importProgress ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">
+                    {phaseLabels[importProgress.phase] || importProgress.message}
+                  </span>
+                  {importProgress.total > 0 && (
+                    <span className="text-muted-foreground tabular-nums">
+                      {importProgress.current}/{importProgress.total}
                     </span>
                   )}
-                </p>
-              </div>
-              <Button
-                size="lg"
-                disabled={selectedIds.size === 0 || isImporting}
-                onClick={handleImport}
-              >
-                {isImporting ? (
-                  <>
-                    <span className="animate-spin mr-2">⏳</span>
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Import {selectedIds.size} Sessions
-                  </>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      importProgress.phase === 'embedding'
+                        ? 'bg-blue-500'
+                        : importProgress.phase === 'saving'
+                          ? 'bg-lime-500'
+                          : 'bg-blue-400'
+                    )}
+                    style={{
+                      width: importProgress.total > 0
+                        ? `${Math.round((importProgress.current / importProgress.total) * 100)}%`
+                        : '100%',
+                      ...(importProgress.total === 0 ? { animation: 'pulse 1.5s ease-in-out infinite' } : {}),
+                    }}
+                  />
+                </div>
+                {importProgress.total > 0 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    {Math.round((importProgress.current / importProgress.total) * 100)}% complete
+                  </p>
                 )}
-              </Button>
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">
+                    {selectedIds.size} sessions selected
+                    {selectedIds.size > 0 && (
+                      <span className="text-muted-foreground ml-1">
+                        · {selectedSessions.reduce((s, x) => s + x.emptySlots, 0)} empty slots to fill
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  size="lg"
+                  disabled={selectedIds.size === 0 || isImporting}
+                  onClick={handleImport}
+                >
+                  {isImporting ? (
+                    <>
+                      <span className="animate-spin mr-2">⏳</span>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Import {selectedIds.size} Sessions
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

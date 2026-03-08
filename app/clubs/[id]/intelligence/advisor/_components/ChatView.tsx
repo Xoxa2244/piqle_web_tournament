@@ -13,36 +13,135 @@ import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
 
-// ── Mini Bar Chart ──
-function MiniBarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const max = Math.max(...data.map(d => d.value))
+// ── Chart colors ──
+const CHART_COLORS = [
+  '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+  '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#ef4444',
+]
+
+// ── Bar Chart (vertical) ──
+function BarChart({ title, data }: { title: string; data: { label: string; value: number }[] }) {
+  const max = Math.max(...data.map(d => d.value), 1)
   return (
-    <div className="flex items-end gap-2 h-32 mt-4 mb-2 px-2">
-      {data.map((d, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-          <span className="text-xs font-bold" style={{ color: d.color }}>{d.value}%</span>
-          <div
-            className="w-full rounded-t-md transition-all duration-500"
-            style={{
-              height: `${(d.value / max) * 80}px`,
-              backgroundColor: d.color,
-              minHeight: '4px',
-            }}
-          />
-          <span className="text-xs text-muted-foreground font-medium">{d.label}</span>
-        </div>
-      ))}
+    <div className="my-3 p-4 bg-background border rounded-xl">
+      <p className="text-xs font-semibold text-muted-foreground mb-3">{title}</p>
+      <div className="flex items-end gap-2 h-32 px-1">
+        {data.map((d, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+            <span className="text-xs font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
+              {Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
+            </span>
+            <div
+              className="w-full rounded-t-md transition-all duration-500"
+              style={{
+                height: `${(d.value / max) * 96}px`,
+                backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                minHeight: '4px',
+              }}
+            />
+            <span className="text-[10px] text-muted-foreground font-medium text-center leading-tight truncate w-full">
+              {d.label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-// ── Parse bold text ──
-function renderBoldText(text: string) {
+// ── Horizontal Bar Chart ──
+function HBarChart({ title, data }: { title: string; data: { label: string; value: number }[] }) {
+  const max = Math.max(...data.map(d => d.value), 1)
+  return (
+    <div className="my-3 p-4 bg-background border rounded-xl">
+      <p className="text-xs font-semibold text-muted-foreground mb-3">{title}</p>
+      <div className="space-y-2">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-20 text-right truncate flex-shrink-0">
+              {d.label}
+            </span>
+            <div className="flex-1 h-5 bg-secondary rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${(d.value / max) * 100}%`,
+                  backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+                  minWidth: '4px',
+                }}
+              />
+            </div>
+            <span className="text-xs font-bold w-12 text-right flex-shrink-0" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
+              {Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Inline Chart from parsed JSON ──
+function InlineChart({ json }: { json: string }) {
+  try {
+    const chart = JSON.parse(json)
+    if (!chart.data || !Array.isArray(chart.data)) return null
+    const title = chart.title || ''
+    if (chart.type === 'hbar') return <HBarChart title={title} data={chart.data} />
+    return <BarChart title={title} data={chart.data} />
+  } catch {
+    return null
+  }
+}
+
+// ── Parse message into text + chart segments ──
+type MessageSegment =
+  | { type: 'text'; content: string }
+  | { type: 'chart'; json: string }
+
+function parseMessageSegments(text: string): MessageSegment[] {
+  const segments: MessageSegment[] = []
+  const chartRegex = /```chart\s*\n([\s\S]*?)```/g
+  let lastIndex = 0
+  let match
+
+  while ((match = chartRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', content: text.slice(lastIndex, match.index) })
+    }
+    segments.push({ type: 'chart', json: match[1].trim() })
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', content: text.slice(lastIndex) })
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', content: text }]
+}
+
+// ── Render text with bold markdown ──
+function renderFormattedText(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>
     }
     return <span key={i}>{part}</span>
+  })
+}
+
+// ── Render full message with charts ──
+function renderMessage(text: string) {
+  const segments = parseMessageSegments(text)
+  return segments.map((seg, i) => {
+    if (seg.type === 'chart') {
+      return <InlineChart key={i} json={seg.json} />
+    }
+    return (
+      <div key={i} className="whitespace-pre-wrap">
+        {renderFormattedText(seg.content)}
+      </div>
+    )
   })
 }
 
@@ -318,8 +417,8 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                             <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <div className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm max-w-none">
-                              {renderBoldText(text)}
+                            <div className="text-sm leading-relaxed prose prose-sm max-w-none">
+                              {renderMessage(text)}
                             </div>
                           </div>
                         </div>
