@@ -37,12 +37,13 @@ export async function retrieveContext(
       ? `AND content_type IN (${contentTypes.map(t => `'${t}'`).join(',')})`
       : '';
 
+    // No threshold filter — always return top-N most relevant chunks.
+    // text-embedding-3-small produces low cosine similarities (0.2-0.4 for related content).
     const sql = `SELECT id::text, content, content_type, metadata,
                 (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
          FROM document_embeddings
          WHERE club_id = '${clubId}'::uuid
            ${contentTypeFilter}
-           AND (1 - (embedding <=> '${embeddingStr}'::vector)) > ${threshold}
          ORDER BY embedding <=> '${embeddingStr}'::vector
          LIMIT ${limit}`;
 
