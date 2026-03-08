@@ -65,6 +65,16 @@ model User {
   stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
   stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
 
+  // Intelligence relations
+  playSessionBookings      PlaySessionBooking[]      @relation("PlaySessionBookings")
+  playSessionWaitlist      PlaySessionWaitlist[]      @relation("PlaySessionWaitlist")
+  playPreferences          UserPlayPreference[]       @relation("PlayPreferences")
+  aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
+  playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
+
+  // AI Advisor conversations
+  aiConversations          AIConversation[]           @relation("UserAIConversations")
+
   @@map("users")
 }
 
@@ -215,6 +225,16 @@ model Club {
   chatReadStates     ClubChatReadState[]
   invites            ClubInvite[]
   bans               ClubBan[]
+
+  // Intelligence relations
+  clubCourts              ClubCourt[]
+  playSessions            PlaySession[]
+  userPlayPreferences     UserPlayPreference[]
+  aiRecommendationLogs    AIRecommendationLog[]
+
+  // AI features
+  documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
+  aiConversations         AIConversation[]           @relation("ClubAIConversations")
 
   @@map("clubs")
 }
@@ -1347,4 +1367,218 @@ enum ExternalEntityType {
   PLAYER
   MATCH_DAY
   MATCHUP
+}
+
+// ── Intelligence Module: Enums ──
+
+enum PlaySessionFormat {
+  OPEN_PLAY
+  CLINIC
+  DRILL
+  LEAGUE_PLAY
+  SOCIAL
+}
+
+enum PlaySessionSkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  ALL_LEVELS
+}
+
+enum PlaySessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+}
+
+enum WaitlistEntryStatus {
+  WAITING
+  PROMOTED
+  EXPIRED
+}
+
+enum AIRecommendationType {
+  SLOT_FILLER
+  REACTIVATION
+  WEEKLY_PLAN
+  DYNAMIC_PRICING
+  REBOOKING
+  AI_ADVISOR
+  CHURN_PREDICTION
+  GROUP_CHEMISTRY
+  AUTOPILOT
+}
+
+// ── Intelligence Module: Models ──
+
+model ClubCourt {
+  id        String   @id @default(uuid())
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name      String
+  courtType String?
+  isIndoor  Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  playSessions PlaySession[]
+
+  @@map("club_courts")
+}
+
+model PlaySession {
+  id          String               @id @default(uuid())
+  clubId      String
+  club        Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  courtId     String?
+  clubCourt   ClubCourt?           @relation(fields: [courtId], references: [id])
+  hostId      String?
+  host        User?                @relation("PlaySessionHost", fields: [hostId], references: [id])
+  title       String
+  description String?
+  date        DateTime
+  startTime   String
+  endTime     String
+  format      PlaySessionFormat    @default(OPEN_PLAY)
+  skillLevel  PlaySessionSkillLevel @default(ALL_LEVELS)
+  maxPlayers  Int                  @default(8)
+  pricePerSlot Float?
+  status      PlaySessionStatus    @default(SCHEDULED)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  bookings  PlaySessionBooking[]
+  waitlist  PlaySessionWaitlist[]
+
+  @@map("play_sessions")
+}
+
+model PlaySessionBooking {
+  id        String        @id @default(uuid())
+  sessionId String
+  playSession PlaySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation("PlaySessionBookings", fields: [userId], references: [id])
+  status    BookingStatus @default(CONFIRMED)
+  bookedAt  DateTime      @default(now())
+  cancelledAt DateTime?
+  checkedInAt DateTime?
+
+  @@unique([sessionId, userId])
+  @@map("play_session_bookings")
+}
+
+model PlaySessionWaitlist {
+  id        String              @id @default(uuid())
+  sessionId String
+  playSession PlaySession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation("PlaySessionWaitlist", fields: [userId], references: [id])
+  status    WaitlistEntryStatus @default(WAITING)
+  joinedAt  DateTime            @default(now())
+  promotedAt DateTime?
+
+  @@unique([sessionId, userId])
+  @@map("play_session_waitlist")
+}
+
+model UserPlayPreference {
+  id                    String   @id @default(uuid())
+  userId                String
+  user                  User     @relation("PlayPreferences", fields: [userId], references: [id])
+  clubId                String
+  club                  Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  preferredDays         String[] @default([])
+  preferredTimeMorning  Boolean  @default(true)
+  preferredTimeAfternoon Boolean @default(true)
+  preferredTimeEvening  Boolean  @default(true)
+  skillLevel            PlaySessionSkillLevel @default(ALL_LEVELS)
+  preferredFormats      String[] @default([])
+  targetSessionsPerWeek Int      @default(2)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([userId, clubId])
+  @@map("user_play_preferences")
+}
+
+model AIRecommendationLog {
+  id               String                  @id @default(uuid())
+  clubId           String
+  club             Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User                    @relation("AIRecommendationLogs", fields: [userId], references: [id])
+  type             AIRecommendationType
+  sessionId        String?
+  score            Float?
+  reasoning        Json?
+  status           String                  @default("pending")
+  respondedAt      DateTime?
+  createdAt        DateTime                @default(now())
+
+  @@map("ai_recommendation_logs")
+}
+
+// ── AI Embeddings (RAG) ──
+model DocumentEmbedding {
+  id          String   @id @default(uuid())
+  clubId      String   @map("club_id")
+  content     String
+  contentType String   @map("content_type")  // 'club_info', 'session', 'member_pattern', 'booking_trend', 'faq'
+  metadata    Json     @default("{}")
+  embedding   Unsupported("vector(1536)")
+  sourceId    String?  @map("source_id")
+  sourceTable String?  @map("source_table")
+  chunkIndex  Int      @default(0) @map("chunk_index")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  club Club @relation("ClubEmbeddings", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([contentType])
+  @@index([sourceId, sourceTable])
+  @@map("document_embeddings")
+}
+
+// ── AI Conversations ──
+model AIConversation {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  club     Club         @relation("ClubAIConversations", fields: [clubId], references: [id], onDelete: Cascade)
+  user     User         @relation("UserAIConversations", fields: [userId], references: [id], onDelete: Cascade)
+  messages AIMessage[]  @relation("ConversationMessages")
+
+  @@index([clubId, userId])
+  @@index([updatedAt(sort: Desc)])
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user', 'assistant', 'system'
+  content        String
+  metadata       Json?    @default("{}")  // token counts, model used, latency_ms
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AIConversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("ai_messages")
 }
