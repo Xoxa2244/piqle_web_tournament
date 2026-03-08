@@ -4,6 +4,10 @@ import { prisma } from '@/lib/prisma';
 import { generateEmbeddings } from '@/lib/ai/rag/embeddings';
 import { parse as parseCookie } from 'cookie';
 
+// Allow long-running imports (Vercel Pro: up to 300s)
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
   try {
@@ -376,6 +380,9 @@ export async function POST(req: Request) {
       };
 
       try {
+        // Flush: send a comment to force proxy to start streaming
+        controller.enqueue(encoder.encode(': stream start\n\n'));
+
         // Phase 1: Delete old data
         send({ phase: 'deleting', message: 'Removing old data...' });
         try {
@@ -549,8 +556,10 @@ export async function POST(req: Request) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Content-Encoding': 'none',
     },
   });
 }
