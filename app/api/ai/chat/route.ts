@@ -339,7 +339,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
       'X-RAG-Status': ragStatus,
       'X-RAG-Chunks': String(ragChunks.length),
       'X-RAG-Context-Length': String(ragContext.length),
-      'X-RAG-Query': ragQueryText.slice(0, 100),
+      'X-RAG-Query': encodeURIComponent(ragQueryText.slice(0, 100)),
       'X-Conversation-Language': conversationLanguage,
     };
     if (convId) {
