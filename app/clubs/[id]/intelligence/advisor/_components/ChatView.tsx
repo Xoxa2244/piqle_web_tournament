@@ -350,9 +350,11 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                             <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <ReactMarkdown className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
-                              {cleanText}
-                            </ReactMarkdown>
+                            <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
+                              <ReactMarkdown>
+                                {cleanText}
+                              </ReactMarkdown>
+                            </div>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
                             <div className="flex flex-wrap gap-2 mt-3">
