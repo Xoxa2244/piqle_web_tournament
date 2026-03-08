@@ -190,7 +190,11 @@ export async function indexMemberPatterns(clubId: string): Promise<number> {
       bookingsLastMonth: recentBookings.length,
       daysSinceLastBooking,
       preferredDays: pref?.preferredDays as string[] | undefined,
-      preferredTimeSlots: pref?.preferredTimeSlots as Record<string, boolean> | undefined,
+      preferredTimeSlots: pref ? {
+        morning: pref.preferredTimeMorning,
+        afternoon: pref.preferredTimeAfternoon,
+        evening: pref.preferredTimeEvening,
+      } : undefined,
       preferredFormats: pref?.preferredFormats as string[] | undefined,
       cancelledCount,
       noShowCount,
