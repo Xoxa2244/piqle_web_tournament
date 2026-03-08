@@ -107,20 +107,27 @@ export async function POST(req: Request) {
 
     // 5. RAG: retrieve relevant context (gracefully handle failures)
     let ragChunks: Awaited<ReturnType<typeof retrieveContext>> = [];
+    let ragStatus = 'skipped';
+    let ragQueryText = '';
     try {
       const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
-      const queryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
-      console.log(`[AI Chat] RAG query: "${queryText?.slice(0, 80)}", clubId: ${clubId}`);
-      if (queryText) {
-        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.3 });
+      ragQueryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
+      console.log(`[AI Chat] RAG query: "${ragQueryText?.slice(0, 80)}", clubId: ${clubId}, msgFormat: ${JSON.stringify(lastUserMessage).slice(0, 200)}`);
+      if (ragQueryText) {
+        ragChunks = await retrieveContext(ragQueryText, clubId, { limit: 6, threshold: 0.3 });
+        ragStatus = ragChunks.length > 0 ? 'ok' : 'empty';
         console.log(`[AI Chat] RAG retrieved ${ragChunks.length} chunks, similarities: [${ragChunks.map(c => c.similarity.toFixed(3)).join(', ')}]`);
+      } else {
+        ragStatus = 'no_query_text';
+        console.warn(`[AI Chat] RAG skipped: no query text extracted from message`);
       }
     } catch (ragError) {
+      ragStatus = 'error';
       console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
     }
 
     const ragContext = buildRAGContext(ragChunks);
-    console.log(`[AI Chat] RAG context length: ${ragContext.length} chars`);
+    console.log(`[AI Chat] RAG status=${ragStatus}, chunks=${ragChunks.length}, contextLen=${ragContext.length}`);
 
     // 6. Build system prompt with RAG context
     const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}
@@ -205,7 +212,12 @@ Use the data above to answer the user's question. If the data doesn't contain re
     }
 
     // 11. Return streaming response
-    const responseHeaders: Record<string, string> = {};
+    const responseHeaders: Record<string, string> = {
+      'X-RAG-Status': ragStatus,
+      'X-RAG-Chunks': String(ragChunks.length),
+      'X-RAG-Context-Length': String(ragContext.length),
+      'X-RAG-Query': ragQueryText.slice(0, 100),
+    };
     if (convId) {
       responseHeaders['X-Conversation-Id'] = convId;
     }

@@ -102,9 +102,13 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
         const response = await globalThis.fetch(url, init)
         const newConvId = response.headers.get('X-Conversation-Id')
         if (newConvId && !convIdRef.current) {
-          // Don't update state during streaming — store in ref, apply after stream ends
           pendingConvIdRef.current = newConvId
         }
+        // Log RAG debug info from response headers
+        console.log('[AI Chat] RAG status:', response.headers.get('X-RAG-Status'),
+          'chunks:', response.headers.get('X-RAG-Chunks'),
+          'contextLen:', response.headers.get('X-RAG-Context-Length'),
+          'query:', response.headers.get('X-RAG-Query'))
         return response
       },
     })
