@@ -110,14 +110,17 @@ export async function POST(req: Request) {
     try {
       const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop();
       const queryText = lastUserMessage ? getMessageText(lastUserMessage) : '';
+      console.log(`[AI Chat] RAG query: "${queryText?.slice(0, 80)}", clubId: ${clubId}`);
       if (queryText) {
-        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.6 });
+        ragChunks = await retrieveContext(queryText, clubId, { limit: 6, threshold: 0.5 });
+        console.log(`[AI Chat] RAG retrieved ${ragChunks.length} chunks, similarities: [${ragChunks.map(c => c.similarity.toFixed(3)).join(', ')}]`);
       }
     } catch (ragError) {
-      console.warn('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
+      console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError);
     }
 
     const ragContext = buildRAGContext(ragChunks);
+    console.log(`[AI Chat] RAG context length: ${ragContext.length} chars`);
 
     // 6. Build system prompt with RAG context
     const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}

@@ -26,6 +26,7 @@ export async function retrieveContext(
   // Generate embedding for the query
   const queryEmbedding = await generateEmbedding(query);
   const embeddingStr = `[${queryEmbedding.join(',')}]`;
+  console.log(`[RAG] Embedding generated, dim=${queryEmbedding.length}, clubId=${clubId}, threshold=${threshold}, limit=${limit}`);
 
   try {
     // Direct SQL similarity search — bypasses PostgREST cache issues
@@ -71,8 +72,31 @@ export async function retrieveContext(
       similarity: r.similarity,
     }));
   } catch (err) {
-    console.error('[RAG] Similarity search failed:', err);
-    return [];
+    console.error('[RAG] Similarity search failed:', err instanceof Error ? err.message : err);
+    // Fallback: try simple text search without vector similarity
+    try {
+      console.log('[RAG] Attempting fallback: direct content fetch without similarity');
+      const fallbackRows: { id: string; content: string; content_type: string; metadata: any }[] = await prisma.$queryRawUnsafe(
+        `SELECT id::text, content, content_type, metadata
+         FROM document_embeddings
+         WHERE club_id = $1::uuid
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        clubId,
+        limit,
+      );
+      console.log(`[RAG] Fallback returned ${fallbackRows.length} rows`);
+      return fallbackRows.map(r => ({
+        id: r.id,
+        content: r.content,
+        contentType: r.content_type as ContentType,
+        metadata: r.metadata,
+        similarity: 0.5,
+      }));
+    } catch (fallbackErr) {
+      console.error('[RAG] Fallback also failed:', fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
+      return [];
+    }
   }
 }
 
