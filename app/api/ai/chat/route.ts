@@ -229,7 +229,13 @@ Use the data above to answer the user's question. If the data doesn't contain re
     }
 
     // 8. Convert UIMessages to model messages (required in AI SDK v6)
-    const modelMessages = await convertToModelMessages(fullMessages);
+    let modelMessages;
+    try {
+      modelMessages = await convertToModelMessages(fullMessages);
+    } catch (convertError) {
+      console.error('[AI Chat] convertToModelMessages failed:', convertError, 'fullMessages sample:', JSON.stringify(fullMessages.slice(0, 2)).slice(0, 500));
+      return Response.json({ error: 'Failed to process messages' }, { status: 400 });
+    }
 
     // 9. Persistence callback
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
@@ -316,7 +322,11 @@ Use the data above to answer the user's question. If the data doesn't contain re
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error('[AI Chat] Unexpected error:', error);
-    return new Response('Internal server error', { status: 500 });
+    const errMsg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
+    console.error('[AI Chat] Unexpected error:', errMsg);
+    return Response.json({
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV === 'development' ? errMsg : undefined,
+    }, { status: 500 });
   }
 }
