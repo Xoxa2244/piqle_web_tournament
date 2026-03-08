@@ -136,8 +136,7 @@ export async function POST(req: Request) {
 ${ragContext}
 --- End of Club Data ---
 
-Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.
-REMINDER: When your answer has numeric comparisons, you MUST include a \`\`\`chart block. Do NOT skip charts.`;
+Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
 
     // 7. Verify API key is available
     if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {

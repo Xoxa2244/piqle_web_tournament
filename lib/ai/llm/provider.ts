@@ -20,7 +20,7 @@ const MODEL_MAP: Record<ModelTier, { primary: string; fallback: string }> = {
     fallback: process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022',
   },
   standard: {
-    primary: process.env.AI_PRIMARY_MODEL || 'gpt-4o-mini',
+    primary: process.env.AI_PRIMARY_MODEL || 'gpt-4o',
     fallback: process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022',
   },
   premium: {

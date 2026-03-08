@@ -7,92 +7,12 @@ import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import {
   Send, Plus, Trash2, Loader2,
-  Sparkles, MessageSquare, Database, Paperclip
+  Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
-
-// ── Chart colors ──
-const CHART_COLORS = [
-  '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
-  '#8b5cf6', '#ec4899', '#f97316', '#eab308', '#ef4444',
-]
-
-// ── Bar Chart (vertical) ──
-function BarChart({ title, data }: { title: string; data: { label: string; value: number }[] }) {
-  const max = Math.max(...data.map(d => d.value), 1)
-  return (
-    <div className="my-3 p-4 bg-background border rounded-xl">
-      <p className="text-xs font-semibold text-muted-foreground mb-3">{title}</p>
-      <div className="flex items-end gap-2 h-32 px-1">
-        {data.map((d, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1">
-            <span className="text-xs font-bold" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
-              {Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
-            </span>
-            <div
-              className="w-full rounded-t-md transition-all duration-500"
-              style={{
-                height: `${(d.value / max) * 96}px`,
-                backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
-                minHeight: '4px',
-              }}
-            />
-            <span className="text-[10px] text-muted-foreground font-medium text-center leading-tight truncate w-full">
-              {d.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Horizontal Bar Chart ──
-function HBarChart({ title, data }: { title: string; data: { label: string; value: number }[] }) {
-  const max = Math.max(...data.map(d => d.value), 1)
-  return (
-    <div className="my-3 p-4 bg-background border rounded-xl">
-      <p className="text-xs font-semibold text-muted-foreground mb-3">{title}</p>
-      <div className="space-y-2">
-        {data.map((d, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-20 text-right truncate flex-shrink-0">
-              {d.label}
-            </span>
-            <div className="flex-1 h-5 bg-secondary rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${(d.value / max) * 100}%`,
-                  backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
-                  minWidth: '4px',
-                }}
-              />
-            </div>
-            <span className="text-xs font-bold w-12 text-right flex-shrink-0" style={{ color: CHART_COLORS[i % CHART_COLORS.length] }}>
-              {Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Inline Chart from parsed JSON ──
-function InlineChart({ json }: { json: string }) {
-  try {
-    const chart = JSON.parse(json)
-    if (!chart.data || !Array.isArray(chart.data)) return null
-    const title = chart.title || ''
-    if (chart.type === 'hbar') return <HBarChart title={title} data={chart.data} />
-    return <BarChart title={title} data={chart.data} />
-  } catch {
-    return null
-  }
-}
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -112,57 +32,6 @@ function extractSuggestions(text: string): { cleanText: string; suggestions: str
     return { cleanText: text.slice(0, partialIdx).trimEnd(), suggestions: [] }
   }
   return { cleanText: text, suggestions: [] }
-}
-
-// ── Parse message into text + chart segments ──
-type MessageSegment =
-  | { type: 'text'; content: string }
-  | { type: 'chart'; json: string }
-
-function parseMessageSegments(text: string): MessageSegment[] {
-  const segments: MessageSegment[] = []
-  const chartRegex = /```chart\s*\n([\s\S]*?)```/g
-  let lastIndex = 0
-  let match
-
-  while ((match = chartRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: 'text', content: text.slice(lastIndex, match.index) })
-    }
-    segments.push({ type: 'chart', json: match[1].trim() })
-    lastIndex = match.index + match[0].length
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: 'text', content: text.slice(lastIndex) })
-  }
-
-  return segments.length > 0 ? segments : [{ type: 'text', content: text }]
-}
-
-// ── Render text with bold markdown ──
-function renderFormattedText(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/).map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>
-    }
-    return <span key={i}>{part}</span>
-  })
-}
-
-// ── Render full message with charts ──
-function renderMessage(text: string) {
-  const segments = parseMessageSegments(text)
-  return segments.map((seg, i) => {
-    if (seg.type === 'chart') {
-      return <InlineChart key={i} json={seg.json} />
-    }
-    return (
-      <div key={i} className="whitespace-pre-wrap">
-        {renderFormattedText(seg.content)}
-      </div>
-    )
-  })
 }
 
 function getMessageText(message: { parts?: Array<{ type: string; text?: string }> }): string {
@@ -214,6 +83,14 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
       if (activeConversationId) {
         setActiveConversationId(null)
       }
+    },
+  })
+
+  const deleteAllConversations = trpc.intelligence.deleteAllConversations.useMutation({
+    onSuccess: () => {
+      conversationsQuery.refetch()
+      setActiveConversationId(null)
+      setMessages([])
     },
   })
 
@@ -325,15 +202,32 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
       <div className="w-64 flex-shrink-0 flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted-foreground">Conversations</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleNewConversation}
-            className="h-7 gap-1 text-xs"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </Button>
+          <div className="flex items-center gap-1">
+            {(conversationsQuery.data?.length ?? 0) > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (confirm('Delete all conversations?')) {
+                    deleteAllConversations.mutate({ clubId })
+                  }
+                }}
+                className="h-7 gap-1 text-xs text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-3 w-3" />
+                Clear
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNewConversation}
+              className="h-7 gap-1 text-xs"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </Button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-1">
@@ -456,19 +350,20 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                             <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <div className="text-sm leading-relaxed prose prose-sm max-w-none">
-                              {renderMessage(cleanText)}
-                            </div>
+                            <ReactMarkdown className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
+                              {cleanText}
+                            </ReactMarkdown>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
                             <div className="flex flex-wrap gap-2 mt-3">
-                              {suggestions.map((q, i) => (
+                              {suggestions.slice(0, 3).map((q, i) => (
                                 <button
                                   key={i}
                                   onClick={() => handleSend(q)}
-                                  className="text-xs px-3 py-1.5 rounded-full border bg-background hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-muted-foreground hover:text-foreground"
+                                  className="text-xs px-3 py-1.5 rounded-full border bg-background hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-muted-foreground hover:text-foreground flex items-center gap-1"
                                 >
                                   {q}
+                                  <ChevronRight className="w-3 h-3" />
                                 </button>
                               ))}
                             </div>

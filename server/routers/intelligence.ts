@@ -497,6 +497,26 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  deleteAllConversations: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Delete all messages first (FK constraint), then conversations
+        await ctx.prisma.aIMessage.deleteMany({
+          where: { conversation: { clubId: input.clubId, userId: ctx.session.user.id } },
+        })
+        await ctx.prisma.aIConversation.deleteMany({
+          where: { clubId: input.clubId, userId: ctx.session.user.id },
+        })
+        return { success: true }
+      } catch (err) {
+        console.warn('[Intelligence] deleteAllConversations failed:', err)
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete conversations' })
+      }
+    }),
+
   // ── RAG: Trigger embedding index for a club ──
   reindexClub: protectedProcedure
     .input(z.object({
