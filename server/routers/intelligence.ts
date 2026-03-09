@@ -371,17 +371,15 @@ export const intelligenceRouter = createTRPCRouter({
       const d60 = new Date(now.getTime() - 60 * 86400000)
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
+      // ── Core queries (tables always exist) ──
       const [
         membersNow,
         membersAt30dAgo,
         completedSessions30d,
         completedSessionsPrev30d,
-        bookings30d,
-        bookingsPrev30d,
         upcomingSessions,
         newMembersThisMonth,
         allMembersWithUser,
-        recentBookers,
       ] = await Promise.all([
         // 1. Current member count
         ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
@@ -404,15 +402,7 @@ export const intelligenceRouter = createTRPCRouter({
             _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
           },
         }),
-        // 5. Bookings last 30d
-        ctx.prisma.playSessionBooking.count({
-          where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30 } },
-        }),
-        // 6. Bookings prev 30d
-        ctx.prisma.playSessionBooking.count({
-          where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d60, lt: d30 } },
-        }),
-        // 7. Upcoming scheduled sessions
+        // 5. Upcoming scheduled sessions
         ctx.prisma.playSession.findMany({
           where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
           include: {
@@ -422,26 +412,45 @@ export const intelligenceRouter = createTRPCRouter({
           orderBy: { date: 'asc' },
           take: 20,
         }),
-        // 8. New members this month
+        // 6. New members this month
         ctx.prisma.clubFollower.count({
           where: { clubId: input.clubId, createdAt: { gte: monthStart } },
         }),
-        // 9. All members with DUPR for skill distribution
+        // 7. All members with DUPR for skill distribution
         ctx.prisma.clubFollower.findMany({
           where: { clubId: input.clubId },
           include: { user: { select: { id: true, duprRatingDoubles: true } } },
         }),
-        // 10. Users who booked in last 14 days (active players)
-        ctx.prisma.playSessionBooking.findMany({
-          where: {
-            status: 'CONFIRMED',
-            playSession: { clubId: input.clubId },
-            bookedAt: { gte: d14 },
-          },
-          select: { userId: true },
-          distinct: ['userId'],
-        }),
       ])
+
+      // ── Booking queries (table may not exist on some envs) ──
+      let bookings30d = 0
+      let bookingsPrev30d = 0
+      let recentBookers: { userId: string }[] = []
+      try {
+        ;[bookings30d, bookingsPrev30d, recentBookers] = await Promise.all([
+          ctx.prisma.playSessionBooking.count({
+            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30 } },
+          }),
+          ctx.prisma.playSessionBooking.count({
+            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d60, lt: d30 } },
+          }),
+          ctx.prisma.playSessionBooking.findMany({
+            where: {
+              status: 'CONFIRMED',
+              playSession: { clubId: input.clubId },
+              bookedAt: { gte: d14 },
+            },
+            select: { userId: true },
+            distinct: ['userId'],
+          }),
+        ])
+      } catch {
+        // playSessionBooking table may not exist yet — fall back to deriving from sessions
+        bookings30d = completedSessions30d.reduce((sum, s) => sum + s._count.bookings, 0)
+        bookingsPrev30d = completedSessionsPrev30d.reduce((sum, s) => sum + s._count.bookings, 0)
+        recentBookers = []
+      }
 
       // ── Helper: compute trend ──
       function computeTrend(current: number, previous: number, sparkline: number[] = []): {
