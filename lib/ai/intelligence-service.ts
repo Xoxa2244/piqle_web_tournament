@@ -308,6 +308,152 @@ export async function getWeeklyPlan(prisma: any, input: z.infer<typeof weeklyPla
   return { plan, needsPreferences: false, message: null };
 }
 
+// ── CSV fallback: build reactivation data from document_embeddings ──
+
+interface CsvSessionMeta {
+  date: string; startTime: string; endTime: string; court: string
+  format: string; skillLevel: string; registered: number
+  capacity: number; occupancy: number; playerNames: string[]
+  pricePerPlayer?: number | null
+}
+
+function matchPlayerName(userName: string | null, csvNames: string[]): string | null {
+  if (!userName) return null
+  const lower = userName.toLowerCase().trim()
+  // Exact match (case-insensitive)
+  for (const csv of csvNames) {
+    if (csv.toLowerCase().trim() === lower) return csv
+  }
+  // Partial: CSV name contains user name or vice versa (for "John" vs "John Smith")
+  for (const csv of csvNames) {
+    const csvLower = csv.toLowerCase().trim()
+    if (csvLower.includes(lower) || lower.includes(csvLower)) return csv
+  }
+  return null
+}
+
+async function buildCsvReactivationData(
+  prisma: any,
+  clubId: string,
+  members: Array<{ user: any }>,
+): Promise<{
+  membersWithData: Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }>
+  upcomingSessions: any[]
+  totalPlayersFromCsv: number
+} | null> {
+  // Load CSV sessions from document_embeddings (same query as Dashboard V2)
+  let csvSessions: CsvSessionMeta[] = []
+  try {
+    const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
+      SELECT metadata FROM document_embeddings
+      WHERE club_id = ${clubId}::uuid
+        AND content_type = 'session'
+        AND source_table = 'csv_import'
+    `
+    csvSessions = rows
+      .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
+      .filter((m: CsvSessionMeta) => m && m.date && m.capacity > 0)
+  } catch {
+    return null
+  }
+
+  if (csvSessions.length === 0) return null
+
+  // Build player activity map from CSV
+  const now = new Date()
+  const allPlayerNames = new Set<string>()
+  const playerActivity = new Map<string, { lastDate: string; totalSessions: number; sessionsLast7d: number; sessionsLast30d: number }>()
+
+  // Use CSV's latest date as reference (data may be historical)
+  const allDates = csvSessions.map(s => s.date).sort()
+  const latestDateStr = allDates[allDates.length - 1]
+  const latestDate = new Date(latestDateStr + 'T23:59:59')
+  const d7Str = new Date(latestDate.getTime() - 7 * 86400000).toISOString().slice(0, 10)
+  const d30Str = new Date(latestDate.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+
+  for (const s of csvSessions) {
+    for (const name of (s.playerNames || [])) {
+      allPlayerNames.add(name)
+      const existing = playerActivity.get(name) || { lastDate: '', totalSessions: 0, sessionsLast7d: 0, sessionsLast30d: 0 }
+      existing.totalSessions++
+      if (s.date > existing.lastDate) existing.lastDate = s.date
+      if (s.date >= d7Str) existing.sessionsLast7d++
+      if (s.date >= d30Str) existing.sessionsLast30d++
+      playerActivity.set(name, existing)
+    }
+  }
+
+  const allCsvNames = Array.from(allPlayerNames)
+
+  // Build member data with CSV-based history
+  const membersWithData = await Promise.all(
+    members.map(async (cf: any) => {
+      const preference = await prisma.userPlayPreference.findUnique({
+        where: { userId_clubId: { userId: cf.user.id, clubId } },
+      })
+      const matchedName = matchPlayerName(cf.user.name, allCsvNames)
+      const activity = matchedName ? playerActivity.get(matchedName) : null
+
+      let history: BookingHistory
+      if (activity) {
+        const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
+        const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+        history = {
+          totalBookings: activity.totalSessions,
+          bookingsLastWeek: activity.sessionsLast7d,
+          bookingsLastMonth: activity.sessionsLast30d,
+          daysSinceLastConfirmedBooking: daysSince,
+          cancelledCount: 0,
+          noShowCount: 0,
+          inviteAcceptanceRate: 1.0,
+        }
+      } else {
+        // Member not found in CSV — no history
+        history = {
+          totalBookings: 0,
+          bookingsLastWeek: 0,
+          bookingsLastMonth: 0,
+          daysSinceLastConfirmedBooking: null,
+          cancelledCount: 0,
+          noShowCount: 0,
+          inviteAcceptanceRate: 0.5,
+        }
+      }
+
+      return {
+        member: toMemberData(cf.user),
+        preference: toPreferenceData(preference),
+        history,
+      }
+    })
+  )
+
+  // Build "virtual" upcoming sessions from CSV (sessions with spots available)
+  const fmtLabels: Record<string, string> = {
+    OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+    LEAGUE_PLAY: 'League', SOCIAL: 'Social',
+  }
+  const upcomingSessions = csvSessions
+    .filter(s => s.registered < s.capacity)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 10)
+    .map((s, i) => ({
+      id: `csv-react-${i}`,
+      title: `${fmtLabels[s.format] || s.format} @ ${s.court}`,
+      date: new Date(s.date),
+      startTime: s.startTime,
+      endTime: s.endTime,
+      format: s.format,
+      skillLevel: s.skillLevel || 'ALL_LEVELS',
+      maxPlayers: s.capacity,
+      confirmedCount: s.registered,
+      status: 'SCHEDULED',
+      spotsRemaining: s.capacity - s.registered,
+    }))
+
+  return { membersWithData, upcomingSessions, totalPlayersFromCsv: allPlayerNames.size }
+}
+
 /**
  * intelligence.getReactivationCandidates
  * Identify inactive members and suggest who to re-engage
@@ -331,8 +477,8 @@ export async function getReactivationCandidates(
     },
   });
 
-  // Build data for each member
-  const membersWithData = await Promise.all(
+  // Build data for each member from DB
+  let membersWithData = await Promise.all(
     members.map(async (cf: any) => {
       const preference = await prisma.userPlayPreference.findUnique({
         where: { userId_clubId: { userId: cf.user.id, clubId } },
@@ -346,22 +492,39 @@ export async function getReactivationCandidates(
     })
   );
 
-  // Get upcoming sessions
-  const upcomingSessions = await prisma.playSession.findMany({
+  // Get upcoming sessions from DB
+  let upcomingSessions = await prisma.playSession.findMany({
     where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
     include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
   });
 
+  let totalMembers = members.length
+
+  // ── CSV Fallback: if PlaySessionBooking table is empty, use CSV data ──
+  const allBookingsEmpty = membersWithData.every(m => m.history.totalBookings === 0);
+  if (allBookingsEmpty && members.length > 0) {
+    const csvData = await buildCsvReactivationData(prisma, clubId, members);
+    if (csvData) {
+      membersWithData = csvData.membersWithData;
+      upcomingSessions = csvData.upcomingSessions;
+      // Use CSV player count if larger than club members (CSV may have more players)
+      totalMembers = Math.max(members.length, csvData.totalPlayersFromCsv)
+    }
+  }
+
   const candidates = generateReactivationCandidates({
     members: membersWithData,
-    upcomingSessions: upcomingSessions.map((s: any) => ({ ...s, confirmedCount: s._count.bookings })),
+    upcomingSessions: (upcomingSessions as any[]).map((s: any) => ({
+      ...s,
+      confirmedCount: s.confirmedCount ?? s._count?.bookings ?? 0,
+    })),
     inactivityThresholdDays: inactivityDays,
   });
 
   return {
     candidates: candidates.slice(0, limit),
     totalInactiveMembers: candidates.length,
-    totalClubMembers: members.length,
+    totalClubMembers: totalMembers,
     inactivityThresholdDays: inactivityDays,
   };
 }
