@@ -477,38 +477,65 @@ export async function getReactivationCandidates(
     },
   });
 
-  // Build data for each member from DB
-  let membersWithData = await Promise.all(
-    members.map(async (cf: any) => {
-      const preference = await prisma.userPlayPreference.findUnique({
-        where: { userId_clubId: { userId: cf.user.id, clubId } },
-      });
-      const history = await buildBookingHistory(prisma, cf.user.id);
-      return {
-        member: toMemberData(cf.user),
-        preference: toPreferenceData(preference),
-        history,
-      };
-    })
-  );
-
-  // Get upcoming sessions from DB
-  let upcomingSessions = await prisma.playSession.findMany({
-    where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
-    include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
-  });
-
+  let membersWithData: Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }>
+  let upcomingSessions: any[]
   let totalMembers = members.length
 
-  // ── CSV Fallback: if PlaySessionBooking table is empty, use CSV data ──
-  const allBookingsEmpty = membersWithData.every(m => m.history.totalBookings === 0);
-  if (allBookingsEmpty && members.length > 0) {
-    const csvData = await buildCsvReactivationData(prisma, clubId, members);
+  // ── Fast check: does PlaySessionBooking have ANY data for these members? ──
+  const memberUserIds = members.map((cf: any) => cf.user.id)
+  let hasRealBookings = false
+  try {
+    const bookingCount = await prisma.playSessionBooking.count({
+      where: { userId: { in: memberUserIds } },
+      take: 1, // Stop at first match for speed
+    })
+    hasRealBookings = bookingCount > 0
+  } catch {
+    // Table might not exist — treat as empty
+    hasRealBookings = false
+  }
+
+  if (hasRealBookings) {
+    // ── Real DB path: build from PlaySessionBooking ──
+    membersWithData = await Promise.all(
+      members.map(async (cf: any) => {
+        const preference = await prisma.userPlayPreference.findUnique({
+          where: { userId_clubId: { userId: cf.user.id, clubId } },
+        });
+        const history = await buildBookingHistory(prisma, cf.user.id);
+        return {
+          member: toMemberData(cf.user),
+          preference: toPreferenceData(preference),
+          history,
+        };
+      })
+    );
+    upcomingSessions = await prisma.playSession.findMany({
+      where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
+      include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
+    });
+  } else {
+    // ── CSV Fallback: build from document_embeddings ──
+    const csvData = members.length > 0
+      ? await buildCsvReactivationData(prisma, clubId, members)
+      : null;
+
     if (csvData) {
       membersWithData = csvData.membersWithData;
       upcomingSessions = csvData.upcomingSessions;
-      // Use CSV player count if larger than club members (CSV may have more players)
       totalMembers = Math.max(members.length, csvData.totalPlayersFromCsv)
+    } else {
+      // No CSV data either — return empty histories
+      membersWithData = members.map((cf: any) => ({
+        member: toMemberData(cf.user),
+        preference: null,
+        history: {
+          totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+          daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+          noShowCount: 0, inviteAcceptanceRate: 0.5,
+        },
+      }));
+      upcomingSessions = [];
     }
   }
 
