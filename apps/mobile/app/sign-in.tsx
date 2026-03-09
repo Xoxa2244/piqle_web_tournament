@@ -1,15 +1,23 @@
 import { Feather } from '@expo/vector-icons'
-import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
+import { useEffect, useState } from 'react'
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { ActionButton, InputField, Pill, SurfaceCard } from '../src/components/ui'
+import { OptionalLinearGradient } from '../src/components/OptionalLinearGradient'
+import { InputField } from '../src/components/ui'
 import { palette, radius, spacing } from '../src/lib/theme'
 import { useAuth } from '../src/providers/AuthProvider'
 
+const brandGradient = [palette.primary, palette.purple] as const
+const mutedBrandGradient = ['#A7D7AF', '#A7D7AF'] as const
+
+const GoogleMark = () => (
+  <Image source={require('../assets/google-mark.png')} style={styles.googleMark} resizeMode="contain" />
+)
+
 export default function SignInScreen() {
-  const { user, signIn, signUp, requestCode } = useAuth()
+  const { user, signIn, signUp, requestCode, signInWithGoogle } = useAuth()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [step, setStep] = useState<'email' | 'details'>('email')
   const [email, setEmail] = useState('')
@@ -20,8 +28,18 @@ export default function SignInScreen() {
   const [lastName, setLastName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | undefined>()
   const [showPassword, setShowPassword] = useState(false)
+  const normalizedEmail = email.trim()
+  const canSubmitSignIn = normalizedEmail.length > 0 && password.length > 0
+  const canRequestCode = normalizedEmail.length > 0
+  const canSubmitSignUp =
+    code.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    password.length > 0 &&
+    confirmPassword.length > 0
 
   useEffect(() => {
     if (user) {
@@ -29,11 +47,18 @@ export default function SignInScreen() {
     }
   }, [user])
 
+  const resetForMode = (value: 'signin' | 'signup') => {
+    setMode(value)
+    setStep('email')
+    setError(null)
+    setShowPassword(false)
+  }
+
   const submitSignIn = async () => {
     setLoading(true)
     setError(null)
     try {
-      await signIn(email, password)
+      await signIn(normalizedEmail, password)
       router.replace('/(tabs)')
     } catch (nextError: any) {
       setError(nextError?.message || 'Failed to sign in')
@@ -46,7 +71,7 @@ export default function SignInScreen() {
     setLoading(true)
     setError(null)
     try {
-      const nextExpiry = await requestCode(email)
+      const nextExpiry = await requestCode(normalizedEmail)
       setExpiresAt(nextExpiry)
       setStep('details')
     } catch (nextError: any) {
@@ -70,10 +95,10 @@ export default function SignInScreen() {
     setError(null)
     try {
       await signUp({
-        email,
-        code,
-        firstName,
-        lastName,
+        email: normalizedEmail,
+        code: code.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         password,
       })
       router.replace('/(tabs)')
@@ -84,131 +109,327 @@ export default function SignInScreen() {
     }
   }
 
+  const submitGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    setError(null)
+    try {
+      await signInWithGoogle()
+      router.replace('/(tabs)')
+    } catch (nextError: any) {
+      if (nextError?.message === 'Google sign-in was cancelled.') {
+        setGoogleLoading(false)
+        return
+      }
+      setError(nextError?.message || 'Failed to continue with Google')
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.background}>
-        <View style={styles.glowTop} />
-        <View style={styles.glowBottom} />
+        <Image source={require('../assets/auth-bg.png')} style={styles.backgroundImage} resizeMode="stretch" />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <View style={styles.logoWrap}>
-            <Text style={styles.logoText}>P</Text>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          <View style={styles.hero}>
+            <OptionalLinearGradient
+              colors={brandGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logoWrap}
+            >
+              <Text style={styles.logoText}>P</Text>
+            </OptionalLinearGradient>
+            <Text style={styles.title}>Piqle</Text>
+            <Text style={styles.subtitle}>Your pickleball journey starts here</Text>
           </View>
-          <Text style={styles.title}>Piqle Player</Text>
-          <Text style={styles.subtitle}>Your pickleball journey starts here.</Text>
-        </View>
 
-        <SurfaceCard style={styles.formCard}>
-          <View style={styles.modeSwitch}>
-            {(['signin', 'signup'] as const).map((value) => {
-              const active = mode === value
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => {
-                    setMode(value)
-                    setStep('email')
-                    setError(null)
-                  }}
-                  style={[styles.modeButton, active && styles.modeButtonActive]}
-                >
-                  <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
-                    {value === 'signin' ? 'Sign In' : 'Create Account'}
+          <View style={styles.formShell}>
+            <View style={styles.modeSwitch}>
+              {(['signin', 'signup'] as const).map((value) => {
+                const active = mode === value
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => resetForMode(value)}
+                    style={({ pressed }) => [
+                      styles.modeButton,
+                      active && styles.modeButtonActive,
+                      pressed && !active && styles.modeButtonPressed,
+                    ]}
+                  >
+                    {active ? (
+                      <OptionalLinearGradient
+                        colors={brandGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.modeButtonGradient}
+                      >
+                        <Text style={[styles.modeLabel, styles.modeLabelActive]}>
+                          {value === 'signin' ? 'Sign In' : 'Sign Up'}
+                        </Text>
+                      </OptionalLinearGradient>
+                    ) : (
+                      <Text style={styles.modeLabel}>{value === 'signin' ? 'Sign In' : 'Sign Up'}</Text>
+                    )}
+                  </Pressable>
+                )
+              })}
+            </View>
+
+            <View style={styles.form}>
+              <View style={styles.formBlock}>
+                <Text style={styles.label}>Email</Text>
+                <InputField
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="your@email.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  left={<Feather name="mail" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                  containerStyle={styles.textField}
+                />
+              </View>
+
+              {mode === 'signin' ? (
+                <>
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Password</Text>
+                    <InputField
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="••••••••"
+                      secureTextEntry={!showPassword}
+                      left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      right={
+                        <Pressable onPress={() => setShowPassword((value) => !value)}>
+                          <Feather
+                            name={showPassword ? 'eye-off' : 'eye'}
+                            size={20}
+                            color="rgba(10, 10, 10, 0.4)"
+                          />
+                        </Pressable>
+                      }
+                      containerStyle={styles.textField}
+                    />
+                  </View>
+
+                  <Pressable
+                    onPress={() => setError('Password reset is not available yet on mobile.')}
+                    style={styles.forgotPasswordWrap}
+                  >
+                    <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+                  </Pressable>
+
+                  {error ? (
+                    <View style={styles.errorBox}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                  ) : null}
+
+                  <Pressable
+                    onPress={submitSignIn}
+                    disabled={!canSubmitSignIn || loading || googleLoading}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      !canSubmitSignIn && styles.primaryButtonDisabled,
+                      pressed && canSubmitSignIn && !(loading || googleLoading) && styles.primaryButtonPressed,
+                    ]}
+                  >
+                    <OptionalLinearGradient
+                      colors={canSubmitSignIn ? brandGradient : mutedBrandGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                    >
+                      <Text style={styles.primaryButtonText}>{loading ? 'Signing In...' : 'Sign In'}</Text>
+                    </OptionalLinearGradient>
+                  </Pressable>
+                </>
+              ) : step === 'email' ? (
+                <>
+                  <Text style={styles.help}>
+                    We will send a verification code to your email before creating your account.
                   </Text>
-                </Pressable>
-              )
-            })}
+
+                  {error ? (
+                    <View style={styles.errorBox}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                  ) : null}
+
+                  <Pressable
+                    onPress={submitRequestCode}
+                    disabled={!canRequestCode || loading || googleLoading}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      !canRequestCode && styles.primaryButtonDisabled,
+                      pressed && canRequestCode && !(loading || googleLoading) && styles.primaryButtonPressed,
+                    ]}
+                  >
+                    <OptionalLinearGradient
+                      colors={canRequestCode ? brandGradient : mutedBrandGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                    >
+                      <Text style={styles.primaryButtonText}>
+                        {loading ? 'Sending Code...' : 'Send Verification Code'}
+                      </Text>
+                    </OptionalLinearGradient>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <View style={styles.verificationRow}>
+                    <View style={styles.verificationBadge}>
+                      <Text style={styles.verificationBadgeText}>Verification pending</Text>
+                    </View>
+                    {expiresAt ? (
+                      <View style={styles.secondaryBadge}>
+                        <Text style={styles.secondaryBadgeText}>
+                          Expires{' '}
+                          {new Date(expiresAt).toLocaleTimeString([], {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Verification code</Text>
+                    <InputField
+                      value={code}
+                      onChangeText={setCode}
+                      placeholder="Enter 6-digit code"
+                      left={<Feather name="hash" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      containerStyle={styles.textField}
+                    />
+                  </View>
+
+                  <View style={styles.inlineGrid}>
+                    <View style={styles.inlineField}>
+                      <Text style={styles.label}>First name</Text>
+                      <InputField
+                        value={firstName}
+                        onChangeText={setFirstName}
+                        placeholder="First name"
+                        containerStyle={styles.textField}
+                      />
+                    </View>
+                    <View style={styles.inlineField}>
+                      <Text style={styles.label}>Last name</Text>
+                      <InputField
+                        value={lastName}
+                        onChangeText={setLastName}
+                        placeholder="Last name"
+                        containerStyle={styles.textField}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Password</Text>
+                    <InputField
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="At least 8 characters"
+                      secureTextEntry={!showPassword}
+                      left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      right={
+                        <Pressable onPress={() => setShowPassword((value) => !value)}>
+                          <Feather
+                            name={showPassword ? 'eye-off' : 'eye'}
+                            size={20}
+                            color="rgba(10, 10, 10, 0.4)"
+                          />
+                        </Pressable>
+                      }
+                      containerStyle={styles.textField}
+                    />
+                  </View>
+
+                  <View style={styles.formBlock}>
+                    <Text style={styles.label}>Confirm password</Text>
+                    <InputField
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      placeholder="Repeat password"
+                      secureTextEntry={!showPassword}
+                      left={<Feather name="check-circle" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      containerStyle={styles.textField}
+                    />
+                  </View>
+
+                  {error ? (
+                    <View style={styles.errorBox}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                  ) : null}
+
+                  <Pressable
+                    onPress={submitSignUp}
+                    disabled={!canSubmitSignUp || loading || googleLoading}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      !canSubmitSignUp && styles.primaryButtonDisabled,
+                      pressed && canSubmitSignUp && !(loading || googleLoading) && styles.primaryButtonPressed,
+                    ]}
+                  >
+                    <OptionalLinearGradient
+                      colors={canSubmitSignUp ? brandGradient : mutedBrandGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                    >
+                      <Text style={styles.primaryButtonText}>
+                        {loading ? 'Creating Account...' : 'Create Account'}
+                      </Text>
+                    </OptionalLinearGradient>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setStep('email')}
+                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                  >
+                    <Text style={styles.secondaryButtonText}>Back to email</Text>
+                  </Pressable>
+                </>
+              )}
+
+              <Pressable
+                onPress={submitGoogleSignIn}
+                disabled={loading || googleLoading}
+                style={({ pressed }) => [
+                  styles.googleButton,
+                  pressed && !(loading || googleLoading) && styles.googleButtonPressed,
+                  googleLoading && styles.disabledButton,
+                ]}
+              >
+                <GoogleMark />
+                <Text style={styles.googleButtonText}>
+                  {googleLoading ? 'Opening Google...' : 'Continue with Google'}
+                </Text>
+              </Pressable>
+
+              {mode === 'signup' ? (
+                <Text style={styles.termsText}>
+                  By signing up, you agree to our <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
+                  <Text style={styles.termsLink}>Privacy Policy</Text>
+                </Text>
+              ) : null}
+            </View>
           </View>
-
-          <View style={styles.formBlock}>
-            <Text style={styles.label}>Email</Text>
-            <InputField
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              left={<Feather name="mail" size={18} color={palette.textMuted} />}
-            />
-          </View>
-
-          {mode === 'signin' ? (
-            <>
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Password</Text>
-                <InputField
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Your password"
-                  secureTextEntry={!showPassword}
-                  left={<Feather name="lock" size={18} color={palette.textMuted} />}
-                  right={
-                    <Pressable onPress={() => setShowPassword((value) => !value)}>
-                      <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={palette.textMuted} />
-                    </Pressable>
-                  }
-                />
-              </View>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <ActionButton label="Sign In" loading={loading} onPress={submitSignIn} />
-            </>
-          ) : step === 'email' ? (
-            <>
-              <Text style={styles.help}>We will send a verification code to this email before creating your account.</Text>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <ActionButton label="Send verification code" loading={loading} onPress={submitRequestCode} />
-            </>
-          ) : (
-            <>
-              <View style={styles.inlineRow}>
-                <Pill label="Verification pending" tone="primary" />
-                {expiresAt ? <Pill label={`Expires ${new Date(expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`} /> : null}
-              </View>
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Verification code</Text>
-                <InputField value={code} onChangeText={setCode} placeholder="6-digit code" left={<Feather name="hash" size={18} color={palette.textMuted} />} />
-              </View>
-              <View style={styles.inlineGrid}>
-                <View style={{ flex: 1, gap: 8 }}>
-                  <Text style={styles.label}>First name</Text>
-                  <InputField value={firstName} onChangeText={setFirstName} placeholder="First name" />
-                </View>
-                <View style={{ flex: 1, gap: 8 }}>
-                  <Text style={styles.label}>Last name</Text>
-                  <InputField value={lastName} onChangeText={setLastName} placeholder="Last name" />
-                </View>
-              </View>
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Password</Text>
-                <InputField
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="At least 8 characters"
-                  secureTextEntry={!showPassword}
-                  left={<Feather name="lock" size={18} color={palette.textMuted} />}
-                  right={
-                    <Pressable onPress={() => setShowPassword((value) => !value)}>
-                      <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={palette.textMuted} />
-                    </Pressable>
-                  }
-                />
-              </View>
-              <View style={styles.formBlock}>
-                <Text style={styles.label}>Confirm password</Text>
-                <InputField value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Repeat password" secureTextEntry={!showPassword} left={<Feather name="check-circle" size={18} color={palette.textMuted} />} />
-              </View>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <ActionButton label="Create account" loading={loading} onPress={submitSignUp} />
-              <ActionButton label="Back to email" variant="secondary" onPress={() => setStep('email')} />
-            </>
-          )}
-        </SurfaceCard>
-
-        <Text style={styles.footerText}>
-          Email/password auth is live for mobile. Native Google sign-in still needs dedicated mobile OAuth setup.
-        </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -223,137 +444,280 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: palette.authBackground,
   },
-  glowTop: {
-    position: 'absolute',
-    top: -140,
-    left: -110,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(40, 205, 65, 0.12)',
-  },
-  glowBottom: {
-    position: 'absolute',
-    right: -140,
-    bottom: -120,
-    width: 340,
-    height: 340,
-    borderRadius: 170,
-    backgroundColor: 'rgba(82, 224, 104, 0.08)',
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
   },
   container: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.lg,
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+  },
+  content: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    justifyContent: 'center',
   },
   hero: {
     alignItems: 'center',
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
+    marginBottom: 36,
   },
   logoWrap: {
-    width: 90,
-    height: 90,
+    width: 96,
+    height: 96,
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
-    shadowColor: palette.shadowStrong,
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.32,
+    shadowRadius: 26,
     shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
+    elevation: 10,
   },
   logoText: {
     color: palette.white,
-    fontSize: 42,
+    fontSize: 48,
     fontWeight: '800',
   },
   title: {
-    marginTop: spacing.lg,
+    marginTop: 24,
     color: palette.text,
-    fontSize: 34,
-    fontWeight: '700',
-    letterSpacing: -1,
+    fontSize: 50,
+    fontWeight: '800',
+    letterSpacing: -1.6,
   },
   subtitle: {
-    marginTop: 8,
-    color: palette.textMuted,
-    fontSize: 16,
+    marginTop: 12,
+    maxWidth: 280,
+    color: 'rgba(10, 10, 10, 0.60)',
+    fontSize: 18,
+    lineHeight: 26,
     textAlign: 'center',
-    lineHeight: 22,
   },
-  formCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
-    borderColor: 'rgba(255, 255, 255, 0.72)',
-    shadowColor: palette.shadowStrong,
-    shadowOpacity: 0.14,
-    shadowRadius: 32,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 8,
+  formShell: {
+    width: '100%',
+    gap: spacing.lg,
   },
   modeSwitch: {
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: 'rgba(10, 10, 10, 0.05)',
     padding: 4,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: 'rgba(10, 10, 10, 0.10)',
+    backgroundColor: 'rgba(255, 255, 255, 0.48)',
+    shadowColor: palette.white,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
   modeButton: {
     flex: 1,
+    minHeight: 52,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+  },
+  modeButtonGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: radius.pill,
+    paddingHorizontal: 24,
   },
   modeButtonActive: {
-    backgroundColor: palette.primary,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  modeButtonPressed: {
+    opacity: 0.85,
   },
   modeLabel: {
-    color: palette.textMuted,
-    fontWeight: '700',
+    color: 'rgba(10, 10, 10, 0.60)',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 15,
   },
   modeLabelActive: {
     color: palette.white,
+    paddingVertical: 0,
+  },
+  form: {
+    gap: spacing.md,
   },
   formBlock: {
-    marginTop: spacing.md,
     gap: 8,
-  },
-  label: {
-    color: palette.textMuted,
-    fontSize: 13,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  help: {
-    marginTop: spacing.md,
-    color: palette.textMuted,
-    lineHeight: 20,
-  },
-  error: {
-    marginTop: spacing.md,
-    color: palette.danger,
-    fontWeight: '600',
-  },
-  inlineRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: spacing.md,
   },
   inlineGrid: {
     flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.md,
+    gap: 16,
   },
-  footerText: {
-    color: palette.textMuted,
-    fontSize: 13,
+  inlineField: {
+    flex: 1,
+    gap: 8,
+  },
+  label: {
+    marginLeft: 4,
+    color: 'rgba(10, 10, 10, 0.80)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  textField: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 10, 10, 0.10)',
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    paddingHorizontal: 16,
+  },
+  forgotPasswordWrap: {
+    alignSelf: 'flex-end',
+    marginTop: -2,
+  },
+  forgotPasswordText: {
+    color: palette.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  help: {
+    color: 'rgba(10, 10, 10, 0.60)',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  errorBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 110, 0.18)',
+    backgroundColor: 'rgba(255, 0, 110, 0.08)',
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  errorText: {
+    color: palette.danger,
+    fontSize: 14,
     lineHeight: 20,
+    fontWeight: '500',
+  },
+  verificationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  verificationBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: palette.chip,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  verificationBadgeText: {
+    color: palette.chipText,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  secondaryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.80)',
+    borderWidth: 1,
+    borderColor: 'rgba(10, 10, 10, 0.08)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  secondaryBadgeText: {
+    color: 'rgba(10, 10, 10, 0.60)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  primaryButton: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    shadowColor: palette.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  primaryButtonPressed: {
+    opacity: 0.94,
+  },
+  primaryButtonDisabled: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  primaryButtonGradient: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  primaryButtonText: {
+    color: palette.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 10, 10, 0.10)',
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  secondaryButtonPressed: {
+    backgroundColor: palette.white,
+  },
+  secondaryButtonText: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  googleButton: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(10, 10, 10, 0.10)',
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  googleButtonPressed: {
+    backgroundColor: palette.white,
+  },
+  googleButtonText: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  googleMark: {
+    width: 20,
+    height: 20,
+  },
+  disabledButton: {
+    opacity: 0.65,
+  },
+  termsText: {
+    color: 'rgba(10, 10, 10, 0.40)',
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: 'center',
-    paddingHorizontal: spacing.md,
+  },
+  termsLink: {
+    color: palette.primary,
   },
 })
+
+
+
+
+
+

@@ -3,7 +3,7 @@
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export default function SignInClient() {
   const searchParams = useSearchParams()
@@ -19,10 +19,12 @@ export default function SignInClient() {
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+  const hasAutoStartedProvider = useRef(false)
 
   useEffect(() => {
     const modeParam = searchParams.get('mode')
     const emailParam = searchParams.get('email')
+    const providerParam = searchParams.get('provider')
     if (modeParam === 'signup') {
       setMode('signup')
       setStep('email')
@@ -30,7 +32,11 @@ export default function SignInClient() {
     if (emailParam && !email) {
       setEmail(emailParam)
     }
-  }, [searchParams, email])
+    if (providerParam === 'google' && !hasAutoStartedProvider.current) {
+      hasAutoStartedProvider.current = true
+      signIn('google', { callbackUrl })
+    }
+  }, [searchParams, email, callbackUrl])
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl })

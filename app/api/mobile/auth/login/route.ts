@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: 'EMAIL_GOOGLE_ACCOUNT',
-          message: 'This email is linked to Google sign-in and requires mobile OAuth setup.',
+          message: 'This email is linked to Google sign-in. Please continue with Google.',
         },
         { status: 409 }
       )
@@ -87,3 +87,4 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+

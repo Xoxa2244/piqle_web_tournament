@@ -19,7 +19,7 @@ const getTitle = (pathname: string) => {
 
 const IconBubble = ({ icon, onPress, showDot }: { icon: keyof typeof Feather.glyphMap; onPress: () => void; showDot?: boolean }) => (
   <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
-    <Feather name={icon} size={18} color={palette.text} />
+    <Feather name={icon} size={20} color={palette.text} />
     {showDot ? <View style={styles.dot} /> : null}
   </Pressable>
 )
@@ -51,9 +51,8 @@ export const TopBar = () => {
 
 const styles = StyleSheet.create({
   header: {
-    minHeight: 56,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    height: 56,
+    paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -70,12 +69,12 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   iconBubble: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -85,8 +84,8 @@ const styles = StyleSheet.create({
   },
   dot: {
     position: 'absolute',
-    top: 9,
-    right: 9,
+    top: 8,
+    right: 8,
     width: 8,
     height: 8,
     borderRadius: 4,
@@ -106,7 +105,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: palette.white,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
   },
 })

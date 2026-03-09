@@ -1,5 +1,32 @@
 import type { ExpoConfig } from 'expo/config'
 
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() ?? ''
+const GOOGLE_IOS_URL_SCHEME =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim() ??
+  (GOOGLE_IOS_CLIENT_ID.endsWith('.apps.googleusercontent.com')
+    ? `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.replace('.apps.googleusercontent.com', '')}`
+    : '')
+
+const plugins: NonNullable<ExpoConfig['plugins']> = [
+  'expo-router',
+  [
+    'expo-build-properties',
+    {
+      android: {
+        kotlinVersion: '1.9.25',
+      },
+    },
+  ],
+  GOOGLE_IOS_URL_SCHEME
+    ? [
+        '@react-native-google-signin/google-signin',
+        {
+          iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
+        },
+      ]
+    : '@react-native-google-signin/google-signin',
+]
+
 const config: ExpoConfig = {
   name: 'Piqle Player',
   slug: 'piqle-player',
@@ -7,17 +34,7 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
-  plugins: [
-    'expo-router',
-    [
-      'expo-build-properties',
-      {
-        android: {
-          kotlinVersion: '1.9.25',
-        },
-      },
-    ],
-  ],
+  plugins,
   experiments: {
     typedRoutes: true,
   },

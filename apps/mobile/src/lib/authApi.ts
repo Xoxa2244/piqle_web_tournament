@@ -8,9 +8,37 @@ type RequestCodeResponse = {
 
 type LoginResponse = StoredAuthSession
 
-const parseJson = async <T>(response: Response): Promise<T> => {
+type NativeGoogleSignInInput = {
+  idToken: string
+}
+
+type GoogleSignInConfigResponse = {
+  webClientId: string
+  iosClientId: string | null
+}
+
+const looksLikeHtml = (value: string) => /^\s*</.test(value)
+
+const parseJson = async <T>(response: Response, path: string): Promise<T> => {
   const text = await response.text()
-  return text ? (JSON.parse(text) as T) : ({} as T)
+  if (!text) {
+    return {} as T
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const isGoogleMobileAuthPath = path.includes('/api/mobile/auth/google/native')
+    if (looksLikeHtml(text)) {
+      throw new Error(
+        isGoogleMobileAuthPath
+          ? 'Google sign-in endpoint is not available on the current backend. The mobile app is likely pointing to an outdated deployment.'
+          : 'The server returned HTML instead of JSON. The mobile app may be pointing to the wrong backend.'
+      )
+    }
+
+    throw new Error(`The server returned an invalid JSON response for ${path}.`)
+  }
 }
 
 const requestJson = async <T>(path: string, init: RequestInit): Promise<T> => {
@@ -22,7 +50,7 @@ const requestJson = async <T>(path: string, init: RequestInit): Promise<T> => {
     },
   })
 
-  const payload = await parseJson<any>(response)
+  const payload = await parseJson<any>(response, path)
   if (!response.ok) {
     throw new Error(payload?.message || payload?.error || 'Request failed')
   }
@@ -50,6 +78,28 @@ export const authApi = {
     return requestJson<LoginResponse>('/api/mobile/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    })
+  },
+
+  getGoogleSignInConfig() {
+    return requestJson<GoogleSignInConfigResponse>('/api/mobile/auth/google/native', {
+      method: 'GET',
+    })
+  },
+
+  signInWithGoogle(input: NativeGoogleSignInInput) {
+    return requestJson<LoginResponse>('/api/mobile/auth/google/native', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  getMobileSession(token: string) {
+    return requestJson<LoginResponse>('/api/mobile/auth/session', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     })
   },
 
