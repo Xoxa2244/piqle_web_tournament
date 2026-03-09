@@ -840,12 +840,37 @@ export const intelligenceRouter = createTRPCRouter({
           .map(([label, count]) => ({ label, count, percent: Math.round((count / totalFmtB) * 100) }))
           .sort((a, b) => b.count - a.count)
 
+        // Player counts from CSV (more meaningful than clubFollower count)
+        const csvPlayerCount = allPlayers.size
+        const prevAllPlayers = new Set<string>()
+        for (const s of previousSessions) {
+          for (const name of (s.playerNames || [])) prevAllPlayers.add(name)
+        }
+        const prevPlayerCount = prevAllPlayers.size
+
+        // Sparkline for players (unique players per day over last 7 data points)
+        const playerSpark: number[] = []
+        for (let i = 6; i >= 0; i--) {
+          const dayStr = new Date(latestDate.getTime() - i * 86400000).toISOString().slice(0, 10)
+          const dayPlayers = new Set<string>()
+          for (const s of currentSessions) {
+            if (s.date === dayStr) {
+              for (const n of (s.playerNames || [])) dayPlayers.add(n)
+            }
+          }
+          playerSpark.push(dayPlayers.size)
+        }
+
+        // New players: in current period but not in previous period
+        let newPlayers = 0
+        allPlayers.forEach(p => { if (!prevAllPlayers.has(p)) newPlayers++ })
+
         return {
           metrics: {
             members: {
-              label: 'Members', value: membersNow,
-              trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
-              subtitle: `${newMembersThisMonth} new this month`,
+              label: 'Players', value: csvPlayerCount,
+              trend: computeTrend(csvPlayerCount, prevPlayerCount, playerSpark),
+              subtitle: `${csvActive} active · ${csvInactive} inactive`,
             },
             occupancy: {
               label: 'Avg Occupancy', value: `${avgOcc}%`,
@@ -871,9 +896,9 @@ export const intelligenceRouter = createTRPCRouter({
           players: {
             bySkillLevel,
             byFormat: byFormatDist,
-            activeCount: csvActive > 0 ? csvActive : 0,
-            inactiveCount: csvInactive > 0 ? csvInactive : membersNow,
-            newThisMonth: newMembersThisMonth,
+            activeCount: csvActive,
+            inactiveCount: csvInactive,
+            newThisMonth: newPlayers,
           },
         }
       }
