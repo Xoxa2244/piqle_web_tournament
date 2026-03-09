@@ -1,28 +1,49 @@
 'use client'
 
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Users, BarChart3, DollarSign, Zap, Calendar,
+  Users, BarChart3, DollarSign, Calendar,
   TrendingUp, UserMinus, ArrowRight, AlertTriangle,
-  CalendarPlus, Brain, Sparkles
+  Zap, Brain, Sparkles, CalendarDays,
 } from 'lucide-react'
 import { MetricCard } from './_components/metric-card'
-import { OccupancyBar, OccupancyBadge } from './_components/charts'
+import { VerticalBarChart, HorizontalBarChart } from './_components/charts'
+import { SessionTable } from './_components/session-table'
+import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboard } from './_hooks/use-intelligence'
+import { useDashboardV2 } from './_hooks/use-intelligence'
+import { cn } from '@/lib/utils'
+
+const formatLabels: Record<string, string> = {
+  OPEN_PLAY: 'Open Play',
+  CLINIC: 'Clinic',
+  DRILL: 'Drill',
+  LEAGUE_PLAY: 'League',
+  SOCIAL: 'Social',
+}
+
+const timeSlotLabels: Record<string, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+}
+
+type OccupancyTab = 'day' | 'time' | 'format'
 
 export default function IntelligenceDashboardPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const clubId = params.id as string
   const demoSuffix = searchParams.get('demo') === 'true' ? '?demo=true' : ''
+  const [occTab, setOccTab] = useState<OccupancyTab>('day')
 
-  const { data, isLoading, error } = useDashboard(clubId)
+  const { data, isLoading, error } = useDashboardV2(clubId)
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -38,11 +59,11 @@ export default function IntelligenceDashboardPage() {
 
   if (!data) return null
 
-  const { metrics, upcomingSessions, underfilledSessions } = data
-  const hasAnySessions = upcomingSessions.length > 0
+  const { metrics, occupancy, sessions, players } = data
+  const hasData = players.activeCount > 0 || players.inactiveCount > 0
 
   // ── No data onboarding — CTA to Advisor ──
-  if (!hasAnySessions && metrics.totalMembers === 0) {
+  if (!hasData && metrics.members.trend.value === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-6 shadow-lg shadow-lime-500/20">
@@ -65,33 +86,48 @@ export default function IntelligenceDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Key Metrics ── */}
+      {/* ── KPI Metrics with Trends ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard
           icon={Users}
-          label="Members"
-          value={metrics.totalMembers}
-          subtitle={`${metrics.totalCourts} courts`}
+          label={metrics.members.label}
+          value={metrics.members.value}
+          subtitle={metrics.members.subtitle}
+          trendValue={metrics.members.trend.changePercent}
+          trendDirection={metrics.members.trend.direction}
+          sparkline={metrics.members.trend.sparkline}
         />
         <MetricCard
           icon={BarChart3}
-          label="Avg Occupancy"
-          value={`${metrics.avgOccupancy}%`}
-          subtitle={`${metrics.recentBookings} bookings (30d)`}
-          variant={metrics.avgOccupancy >= 70 ? 'success' : metrics.avgOccupancy >= 40 ? 'warning' : 'danger'}
+          label={metrics.occupancy.label}
+          value={metrics.occupancy.value}
+          subtitle={metrics.occupancy.subtitle}
+          trendValue={metrics.occupancy.trend.changePercent}
+          trendDirection={metrics.occupancy.trend.direction}
+          sparkline={metrics.occupancy.trend.sparkline}
+          variant={
+            (metrics.occupancy.trend.value as number) >= 70 ? 'success' :
+            (metrics.occupancy.trend.value as number) >= 40 ? 'warning' : 'danger'
+          }
         />
         <MetricCard
           icon={DollarSign}
-          label="Est. Lost Revenue"
-          value={`$${metrics.estimatedLostRevenue.toLocaleString()}`}
-          subtitle={`${metrics.emptySlots} empty slots`}
+          label={metrics.lostRevenue.label}
+          value={metrics.lostRevenue.value}
+          subtitle={metrics.lostRevenue.subtitle}
+          trendValue={metrics.lostRevenue.trend.changePercent}
+          trendDirection={metrics.lostRevenue.trend.direction}
           variant="danger"
+          invertTrend
         />
         <MetricCard
-          icon={Zap}
-          label="AI Actions"
-          value={metrics.aiRecommendationsThisWeek}
-          subtitle="this week"
+          icon={CalendarDays}
+          label={metrics.bookings.label}
+          value={metrics.bookings.value}
+          subtitle={metrics.bookings.subtitle}
+          trendValue={metrics.bookings.trend.changePercent}
+          trendDirection={metrics.bookings.trend.direction}
+          sparkline={metrics.bookings.trend.sparkline}
         />
       </div>
 
@@ -104,8 +140,8 @@ export default function IntelligenceDashboardPage() {
           title="Smart Slot Filler"
           description="AI recommends members to fill empty courts."
           badge={
-            underfilledSessions.length > 0
-              ? `${underfilledSessions.length} need attention`
+            sessions.problematicSessions.length > 0
+              ? `${sessions.problematicSessions.length} need attention`
               : undefined
           }
           badgeVariant="warning"
@@ -116,6 +152,12 @@ export default function IntelligenceDashboardPage() {
           iconColor="text-orange-500"
           title="Member Reactivation"
           description="Spot disengaging members before they cancel."
+          badge={
+            players.inactiveCount > 0
+              ? `${players.inactiveCount} inactive`
+              : undefined
+          }
+          badgeVariant="warning"
         />
         <QuickActionCard
           href={`/clubs/${clubId}/intelligence/revenue${demoSuffix}`}
@@ -126,126 +168,85 @@ export default function IntelligenceDashboardPage() {
         />
       </div>
 
-      {/* ── Underfilled Sessions Alert ── */}
-      {underfilledSessions.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
-              Sessions Below 50% Capacity
-              <Badge variant="secondary" className="ml-1 text-xs font-mono">
-                {underfilledSessions.length}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="divide-y">
-              {underfilledSessions.slice(0, 5).map((session: any) => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium text-sm truncate">{session.title}</div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                      <Calendar className="h-3 w-3 shrink-0" />
-                      {new Date(session.date).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                      <span className="text-muted-foreground/40">|</span>
-                      {session.startTime}–{session.endTime}
-                      {session.courtName && (
-                        <>
-                          <span className="text-muted-foreground/40">|</span>
-                          {session.courtName}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-orange-600 tabular-nums">
-                        {session.confirmedCount}/{session.maxPlayers}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {session.spotsRemaining} open
-                      </div>
-                    </div>
-                    <Link href={`/clubs/${clubId}/intelligence/slot-filler?session=${session.id}${demoSuffix ? '&demo=true' : ''}`}>
-                      <Button size="sm" variant="outline" className="gap-1 text-xs h-7">
-                        <Zap className="h-3 w-3" /> Fill
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Upcoming Sessions ── */}
+      {/* ── Occupancy Breakdown (Tabs) ── */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Upcoming Sessions
+              <BarChart3 className="h-4 w-4" />
+              Occupancy Breakdown
             </CardTitle>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {upcomingSessions.length} scheduled
-            </span>
+            <div className="flex gap-1">
+              {([
+                { key: 'day', label: 'By Day' },
+                { key: 'time', label: 'By Time' },
+                { key: 'format', label: 'By Format' },
+              ] as const).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setOccTab(tab.key)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                    occTab === tab.key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          {upcomingSessions.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              No upcoming sessions scheduled.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {upcomingSessions.slice(0, 10).map((session: any) => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate">{session.title}</div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                      {new Date(session.date).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                      <span className="text-muted-foreground/40">|</span>
-                      {session.startTime}–{session.endTime}
-                      {session.courtName && (
-                        <>
-                          <span className="text-muted-foreground/40">|</span>
-                          {session.courtName}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
-                    <div className="w-24">
-                      <OccupancyBar value={session.occupancyPercent} />
-                    </div>
-                    <div className="text-right w-16">
-                      <OccupancyBadge value={session.occupancyPercent} />
-                    </div>
-                    <div className="text-xs text-muted-foreground tabular-nums w-10 text-right">
-                      {session.confirmedCount}/{session.maxPlayers}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {occTab === 'day' && (
+            <VerticalBarChart
+              items={occupancy.byDay.map(d => ({
+                label: d.day,
+                value: d.avgOccupancy,
+                sublabel: `${d.sessionCount} ses`,
+              }))}
+              maxValue={100}
+              height={140}
+            />
+          )}
+          {occTab === 'time' && (
+            <HorizontalBarChart
+              items={occupancy.byTimeSlot.map(d => ({
+                label: timeSlotLabels[d.slot] || d.slot,
+                value: d.avgOccupancy,
+                sublabel: `${d.sessionCount} sessions`,
+              }))}
+              maxValue={100}
+            />
+          )}
+          {occTab === 'format' && (
+            <HorizontalBarChart
+              items={occupancy.byFormat.map(d => ({
+                label: formatLabels[d.format] || d.format,
+                value: d.avgOccupancy,
+                sublabel: `${d.sessionCount} sessions`,
+              }))}
+              maxValue={100}
+            />
           )}
         </CardContent>
       </Card>
+
+      {/* ── Session Rankings ── */}
+      <div className="grid md:grid-cols-2 gap-3">
+        <SessionTable sessions={sessions.topSessions as any} variant="top" />
+        <SessionTable sessions={sessions.problematicSessions as any} variant="problematic" />
+      </div>
+
+      {/* ── Player Activity ── */}
+      <PlayerActivity
+        activeCount={players.activeCount}
+        inactiveCount={players.inactiveCount}
+        newThisMonth={players.newThisMonth}
+        bySkillLevel={players.bySkillLevel}
+        byFormat={players.byFormat}
+      />
     </div>
   )
 }

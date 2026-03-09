@@ -365,6 +365,95 @@ export function mockReactivationCandidates(inactivityDays: number) {
   }
 }
 
+// ── Dashboard V2 ──
+import type { DashboardV2Data } from '@/types/intelligence'
+
+export const mockDashboardV2: DashboardV2Data = {
+  metrics: {
+    members: {
+      label: 'Members',
+      value: 127,
+      trend: { value: 127, previousValue: 113, changePercent: 12.4, direction: 'up', sparkline: [113, 115, 117, 119, 121, 124, 127] },
+      subtitle: '8 new this month',
+    },
+    occupancy: {
+      label: 'Avg Occupancy',
+      value: '62%',
+      trend: { value: 62, previousValue: 65, changePercent: -4.6, direction: 'down', sparkline: [58, 64, 55, 70, 62, 68, 60] },
+      subtitle: '42 sessions (30d)',
+    },
+    lostRevenue: {
+      label: 'Est. Lost Revenue',
+      value: '$1,260',
+      trend: { value: 1260, previousValue: 1420, changePercent: -11.3, direction: 'down', sparkline: [220, 180, 200, 150, 190, 170, 150] },
+      subtitle: '84 empty slots',
+    },
+    bookings: {
+      label: 'Bookings',
+      value: 284,
+      trend: { value: 284, previousValue: 247, changePercent: 15.0, direction: 'up', sparkline: [35, 42, 38, 45, 40, 44, 40] },
+      subtitle: 'last 30 days',
+    },
+  },
+  occupancy: {
+    byDay: [
+      { day: 'Mon', avgOccupancy: 55, sessionCount: 6 },
+      { day: 'Tue', avgOccupancy: 68, sessionCount: 7 },
+      { day: 'Wed', avgOccupancy: 52, sessionCount: 5 },
+      { day: 'Thu', avgOccupancy: 71, sessionCount: 7 },
+      { day: 'Fri', avgOccupancy: 48, sessionCount: 4 },
+      { day: 'Sat', avgOccupancy: 82, sessionCount: 8 },
+      { day: 'Sun', avgOccupancy: 75, sessionCount: 5 },
+    ],
+    byTimeSlot: [
+      { slot: 'morning', avgOccupancy: 58, sessionCount: 14 },
+      { slot: 'afternoon', avgOccupancy: 61, sessionCount: 12 },
+      { slot: 'evening', avgOccupancy: 78, sessionCount: 16 },
+    ],
+    byFormat: [
+      { format: 'OPEN_PLAY', avgOccupancy: 65, sessionCount: 12 },
+      { format: 'LEAGUE_PLAY', avgOccupancy: 88, sessionCount: 8 },
+      { format: 'SOCIAL', avgOccupancy: 72, sessionCount: 8 },
+      { format: 'DRILL', avgOccupancy: 55, sessionCount: 7 },
+      { format: 'CLINIC', avgOccupancy: 42, sessionCount: 7 },
+    ],
+  },
+  sessions: {
+    topSessions: [
+      { id: 't1', title: 'Evening League Play', date: fmt(-2), startTime: '18:00', endTime: '20:00', format: 'LEAGUE_PLAY', courtName: 'Court 1', occupancyPercent: 100, confirmedCount: 8, maxPlayers: 8 },
+      { id: 't2', title: 'Saturday Social Mixer', date: fmt(-4), startTime: '17:00', endTime: '19:00', format: 'SOCIAL', courtName: 'Courts 3 & 4', occupancyPercent: 94, confirmedCount: 15, maxPlayers: 16 },
+      { id: 't3', title: 'Morning Open Play', date: fmt(-1), startTime: '08:00', endTime: '10:00', format: 'OPEN_PLAY', courtName: 'Court 1', occupancyPercent: 88, confirmedCount: 7, maxPlayers: 8 },
+      { id: 't4', title: 'Advanced Drill', date: fmt(-3), startTime: '07:00', endTime: '09:00', format: 'DRILL', courtName: 'Court 2', occupancyPercent: 83, confirmedCount: 5, maxPlayers: 6 },
+      { id: 't5', title: 'Thursday League Night', date: fmt(-5), startTime: '19:00', endTime: '21:00', format: 'LEAGUE_PLAY', courtName: 'Court 1', occupancyPercent: 75, confirmedCount: 6, maxPlayers: 8 },
+    ],
+    problematicSessions: [
+      { id: 'p1', title: 'Beginner Clinic', date: fmt(-3), startTime: '09:00', endTime: '11:00', format: 'CLINIC', courtName: 'Court 4', occupancyPercent: 25, confirmedCount: 3, maxPlayers: 12 },
+      { id: 'p2', title: 'Wednesday Open Play', date: fmt(-5), startTime: '12:00', endTime: '14:00', format: 'OPEN_PLAY', courtName: 'Court 2', occupancyPercent: 25, confirmedCount: 2, maxPlayers: 8 },
+      { id: 'p3', title: 'Friday Morning Drill', date: fmt(-2), startTime: '08:00', endTime: '10:00', format: 'DRILL', courtName: 'Court 3', occupancyPercent: 33, confirmedCount: 2, maxPlayers: 6 },
+      { id: 'p4', title: 'Monday Clinic', date: fmt(-6), startTime: '10:00', endTime: '12:00', format: 'CLINIC', courtName: 'Court 4', occupancyPercent: 33, confirmedCount: 4, maxPlayers: 12 },
+      { id: 'p5', title: 'Afternoon Open Play', date: fmt(-4), startTime: '14:00', endTime: '16:00', format: 'OPEN_PLAY', courtName: 'Court 2', occupancyPercent: 38, confirmedCount: 3, maxPlayers: 8 },
+    ],
+  },
+  players: {
+    bySkillLevel: [
+      { label: 'Beginner', count: 22, percent: 17 },
+      { label: 'Intermediate', count: 58, percent: 46 },
+      { label: 'Advanced', count: 31, percent: 24 },
+      { label: 'Unrated', count: 16, percent: 13 },
+    ],
+    byFormat: [
+      { label: 'Open Play', count: 98, percent: 35 },
+      { label: 'League', count: 72, percent: 25 },
+      { label: 'Social', count: 56, percent: 20 },
+      { label: 'Drill', count: 34, percent: 12 },
+      { label: 'Clinic', count: 24, percent: 8 },
+    ],
+    activeCount: 89,
+    inactiveCount: 38,
+    newThisMonth: 8,
+  },
+}
+
 // ── Sessions for Revenue page ──
 export const mockSessions = [
   // Morning sessions

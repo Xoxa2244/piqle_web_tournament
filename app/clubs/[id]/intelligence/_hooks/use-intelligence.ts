@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import {
   mockDashboard,
+  mockDashboardV2,
   mockSlotFillerRecommendations,
   mockReactivationCandidates,
   mockSessions,
@@ -27,6 +28,26 @@ export function useDashboard(clubId: string) {
   if (isDemo) {
     return {
       data: mockDashboard,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+// ── Dashboard V2 ──
+export function useDashboardV2(clubId: string) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getDashboardV2.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockDashboardV2,
       isLoading: false,
       error: null,
     }

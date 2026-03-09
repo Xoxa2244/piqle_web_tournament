@@ -135,3 +135,81 @@ export interface RebookingSuggestion {
   reasoning: RecommendationScore;
   matchReason: string;
 }
+
+// ====== Dashboard V2 Types ======
+export interface TrendData {
+  value: number;
+  previousValue: number;
+  changePercent: number; // +/- %
+  direction: 'up' | 'down' | 'neutral';
+  sparkline: number[];   // 7 daily data points
+}
+
+export interface DashboardMetricV2 {
+  label: string;
+  value: number | string;
+  trend: TrendData;
+  subtitle?: string;
+}
+
+export interface OccupancyByDay {
+  day: string;           // Mon, Tue, ...
+  avgOccupancy: number;  // 0-100
+  sessionCount: number;
+}
+
+export interface OccupancyByTimeSlot {
+  slot: 'morning' | 'afternoon' | 'evening';
+  avgOccupancy: number;
+  sessionCount: number;
+}
+
+export interface OccupancyByFormat {
+  format: PlaySessionFormat;
+  avgOccupancy: number;
+  sessionCount: number;
+}
+
+export interface SessionRanking {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  format: PlaySessionFormat;
+  courtName: string | null;
+  occupancyPercent: number;
+  confirmedCount: number;
+  maxPlayers: number;
+}
+
+export interface PlayerDistribution {
+  label: string;
+  count: number;
+  percent: number;
+}
+
+export interface DashboardV2Data {
+  metrics: {
+    members: DashboardMetricV2;
+    occupancy: DashboardMetricV2;
+    lostRevenue: DashboardMetricV2;
+    bookings: DashboardMetricV2;
+  };
+  occupancy: {
+    byDay: OccupancyByDay[];
+    byTimeSlot: OccupancyByTimeSlot[];
+    byFormat: OccupancyByFormat[];
+  };
+  sessions: {
+    topSessions: SessionRanking[];
+    problematicSessions: SessionRanking[];
+  };
+  players: {
+    bySkillLevel: PlayerDistribution[];
+    byFormat: PlayerDistribution[];
+    activeCount: number;
+    inactiveCount: number;
+    newThisMonth: number;
+  };
+}
