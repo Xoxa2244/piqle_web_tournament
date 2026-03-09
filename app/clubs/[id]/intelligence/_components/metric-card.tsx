@@ -8,25 +8,18 @@ interface MetricCardProps {
   icon: LucideIcon
   trend?: 'up' | 'down' | 'neutral'
   variant?: 'default' | 'danger' | 'success' | 'warning'
-  trendValue?: number       // e.g. +12.5 or -3.2
+  trendValue?: number
   trendDirection?: 'up' | 'down' | 'neutral'
-  periodLabel?: string      // e.g. "vs last 30d"
-  sparkline?: number[]      // 7 data points
-  invertTrend?: boolean     // true = down is good (e.g. lost revenue)
+  periodLabel?: string
+  sparkline?: number[]
+  invertTrend?: boolean
 }
 
-const variantStyles = {
-  default: 'border-border',
-  danger: 'border-red-200 bg-red-50/30',
-  success: 'border-green-200 bg-green-50/30',
-  warning: 'border-orange-200 bg-orange-50/30',
-}
-
-const valueStyles = {
-  default: 'text-foreground',
-  danger: 'text-red-600',
-  success: 'text-green-600',
-  warning: 'text-orange-600',
+const iconGradients = {
+  default: 'from-blue-500 to-blue-600 shadow-blue-500/25',
+  danger: 'from-rose-500 to-pink-600 shadow-rose-500/25',
+  success: 'from-emerald-500 to-green-600 shadow-emerald-500/25',
+  warning: 'from-amber-500 to-orange-600 shadow-amber-500/25',
 }
 
 export function MetricCard({
@@ -35,7 +28,6 @@ export function MetricCard({
 }: MetricCardProps) {
   const hasTrend = trendValue !== undefined && trendDirection !== undefined
 
-  // For inverted metrics (like lost revenue), down = green, up = red
   const isPositive = invertTrend
     ? trendDirection === 'down'
     : trendDirection === 'up'
@@ -44,42 +36,64 @@ export function MetricCard({
     : trendDirection === 'down'
 
   return (
-    <div className={cn('rounded-lg border p-4 transition-colors', variantStyles[variant])}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
-          <Icon className="h-3.5 w-3.5" />
-          {label}
+    <div className="group relative rounded-xl border border-border/60 bg-card p-4 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+      {/* Subtle gradient background glow */}
+      <div className={cn(
+        'absolute -top-8 -right-8 w-24 h-24 rounded-full opacity-[0.07] blur-2xl transition-opacity group-hover:opacity-[0.12]',
+        variant === 'danger' ? 'bg-rose-500' :
+        variant === 'success' ? 'bg-emerald-500' :
+        variant === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+      )} />
+
+      <div className="relative flex items-start justify-between mb-3">
+        {/* Icon with gradient background */}
+        <div className={cn(
+          'flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br shadow-lg',
+          iconGradients[variant]
+        )}>
+          <Icon className="h-5 w-5 text-white" />
         </div>
-        {hasTrend && (
+
+        {/* Trend badge */}
+        {hasTrend && trendDirection !== 'neutral' && (
           <div className={cn(
-            'flex items-center gap-0.5 text-xs font-semibold tabular-nums',
-            isPositive && 'text-green-600',
-            isNegative && 'text-red-600',
-            trendDirection === 'neutral' && 'text-muted-foreground',
+            'flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-bold tabular-nums',
+            isPositive && 'bg-emerald-50 text-emerald-600',
+            isNegative && 'bg-rose-50 text-rose-600',
           )}>
             {trendDirection === 'up' && <TrendingUp className="h-3 w-3" />}
             {trendDirection === 'down' && <TrendingDown className="h-3 w-3" />}
-            {trendDirection === 'neutral' && <Minus className="h-3 w-3" />}
-            {trendValue > 0 ? '+' : ''}{trendValue}%
+            {trendValue! > 0 ? '+' : ''}{trendValue}%
+          </div>
+        )}
+        {hasTrend && trendDirection === 'neutral' && (
+          <div className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium tabular-nums bg-muted text-muted-foreground">
+            <Minus className="h-3 w-3" />
+            0%
           </div>
         )}
       </div>
-      <div className={cn('text-2xl font-bold tabular-nums', valueStyles[variant])}>
-        {value}
-      </div>
-      <div className="flex items-center justify-between mt-1">
+
+      {/* Value */}
+      <div className="relative">
+        <div className="text-2xl font-extrabold tracking-tight tabular-nums text-foreground">
+          {value}
+        </div>
+        <div className="text-xs font-medium text-muted-foreground mt-0.5">
+          {label}
+        </div>
         {subtitle && (
-          <div className="text-xs text-muted-foreground">{subtitle}</div>
-        )}
-        {periodLabel && !subtitle && (
-          <div className="text-xs text-muted-foreground">{periodLabel}</div>
+          <div className="text-[11px] text-muted-foreground/70 mt-1">{subtitle}</div>
         )}
       </div>
+
+      {/* Sparkline with gradient fill */}
       {sparkline && sparkline.length > 1 && (
-        <div className="mt-2">
+        <div className="relative mt-3 -mb-1 -mx-1">
           <MiniSparkline
             data={sparkline}
-            color={isPositive ? '#16a34a' : isNegative ? '#dc2626' : '#9ca3af'}
+            color={isPositive ? '#10b981' : isNegative ? '#f43f5e' : '#94a3b8'}
+            fillColor={isPositive ? 'rgba(16,185,129,0.1)' : isNegative ? 'rgba(244,63,94,0.1)' : 'rgba(148,163,184,0.05)'}
           />
         </div>
       )}
@@ -87,16 +101,16 @@ export function MetricCard({
   )
 }
 
-// ── Inline SVG sparkline ──
-function MiniSparkline({ data, color = '#9ca3af', height = 24, width }: {
+// ── SVG sparkline with area fill ──
+function MiniSparkline({ data, color = '#94a3b8', fillColor = 'rgba(148,163,184,0.05)', height = 32 }: {
   data: number[]
   color?: string
+  fillColor?: string
   height?: number
-  width?: number
 }) {
   if (data.length < 2) return null
 
-  const w = width ?? 100 // will use 100% of parent
+  const w = 120
   const h = height
   const padding = 2
   const min = Math.min(...data)
@@ -106,8 +120,11 @@ function MiniSparkline({ data, color = '#9ca3af', height = 24, width }: {
   const points = data.map((v, i) => {
     const x = padding + (i / (data.length - 1)) * (w - padding * 2)
     const y = h - padding - ((v - min) / range) * (h - padding * 2)
-    return `${x},${y}`
-  }).join(' ')
+    return { x, y }
+  })
+
+  const linePoints = points.map(p => `${p.x},${p.y}`).join(' ')
+  const areaPoints = `${points[0].x},${h} ${linePoints} ${points[points.length - 1].x},${h}`
 
   return (
     <svg
@@ -116,13 +133,30 @@ function MiniSparkline({ data, color = '#9ca3af', height = 24, width }: {
       style={{ height }}
       preserveAspectRatio="none"
     >
+      <defs>
+        <linearGradient id={`fill-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.15} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon
+        points={areaPoints}
+        fill={`url(#fill-${color.replace('#', '')})`}
+      />
       <polyline
-        points={points}
+        points={linePoints}
         fill="none"
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+      {/* End dot */}
+      <circle
+        cx={points[points.length - 1].x}
+        cy={points[points.length - 1].y}
+        r={2.5}
+        fill={color}
       />
     </svg>
   )
