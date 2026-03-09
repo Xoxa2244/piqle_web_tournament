@@ -8,6 +8,7 @@ import {
   mockSlotFillerRecommendations,
   mockReactivationCandidates,
   mockSessions,
+  mockEventRecommendations,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -108,6 +109,26 @@ export function useListSessions(clubId: string) {
   if (isDemo) {
     return {
       data: mockSessions,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+// ── Event Recommendations ──
+export function useEventRecommendations(clubId: string) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getEventRecommendations.useQuery(
+    { clubId, limit: 5 },
+    { enabled: !!clubId && !isDemo }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockEventRecommendations(),
       isLoading: false,
       error: null,
     }

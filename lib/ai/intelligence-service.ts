@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { generateSlotFillerRecommendations } from './slot-filler';
 import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
+import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
 import { sendReactivationEmail } from '../email';
 import { sendSms, buildReactivationSms } from '../sms';
 import type { BookingHistory, UserPlayPreferenceData, MemberData } from '../../types/intelligence';
@@ -33,6 +34,11 @@ const sendInviteInput = z.object({
   sessionId: z.string().uuid(),
   userIds: z.array(z.string().uuid()),
   message: z.string().max(500).optional(),
+});
+
+const eventRecommendationInput = z.object({
+  clubId: z.string().uuid(),
+  limit: z.number().int().min(1).max(10).default(5),
 });
 
 const sendReactivationInput = z.object({
@@ -745,6 +751,219 @@ export async function sendReactivationMessages(
   return { sent, failed, results }
 }
 
+// ── CSV fallback: build event data from document_embeddings ──
+
+async function buildCsvEventData(
+  prisma: any,
+  clubId: string,
+  members: Array<{ user: any }>,
+): Promise<{
+  membersWithData: Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }>
+  csvSessions: EventCsvMeta[]
+} | null> {
+  // Load CSV sessions (same query as reactivation)
+  let csvSessions: EventCsvMeta[] = []
+  try {
+    const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
+      SELECT metadata FROM document_embeddings
+      WHERE club_id = ${clubId}::uuid
+        AND content_type = 'session'
+        AND source_table = 'csv_import'
+    `
+    csvSessions = rows
+      .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as EventCsvMeta)
+      .filter((m: EventCsvMeta) => m && m.date && m.capacity > 0)
+  } catch {
+    return null
+  }
+
+  if (csvSessions.length === 0) return null
+
+  // Build player activity map from CSV (same logic as buildCsvReactivationData)
+  const allPlayerNames = new Set<string>()
+  const playerActivity = new Map<string, { lastDate: string; totalSessions: number; sessionsLast7d: number; sessionsLast30d: number }>()
+
+  const allDates = csvSessions.map(s => s.date).sort()
+  const latestDateStr = allDates[allDates.length - 1]
+  const latestDate = new Date(latestDateStr + 'T23:59:59')
+  const d7Str = new Date(latestDate.getTime() - 7 * 86400000).toISOString().slice(0, 10)
+  const d30Str = new Date(latestDate.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+
+  for (const s of csvSessions) {
+    for (const name of (s.playerNames || [])) {
+      allPlayerNames.add(name)
+      const existing = playerActivity.get(name) || { lastDate: '', totalSessions: 0, sessionsLast7d: 0, sessionsLast30d: 0 }
+      existing.totalSessions++
+      if (s.date > existing.lastDate) existing.lastDate = s.date
+      if (s.date >= d7Str) existing.sessionsLast7d++
+      if (s.date >= d30Str) existing.sessionsLast30d++
+      playerActivity.set(name, existing)
+    }
+  }
+
+  const allCsvNames = Array.from(allPlayerNames)
+
+  // Batch-load preferences
+  const memberUserIds = members.map((cf: any) => cf.user.id)
+  let allPreferences: any[] = []
+  try {
+    allPreferences = await prisma.userPlayPreference.findMany({
+      where: { userId: { in: memberUserIds }, clubId },
+    })
+  } catch { /* not critical */ }
+  const prefMap = new Map(allPreferences.map((p: any) => [p.userId, p]))
+
+  // Build member data with CSV-based history
+  const membersWithData = members.map((cf: any) => {
+    const preference = prefMap.get(cf.user.id) || null
+    const matchedName = matchPlayerName(cf.user.name, allCsvNames)
+    const activity = matchedName ? playerActivity.get(matchedName) : null
+
+    let history: BookingHistory
+    if (activity) {
+      const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
+      const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+      history = {
+        totalBookings: activity.totalSessions,
+        bookingsLastWeek: activity.sessionsLast7d,
+        bookingsLastMonth: activity.sessionsLast30d,
+        daysSinceLastConfirmedBooking: daysSince,
+        cancelledCount: 0,
+        noShowCount: 0,
+        inviteAcceptanceRate: 1.0,
+      }
+    } else {
+      history = {
+        totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+        daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+        noShowCount: 0, inviteAcceptanceRate: 0.5,
+      }
+    }
+
+    return {
+      member: toMemberData(cf.user),
+      preference: toPreferenceData(preference),
+      history,
+    }
+  })
+
+  return { membersWithData, csvSessions }
+}
+
+/**
+ * intelligence.getEventRecommendations
+ * AI-generated event suggestions based on player clusters and occupancy
+ */
+export async function getEventRecommendations(
+  prisma: any,
+  input: z.infer<typeof eventRecommendationInput>
+) {
+  const { clubId, limit } = input
+
+  // 1. Load club members
+  const members = await prisma.clubFollower.findMany({
+    where: { clubId },
+    include: {
+      user: {
+        select: {
+          id: true, email: true, name: true, image: true, gender: true, city: true,
+          duprRatingDoubles: true, duprRatingSingles: true,
+        },
+      },
+    },
+  })
+
+  // 2. Count available courts
+  let courtCount = 4
+  try {
+    const count = await prisma.clubCourt.count({
+      where: { clubId, isActive: true },
+    })
+    if (count > 0) courtCount = count
+  } catch { /* default */ }
+
+  // 3. Check for real bookings
+  const memberUserIds = members.map((cf: any) => cf.user.id)
+  let hasRealBookings = false
+  if (memberUserIds.length > 0) {
+    try {
+      const firstBooking = await prisma.playSessionBooking.findFirst({
+        where: { userId: { in: memberUserIds } },
+        select: { id: true },
+      })
+      hasRealBookings = !!firstBooking
+    } catch {
+      hasRealBookings = false
+    }
+  }
+
+  // 4. Build member data + session data
+  let membersWithData: Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }>
+  let csvSessions: EventCsvMeta[] = []
+
+  if (!hasRealBookings) {
+    // CSV fallback (primary path for prod)
+    const csvData = await buildCsvEventData(prisma, clubId, members)
+    if (csvData) {
+      membersWithData = csvData.membersWithData
+      csvSessions = csvData.csvSessions
+    } else {
+      // No data — build minimal members
+      membersWithData = members.map((cf: any) => ({
+        member: toMemberData(cf.user),
+        preference: null,
+        history: {
+          totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+          daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+          noShowCount: 0, inviteAcceptanceRate: 0.5,
+        },
+      }))
+    }
+  } else {
+    // Real DB path
+    membersWithData = await Promise.all(
+      members.map(async (cf: any) => {
+        const preference = await prisma.userPlayPreference.findUnique({
+          where: { userId_clubId: { userId: cf.user.id, clubId } },
+        })
+        const history = await buildBookingHistory(prisma, cf.user.id)
+        return { member: toMemberData(cf.user), preference: toPreferenceData(preference), history }
+      })
+    )
+    // Load real sessions as CSV-like format for scoring
+    const sessions = await prisma.playSession.findMany({
+      where: { clubId },
+      include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
+    })
+    csvSessions = sessions.map((s: any) => ({
+      date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+      startTime: s.startTime,
+      endTime: s.endTime,
+      court: '',
+      format: s.format,
+      skillLevel: s.skillLevel,
+      registered: s._count.bookings,
+      capacity: s.maxPlayers,
+      occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
+      playerNames: [],
+    }))
+  }
+
+  // 5. Generate recommendations
+  const events = generateEventRecommendations({
+    members: membersWithData,
+    csvSessions,
+    courtCount,
+  })
+
+  return {
+    events: events.slice(0, limit),
+    totalPlayersAnalyzed: membersWithData.length,
+    totalSessionsAnalyzed: csvSessions.length,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
 /**
  * play.preferences.upsert - Set or update user play preferences
  */
@@ -770,6 +989,7 @@ export const intelligenceSchemas = {
   slotFillerInput,
   weeklyPlanInput,
   reactivationInput,
+  eventRecommendationInput,
   sendInviteInput,
   sendReactivationInput,
   preferencesInput,

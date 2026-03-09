@@ -213,3 +213,44 @@ export interface DashboardV2Data {
     newThisMonth: number;
   };
 }
+
+// ====== Event Recommendation Types ======
+
+export type EventType = 'Round Robin' | 'Social Mixer' | 'Mini League' | 'Clinic/Drill'
+
+export interface MatchedPlayer {
+  name: string
+  dupr: number
+  emoji: string        // 🔥⭐📈🆕🎯🤝
+  lastPlayed: string   // "2 days ago" | "never at events"
+  tournaments: number
+}
+
+export interface EventRecommendation {
+  id: string
+  type: EventType
+  title: string
+  emoji: string
+  urgency: 'high' | 'medium' | 'low'
+  reason: string
+  suggestedDate: string
+  suggestedTime: string
+  courts: number
+  format: string
+  skillRange: string
+  suggestedPrice: number
+  maxPlayers: number
+  matchedPlayers: MatchedPlayer[]
+  projectedRevenue: number
+  courtCost: number
+  netRevenue: number
+  fillConfidence: number
+  insights: string[]
+}
+
+export interface EventRecommendationsResult {
+  events: EventRecommendation[]
+  totalPlayersAnalyzed: number
+  totalSessionsAnalyzed: number
+  generatedAt: string
+}

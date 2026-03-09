@@ -5,6 +5,7 @@ import {
   getSlotFillerRecommendations,
   getWeeklyPlan,
   getReactivationCandidates,
+  getEventRecommendations,
   sendInvites,
   sendReactivationMessages,
   upsertPreferences,
@@ -183,6 +184,17 @@ export const intelligenceRouter = createTRPCRouter({
       }
 
       return { ...result, aiEnhancements: [] }
+    }),
+
+  // ── Event Recommendations: AI-generated event suggestions ──
+  getEventRecommendations: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(10).default(5),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      return getEventRecommendations(ctx.prisma, input)
     }),
 
   // ── Send Invites: Invite recommended users to a session ──

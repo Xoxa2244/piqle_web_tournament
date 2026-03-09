@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,136 +10,27 @@ import { cn } from '@/lib/utils'
 import {
   ChevronLeft, Sparkles, Users, Calendar, Clock, DollarSign,
   Trophy, MapPin, Zap, CheckCircle2, Send, ArrowRight,
-  BarChart3, Star, TrendingUp, Target
+  BarChart3, Star, TrendingUp, Target, Loader2
 } from 'lucide-react'
-
-// ── Mock AI-Generated Events ───────────────────────────────────────────────
-
-const aiEvents = [
-  {
-    id: 'rr-advanced',
-    type: 'Round Robin',
-    title: 'Advanced Round Robin Showdown',
-    emoji: '🏆',
-    urgency: 'high' as const,
-    reason: 'Detected 14 players rated DUPR 4.0+ who rarely play each other. High engagement potential.',
-    suggestedDate: 'Saturday, Mar 8',
-    suggestedTime: '4:00 PM – 7:00 PM',
-    courts: 4,
-    format: 'Round Robin (pools of 4 → single elimination)',
-    skillRange: '4.0 – 5.0 DUPR',
-    suggestedPrice: 25,
-    maxPlayers: 16,
-    matchedPlayers: [
-      { name: 'Carlos Mendez', dupr: 4.5, emoji: '🔥', lastPlayed: '2 days ago', tournaments: 12 },
-      { name: 'Tom Wilson', dupr: 4.8, emoji: '⭐', lastPlayed: '3 days ago', tournaments: 18 },
-      { name: 'Jake Martinez', dupr: 4.6, emoji: '🔥', lastPlayed: '1 day ago', tournaments: 15 },
-      { name: 'David Park', dupr: 4.1, emoji: '📈', lastPlayed: '5 days ago', tournaments: 8 },
-      { name: 'Sarah Kim', dupr: 4.2, emoji: '📈', lastPlayed: '4 days ago', tournaments: 10 },
-      { name: 'Lisa Park', dupr: 4.0, emoji: '📈', lastPlayed: '6 days ago', tournaments: 6 },
-      { name: 'Alex Rivera', dupr: 4.3, emoji: '🔥', lastPlayed: '2 days ago', tournaments: 11 },
-      { name: 'Jennifer Wu', dupr: 4.1, emoji: '📈', lastPlayed: '3 days ago', tournaments: 7 },
-      { name: 'Ryan Torres', dupr: 4.4, emoji: '🔥', lastPlayed: '1 day ago', tournaments: 14 },
-      { name: 'Emily Zhang', dupr: 4.0, emoji: '📈', lastPlayed: '5 days ago', tournaments: 5 },
-      { name: 'Chris Lee', dupr: 4.7, emoji: '⭐', lastPlayed: '2 days ago', tournaments: 16 },
-      { name: 'Nicole Adams', dupr: 4.2, emoji: '📈', lastPlayed: '4 days ago', tournaments: 9 },
-      { name: 'Brandon Kim', dupr: 4.3, emoji: '🔥', lastPlayed: '3 days ago', tournaments: 13 },
-      { name: 'Sophia Chen', dupr: 4.1, emoji: '📈', lastPlayed: '6 days ago', tournaments: 7 },
-    ],
-    projectedRevenue: 400,
-    courtCost: 80,
-    netRevenue: 320,
-    fillConfidence: 92,
-    insights: [
-      '14 of 16 spots auto-filled from member base — only 2 open slots needed',
-      'Saturday 4PM has 0% court utilization currently — pure incremental revenue',
-      'Average tournament player visits club 2x more the following week',
-      'Similar events had 95% return rate for participants',
-    ],
-  },
-  {
-    id: 'beginner-social',
-    type: 'Social Mixer',
-    title: 'New Player Welcome Mixer',
-    emoji: '🎉',
-    urgency: 'medium' as const,
-    reason: '8 new members (joined in last 30 days) haven\'t attended any events yet. Social event lowers the barrier.',
-    suggestedDate: 'Sunday, Mar 9',
-    suggestedTime: '10:00 AM – 12:00 PM',
-    courts: 2,
-    format: 'Rotating Partners (King of the Court)',
-    skillRange: '2.0 – 3.0 DUPR',
-    suggestedPrice: 10,
-    maxPlayers: 12,
-    matchedPlayers: [
-      { name: 'New Player 1', dupr: 2.5, emoji: '🆕', lastPlayed: 'never at events', tournaments: 0 },
-      { name: 'New Player 2', dupr: 2.8, emoji: '🆕', lastPlayed: 'never at events', tournaments: 0 },
-      { name: 'New Player 3', dupr: 2.3, emoji: '🆕', lastPlayed: 'never at events', tournaments: 0 },
-      { name: 'Maria Garcia', dupr: 2.8, emoji: '🤝', lastPlayed: '12 days ago', tournaments: 2 },
-      { name: 'Bob Jones', dupr: 2.5, emoji: '🤝', lastPlayed: '8 days ago', tournaments: 1 },
-      { name: 'Steve Brown', dupr: 2.6, emoji: '🤝', lastPlayed: '10 days ago', tournaments: 3 },
-      { name: 'New Player 4', dupr: 2.6, emoji: '🆕', lastPlayed: 'never at events', tournaments: 0 },
-      { name: 'New Player 5', dupr: 2.7, emoji: '🆕', lastPlayed: 'never at events', tournaments: 0 },
-    ],
-    projectedRevenue: 120,
-    courtCost: 40,
-    netRevenue: 80,
-    fillConfidence: 75,
-    insights: [
-      'New member retention jumps 40% after first social event',
-      'Mixing new + existing social players creates natural mentoring',
-      'Low price point ($10) removes cost barrier for first-timers',
-      'Sunday morning has 25% court utilization — underused slot',
-    ],
-  },
-  {
-    id: 'doubles-league',
-    type: 'Mini League',
-    title: 'Wednesday Night Doubles League',
-    emoji: '⚡',
-    urgency: 'high' as const,
-    reason: '12 intermediate players book Wednesday evenings regularly but without structure. A league would lock in 6-week commitment.',
-    suggestedDate: 'Starting Wed, Mar 12 (6 weeks)',
-    suggestedTime: '6:30 PM – 8:30 PM',
-    courts: 3,
-    format: 'Fixed Doubles Teams, Round Robin (6 weeks)',
-    skillRange: '3.0 – 3.8 DUPR',
-    suggestedPrice: 35,
-    maxPlayers: 12,
-    matchedPlayers: [
-      { name: 'Alex Rivera', dupr: 3.8, emoji: '🎯', lastPlayed: '2 days ago', tournaments: 11 },
-      { name: 'Mike Thompson', dupr: 3.5, emoji: '🎯', lastPlayed: '4 days ago', tournaments: 5 },
-      { name: 'Jennifer Wu', dupr: 3.6, emoji: '🎯', lastPlayed: '3 days ago', tournaments: 7 },
-      { name: 'Emily Zhang', dupr: 3.4, emoji: '🎯', lastPlayed: '5 days ago', tournaments: 5 },
-      { name: 'Jason Lee', dupr: 3.7, emoji: '🎯', lastPlayed: '2 days ago', tournaments: 8 },
-      { name: 'Amanda Cruz', dupr: 3.9, emoji: '🎯', lastPlayed: '4 days ago', tournaments: 6 },
-      { name: 'Kevin Park', dupr: 3.3, emoji: '🎯', lastPlayed: '3 days ago', tournaments: 4 },
-      { name: 'Rachel Kim', dupr: 3.5, emoji: '🎯', lastPlayed: '5 days ago', tournaments: 7 },
-      { name: 'Brian Johnson', dupr: 3.6, emoji: '🎯', lastPlayed: '1 day ago', tournaments: 9 },
-      { name: 'Tina Chen', dupr: 3.2, emoji: '🎯', lastPlayed: '6 days ago', tournaments: 3 },
-      { name: 'Mark Davis', dupr: 3.7, emoji: '🎯', lastPlayed: '2 days ago', tournaments: 10 },
-      { name: 'Sara Wilson', dupr: 3.4, emoji: '🎯', lastPlayed: '4 days ago', tournaments: 6 },
-    ],
-    projectedRevenue: 2520,
-    courtCost: 480,
-    netRevenue: 2040,
-    fillConfidence: 88,
-    insights: [
-      '6-week commitment = $35/week × 6 = $210/player guaranteed revenue',
-      'Total projected: $2,520 over 6 weeks from 12 players',
-      'Wednesday evening utilization jumps from 45% to 90%',
-      'League players show 3x higher retention vs casual bookers',
-    ],
-  },
-]
+import { useEventRecommendations } from '../_hooks/use-intelligence'
 
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function EventGeneratorPage() {
   const params = useParams()
   const clubId = params.id as string
-  const [expandedId, setExpandedId] = useState<string | null>(aiEvents[0].id)
+  const { data, isLoading, error } = useEventRecommendations(clubId)
+
+  const aiEvents = data?.events ?? []
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [createdIds, setCreatedIds] = useState<Set<string>>(new Set())
+
+  // Auto-expand first event when data loads
+  useEffect(() => {
+    if (aiEvents.length > 0 && expandedId === null) {
+      setExpandedId(aiEvents[0].id)
+    }
+  }, [aiEvents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalRevenue = aiEvents.reduce((s, e) => s + e.netRevenue, 0)
   const totalPlayers = aiEvents.reduce((s, e) => s + e.matchedPlayers.length, 0)
@@ -182,7 +73,43 @@ export default function EventGeneratorPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Loading */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">Analyzing player clusters and occupancy patterns...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !isLoading && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="font-medium mb-1">Failed to generate event recommendations</div>
+            <div className="text-red-600 text-xs font-mono">{(error as any)?.message || 'Unknown error'}</div>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!isLoading && !error && aiEvents.length === 0 && (
+          <Card>
+            <CardContent className="py-16 text-center">
+              <Trophy className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No events to recommend yet</h3>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                We need more member and session data to identify player clusters. Import session history via the AI Advisor to get started.
+              </p>
+              <Link href={`/clubs/${clubId}/intelligence/advisor`}>
+                <Button variant="outline" className="mt-4 gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Go to AI Advisor
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Summary */}
+        {aiEvents.length > 0 && (<>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-5 pb-5">
@@ -305,7 +232,7 @@ export default function EventGeneratorPage() {
                         <p className="text-xs text-muted-foreground">Court Cost</p>
                         <p className="text-lg font-bold text-red-500">-${event.courtCost}</p>
                         <p className="text-xs text-muted-foreground">
-                          {event.courts} courts × {event.id === 'doubles-league' ? '6 weeks' : '3 hrs'}
+                          {event.courts} courts × {event.type === 'Mini League' ? '6 weeks' : '3 hrs'}
                         </p>
                       </CardContent>
                     </Card>
@@ -398,6 +325,7 @@ export default function EventGeneratorPage() {
             </Card>
           )
         })}
+        </>)}
       </div>
     </div>
   )
