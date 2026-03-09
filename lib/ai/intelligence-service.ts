@@ -467,6 +467,12 @@ export async function getReactivationCandidates(
 ) {
   const { clubId, inactivityDays, limit } = input;
 
+  // Get club name for message generation
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { name: true },
+  });
+
   // Get club members
   const members = await prisma.clubFollower.findMany({
     where: { clubId },
@@ -558,6 +564,7 @@ export async function getReactivationCandidates(
     totalInactiveMembers: candidates.length,
     totalClubMembers: totalMembers,
     inactivityThresholdDays: inactivityDays,
+    clubName: club.name,
   };
 }
 
@@ -692,6 +699,7 @@ export async function sendReactivationMessages(
           daysSinceLastActivity: daysSince,
           suggestedSessions,
           bookingUrl,
+          customMessage,
         })
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {

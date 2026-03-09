@@ -17,6 +17,8 @@ import { EmptyState } from '../_components/empty-state'
 import ConfirmModal from '@/components/ConfirmModal'
 import { useToast } from '@/components/ui/use-toast'
 import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-intelligence'
+import { generateReactivationMessages } from '@/lib/ai/reactivation-messages'
+import { MessageSelector } from '../_components/message-selector'
 
 const INACTIVITY_OPTIONS = [
   { value: 14, label: '14 days' },
@@ -35,10 +37,31 @@ export default function ReactivationPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
+  const [selectedMessageId, setSelectedMessageId] = useState('friendly')
 
   const { data, isLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const sendReactivation = useSendReactivation()
   const { toast } = useToast()
+
+  // Message variants for selected candidate
+  const selectedCandidate = useMemo(() => {
+    if (!selectedMemberId || !data?.candidates) return null
+    return data.candidates.find((c: any) => c.member.id === selectedMemberId) || null
+  }, [selectedMemberId, data])
+
+  const messageVariants = useMemo(() => {
+    if (!selectedCandidate) return []
+    return generateReactivationMessages({
+      memberName: selectedCandidate.member.name || selectedCandidate.member.email || 'there',
+      clubName: data?.clubName || 'the club',
+      daysSinceLastActivity: selectedCandidate.daysSinceLastActivity,
+      sessionCount: selectedCandidate.suggestedSessions?.length || 0,
+    })
+  }, [selectedCandidate, data])
+
+  const selectedMessage = useMemo(() => {
+    return messageVariants.find(v => v.id === selectedMessageId) || messageVariants[0] || null
+  }, [messageVariants, selectedMessageId])
 
   // Filter by search
   const filteredCandidates = useMemo(() => {
@@ -270,6 +293,7 @@ export default function ReactivationPage() {
                           onClick={() => {
                             setSelectedMemberId(candidate.member.id)
                             setSelectedChannel('email')
+                            setSelectedMessageId('friendly')
                             setShowEmailConfirm(true)
                           }}
                         >
@@ -282,6 +306,7 @@ export default function ReactivationPage() {
                           onClick={() => {
                             setSelectedMemberId(candidate.member.id)
                             setSelectedChannel('sms')
+                            setSelectedMessageId('friendly')
                             setShowEmailConfirm(true)
                           }}
                         >
@@ -307,11 +332,12 @@ export default function ReactivationPage() {
       {/* Send confirm modal */}
       <ConfirmModal
         open={showEmailConfirm}
+        size="lg"
         title={selectedChannel === 'sms' ? 'Send Re-engagement SMS' : 'Send Re-engagement Email'}
         description={
           selectedChannel === 'sms'
-            ? 'Send a personalized SMS to this member encouraging them to come back and play?'
-            : 'Send a personalized re-engagement email to this member with session recommendations?'
+            ? 'Choose a message style for the SMS.'
+            : 'Choose a message style for the re-engagement email.'
         }
         confirmText={selectedChannel === 'sms' ? 'Send SMS' : 'Send Email'}
         isPending={sendReactivation.isPending}
@@ -320,11 +346,15 @@ export default function ReactivationPage() {
           setSelectedMemberId(null)
         }}
         onConfirm={() => {
-          if (!selectedMemberId) return
+          if (!selectedMemberId || !selectedMessage) return
+          const customMessage = selectedChannel === 'sms'
+            ? selectedMessage.smsBody
+            : selectedMessage.emailBody
           sendReactivation.mutate(
             {
               clubId,
               candidates: [{ memberId: selectedMemberId, channel: selectedChannel }],
+              customMessage,
             },
             {
               onSuccess: (data: any) => {
@@ -348,7 +378,16 @@ export default function ReactivationPage() {
             }
           )
         }}
-      />
+      >
+        {messageVariants.length > 0 && (
+          <MessageSelector
+            variants={messageVariants}
+            selectedId={selectedMessageId}
+            channel={selectedChannel}
+            onSelect={setSelectedMessageId}
+          />
+        )}
+      </ConfirmModal>
     </div>
   )
 }

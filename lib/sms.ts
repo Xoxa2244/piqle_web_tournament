@@ -41,13 +41,18 @@ export function buildReactivationSms({
   daysSinceLastActivity,
   sessionCount,
   bookingUrl,
+  customMessage,
 }: {
   memberName: string
   clubName: string
   daysSinceLastActivity: number
   sessionCount: number
   bookingUrl: string
+  customMessage?: string
 }): string {
+  if (customMessage) {
+    return `${customMessage} Book now: ${bookingUrl}`
+  }
   const name = memberName.split(' ')[0] || 'there'
   return (
     `Hey ${name}! We miss you at ${clubName}. ` +

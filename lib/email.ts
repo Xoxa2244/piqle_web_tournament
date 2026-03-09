@@ -110,12 +110,14 @@ function buildReactivationEmailHtml({
   daysSinceLastActivity,
   suggestedSessions,
   bookingUrl,
+  customMessage,
 }: {
   memberName: string
   clubName: string
   daysSinceLastActivity: number
   suggestedSessions: SuggestedSessionInfo[]
   bookingUrl: string
+  customMessage?: string
 }) {
   const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/Logo.png`
@@ -169,8 +171,7 @@ function buildReactivationEmailHtml({
                       Hey ${firstName}, we miss you! 🏸
                     </h1>
                     <p style="margin: 0; font-size: 15px; color: #4b5563;">
-                      It&rsquo;s been <strong>${daysSinceLastActivity} days</strong> since your last session at <strong>${clubName}</strong>.
-                      We&rsquo;ve got some great sessions coming up that match your level&mdash;come back and play!
+                      ${customMessage || `It&rsquo;s been <strong>${daysSinceLastActivity} days</strong> since your last session at <strong>${clubName}</strong>. We&rsquo;ve got some great sessions coming up that match your level&mdash;come back and play!`}
                     </p>
                   </td>
                 </tr>
@@ -222,6 +223,7 @@ export async function sendReactivationEmail({
   daysSinceLastActivity,
   suggestedSessions,
   bookingUrl,
+  customMessage,
 }: {
   to: string
   memberName: string
@@ -229,16 +231,20 @@ export async function sendReactivationEmail({
   daysSinceLastActivity: number
   suggestedSessions: SuggestedSessionInfo[]
   bookingUrl: string
+  customMessage?: string
 }): Promise<{ messageId: string }> {
   const firstName = memberName.split(' ')[0] || 'there'
   const subject = `${firstName}, we miss you at ${clubName}! 🏸`
-  const text = `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}`
+  const text = customMessage
+    ? `${customMessage} Book now: ${bookingUrl}`
+    : `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}`
   const html = buildReactivationEmailHtml({
     memberName,
     clubName,
     daysSinceLastActivity,
     suggestedSessions,
     bookingUrl,
+    customMessage,
   })
 
   const info = await transporter.sendMail({

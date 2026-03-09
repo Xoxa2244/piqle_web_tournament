@@ -362,6 +362,7 @@ export function mockReactivationCandidates(inactivityDays: number) {
     totalInactiveMembers: filtered.length,
     totalClubMembers: 127,
     inactivityThresholdDays: inactivityDays,
+    clubName: 'Sunset Racquet Club',
   }
 }
 
