@@ -642,24 +642,33 @@ export const intelligenceRouter = createTRPCRouter({
           },
         }
       } catch (err) {
-        // Booking table missing — re-query sessions WITHOUT _count.bookings
-        console.warn('[getDashboardV2] Booking table missing, using no-booking fallback:', (err as Error).message?.slice(0, 120))
+        // Tables missing — try sessions without bookings, or return empty
+        console.warn('[getDashboardV2] Fallback mode:', (err as Error).message?.slice(0, 120))
 
-        const [sessionsRaw30d, sessionsRawPrev30d, upcomingRaw] = await Promise.all([
-          ctx.prisma.playSession.findMany({
-            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
-            include: { clubCourt: true },
-          }),
-          ctx.prisma.playSession.findMany({
-            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
-          }),
-          ctx.prisma.playSession.findMany({
-            where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
-            include: { clubCourt: true },
-            orderBy: { date: 'asc' },
-            take: 20,
-          }),
-        ])
+        let sessionsRaw30d: any[] = []
+        let upcomingRaw: any[] = []
+        try {
+          const [s30, , upc] = await Promise.all([
+            ctx.prisma.playSession.findMany({
+              where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
+              include: { clubCourt: true },
+            }),
+            ctx.prisma.playSession.findMany({
+              where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
+            }),
+            ctx.prisma.playSession.findMany({
+              where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
+              include: { clubCourt: true },
+              orderBy: { date: 'asc' },
+              take: 20,
+            }),
+          ])
+          sessionsRaw30d = s30
+          upcomingRaw = upc
+        } catch (err2) {
+          // play_sessions table also missing — pure member-only mode
+          console.warn('[getDashboardV2] play_sessions table also missing:', (err2 as Error).message?.slice(0, 120))
+        }
 
         // Treat confirmedCount as 0 (no booking data), occupancy based on session existence
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
