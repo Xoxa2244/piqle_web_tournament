@@ -260,6 +260,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
       daysSinceLastActivity: 47,
       totalHistoricalBookings: 23,
       score: 88,
+      archetype: 'lapsed_regular' as const,
+      preference: { id: 'p1', userId: 'r1', clubId: 'demo', preferredDays: ['Wednesday', 'Saturday'] as any, preferredTimeSlots: { morning: false, afternoon: true, evening: false }, skillLevel: 'INTERMEDIATE' as any, preferredFormats: ['OPEN_PLAY'] as any, targetSessionsPerWeek: 2, isActive: true },
+      bookingHistory: { totalBookings: 23, bookingsLastWeek: 0, bookingsLastMonth: 0, daysSinceLastConfirmedBooking: 47, cancelledCount: 1, noShowCount: 0, inviteAcceptanceRate: 0.9 },
       reasoning: {
         summary: 'Long-time member with high historical engagement. Sudden drop-off after 23 sessions — likely recoverable.',
         components: {
@@ -280,6 +283,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
       daysSinceLastActivity: 35,
       totalHistoricalBookings: 15,
       score: 76,
+      archetype: 'competitor' as const,
+      preference: { id: 'p2', userId: 'r2', clubId: 'demo', preferredDays: ['Tuesday', 'Thursday'] as any, preferredTimeSlots: { morning: true, afternoon: false, evening: false }, skillLevel: 'ADVANCED' as any, preferredFormats: ['DRILL'] as any, targetSessionsPerWeek: 3, isActive: true },
+      bookingHistory: { totalBookings: 15, bookingsLastWeek: 0, bookingsLastMonth: 0, daysSinceLastConfirmedBooking: 35, cancelledCount: 0, noShowCount: 1, inviteAcceptanceRate: 0.85 },
       reasoning: {
         summary: 'Regular intermediate player. Stopped attending after format change. Prefers drill sessions.',
         components: {
@@ -297,8 +303,11 @@ export function mockReactivationCandidates(inactivityDays: number) {
     {
       member: { id: 'r3', name: 'Alex Nguyen', email: 'alex@demo.com', duprRatingDoubles: 3.3, gender: 'M' },
       daysSinceLastActivity: 28,
-      totalHistoricalBookings: 8,
+      totalHistoricalBookings: 3,
       score: 64,
+      archetype: 'ghost_newbie' as const,
+      preference: null,
+      bookingHistory: { totalBookings: 3, bookingsLastWeek: 0, bookingsLastMonth: 0, daysSinceLastConfirmedBooking: 28, cancelledCount: 0, noShowCount: 0, inviteAcceptanceRate: 1.0 },
       reasoning: {
         summary: 'Newer member still building a habit. Attended beginner clinics initially. Has potential if re-engaged.',
         components: {
@@ -319,6 +328,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
       daysSinceLastActivity: 22,
       totalHistoricalBookings: 11,
       score: 59,
+      archetype: 'social_butterfly' as const,
+      preference: { id: 'p4', userId: 'r4', clubId: 'demo', preferredDays: ['Friday', 'Saturday'] as any, preferredTimeSlots: { morning: false, afternoon: false, evening: true }, skillLevel: 'INTERMEDIATE' as any, preferredFormats: ['SOCIAL'] as any, targetSessionsPerWeek: 1, isActive: true },
+      bookingHistory: { totalBookings: 11, bookingsLastWeek: 0, bookingsLastMonth: 0, daysSinceLastConfirmedBooking: 22, cancelledCount: 2, noShowCount: 0, inviteAcceptanceRate: 0.75 },
       reasoning: {
         summary: 'Moderate engagement history. Schedule conflict with new work hours likely. Evening sessions could work.',
         components: {
@@ -339,6 +351,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
       daysSinceLastActivity: 16,
       totalHistoricalBookings: 31,
       score: 52,
+      archetype: 'competitor' as const,
+      preference: { id: 'p5', userId: 'r5', clubId: 'demo', preferredDays: ['Monday', 'Wednesday', 'Friday'] as any, preferredTimeSlots: { morning: false, afternoon: false, evening: true }, skillLevel: 'ADVANCED' as any, preferredFormats: ['DRILL', 'LEAGUE_PLAY'] as any, targetSessionsPerWeek: 3, isActive: true },
+      bookingHistory: { totalBookings: 31, bookingsLastWeek: 0, bookingsLastMonth: 0, daysSinceLastConfirmedBooking: 16, cancelledCount: 0, noShowCount: 0, inviteAcceptanceRate: 0.95 },
       reasoning: {
         summary: 'Power user with 31 past bookings — short break may be intentional (vacation?). Monitor before outreach.',
         components: {

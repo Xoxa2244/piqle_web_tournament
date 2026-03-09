@@ -10,11 +10,14 @@ interface MessageSelectorProps {
 }
 
 export function MessageSelector({ variants, selectedId, channel, onSelect }: MessageSelectorProps) {
+  // Auto-select recommended variant when no explicit selection
+  const effectiveId = selectedId || variants.find(v => v.recommended)?.id || variants[0]?.id || ''
+
   return (
     <div className="space-y-2 mt-3">
       <div className="text-xs font-medium text-muted-foreground">Choose a message style</div>
       {variants.map((v) => {
-        const isSelected = v.id === selectedId
+        const isSelected = v.id === effectiveId
         const preview = channel === 'sms' ? v.smsBody : v.emailBody
 
         return (

@@ -32,6 +32,8 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
         score: scoring.score,
         reasoning: scoring,
         suggestedSessions,
+        preference: preference ?? null,
+        bookingHistory: history,
       };
     })
     .sort((a, b) => b.score - a.score);

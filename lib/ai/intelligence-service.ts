@@ -8,6 +8,7 @@ import { generateSlotFillerRecommendations } from './slot-filler';
 import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
 import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
+import { classifyArchetype } from './reactivation-messages';
 import { sendReactivationEmail } from '../email';
 import { sendSms, buildReactivationSms } from '../sms';
 import type { BookingHistory, UserPlayPreferenceData, MemberData } from '../../types/intelligence';
@@ -564,6 +565,20 @@ export async function getReactivationCandidates(
     })),
     inactivityThresholdDays: inactivityDays,
   });
+
+  // Classify player archetypes for hyper-personalized messaging
+  for (const c of candidates) {
+    c.archetype = classifyArchetype({
+      totalBookings: c.totalHistoricalBookings,
+      daysSinceLastActivity: c.daysSinceLastActivity,
+      noShowRate: c.bookingHistory
+        ? c.bookingHistory.noShowCount / Math.max(c.bookingHistory.totalBookings, 1)
+        : 0,
+      duprRating: c.member.duprRatingDoubles,
+      preferredDays: c.preference?.preferredDays,
+      preferredFormats: c.preference?.preferredFormats,
+    })
+  }
 
   return {
     candidates: candidates.slice(0, limit),

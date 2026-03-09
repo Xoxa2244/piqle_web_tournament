@@ -17,7 +17,8 @@ import { EmptyState } from '../_components/empty-state'
 import ConfirmModal from '@/components/ConfirmModal'
 import { useToast } from '@/components/ui/use-toast'
 import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-intelligence'
-import { generateReactivationMessages } from '@/lib/ai/reactivation-messages'
+import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactivation-messages'
+import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
 
 const INACTIVITY_OPTIONS = [
@@ -37,7 +38,7 @@ export default function ReactivationPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
-  const [selectedMessageId, setSelectedMessageId] = useState('friendly')
+  const [selectedMessageId, setSelectedMessageId] = useState<string>('')
 
   const { data, isLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const sendReactivation = useSendReactivation()
@@ -51,11 +52,22 @@ export default function ReactivationPage() {
 
   const messageVariants = useMemo(() => {
     if (!selectedCandidate) return []
+    const bh = selectedCandidate.bookingHistory
     return generateReactivationMessages({
       memberName: selectedCandidate.member.name || selectedCandidate.member.email || 'there',
       clubName: data?.clubName || 'the club',
       daysSinceLastActivity: selectedCandidate.daysSinceLastActivity,
       sessionCount: selectedCandidate.suggestedSessions?.length || 0,
+      // Hyper-personalization data
+      duprRating: selectedCandidate.member.duprRatingDoubles,
+      preferredDays: selectedCandidate.preference?.preferredDays,
+      preferredFormats: selectedCandidate.preference?.preferredFormats,
+      preferredTimeSlots: selectedCandidate.preference?.preferredTimeSlots,
+      totalBookings: selectedCandidate.totalHistoricalBookings,
+      bookingsLastMonth: bh?.bookingsLastMonth,
+      noShowRate: bh ? bh.noShowCount / Math.max(bh.totalBookings, 1) : undefined,
+      suggestedSessionTitles: selectedCandidate.suggestedSessions?.map((s: any) => s.title),
+      archetype: selectedCandidate.archetype,
     })
   }, [selectedCandidate, data])
 
@@ -202,6 +214,11 @@ export default function ReactivationPage() {
                     </div>
 
                     {/* Badges */}
+                    {candidate.archetype && (
+                      <Badge variant="outline" className="text-xs shrink-0 border-purple-200 text-purple-700 bg-purple-50">
+                        {archetypeLabels[candidate.archetype as PlayerArchetype]}
+                      </Badge>
+                    )}
                     <Badge variant="secondary" className="text-xs tabular-nums shrink-0">
                       Score: {candidate.score}
                     </Badge>
@@ -293,7 +310,7 @@ export default function ReactivationPage() {
                           onClick={() => {
                             setSelectedMemberId(candidate.member.id)
                             setSelectedChannel('email')
-                            setSelectedMessageId('friendly')
+                            setSelectedMessageId('')
                             setShowEmailConfirm(true)
                           }}
                         >
@@ -306,7 +323,7 @@ export default function ReactivationPage() {
                           onClick={() => {
                             setSelectedMemberId(candidate.member.id)
                             setSelectedChannel('sms')
-                            setSelectedMessageId('friendly')
+                            setSelectedMessageId('')
                             setShowEmailConfirm(true)
                           }}
                         >

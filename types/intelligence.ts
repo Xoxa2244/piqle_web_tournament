@@ -120,6 +120,16 @@ export interface WeeklyPlanResult {
   planSummary: string;
 }
 
+export type PlayerArchetype =
+  | 'lapsed_regular'    // Was active (≥10 bookings), inactive 21-45d
+  | 'fading_regular'    // Moderate activity (5-9 bookings), slowing down
+  | 'ghost_newbie'      // 1-4 bookings, then disappeared
+  | 'never_started'     // 0 bookings, signed up but never played
+  | 'competitor'        // Has DUPR, was active, on pause
+  | 'weekend_warrior'   // Plays only weekends, hasn't booked recently
+  | 'flaky_player'      // High no-show rate (>15%)
+  | 'social_butterfly'  // Prefers SOCIAL format, hasn't been around
+
 export interface ReactivationCandidate {
   member: MemberData;
   daysSinceLastActivity: number;
@@ -127,6 +137,10 @@ export interface ReactivationCandidate {
   score: number;
   reasoning: RecommendationScore;
   suggestedSessions: PlaySessionData[];
+  // Hyper-personalized messaging data
+  preference?: UserPlayPreferenceData | null;
+  bookingHistory?: BookingHistory | null;
+  archetype?: PlayerArchetype;
 }
 
 export interface RebookingSuggestion {
