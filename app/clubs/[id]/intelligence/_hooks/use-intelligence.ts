@@ -134,3 +134,20 @@ export function useSendInvites() {
 
   return mutation
 }
+
+// ── Send reactivation messages (email/SMS) ──
+export function useSendReactivation() {
+  const isDemo = useIsDemo()
+  const mutation = trpc.intelligence.sendReactivationMessages.useMutation()
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ sent: 1, failed: 0, results: [{ memberId: 'demo', channel: 'email', status: 'sent' }] }), 500)
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}

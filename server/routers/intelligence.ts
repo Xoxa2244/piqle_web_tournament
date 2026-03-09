@@ -6,6 +6,7 @@ import {
   getWeeklyPlan,
   getReactivationCandidates,
   sendInvites,
+  sendReactivationMessages,
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
@@ -201,6 +202,21 @@ export const intelligenceRouter = createTRPCRouter({
       }
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
       return sendInvites(ctx.prisma, input)
+    }),
+
+  // ── Reactivation: Send re-engagement email/SMS to inactive members ──
+  sendReactivationMessages: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      candidates: z.array(z.object({
+        memberId: z.string().uuid(),
+        channel: z.enum(['email', 'sms', 'both']),
+      })),
+      customMessage: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      return sendReactivationMessages(ctx.prisma, input)
     }),
 
   // ── Preferences: Get/Set user play preferences ──

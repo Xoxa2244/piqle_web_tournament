@@ -15,7 +15,8 @@ import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import ConfirmModal from '@/components/ConfirmModal'
-import { useReactivationCandidates } from '../_hooks/use-intelligence'
+import { useToast } from '@/components/ui/use-toast'
+import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-intelligence'
 
 const INACTIVITY_OPTIONS = [
   { value: 14, label: '14 days' },
@@ -32,9 +33,12 @@ export default function ReactivationPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
 
   const { data, isLoading } = useReactivationCandidates(clubId, inactivityDays)
+  const sendReactivation = useSendReactivation()
+  const { toast } = useToast()
 
   // Filter by search
   const filteredCandidates = useMemo(() => {
@@ -257,14 +261,23 @@ export default function ReactivationPage() {
                           className="gap-1.5 text-xs"
                           onClick={() => {
                             setSelectedMemberId(candidate.member.id)
+                            setSelectedChannel('email')
                             setShowEmailConfirm(true)
                           }}
                         >
                           <Mail className="h-3 w-3" /> Send Re-engagement Email
                         </Button>
-                        <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-muted-foreground" disabled>
-                          <MessageSquare className="h-3 w-3" /> Push Notification
-                          <Badge variant="secondary" className="text-[9px] px-1 py-0 ml-1">Soon</Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 text-xs"
+                          onClick={() => {
+                            setSelectedMemberId(candidate.member.id)
+                            setSelectedChannel('sms')
+                            setShowEmailConfirm(true)
+                          }}
+                        >
+                          <MessageSquare className="h-3 w-3" /> Send SMS
                         </Button>
                       </div>
                     </div>
@@ -283,20 +296,49 @@ export default function ReactivationPage() {
         </div>
       )}
 
-      {/* Email confirm modal */}
+      {/* Send confirm modal */}
       <ConfirmModal
         open={showEmailConfirm}
-        title="Send Re-engagement Email"
-        description="Send a personalized re-engagement email to this member with session recommendations?"
-        confirmText="Send Email"
+        title={selectedChannel === 'sms' ? 'Send Re-engagement SMS' : 'Send Re-engagement Email'}
+        description={
+          selectedChannel === 'sms'
+            ? 'Send a personalized SMS to this member encouraging them to come back and play?'
+            : 'Send a personalized re-engagement email to this member with session recommendations?'
+        }
+        confirmText={selectedChannel === 'sms' ? 'Send SMS' : 'Send Email'}
+        isPending={sendReactivation.isPending}
         onClose={() => {
           setShowEmailConfirm(false)
           setSelectedMemberId(null)
         }}
         onConfirm={() => {
-          // TODO: implement email sending
-          setShowEmailConfirm(false)
-          setSelectedMemberId(null)
+          if (!selectedMemberId) return
+          sendReactivation.mutate(
+            {
+              clubId,
+              candidates: [{ memberId: selectedMemberId, channel: selectedChannel }],
+            },
+            {
+              onSuccess: (data: any) => {
+                toast({
+                  title: data.sent > 0 ? 'Message sent!' : 'Failed to send',
+                  description: data.sent > 0
+                    ? `Successfully sent ${selectedChannel === 'sms' ? 'SMS' : 'email'} to member.`
+                    : data.results?.[0]?.error || 'Unknown error',
+                  variant: data.sent > 0 ? 'default' : 'destructive',
+                })
+                setShowEmailConfirm(false)
+                setSelectedMemberId(null)
+              },
+              onError: (err: any) => {
+                toast({
+                  title: 'Failed to send',
+                  description: err.message,
+                  variant: 'destructive',
+                })
+              },
+            }
+          )
         }}
       />
     </div>

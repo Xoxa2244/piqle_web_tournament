@@ -93,6 +93,167 @@ const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
   `
 }
 
+// ── Reactivation Email ──
+
+interface SuggestedSessionInfo {
+  title: string
+  date: string
+  startTime: string
+  endTime: string
+  format: string
+  spotsLeft: number
+}
+
+function buildReactivationEmailHtml({
+  memberName,
+  clubName,
+  daysSinceLastActivity,
+  suggestedSessions,
+  bookingUrl,
+}: {
+  memberName: string
+  clubName: string
+  daysSinceLastActivity: number
+  suggestedSessions: SuggestedSessionInfo[]
+  bookingUrl: string
+}) {
+  const baseUrl = getAppBaseUrl()
+  const logoUrl = `${baseUrl}/Logo.png`
+  const firstName = memberName.split(' ')[0] || 'there'
+  const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  const sessionRows = suggestedSessions
+    .slice(0, 3)
+    .map(
+      (s) => `
+      <tr>
+        <td style="padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #f0f0f0;">
+          <strong>${s.title}</strong><br/>
+          <span style="color: #6b7280; font-size: 13px;">
+            ${s.date} &middot; ${s.startTime}&ndash;${s.endTime} &middot; ${formatLabel(s.format)}
+          </span>
+        </td>
+        <td style="padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #f0f0f0; text-align: right; white-space: nowrap;">
+          <span style="color: ${s.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-weight: 600;">
+            ${s.spotsLeft} spot${s.spotsLeft !== 1 ? 's' : ''} left
+          </span>
+        </td>
+      </tr>`
+    )
+    .join('')
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>We miss you at ${clubName}!</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="Logo" width="120" height="40" style="display: block; max-width: 120px; height: auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #ffffff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 28px 24px 16px;">
+                    <h1 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">
+                      Hey ${firstName}, we miss you! 🏸
+                    </h1>
+                    <p style="margin: 0; font-size: 15px; color: #4b5563;">
+                      It&rsquo;s been <strong>${daysSinceLastActivity} days</strong> since your last session at <strong>${clubName}</strong>.
+                      We&rsquo;ve got some great sessions coming up that match your level&mdash;come back and play!
+                    </p>
+                  </td>
+                </tr>
+                ${
+                  suggestedSessions.length > 0
+                    ? `
+                <tr>
+                  <td style="padding: 8px 24px 16px;">
+                    <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
+                      Recommended for you
+                    </p>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                      ${sessionRows}
+                    </table>
+                  </td>
+                </tr>`
+                    : ''
+                }
+                <tr>
+                  <td style="padding: 8px 24px 24px; text-align: center;">
+                    <a href="${bookingUrl}" style="display: inline-block; padding: 12px 32px; background-color: #111827; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                      Book a Session
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 16px 24px 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                      You received this because you are a member of ${clubName}.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
+export async function sendReactivationEmail({
+  to,
+  memberName,
+  clubName,
+  daysSinceLastActivity,
+  suggestedSessions,
+  bookingUrl,
+}: {
+  to: string
+  memberName: string
+  clubName: string
+  daysSinceLastActivity: number
+  suggestedSessions: SuggestedSessionInfo[]
+  bookingUrl: string
+}): Promise<{ messageId: string }> {
+  const firstName = memberName.split(' ')[0] || 'there'
+  const subject = `${firstName}, we miss you at ${clubName}! 🏸`
+  const text = `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}`
+  const html = buildReactivationEmailHtml({
+    memberName,
+    clubName,
+    daysSinceLastActivity,
+    suggestedSessions,
+    bookingUrl,
+  })
+
+  const info = await transporter.sendMail({
+    to,
+    from: fromHeader,
+    subject,
+    text,
+    html,
+  })
+
+  return { messageId: info.messageId }
+}
+
+// ── OTP Email ──
+
 export async function sendOtpEmail({
   to,
   code,

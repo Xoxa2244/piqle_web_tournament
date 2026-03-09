@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { generateSlotFillerRecommendations } from './slot-filler';
 import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
+import { sendReactivationEmail } from '../email';
+import { sendSms, buildReactivationSms } from '../sms';
 import type { BookingHistory, UserPlayPreferenceData, MemberData } from '../../types/intelligence';
 
 // ── Input Schemas ──
@@ -31,6 +33,15 @@ const sendInviteInput = z.object({
   sessionId: z.string().uuid(),
   userIds: z.array(z.string().uuid()),
   message: z.string().max(500).optional(),
+});
+
+const sendReactivationInput = z.object({
+  clubId: z.string().uuid(),
+  candidates: z.array(z.object({
+    memberId: z.string().uuid(),
+    channel: z.enum(['email', 'sms', 'both']),
+  })),
+  customMessage: z.string().max(500).optional(),
 });
 
 const preferencesInput = z.object({
@@ -387,6 +398,151 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
 }
 
 /**
+ * intelligence.sendReactivationMessages
+ * Send email and/or SMS to inactive members to bring them back
+ */
+export async function sendReactivationMessages(
+  prisma: any,
+  input: z.infer<typeof sendReactivationInput>
+) {
+  const { clubId, candidates: candidateInputs, customMessage } = input
+
+  // Load club info
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { id: true, name: true, slug: true },
+  })
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+
+  // Load users
+  const memberIds = candidateInputs.map(c => c.memberId)
+  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+    where: { id: { in: memberIds } },
+    select: { id: true, email: true, name: true },
+  })
+  const usersById = new Map(users.map(u => [u.id, u]))
+
+  // Get reactivation data (candidates with suggested sessions)
+  const members = await prisma.clubFollower.findMany({
+    where: { clubId, userId: { in: memberIds } },
+    include: {
+      user: {
+        select: {
+          id: true, email: true, name: true, image: true, gender: true, city: true,
+          duprRatingDoubles: true, duprRatingSingles: true,
+        },
+      },
+    },
+  })
+
+  const membersWithData = await Promise.all(
+    members.map(async (cf: any) => {
+      const preference = await prisma.userPlayPreference.findUnique({
+        where: { userId_clubId: { userId: cf.user.id, clubId } },
+      })
+      const history = await buildBookingHistory(prisma, cf.user.id)
+      return {
+        member: toMemberData(cf.user),
+        preference: toPreferenceData(preference),
+        history,
+      }
+    })
+  )
+
+  // Get upcoming sessions for suggestions
+  const upcomingSessions = await prisma.playSession.findMany({
+    where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
+    include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
+  })
+
+  const reactivationData = generateReactivationCandidates({
+    members: membersWithData,
+    upcomingSessions: upcomingSessions.map((s: any) => ({ ...s, confirmedCount: s._count.bookings })),
+    inactivityThresholdDays: 7, // get all so we can match by memberId
+  })
+
+  const candidateDataById = new Map(reactivationData.map(c => [c.member.id, c]))
+  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
+
+  for (const candidateInput of candidateInputs) {
+    const user = usersById.get(candidateInput.memberId)
+    if (!user) {
+      results.push({ memberId: candidateInput.memberId, channel: candidateInput.channel, status: 'failed', error: 'User not found' })
+      continue
+    }
+
+    const reactivation = candidateDataById.get(candidateInput.memberId)
+    const suggestedSessions = (reactivation?.suggestedSessions || []).slice(0, 3).map((s: any) => ({
+      title: s.title || 'Open Play',
+      date: s.date instanceof Date ? s.date.toLocaleDateString() : String(s.date),
+      startTime: s.startTime || '',
+      endTime: s.endTime || '',
+      format: s.format || 'OPEN_PLAY',
+      spotsLeft: Math.max(0, (s.maxPlayers || 8) - (s.confirmedCount || 0)),
+    }))
+    const daysSince = reactivation?.daysSinceLastActivity || 0
+
+    // ── Send Email ──
+    if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
+      try {
+        if (!user.email) throw new Error('No email address')
+        await sendReactivationEmail({
+          to: user.email,
+          memberName: user.name || 'there',
+          clubName: club.name,
+          daysSinceLastActivity: daysSince,
+          suggestedSessions,
+          bookingUrl,
+        })
+        results.push({ memberId: user.id, channel: 'email', status: 'sent' })
+      } catch (err: any) {
+        results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
+      }
+    }
+
+    // ── Send SMS ──
+    if (candidateInput.channel === 'sms' || candidateInput.channel === 'both') {
+      // Note: User model doesn't have a phone field yet — SMS will fail gracefully
+      results.push({
+        memberId: user.id,
+        channel: 'sms',
+        status: 'failed',
+        error: 'Phone number not available (field not yet in User model)',
+      })
+    }
+
+    // Log to DB
+    try {
+      await prisma.aIRecommendationLog.create({
+        data: {
+          clubId,
+          userId: user.id,
+          type: 'REACTIVATION',
+          reasoning: {
+            channel: candidateInput.channel,
+            daysSinceLastActivity: daysSince,
+            suggestedSessionCount: suggestedSessions.length,
+            customMessage: customMessage || null,
+          },
+          status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
+        },
+      })
+    } catch (logErr) {
+      console.error('[Reactivation] Failed to log recommendation:', logErr)
+    }
+  }
+
+  const sent = results.filter(r => r.status === 'sent').length
+  const failed = results.filter(r => r.status === 'failed').length
+
+  return { sent, failed, results }
+}
+
+/**
  * play.preferences.upsert - Set or update user play preferences
  */
 export async function upsertPreferences(prisma: any, input: z.infer<typeof preferencesInput>) {
@@ -412,5 +568,6 @@ export const intelligenceSchemas = {
   weeklyPlanInput,
   reactivationInput,
   sendInviteInput,
+  sendReactivationInput,
   preferencesInput,
 };
