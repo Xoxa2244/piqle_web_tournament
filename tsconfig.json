@@ -24,6 +24,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "apps/mobile/**/*"]
+  "exclude": ["node_modules", "apps/mobile/**/*", "Mobile App Design Specification/**/*"]
 }
-
