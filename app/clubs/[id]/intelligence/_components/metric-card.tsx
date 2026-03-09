@@ -1,4 +1,4 @@
-import { type LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { type LucideIcon, TrendingUp, TrendingDown, Minus, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MetricCardProps {
@@ -13,6 +13,7 @@ interface MetricCardProps {
   periodLabel?: string
   sparkline?: number[]
   invertTrend?: boolean
+  tooltip?: string
 }
 
 const iconGradients = {
@@ -25,6 +26,7 @@ const iconGradients = {
 export function MetricCard({
   label, value, subtitle, icon: Icon, variant = 'default',
   trendValue, trendDirection, periodLabel, sparkline, invertTrend = false,
+  tooltip,
 }: MetricCardProps) {
   const hasTrend = trendValue !== undefined && trendDirection !== undefined
 
@@ -79,8 +81,16 @@ export function MetricCard({
         <div className="text-2xl font-extrabold tracking-tight tabular-nums text-foreground">
           {value}
         </div>
-        <div className="text-xs font-medium text-muted-foreground mt-0.5">
+        <div className="text-xs font-medium text-muted-foreground mt-0.5 flex items-center gap-1">
           {label}
+          {tooltip && (
+            <span className="group/tip relative inline-flex">
+              <HelpCircle className="h-3 w-3 text-muted-foreground/40 cursor-help hover:text-muted-foreground/70 transition-colors" />
+              <span className="invisible group-hover/tip:visible absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[11px] leading-snug font-normal text-popover-foreground bg-popover border border-border rounded-md shadow-md whitespace-nowrap max-w-[200px] text-center">
+                {tooltip}
+              </span>
+            </span>
+          )}
         </div>
         {subtitle && (
           <div className="text-[11px] text-muted-foreground/70 mt-1">{subtitle}</div>

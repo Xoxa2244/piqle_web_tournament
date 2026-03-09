@@ -277,6 +277,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
         { id: 'demo-s3', title: 'Afternoon Social Doubles' },
         { id: 'demo-s8', title: 'Social Mixer' },
       ],
+      lastContactedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+      lastContactChannel: 'email' as const,
+      lastContactStatus: 'sent' as const,
     },
     {
       member: { id: 'r2', name: 'Karen Lewis', email: 'karen@demo.com', duprRatingDoubles: 4.1, gender: 'F' },
@@ -299,6 +302,9 @@ export function mockReactivationCandidates(inactivityDays: number) {
       suggestedSessions: [
         { id: 'demo-s2', title: 'Intermediate Drill Session' },
       ],
+      lastContactedAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+      lastContactChannel: 'sms' as const,
+      lastContactStatus: 'sent' as const,
     },
     {
       member: { id: 'r3', name: 'Alex Nguyen', email: 'alex@demo.com', duprRatingDoubles: 3.3, gender: 'M' },
@@ -391,24 +397,28 @@ export const mockDashboardV2: DashboardV2Data = {
       value: 127,
       trend: { value: 127, previousValue: 113, changePercent: 12.4, direction: 'up', sparkline: [113, 115, 117, 119, 121, 124, 127] },
       subtitle: '8 new this month',
+      description: 'Total active members following your club',
     },
     occupancy: {
       label: 'Avg Occupancy',
       value: '62%',
       trend: { value: 62, previousValue: 65, changePercent: -4.6, direction: 'down', sparkline: [58, 64, 55, 70, 62, 68, 60] },
       subtitle: '42 sessions (30d)',
+      description: 'Average % of filled spots across all sessions',
     },
     lostRevenue: {
       label: 'Est. Lost Revenue',
       value: '$1,260',
       trend: { value: 1260, previousValue: 1420, changePercent: -11.3, direction: 'down', sparkline: [220, 180, 200, 150, 190, 170, 150] },
       subtitle: '84 empty slots',
+      description: 'Revenue lost from unfilled spots based on pricing',
     },
     bookings: {
       label: 'Bookings',
       value: 284,
       trend: { value: 284, previousValue: 247, changePercent: 15.0, direction: 'up', sparkline: [35, 42, 38, 45, 40, 44, 40] },
       subtitle: 'last 30 days',
+      description: 'Total confirmed bookings across all sessions',
     },
   },
   occupancy: {

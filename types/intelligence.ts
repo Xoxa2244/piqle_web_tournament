@@ -141,6 +141,10 @@ export interface ReactivationCandidate {
   preference?: UserPlayPreferenceData | null;
   bookingHistory?: BookingHistory | null;
   archetype?: PlayerArchetype;
+  // Last outreach tracking
+  lastContactedAt?: string | null;
+  lastContactChannel?: 'email' | 'sms' | null;
+  lastContactStatus?: 'sent' | 'failed' | null;
 }
 
 export interface RebookingSuggestion {
@@ -164,6 +168,7 @@ export interface DashboardMetricV2 {
   value: number | string;
   trend: TrendData;
   subtitle?: string;
+  description?: string;  // tooltip help text
 }
 
 export interface OccupancyByDay {
@@ -267,4 +272,5 @@ export interface EventRecommendationsResult {
   totalPlayersAnalyzed: number
   totalSessionsAnalyzed: number
   generatedAt: string
+  needsCsvImport?: boolean
 }

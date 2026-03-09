@@ -108,7 +108,7 @@ const EVENT_CONFIGS: Record<EventType, {
 
 export function generateEventRecommendations(input: EventRecommendationInput): EventRecommendation[] {
   const { members, csvSessions, courtCount } = input
-  if (members.length < 4) return [] // not enough data
+  if (members.length < 3) return [] // not enough data
 
   // Phase 1: Cluster players by skill
   const clusters = buildPlayerClusters(members)
@@ -150,7 +150,13 @@ function buildPlayerClusters(members: MemberWithData[]): PlayerCluster[] {
 
   for (const m of members) {
     const dupr = m.member.duprRatingDoubles ?? m.member.duprRatingSingles
-    const skill = inferSkillLevel(dupr)
+    // Null DUPR + zero bookings = treat as BEGINNER (not INTERMEDIATE)
+    let skill: PlaySessionSkillLevel
+    if (dupr === null && m.history.totalBookings === 0) {
+      skill = 'BEGINNER'
+    } else {
+      skill = inferSkillLevel(dupr)
+    }
     if (skill === 'ALL_LEVELS') {
       buckets.INTERMEDIATE.push(m)
     } else {
@@ -260,7 +266,7 @@ function generateCandidates(
     if (c.skillLevel === 'BEGINNER') continue
     const engaged = c.activeCount + c.moderateCount
     const spread = c.duprMax - c.duprMin
-    if (engaged >= 8 && spread <= 1.5) {
+    if (engaged >= 4 && spread <= 1.5) {
       const slot = pickSlot('Saturday')
       // Select top players by activity
       const sorted = [...c.members]
@@ -283,7 +289,8 @@ function generateCandidates(
   // 2. Social Mixer — new/inactive members (especially beginners)
   const beginnerCluster = clusters.find(c => c.skillLevel === 'BEGINNER')
   const totalNewInactive = clusters.reduce((s, c) => s + c.newInactiveCount, 0)
-  if (totalNewInactive >= 5 || (beginnerCluster && beginnerCluster.members.length >= 4)) {
+  const allMostlyNew = totalNewInactive >= allMembers.length * 0.6 // small/new club
+  if (totalNewInactive >= 3 || (beginnerCluster && beginnerCluster.members.length >= 3)) {
     const slot = pickSlot('Sunday')
     // Gather new/inactive + a few friendly mentors
     const newPlayers = allMembers
@@ -295,7 +302,7 @@ function generateCandidates(
       .slice(0, 4)
     const selected = [...newPlayers, ...mentors].slice(0, 12)
 
-    if (selected.length >= 4) {
+    if (selected.length >= 3) {
       candidates.push({
         type: 'Social Mixer',
         cluster: beginnerCluster || null,
@@ -311,7 +318,7 @@ function generateCandidates(
 
   // 3. Mini League — intermediate regulars with a common preferred day
   const intCluster = clusters.find(c => c.skillLevel === 'INTERMEDIATE')
-  if (intCluster && intCluster.activeCount + intCluster.moderateCount >= 8) {
+  if (intCluster && intCluster.activeCount + intCluster.moderateCount >= 4) {
     // Find most popular preferred day among regulars
     const dayVotes = new Map<string, number>()
     for (const m of intCluster.members) {
@@ -333,7 +340,7 @@ function generateCandidates(
       .sort((a, b) => b.history.bookingsLastMonth - a.history.bookingsLastMonth)
       .slice(0, 12)
 
-    if (sorted.length >= 6) {
+    if (sorted.length >= 4) {
       candidates.push({
         type: 'Mini League',
         cluster: intCluster,
@@ -348,7 +355,7 @@ function generateCandidates(
   }
 
   // 4. Clinic/Drill — beginners + underutilized morning/weekday
-  if (beginnerCluster && beginnerCluster.members.length >= 4) {
+  if (beginnerCluster && beginnerCluster.members.length >= 3) {
     const morningSlot = underutilizedSlots.find(
       s => s.timeSlot === 'morning' && !['Saturday', 'Sunday'].includes(s.day)
     ) || { day: 'Tuesday', timeSlot: 'morning' as const, avgOccupancy: 30, sessionCount: 0 }

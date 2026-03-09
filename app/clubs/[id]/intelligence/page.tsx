@@ -96,6 +96,7 @@ export default function IntelligenceDashboardPage() {
           trendValue={metrics.members.trend.changePercent}
           trendDirection={metrics.members.trend.direction}
           sparkline={metrics.members.trend.sparkline}
+          tooltip={metrics.members.description}
         />
         <MetricCard
           icon={BarChart3}
@@ -109,6 +110,7 @@ export default function IntelligenceDashboardPage() {
             (metrics.occupancy.trend.value as number) >= 70 ? 'success' :
             (metrics.occupancy.trend.value as number) >= 40 ? 'warning' : 'danger'
           }
+          tooltip={metrics.occupancy.description}
         />
         <MetricCard
           icon={DollarSign}
@@ -119,6 +121,7 @@ export default function IntelligenceDashboardPage() {
           trendDirection={metrics.lostRevenue.trend.direction}
           variant="danger"
           invertTrend
+          tooltip={metrics.lostRevenue.description}
         />
         <MetricCard
           icon={CalendarDays}
@@ -128,6 +131,7 @@ export default function IntelligenceDashboardPage() {
           trendValue={metrics.bookings.trend.changePercent}
           trendDirection={metrics.bookings.trend.direction}
           sparkline={metrics.bookings.trend.sparkline}
+          tooltip={metrics.bookings.description}
         />
       </div>
 

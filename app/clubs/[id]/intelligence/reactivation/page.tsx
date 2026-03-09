@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import {
   UserMinus, Calendar, Clock, Search, Users,
   TrendingDown, Mail, MessageSquare, ChevronDown, ChevronUp,
-  Smile
+  Smile, Bell, Check, CheckCheck
 } from 'lucide-react'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
@@ -20,6 +20,15 @@ import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-in
 import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactivation-messages'
 import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
+
+function formatRelativeDate(isoDate: string): string {
+  const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86400000)
+  if (diff === 0) return 'today'
+  if (diff === 1) return 'yesterday'
+  if (diff < 7) return `${diff} days ago`
+  if (diff < 30) return `${Math.floor(diff / 7)} week${Math.floor(diff / 7) > 1 ? 's' : ''} ago`
+  return `${Math.floor(diff / 30)} month${Math.floor(diff / 30) > 1 ? 's' : ''} ago`
+}
 
 const INACTIVITY_OPTIONS = [
   { value: 14, label: '14 days' },
@@ -211,6 +220,18 @@ export default function ReactivationPage() {
                           </>
                         )}
                       </div>
+                      {candidate.lastContactedAt && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          {candidate.lastContactStatus === 'sent' ? (
+                            <CheckCheck className="h-3 w-3 text-blue-500 shrink-0" />
+                          ) : (
+                            <Check className="h-3 w-3 text-muted-foreground shrink-0" />
+                          )}
+                          <span>
+                            Contacted {formatRelativeDate(candidate.lastContactedAt)} via {candidate.lastContactChannel || 'email'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Badges */}
@@ -328,6 +349,17 @@ export default function ReactivationPage() {
                           }}
                         >
                           <MessageSquare className="h-3 w-3" /> Send SMS
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 text-xs opacity-50 cursor-not-allowed"
+                          disabled
+                        >
+                          <Bell className="h-3 w-3" /> Push
+                          <Badge className="bg-purple-100 text-purple-700 text-[10px] px-1 py-0 font-medium ml-0.5">
+                            Soon
+                          </Badge>
                         </Button>
                       </div>
                     </div>

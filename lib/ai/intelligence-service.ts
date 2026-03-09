@@ -580,6 +580,37 @@ export async function getReactivationCandidates(
     })
   }
 
+  // Enrich with last outreach tracking from AIRecommendationLog
+  try {
+    const candidateIds = candidates.map(c => c.member.id)
+    if (candidateIds.length > 0) {
+      const logs = await prisma.aIRecommendationLog.findMany({
+        where: { clubId, userId: { in: candidateIds }, type: 'REACTIVATION' },
+        orderBy: { createdAt: 'desc' },
+        select: { userId: true, createdAt: true, reasoning: true, status: true },
+      })
+      // Group by userId (first = most recent due to orderBy desc)
+      const lastContactMap = new Map<string, typeof logs[0]>()
+      for (const log of logs) {
+        if (!lastContactMap.has(log.userId)) {
+          lastContactMap.set(log.userId, log)
+        }
+      }
+      for (const c of candidates) {
+        const log = lastContactMap.get(c.member.id)
+        if (log) {
+          c.lastContactedAt = log.createdAt.toISOString()
+          // Extract channel from reasoning JSON if available
+          const r = log.reasoning as Record<string, any> | null
+          c.lastContactChannel = r?.channel || 'email'
+          c.lastContactStatus = log.status === 'sent' ? 'sent' : log.status === 'failed' ? 'failed' : 'sent'
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Reactivation] Failed to load last contact data', err)
+  }
+
   return {
     candidates: candidates.slice(0, limit),
     totalInactiveMembers: candidates.length,
@@ -788,7 +819,8 @@ async function buildCsvEventData(
     csvSessions = rows
       .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as EventCsvMeta)
       .filter((m: EventCsvMeta) => m && m.date && m.capacity > 0)
-  } catch {
+  } catch (err) {
+    console.warn('[Events] buildCsvEventData CSV query failed for club', clubId, err)
     return null
   }
 
@@ -976,6 +1008,7 @@ export async function getEventRecommendations(
     totalPlayersAnalyzed: membersWithData.length,
     totalSessionsAnalyzed: csvSessions.length,
     generatedAt: new Date().toISOString(),
+    needsCsvImport: csvSessions.length === 0 && !hasRealBookings,
   }
 }
 

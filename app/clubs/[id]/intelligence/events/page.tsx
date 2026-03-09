@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import {
   ChevronLeft, Sparkles, Users, Calendar, Clock, DollarSign,
   Trophy, MapPin, Zap, CheckCircle2, Send, ArrowRight,
-  BarChart3, Star, TrendingUp, Target, Loader2
+  BarChart3, Star, TrendingUp, Target, Loader2, Upload
 } from 'lucide-react'
 import { useEventRecommendations } from '../_hooks/use-intelligence'
 
@@ -93,17 +93,35 @@ export default function EventGeneratorPage() {
         {!isLoading && !error && aiEvents.length === 0 && (
           <Card>
             <CardContent className="py-16 text-center">
-              <Trophy className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No events to recommend yet</h3>
-              <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                We need more member and session data to identify player clusters. Import session history via the AI Advisor to get started.
-              </p>
-              <Link href={`/clubs/${clubId}/intelligence/advisor`}>
-                <Button variant="outline" className="mt-4 gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Go to AI Advisor
-                </Button>
-              </Link>
+              {data?.needsCsvImport ? (
+                <>
+                  <Upload className="w-12 h-12 text-orange-400/60 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Session data needed</h3>
+                  <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                    Import your session history so AI can analyze player clusters, occupancy patterns, and recommend optimal events for your club.
+                  </p>
+                  <Link href={`/clubs/${clubId}/intelligence/advisor`}>
+                    <Button className="mt-4 gap-2">
+                      <Upload className="w-4 h-4" />
+                      Import Session Data
+                    </Button>
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Trophy className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No events to recommend yet</h3>
+                  <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                    We need more member activity to identify player clusters. As members book sessions, AI will start recommending events.
+                  </p>
+                  <Link href={`/clubs/${clubId}/intelligence/advisor`}>
+                    <Button variant="outline" className="mt-4 gap-2">
+                      <Sparkles className="w-4 h-4" />
+                      Go to AI Advisor
+                    </Button>
+                  </Link>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
