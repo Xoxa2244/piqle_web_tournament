@@ -480,6 +480,12 @@ export const intelligenceRouter = createTRPCRouter({
           }),
         ])
 
+        // If tables exist but have no session data, fall through to CSV fallback
+        if (completedSessions30d.length === 0 && completedSessionsPrev30d.length === 0
+          && upcomingSessions.length === 0 && bookings30d === 0) {
+          throw new Error('NO_SESSION_DATA_FOUND')
+        }
+
         // ── Compute occupancy metrics ──
         const calcAvgOcc = (sessions: Array<{ maxPlayers: number; _count: { bookings: number } }>) => {
           if (sessions.length === 0) return 0
@@ -642,126 +648,207 @@ export const intelligenceRouter = createTRPCRouter({
           },
         }
       } catch (err) {
-        // Tables missing — try sessions without bookings, or return empty
+        // ── Fallback: read from document_embeddings (CSV-imported data) ──
         console.warn('[getDashboardV2] Fallback mode:', (err as Error).message?.slice(0, 120))
 
-        let sessionsRaw30d: any[] = []
-        let upcomingRaw: any[] = []
-        try {
-          const [s30, , upc] = await Promise.all([
-            ctx.prisma.playSession.findMany({
-              where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
-              include: { clubCourt: true },
-            }),
-            ctx.prisma.playSession.findMany({
-              where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
-            }),
-            ctx.prisma.playSession.findMany({
-              where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
-              include: { clubCourt: true },
-              orderBy: { date: 'asc' },
-              take: 20,
-            }),
-          ])
-          sessionsRaw30d = s30
-          upcomingRaw = upc
-        } catch (err2) {
-          // play_sessions table also missing — pure member-only mode
-          console.warn('[getDashboardV2] play_sessions table also missing:', (err2 as Error).message?.slice(0, 120))
+        interface CsvSessionMeta {
+          date: string; startTime: string; endTime: string; court: string
+          format: string; skillLevel: string; registered: number
+          capacity: number; occupancy: number; playerNames: string[]
         }
 
-        // Treat confirmedCount as 0 (no booking data), occupancy based on session existence
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        let allCsvSessions: CsvSessionMeta[] = []
+        try {
+          const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
+            SELECT metadata FROM document_embeddings
+            WHERE club_id = ${input.clubId}::uuid
+              AND content_type = 'session'
+              AND source_table = 'csv_import'
+          `
+          allCsvSessions = rows
+            .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
+            .filter(m => m && m.date && m.capacity > 0)
+        } catch (embErr) {
+          console.warn('[getDashboardV2] document_embeddings query failed:', (embErr as Error).message?.slice(0, 80))
+        }
+
+        if (allCsvSessions.length === 0) {
+          // No CSV data — return member-only dashboard
+          return {
+            metrics: {
+              members: {
+                label: 'Members', value: membersNow,
+                trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
+                subtitle: `${newMembersThisMonth} new this month`,
+              },
+              occupancy: { label: 'Avg Occupancy', value: 'N/A', trend: emptyTrend, subtitle: 'No session data' },
+              lostRevenue: { label: 'Est. Lost Revenue', value: 'N/A', trend: emptyTrend, subtitle: 'No session data' },
+              bookings: { label: 'Bookings', value: 'N/A', trend: emptyTrend, subtitle: 'Import CSV to see data' },
+            },
+            occupancy: {
+              byDay: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => ({ day: d, avgOccupancy: 0, sessionCount: 0 })),
+              byTimeSlot: (['morning', 'afternoon', 'evening'] as const).map(s => ({ slot: s, avgOccupancy: 0, sessionCount: 0 })),
+              byFormat: [],
+            },
+            sessions: { topSessions: [], problematicSessions: [] },
+            players: {
+              bySkillLevel, byFormat: [],
+              activeCount: 0, inactiveCount: membersNow,
+              newThisMonth: newMembersThisMonth,
+            },
+          }
+        }
+
+        // ── Compute dashboard from CSV data ──
+        // Determine date ranges from the CSV data itself
+        const allDates = allCsvSessions.map(s => s.date).sort()
+        const latestDateStr = allDates[allDates.length - 1]
+        const latestDate = new Date(latestDateStr + 'T23:59:59')
+        const csvD30Str = new Date(latestDate.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+        const csvD60Str = new Date(latestDate.getTime() - 60 * 86400000).toISOString().slice(0, 10)
+        const csvD14Str = new Date(latestDate.getTime() - 14 * 86400000).toISOString().slice(0, 10)
+
+        let currentSessions = allCsvSessions.filter(s => s.date >= csvD30Str)
+        let previousSessions = allCsvSessions.filter(s => s.date >= csvD60Str && s.date < csvD30Str)
+
+        // If no sessions in the recent 30d window, split all data into halves for trend comparison
+        if (currentSessions.length === 0) {
+          const sorted = [...allCsvSessions].sort((a, b) => a.date.localeCompare(b.date))
+          const mid = Math.floor(sorted.length / 2)
+          previousSessions = sorted.slice(0, mid)
+          currentSessions = sorted.slice(mid)
+        }
+
+        // ── Metrics ──
+        const avgOcc = currentSessions.length > 0
+          ? Math.round(currentSessions.reduce((sum, s) => sum + s.occupancy, 0) / currentSessions.length)
+          : 0
+        const prevAvgOcc = previousSessions.length > 0
+          ? Math.round(previousSessions.reduce((sum, s) => sum + s.occupancy, 0) / previousSessions.length)
+          : 0
+        const totalBookings = currentSessions.reduce((sum, s) => sum + s.registered, 0)
+        const prevBookings = previousSessions.reduce((sum, s) => sum + s.registered, 0)
+        const emptySlots = currentSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered), 0)
+        const prevEmpty = previousSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered), 0)
+        const avgPrice = 15
+        const lostRev = emptySlots * avgPrice
+        const prevLostRev = prevEmpty * avgPrice
+
+        // Sparklines (7 data points from the current period)
+        const occSpark: number[] = []
+        const bookSpark: number[] = []
+        for (let i = 6; i >= 0; i--) {
+          const dayStr = new Date(latestDate.getTime() - i * 86400000).toISOString().slice(0, 10)
+          const ds = currentSessions.filter(s => s.date === dayStr)
+          occSpark.push(ds.length > 0 ? Math.round(ds.reduce((a, s) => a + s.occupancy, 0) / ds.length) : 0)
+          bookSpark.push(ds.reduce((a, s) => a + s.registered, 0))
+        }
+
+        // ── Occupancy breakdowns ──
+        const dayNamesArr = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
         const byDayMap: Record<string, { total: number; count: number }> = {}
         const bySlotMap: Record<string, { total: number; count: number }> = {}
         const byFmtMap: Record<string, { total: number; count: number }> = {}
+        const fmtLabelsMap: Record<string, string> = {
+          OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+          LEAGUE_PLAY: 'League', SOCIAL: 'Social',
+        }
 
-        for (const s of sessionsRaw30d) {
-          const occ = 0 // no booking data
-          const dayName = dayNames[new Date(s.date).getDay()]
+        for (const s of currentSessions) {
+          const occ = s.occupancy
+          const dayName = dayNamesArr[new Date(s.date + 'T12:00:00').getDay()]
           if (!byDayMap[dayName]) byDayMap[dayName] = { total: 0, count: 0 }
+          byDayMap[dayName].total += occ
           byDayMap[dayName].count++
+
           const hour = parseInt(s.startTime.split(':')[0], 10)
           const slot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
           if (!bySlotMap[slot]) bySlotMap[slot] = { total: 0, count: 0 }
+          bySlotMap[slot].total += occ
           bySlotMap[slot].count++
+
           if (!byFmtMap[s.format]) byFmtMap[s.format] = { total: 0, count: 0 }
+          byFmtMap[s.format].total += occ
           byFmtMap[s.format].count++
         }
 
         const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         const byDay = orderedDays.map(day => ({
           day,
-          avgOccupancy: 0,
+          avgOccupancy: byDayMap[day] ? Math.round(byDayMap[day].total / byDayMap[day].count) : 0,
           sessionCount: byDayMap[day]?.count || 0,
         }))
-        const slotOrder: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
-        const byTimeSlot = slotOrder.map(slot => ({
+        const byTimeSlot = (['morning', 'afternoon', 'evening'] as const).map(slot => ({
           slot,
-          avgOccupancy: 0,
+          avgOccupancy: bySlotMap[slot] ? Math.round(bySlotMap[slot].total / bySlotMap[slot].count) : 0,
           sessionCount: bySlotMap[slot]?.count || 0,
         }))
-        const fmtLabelsMap: Record<string, string> = {
-          OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
-          LEAGUE_PLAY: 'League', SOCIAL: 'Social',
-        }
         const byFormat = Object.entries(byFmtMap).map(([format, data]) => ({
           format: format as any,
-          avgOccupancy: 0,
+          avgOccupancy: Math.round(data.total / data.count),
           sessionCount: data.count,
         })).sort((a, b) => b.sessionCount - a.sessionCount)
 
-        // Session rankings by maxPlayers (since no booking data)
-        const allSessions = sessionsRaw30d.map(s => ({
-          id: s.id,
-          title: s.title,
-          date: s.date.toISOString(),
+        // ── Session rankings ──
+        const allMapped = currentSessions.map((s, i) => ({
+          id: `csv-${i}`,
+          title: `${fmtLabelsMap[s.format] || s.format} @ ${s.court}`,
+          date: s.date,
           startTime: s.startTime,
           endTime: s.endTime,
           format: s.format as any,
-          courtName: s.clubCourt?.name || null,
-          occupancyPercent: 0,
-          confirmedCount: 0,
-          maxPlayers: s.maxPlayers,
+          courtName: s.court,
+          occupancyPercent: s.occupancy,
+          confirmedCount: s.registered,
+          maxPlayers: s.capacity,
         }))
-        const topSessions = allSessions.slice(0, 5)
-        const problematicSessions = allSessions.slice(-5).reverse()
+        const topSessions = [...allMapped].sort((a, b) => b.occupancyPercent - a.occupancyPercent).slice(0, 5)
+        const problematicSessions = [...allMapped].sort((a, b) => a.occupancyPercent - b.occupancyPercent).slice(0, 5)
 
-        // Format distribution from session counts
-        const totalFmtSessions = Object.values(byFmtMap).reduce((a, b) => a + b.count, 0) || 1
-        const byFormatDist = Object.entries(byFmtMap)
-          .map(([fmt, data]) => ({
-            label: fmtLabelsMap[fmt] || fmt,
-            count: data.count,
-            percent: Math.round((data.count / totalFmtSessions) * 100),
-          }))
+        // ── Player activity from CSV player names ──
+        const allPlayers = new Set<string>()
+        const recentPlayers = new Set<string>()
+        for (const s of allCsvSessions) {
+          for (const name of (s.playerNames || [])) {
+            allPlayers.add(name)
+            if (s.date >= csvD14Str) recentPlayers.add(name)
+          }
+        }
+        const csvActive = recentPlayers.size
+        const csvInactive = Math.max(0, allPlayers.size - csvActive)
+
+        // Format preference from registrations
+        const fmtBookings: Record<string, number> = {}
+        for (const s of currentSessions) {
+          const label = fmtLabelsMap[s.format] || s.format
+          fmtBookings[label] = (fmtBookings[label] || 0) + s.registered
+        }
+        const totalFmtB = Object.values(fmtBookings).reduce((a, b) => a + b, 0) || 1
+        const byFormatDist = Object.entries(fmtBookings)
+          .map(([label, count]) => ({ label, count, percent: Math.round((count / totalFmtB) * 100) }))
           .sort((a, b) => b.count - a.count)
 
         return {
           metrics: {
             members: {
-              label: 'Members',
-              value: membersNow,
+              label: 'Members', value: membersNow,
               trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
               subtitle: `${newMembersThisMonth} new this month`,
             },
             occupancy: {
-              label: 'Avg Occupancy',
-              value: 'N/A',
-              trend: emptyTrend,
-              subtitle: `${sessionsRaw30d.length} sessions (no booking data)`,
+              label: 'Avg Occupancy', value: `${avgOcc}%`,
+              trend: computeTrend(avgOcc, prevAvgOcc, occSpark),
+              subtitle: `${currentSessions.length} sessions`,
             },
             lostRevenue: {
-              label: 'Est. Lost Revenue',
-              value: 'N/A',
-              trend: emptyTrend,
-              subtitle: `${upcomingRaw.length} upcoming sessions`,
+              label: 'Est. Lost Revenue', value: `$${lostRev.toLocaleString()}`,
+              trend: computeTrend(lostRev, prevLostRev),
+              subtitle: `${emptySlots} empty slots`,
             },
             bookings: {
-              label: 'Bookings',
-              value: 'N/A',
-              trend: emptyTrend,
-              subtitle: 'booking table pending migration',
+              label: 'Registrations', value: totalBookings,
+              trend: computeTrend(totalBookings, prevBookings, bookSpark),
+              subtitle: `${currentSessions.length} sessions`,
             },
           },
           occupancy: { byDay, byTimeSlot, byFormat },
@@ -769,8 +856,8 @@ export const intelligenceRouter = createTRPCRouter({
           players: {
             bySkillLevel,
             byFormat: byFormatDist,
-            activeCount: 0,
-            inactiveCount: membersNow,
+            activeCount: csvActive > 0 ? csvActive : 0,
+            inactiveCount: csvInactive > 0 ? csvInactive : membersNow,
             newThisMonth: newMembersThisMonth,
           },
         }
