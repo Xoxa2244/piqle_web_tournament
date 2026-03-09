@@ -642,8 +642,92 @@ export const intelligenceRouter = createTRPCRouter({
           },
         }
       } catch (err) {
-        // Booking table may not exist — return members-only dashboard
-        console.warn('[getDashboardV2] Falling back to members-only mode:', err)
+        // Booking table missing — re-query sessions WITHOUT _count.bookings
+        console.warn('[getDashboardV2] Booking table missing, using no-booking fallback:', (err as Error).message?.slice(0, 120))
+
+        const [sessionsRaw30d, sessionsRawPrev30d, upcomingRaw] = await Promise.all([
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
+            include: { clubCourt: true },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
+            include: { clubCourt: true },
+            orderBy: { date: 'asc' },
+            take: 20,
+          }),
+        ])
+
+        // Treat confirmedCount as 0 (no booking data), occupancy based on session existence
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        const byDayMap: Record<string, { total: number; count: number }> = {}
+        const bySlotMap: Record<string, { total: number; count: number }> = {}
+        const byFmtMap: Record<string, { total: number; count: number }> = {}
+
+        for (const s of sessionsRaw30d) {
+          const occ = 0 // no booking data
+          const dayName = dayNames[new Date(s.date).getDay()]
+          if (!byDayMap[dayName]) byDayMap[dayName] = { total: 0, count: 0 }
+          byDayMap[dayName].count++
+          const hour = parseInt(s.startTime.split(':')[0], 10)
+          const slot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+          if (!bySlotMap[slot]) bySlotMap[slot] = { total: 0, count: 0 }
+          bySlotMap[slot].count++
+          if (!byFmtMap[s.format]) byFmtMap[s.format] = { total: 0, count: 0 }
+          byFmtMap[s.format].count++
+        }
+
+        const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        const byDay = orderedDays.map(day => ({
+          day,
+          avgOccupancy: 0,
+          sessionCount: byDayMap[day]?.count || 0,
+        }))
+        const slotOrder: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
+        const byTimeSlot = slotOrder.map(slot => ({
+          slot,
+          avgOccupancy: 0,
+          sessionCount: bySlotMap[slot]?.count || 0,
+        }))
+        const fmtLabelsMap: Record<string, string> = {
+          OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+          LEAGUE_PLAY: 'League', SOCIAL: 'Social',
+        }
+        const byFormat = Object.entries(byFmtMap).map(([format, data]) => ({
+          format: format as any,
+          avgOccupancy: 0,
+          sessionCount: data.count,
+        })).sort((a, b) => b.sessionCount - a.sessionCount)
+
+        // Session rankings by maxPlayers (since no booking data)
+        const allSessions = sessionsRaw30d.map(s => ({
+          id: s.id,
+          title: s.title,
+          date: s.date.toISOString(),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          format: s.format as any,
+          courtName: s.clubCourt?.name || null,
+          occupancyPercent: 0,
+          confirmedCount: 0,
+          maxPlayers: s.maxPlayers,
+        }))
+        const topSessions = allSessions.slice(0, 5)
+        const problematicSessions = allSessions.slice(-5).reverse()
+
+        // Format distribution from session counts
+        const totalFmtSessions = Object.values(byFmtMap).reduce((a, b) => a + b.count, 0) || 1
+        const byFormatDist = Object.entries(byFmtMap)
+          .map(([fmt, data]) => ({
+            label: fmtLabelsMap[fmt] || fmt,
+            count: data.count,
+            percent: Math.round((data.count / totalFmtSessions) * 100),
+          }))
+          .sort((a, b) => b.count - a.count)
+
         return {
           metrics: {
             members: {
@@ -652,19 +736,30 @@ export const intelligenceRouter = createTRPCRouter({
               trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
               subtitle: `${newMembersThisMonth} new this month`,
             },
-            occupancy: { label: 'Avg Occupancy', value: '0%', trend: emptyTrend, subtitle: 'No session data' },
-            lostRevenue: { label: 'Est. Lost Revenue', value: '$0', trend: emptyTrend, subtitle: '0 empty slots' },
-            bookings: { label: 'Bookings', value: 0, trend: emptyTrend, subtitle: 'last 30 days' },
+            occupancy: {
+              label: 'Avg Occupancy',
+              value: 'N/A',
+              trend: emptyTrend,
+              subtitle: `${sessionsRaw30d.length} sessions (no booking data)`,
+            },
+            lostRevenue: {
+              label: 'Est. Lost Revenue',
+              value: 'N/A',
+              trend: emptyTrend,
+              subtitle: `${upcomingRaw.length} upcoming sessions`,
+            },
+            bookings: {
+              label: 'Bookings',
+              value: 'N/A',
+              trend: emptyTrend,
+              subtitle: 'booking table pending migration',
+            },
           },
-          occupancy: {
-            byDay: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({ day, avgOccupancy: 0, sessionCount: 0 })),
-            byTimeSlot: (['morning', 'afternoon', 'evening'] as const).map(slot => ({ slot, avgOccupancy: 0, sessionCount: 0 })),
-            byFormat: [],
-          },
-          sessions: { topSessions: [], problematicSessions: [] },
+          occupancy: { byDay, byTimeSlot, byFormat },
+          sessions: { topSessions, problematicSessions },
           players: {
             bySkillLevel,
-            byFormat: [],
+            byFormat: byFormatDist,
             activeCount: 0,
             inactiveCount: membersNow,
             newThisMonth: newMembersThisMonth,
