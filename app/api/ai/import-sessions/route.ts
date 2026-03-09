@@ -51,6 +51,7 @@ interface ImportedSession {
   skillLevel: string;
   registered: number;
   capacity: number;
+  pricePerPlayer: number | null;
   playerNames: string[];
 }
 
@@ -68,6 +69,13 @@ function sessionToText(session: ImportedSession, index: number): string {
     `Format: ${formatLabel}. Skill level: ${skillLabel}.`,
     `${session.registered}/${session.capacity} players registered (${occupancyPct}% full, ${emptySlots} empty slots).`,
   ];
+
+  if (session.pricePerPlayer != null) {
+    const revenue = session.registered * session.pricePerPlayer;
+    const potentialRevenue = session.capacity * session.pricePerPlayer;
+    const lostRevenue = emptySlots * session.pricePerPlayer;
+    parts.push(`Price: $${session.pricePerPlayer} per player. Revenue: $${revenue} (potential: $${potentialRevenue}, lost: $${lostRevenue}).`);
+  }
 
   if (session.playerNames.length > 0) {
     parts.push(`Players: ${session.playerNames.join(', ')}.`);
@@ -109,13 +117,32 @@ function buildImportSummary(sessions: ImportedSession[]): string {
     dayOccupancy[s.date].total += s.capacity;
   });
 
-  return [
+  // Revenue calculations
+  const sessionsWithPrice = sessions.filter(s => s.pricePerPlayer != null);
+  const hasRevenue = sessionsWithPrice.length > 0;
+  const totalRevenue = sessionsWithPrice.reduce((s, x) => s + x.registered * (x.pricePerPlayer || 0), 0);
+  const potentialRevenue = sessionsWithPrice.reduce((s, x) => s + x.capacity * (x.pricePerPlayer || 0), 0);
+  const lostRevenue = potentialRevenue - totalRevenue;
+  const avgPricePerPlayer = sessionsWithPrice.length > 0
+    ? Math.round(sessionsWithPrice.reduce((s, x) => s + (x.pricePerPlayer || 0), 0) / sessionsWithPrice.length * 100) / 100
+    : 0;
+
+  const lines = [
     `Club Schedule Summary: ${totalSessions} sessions imported.`,
     `Total capacity: ${totalSlots} slots, ${filledSlots} filled, ${emptySlots} empty.`,
     `Average occupancy: ${avgOccupancy}%. ${underfilled} sessions are underfilled (below 80%).`,
     `Formats offered: ${topFormats}.`,
     `${allPlayers.size} unique players across all sessions.`,
-  ].join(' ');
+  ];
+
+  if (hasRevenue) {
+    lines.push(
+      `Revenue data: $${totalRevenue.toLocaleString()} actual revenue, $${potentialRevenue.toLocaleString()} potential revenue, $${lostRevenue.toLocaleString()} lost revenue from empty slots.`,
+      `Average price per player: $${avgPricePerPlayer}.`,
+    );
+  }
+
+  return lines.join(' ');
 }
 
 // ── Build analytical summary chunks ──
@@ -319,25 +346,75 @@ function buildAnalyticalChunks(sessions: ImportedSession[]): { text: string; con
   const filledSlots = sessions.reduce((s, x) => s + x.registered, 0);
   const emptySlots = totalSlots - filledSlots;
 
-  // Find worst combinations (day + time + format with most empty slots)
-  const combos: Record<string, { empty: number; total: number; count: number }> = {};
+  // Revenue calculations (use actual prices when available)
+  const sessionsWithPrice = sessions.filter(s => s.pricePerPlayer != null);
+  const hasRevenue = sessionsWithPrice.length > 0;
+  const totalRevenue = sessionsWithPrice.reduce((s, x) => s + x.registered * (x.pricePerPlayer || 0), 0);
+  const potentialRevenue = sessionsWithPrice.reduce((s, x) => s + x.capacity * (x.pricePerPlayer || 0), 0);
+  const lostRevenue = potentialRevenue - totalRevenue;
+  const avgPrice = hasRevenue
+    ? Math.round(sessionsWithPrice.reduce((s, x) => s + (x.pricePerPlayer || 0), 0) / sessionsWithPrice.length * 100) / 100
+    : 0;
+
+  // Find worst combinations (day + time + format with most empty slots / lost revenue)
+  const combos: Record<string, { empty: number; total: number; count: number; lostRev: number }> = {};
   sessions.forEach(s => {
     const day = getDayName(s.date);
     const key = `${day} ${s.startTime}-${s.endTime} ${s.format.replace(/_/g, ' ').toLowerCase()}`;
-    if (!combos[key]) combos[key] = { empty: 0, total: 0, count: 0 };
-    combos[key].empty += s.capacity - s.registered;
+    if (!combos[key]) combos[key] = { empty: 0, total: 0, count: 0, lostRev: 0 };
+    const empty = s.capacity - s.registered;
+    combos[key].empty += empty;
     combos[key].total += s.capacity;
     combos[key].count++;
+    combos[key].lostRev += (s.pricePerPlayer || 0) * empty;
   });
 
   const worstCombos = Object.entries(combos)
-    .sort((a, b) => b[1].empty - a[1].empty)
+    .sort((a, b) => hasRevenue ? b[1].lostRev - a[1].lostRev : b[1].empty - a[1].empty)
     .slice(0, 10)
-    .map(([key, d]) => `${key}: ${d.empty} total empty slots across ${d.count} sessions (${d.total > 0 ? Math.round(((d.total - d.empty) / d.total) * 100) : 0}% fill rate)`);
+    .map(([key, d]) => {
+      const fillRate = d.total > 0 ? Math.round(((d.total - d.empty) / d.total) * 100) : 0;
+      const revPart = hasRevenue ? `, $${d.lostRev} lost revenue` : '';
+      return `${key}: ${d.empty} empty slots across ${d.count} sessions (${fillRate}% fill rate${revPart})`;
+    });
+
+  // Revenue by format
+  const revenueByFormat: Record<string, { revenue: number; potential: number; sessions: number }> = {};
+  sessionsWithPrice.forEach(s => {
+    const f = s.format.replace(/_/g, ' ').toLowerCase();
+    if (!revenueByFormat[f]) revenueByFormat[f] = { revenue: 0, potential: 0, sessions: 0 };
+    revenueByFormat[f].revenue += s.registered * (s.pricePerPlayer || 0);
+    revenueByFormat[f].potential += s.capacity * (s.pricePerPlayer || 0);
+    revenueByFormat[f].sessions++;
+  });
+  const formatRevenueLines = Object.entries(revenueByFormat)
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .map(([f, d]) => `${f}: $${d.revenue} revenue from ${d.sessions} sessions (potential: $${d.potential})`);
+
+  // Revenue by day of week
+  const revenueByDay: Record<string, { revenue: number; potential: number }> = {};
+  sessionsWithPrice.forEach(s => {
+    const day = getDayName(s.date);
+    if (!revenueByDay[day]) revenueByDay[day] = { revenue: 0, potential: 0 };
+    revenueByDay[day].revenue += s.registered * (s.pricePerPlayer || 0);
+    revenueByDay[day].potential += s.capacity * (s.pricePerPlayer || 0);
+  });
+  const dayRevenueLines = Object.entries(revenueByDay)
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .map(([day, d]) => `${day}: $${d.revenue} actual / $${d.potential} potential`);
+
+  let revenueText = `Revenue opportunity and empty slots analysis. ${emptySlots} total empty slots out of ${totalSlots} capacity (${Math.round((filledSlots / totalSlots) * 100)}% overall fill rate).`;
+
+  if (hasRevenue) {
+    revenueText += ` Total revenue: $${totalRevenue.toLocaleString()}. Potential revenue: $${potentialRevenue.toLocaleString()}. Lost revenue from empty slots: $${lostRevenue.toLocaleString()}. Average price per player: $${avgPrice}.`;
+    revenueText += `\nRevenue by format:\n${formatRevenueLines.join('\n')}`;
+    revenueText += `\nRevenue by day:\n${dayRevenueLines.join('\n')}`;
+  }
+
+  revenueText += `\nWorst performing combinations:\n${worstCombos.join('\n')}`;
 
   chunks.push({
-    text: `Revenue opportunity and empty slots analysis. ${emptySlots} total empty slots out of ${totalSlots} capacity (${Math.round((filledSlots / totalSlots) * 100)}% overall fill rate). ` +
-      `Worst performing combinations (most empty slots):\n${worstCombos.join('\n')}`,
+    text: revenueText,
     contentType: 'booking_trend',
     sourceId: 'analytics-revenue',
   });
@@ -426,6 +503,9 @@ export async function POST(req: Request) {
               court: s.court, format: s.format, skillLevel: s.skillLevel,
               registered: s.registered, capacity: s.capacity,
               occupancy: s.capacity > 0 ? Math.round((s.registered / s.capacity) * 100) : 0,
+              pricePerPlayer: s.pricePerPlayer,
+              revenue: s.pricePerPlayer != null ? s.registered * s.pricePerPlayer : null,
+              lostRevenue: s.pricePerPlayer != null ? Math.max(0, s.capacity - s.registered) * s.pricePerPlayer : null,
               playerNames: s.playerNames,
             },
             sourceId: `import-session-${i}`,

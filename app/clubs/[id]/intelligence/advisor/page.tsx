@@ -68,6 +68,7 @@ export default function AIAdvisorPage() {
         skillLevel: s.skillLevel,
         registered: s.registered,
         capacity: s.capacity,
+        pricePerPlayer: s.pricePerPlayer,
         playerNames: s.playerNames,
       }))
 

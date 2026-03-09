@@ -14,6 +14,7 @@ export type ParsedSession = {
   skillLevel: string
   registered: number
   capacity: number
+  pricePerPlayer: number | null
   playerNames: string[]
   emptySlots: number
   occupancyPercent: number
@@ -60,6 +61,7 @@ function parseCSV(text: string): ParsedSession[] {
     registered: ['registered', 'signed_up', 'booked', 'current', 'players_count', 'confirmed'],
     capacity: ['capacity', 'max', 'max_players', 'max_capacity', 'spots', 'total_spots'],
     players: ['players', 'player_names', 'participants', 'names', 'roster'],
+    price: ['price', 'cost', 'fee', 'price_per_player', 'rate', 'price_per_slot', 'amount'],
   }
 
   for (const [key, names] of Object.entries(aliases)) {
@@ -107,6 +109,9 @@ function parseCSV(text: string): ParsedSession[] {
       registered = playerNames.length
     }
 
+    const priceRaw = parseFloat(getVal('price'))
+    const pricePerPlayer = isNaN(priceRaw) ? null : priceRaw
+
     if (!date || !startTime) continue
 
     const emptySlots = Math.max(0, capacity - registered)
@@ -122,6 +127,7 @@ function parseCSV(text: string): ParsedSession[] {
       skillLevel,
       registered,
       capacity,
+      pricePerPlayer,
       playerNames,
       emptySlots,
       occupancyPercent,
@@ -196,15 +202,15 @@ async function parseXLSX(buffer: ArrayBuffer, sheetIndex: number): Promise<{ csv
 
 // ── Sample CSV ──
 
-export const SAMPLE_CSV = `date,start_time,end_time,court,format,skill_level,registered,capacity,players
-2025-03-05,09:00,11:00,Court 1,Open Play,Intermediate,3,8,John Smith;Jane Doe;Mike Brown
-2025-03-05,09:00,11:00,Court 2,Drill,Advanced,2,6,Sarah Lee;Tom Wilson
-2025-03-05,17:00,19:00,Court 1,Social,All Levels,4,12,Amy Chen;Bob Jones;Lisa Park;Dave Kim
-2025-03-06,08:00,10:00,Court 3,Clinic,Beginner,1,8,New Player
-2025-03-06,18:00,20:00,Court 1,Open Play,Intermediate,5,8,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson
-2025-03-07,17:00,19:00,Court 2,Round Robin,Advanced,2,8,Top Player;Pro Guy
-2025-03-08,09:00,12:00,Court 1,Open Play,All Levels,0,16,
-2025-03-08,09:00,12:00,Court 2,League Play,Advanced,3,4,Sarah Lee;Tom Wilson;Pro Guy`
+export const SAMPLE_CSV = `date,start_time,end_time,court,format,skill_level,registered,capacity,price,players
+2025-03-05,09:00,11:00,Court 1,Open Play,Intermediate,3,8,15,John Smith;Jane Doe;Mike Brown
+2025-03-05,09:00,11:00,Court 2,Drill,Advanced,2,6,25,Sarah Lee;Tom Wilson
+2025-03-05,17:00,19:00,Court 1,Social,All Levels,4,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim
+2025-03-06,08:00,10:00,Court 3,Clinic,Beginner,1,8,30,New Player
+2025-03-06,18:00,20:00,Court 1,Open Play,Intermediate,5,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson
+2025-03-07,17:00,19:00,Court 2,Round Robin,Advanced,2,8,20,Top Player;Pro Guy
+2025-03-08,09:00,12:00,Court 1,Open Play,All Levels,0,16,12,
+2025-03-08,09:00,12:00,Court 2,League Play,Advanced,3,4,25,Sarah Lee;Tom Wilson;Pro Guy`
 
 export function downloadSampleCSV() {
   const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' })

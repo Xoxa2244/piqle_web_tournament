@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   FileSpreadsheet, AlertTriangle, CheckCircle2, X,
-  Upload, Calendar, Clock, Users
+  Upload, Calendar, Clock, Users, DollarSign
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SheetSelector } from './SheetSelector'
@@ -98,6 +98,15 @@ export function FilePreviewView({
   const allPlayers = new Set(sessions.flatMap(s => s.playerNames))
   const playerCount = allPlayers.size
 
+  // Revenue stats (only if any session has price data)
+  const hasPrice = sessions.some(s => s.pricePerPlayer != null)
+  const totalRevenue = hasPrice
+    ? sessions.reduce((sum, s) => sum + (s.pricePerPlayer || 0) * s.registered, 0)
+    : 0
+  const lostRevenue = hasPrice
+    ? sessions.reduce((sum, s) => sum + (s.pricePerPlayer || 0) * Math.max(0, s.capacity - s.registered), 0)
+    : 0
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -172,7 +181,7 @@ export function FilePreviewView({
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className={cn('grid gap-4', hasPrice ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-4')}>
         <Card>
           <CardContent className="pt-4 pb-4">
             <p className="text-2xl font-bold">{sessions.length}</p>
@@ -199,6 +208,22 @@ export function FilePreviewView({
             <p className="text-xs text-muted-foreground">Avg Occupancy</p>
           </CardContent>
         </Card>
+        {hasPrice && (
+          <>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <p className="text-2xl font-bold text-green-600">${totalRevenue.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Revenue</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <p className="text-2xl font-bold text-red-600">${lostRevenue.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Lost Revenue</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Selection Controls */}
@@ -263,6 +288,12 @@ export function FilePreviewView({
                         <Users className="w-3 h-3" />
                         {session.registered}/{session.capacity}
                       </span>
+                      {session.pricePerPlayer != null && (
+                        <span className="flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          ${session.pricePerPlayer}/player
+                        </span>
+                      )}
                       {session.playerNames.length > 0 && (
                         <span className="hidden sm:inline text-muted-foreground/70 truncate max-w-[200px]">
                           {session.playerNames.join(', ')}
@@ -340,6 +371,10 @@ export function FilePreviewView({
                     {selectedIds.size > 0 && (
                       <span className="text-muted-foreground ml-1">
                         · {selectedSessions.reduce((s, x) => s + x.emptySlots, 0)} empty slots to fill
+                        {hasPrice && (() => {
+                          const selLost = selectedSessions.reduce((s, x) => s + (x.pricePerPlayer || 0) * Math.max(0, x.capacity - x.registered), 0)
+                          return selLost > 0 ? ` · $${selLost.toLocaleString()} lost revenue` : ''
+                        })()}
                       </span>
                     )}
                   </p>

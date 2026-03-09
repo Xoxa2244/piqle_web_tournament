@@ -655,6 +655,9 @@ export const intelligenceRouter = createTRPCRouter({
           date: string; startTime: string; endTime: string; court: string
           format: string; skillLevel: string; registered: number
           capacity: number; occupancy: number; playerNames: string[]
+          pricePerPlayer?: number | null
+          revenue?: number | null
+          lostRevenue?: number | null
         }
 
         let allCsvSessions: CsvSessionMeta[] = []
@@ -730,9 +733,18 @@ export const intelligenceRouter = createTRPCRouter({
         const prevBookings = previousSessions.reduce((sum, s) => sum + s.registered, 0)
         const emptySlots = currentSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered), 0)
         const prevEmpty = previousSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered), 0)
-        const avgPrice = 15
-        const lostRev = emptySlots * avgPrice
-        const prevLostRev = prevEmpty * avgPrice
+
+        // Use actual prices from CSV when available, fall back to $15 estimate
+        const hasRealPrices = currentSessions.some(s => s.pricePerPlayer != null && s.pricePerPlayer > 0)
+        const lostRev = hasRealPrices
+          ? currentSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered) * (s.pricePerPlayer || 0), 0)
+          : emptySlots * 15
+        const prevLostRev = hasRealPrices
+          ? previousSessions.reduce((sum, s) => sum + Math.max(0, s.capacity - s.registered) * (s.pricePerPlayer || 0), 0)
+          : prevEmpty * 15
+        const totalRevenue = hasRealPrices
+          ? currentSessions.reduce((sum, s) => sum + s.registered * (s.pricePerPlayer || 0), 0)
+          : 0
 
         // Sparklines (7 data points from the current period)
         const occSpark: number[] = []
@@ -841,9 +853,12 @@ export const intelligenceRouter = createTRPCRouter({
               subtitle: `${currentSessions.length} sessions`,
             },
             lostRevenue: {
-              label: 'Est. Lost Revenue', value: `$${lostRev.toLocaleString()}`,
+              label: hasRealPrices ? 'Lost Revenue' : 'Est. Lost Revenue',
+              value: `$${lostRev.toLocaleString()}`,
               trend: computeTrend(lostRev, prevLostRev),
-              subtitle: `${emptySlots} empty slots`,
+              subtitle: hasRealPrices
+                ? `$${totalRevenue.toLocaleString()} earned · ${emptySlots} empty slots`
+                : `${emptySlots} empty slots (est. $15/slot)`,
             },
             bookings: {
               label: 'Registrations', value: totalBookings,
