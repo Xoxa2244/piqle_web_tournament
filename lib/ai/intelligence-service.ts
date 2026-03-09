@@ -385,48 +385,51 @@ async function buildCsvReactivationData(
 
   const allCsvNames = Array.from(allPlayerNames)
 
-  // Build member data with CSV-based history
-  const membersWithData = await Promise.all(
-    members.map(async (cf: any) => {
-      const preference = await prisma.userPlayPreference.findUnique({
-        where: { userId_clubId: { userId: cf.user.id, clubId } },
-      })
-      const matchedName = matchPlayerName(cf.user.name, allCsvNames)
-      const activity = matchedName ? playerActivity.get(matchedName) : null
-
-      let history: BookingHistory
-      if (activity) {
-        const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
-        const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
-        history = {
-          totalBookings: activity.totalSessions,
-          bookingsLastWeek: activity.sessionsLast7d,
-          bookingsLastMonth: activity.sessionsLast30d,
-          daysSinceLastConfirmedBooking: daysSince,
-          cancelledCount: 0,
-          noShowCount: 0,
-          inviteAcceptanceRate: 1.0,
-        }
-      } else {
-        // Member not found in CSV — no history
-        history = {
-          totalBookings: 0,
-          bookingsLastWeek: 0,
-          bookingsLastMonth: 0,
-          daysSinceLastConfirmedBooking: null,
-          cancelledCount: 0,
-          noShowCount: 0,
-          inviteAcceptanceRate: 0.5,
-        }
-      }
-
-      return {
-        member: toMemberData(cf.user),
-        preference: toPreferenceData(preference),
-        history,
-      }
+  // Batch-load all preferences in one query (instead of N individual findUnique calls)
+  const memberUserIds = members.map((cf: any) => cf.user.id)
+  let allPreferences: any[] = []
+  try {
+    allPreferences = await prisma.userPlayPreference.findMany({
+      where: { userId: { in: memberUserIds }, clubId },
     })
-  )
+  } catch {
+    // Preferences table might be empty or missing — not critical
+  }
+  const prefMap = new Map(allPreferences.map((p: any) => [p.userId, p]))
+
+  // Build member data with CSV-based history (no more DB queries in loop)
+  const membersWithData = members.map((cf: any) => {
+    const preference = prefMap.get(cf.user.id) || null
+    const matchedName = matchPlayerName(cf.user.name, allCsvNames)
+    const activity = matchedName ? playerActivity.get(matchedName) : null
+
+    let history: BookingHistory
+    if (activity) {
+      const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
+      const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+      history = {
+        totalBookings: activity.totalSessions,
+        bookingsLastWeek: activity.sessionsLast7d,
+        bookingsLastMonth: activity.sessionsLast30d,
+        daysSinceLastConfirmedBooking: daysSince,
+        cancelledCount: 0,
+        noShowCount: 0,
+        inviteAcceptanceRate: 1.0,
+      }
+    } else {
+      history = {
+        totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+        daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+        noShowCount: 0, inviteAcceptanceRate: 0.5,
+      }
+    }
+
+    return {
+      member: toMemberData(cf.user),
+      preference: toPreferenceData(preference),
+      history,
+    }
+  })
 
   // Build "virtual" upcoming sessions from CSV (sessions with spots available)
   const fmtLabels: Record<string, string> = {
@@ -484,15 +487,17 @@ export async function getReactivationCandidates(
   // ── Fast check: does PlaySessionBooking have ANY data for these members? ──
   const memberUserIds = members.map((cf: any) => cf.user.id)
   let hasRealBookings = false
-  try {
-    const bookingCount = await prisma.playSessionBooking.count({
-      where: { userId: { in: memberUserIds } },
-      take: 1, // Stop at first match for speed
-    })
-    hasRealBookings = bookingCount > 0
-  } catch {
-    // Table might not exist — treat as empty
-    hasRealBookings = false
+  if (memberUserIds.length > 0) {
+    try {
+      const firstBooking = await prisma.playSessionBooking.findFirst({
+        where: { userId: { in: memberUserIds } },
+        select: { id: true },
+      })
+      hasRealBookings = !!firstBooking
+    } catch {
+      // Table might not exist — treat as empty
+      hasRealBookings = false
+    }
   }
 
   if (hasRealBookings) {

@@ -36,7 +36,7 @@ export default function ReactivationPage() {
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
 
-  const { data, isLoading } = useReactivationCandidates(clubId, inactivityDays)
+  const { data, isLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const sendReactivation = useSendReactivation()
   const { toast } = useToast()
 
@@ -114,6 +114,14 @@ export default function ReactivationPage() {
 
       {/* ── Loading ── */}
       {isLoading && <ListSkeleton rows={5} />}
+
+      {/* ── Error ── */}
+      {error && !isLoading && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="font-medium mb-1">Failed to load reactivation data</div>
+          <div className="text-red-600 text-xs font-mono">{(error as any)?.message || 'Unknown error'}</div>
+        </div>
+      )}
 
       {/* ── Empty: all active ── */}
       {data && data.candidates.length === 0 && (
