@@ -371,87 +371,6 @@ export const intelligenceRouter = createTRPCRouter({
       const d60 = new Date(now.getTime() - 60 * 86400000)
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
-      // ── Core queries (tables always exist) ──
-      const [
-        membersNow,
-        membersAt30dAgo,
-        completedSessions30d,
-        completedSessionsPrev30d,
-        upcomingSessions,
-        newMembersThisMonth,
-        allMembersWithUser,
-      ] = await Promise.all([
-        // 1. Current member count
-        ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
-        // 2. Members that existed 30 days ago (for trend)
-        ctx.prisma.clubFollower.count({
-          where: { clubId: input.clubId, createdAt: { lte: d30 } },
-        }),
-        // 3. Completed sessions in last 30 days
-        ctx.prisma.playSession.findMany({
-          where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
-          include: {
-            clubCourt: true,
-            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
-          },
-        }),
-        // 4. Completed sessions in prev 30 days (for trend)
-        ctx.prisma.playSession.findMany({
-          where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
-          include: {
-            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
-          },
-        }),
-        // 5. Upcoming scheduled sessions
-        ctx.prisma.playSession.findMany({
-          where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
-          include: {
-            clubCourt: true,
-            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
-          },
-          orderBy: { date: 'asc' },
-          take: 20,
-        }),
-        // 6. New members this month
-        ctx.prisma.clubFollower.count({
-          where: { clubId: input.clubId, createdAt: { gte: monthStart } },
-        }),
-        // 7. All members with DUPR for skill distribution
-        ctx.prisma.clubFollower.findMany({
-          where: { clubId: input.clubId },
-          include: { user: { select: { id: true, duprRatingDoubles: true } } },
-        }),
-      ])
-
-      // ── Booking queries (table may not exist on some envs) ──
-      let bookings30d = 0
-      let bookingsPrev30d = 0
-      let recentBookers: { userId: string }[] = []
-      try {
-        ;[bookings30d, bookingsPrev30d, recentBookers] = await Promise.all([
-          ctx.prisma.playSessionBooking.count({
-            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30 } },
-          }),
-          ctx.prisma.playSessionBooking.count({
-            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d60, lt: d30 } },
-          }),
-          ctx.prisma.playSessionBooking.findMany({
-            where: {
-              status: 'CONFIRMED',
-              playSession: { clubId: input.clubId },
-              bookedAt: { gte: d14 },
-            },
-            select: { userId: true },
-            distinct: ['userId'],
-          }),
-        ])
-      } catch {
-        // playSessionBooking table may not exist yet — fall back to deriving from sessions
-        bookings30d = completedSessions30d.reduce((sum, s) => sum + s._count.bookings, 0)
-        bookingsPrev30d = completedSessionsPrev30d.reduce((sum, s) => sum + s._count.bookings, 0)
-        recentBookers = []
-      }
-
       // ── Helper: compute trend ──
       function computeTrend(current: number, previous: number, sparkline: number[] = []): {
         value: number; previousValue: number; changePercent: number;
@@ -469,120 +388,32 @@ export const intelligenceRouter = createTRPCRouter({
         }
       }
 
-      // ── Compute occupancy metrics ──
-      const calcAvgOcc = (sessions: Array<{ maxPlayers: number; _count: { bookings: number } }>) => {
-        if (sessions.length === 0) return 0
-        const total = sessions.reduce((sum, s) => {
-          return sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0)
-        }, 0)
-        return Math.round(total / sessions.length)
-      }
-      const avgOcc30d = calcAvgOcc(completedSessions30d)
-      const avgOccPrev30d = calcAvgOcc(completedSessionsPrev30d)
+      const emptyTrend = computeTrend(0, 0)
 
-      // ── Sparkline data: daily booking counts for last 7 days ──
-      const bookingSparkline: number[] = []
-      const memberSparkline: number[] = []
-      for (let i = 6; i >= 0; i--) {
-        const dayStart = new Date(now.getTime() - i * 86400000)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(dayStart)
-        dayEnd.setHours(23, 59, 59, 999)
-        const dayBookings = completedSessions30d
-          .filter(s => new Date(s.date) >= dayStart && new Date(s.date) <= dayEnd)
-          .reduce((sum, s) => sum + s._count.bookings, 0)
-        bookingSparkline.push(dayBookings)
-      }
-      // Simple member sparkline: approximate with linear growth
+      // ── Member-only queries (tables always exist) ──
+      const [membersNow, membersAt30dAgo, newMembersThisMonth, allMembersWithUser] =
+        await Promise.all([
+          ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
+          ctx.prisma.clubFollower.count({
+            where: { clubId: input.clubId, createdAt: { lte: d30 } },
+          }),
+          ctx.prisma.clubFollower.count({
+            where: { clubId: input.clubId, createdAt: { gte: monthStart } },
+          }),
+          ctx.prisma.clubFollower.findMany({
+            where: { clubId: input.clubId },
+            include: { user: { select: { id: true, duprRatingDoubles: true } } },
+          }),
+        ])
+
+      // Member sparkline (always safe)
       const memberGrowth = membersNow - membersAt30dAgo
+      const memberSparkline: number[] = []
       for (let i = 0; i < 7; i++) {
         memberSparkline.push(Math.round(membersAt30dAgo + (memberGrowth * (i + 1)) / 7))
       }
 
-      // ── Lost revenue ──
-      const avgPricePerSlot = 15
-      const emptySlots = upcomingSessions.reduce(
-        (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
-      )
-      const lostRevenue = emptySlots * avgPricePerSlot
-      // Previous lost revenue estimate
-      const prevEmptySlots = completedSessionsPrev30d.reduce(
-        (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
-      )
-      const prevLostRevenue = prevEmptySlots * avgPricePerSlot
-
-      // ── Occupancy breakdowns ──
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const byDayMap: Record<string, { total: number; count: number }> = {}
-      const bySlotMap: Record<string, { total: number; count: number }> = {}
-      const byFormatMap: Record<string, { total: number; count: number }> = {}
-
-      for (const s of completedSessions30d) {
-        const occ = s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0
-        // By day
-        const dayName = dayNames[new Date(s.date).getDay()]
-        if (!byDayMap[dayName]) byDayMap[dayName] = { total: 0, count: 0 }
-        byDayMap[dayName].total += occ
-        byDayMap[dayName].count++
-
-        // By time slot
-        const hour = parseInt(s.startTime.split(':')[0], 10)
-        const slot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
-        if (!bySlotMap[slot]) bySlotMap[slot] = { total: 0, count: 0 }
-        bySlotMap[slot].total += occ
-        bySlotMap[slot].count++
-
-        // By format
-        if (!byFormatMap[s.format]) byFormatMap[s.format] = { total: 0, count: 0 }
-        byFormatMap[s.format].total += occ
-        byFormatMap[s.format].count++
-      }
-
-      const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-      const byDay = orderedDays.map(day => ({
-        day,
-        avgOccupancy: byDayMap[day] ? Math.round(byDayMap[day].total / byDayMap[day].count) : 0,
-        sessionCount: byDayMap[day]?.count || 0,
-      }))
-
-      const slotOrder: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
-      const byTimeSlot = slotOrder.map(slot => ({
-        slot,
-        avgOccupancy: bySlotMap[slot] ? Math.round(bySlotMap[slot].total / bySlotMap[slot].count) : 0,
-        sessionCount: bySlotMap[slot]?.count || 0,
-      }))
-
-      const byFormat = Object.entries(byFormatMap).map(([format, data]) => ({
-        format: format as any,
-        avgOccupancy: Math.round(data.total / data.count),
-        sessionCount: data.count,
-      })).sort((a, b) => b.sessionCount - a.sessionCount)
-
-      // ── Session rankings ──
-      const allSessionsWithOcc = completedSessions30d.map(s => ({
-        id: s.id,
-        title: s.title,
-        date: s.date.toISOString(),
-        startTime: s.startTime,
-        endTime: s.endTime,
-        format: s.format as any,
-        courtName: s.clubCourt?.name || null,
-        occupancyPercent: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
-        confirmedCount: s._count.bookings,
-        maxPlayers: s.maxPlayers,
-      }))
-      const sortedByOcc = [...allSessionsWithOcc].sort((a, b) => b.occupancyPercent - a.occupancyPercent)
-      const topSessions = sortedByOcc.slice(0, 5)
-      const problematicSessions = [...allSessionsWithOcc]
-        .sort((a, b) => a.occupancyPercent - b.occupancyPercent)
-        .slice(0, 5)
-
-      // ── Player distributions ──
-      const activeUserIds = new Set(recentBookers.map(b => b.userId))
-      const activeCount = activeUserIds.size
-      const inactiveCount = Math.max(0, membersNow - activeCount)
-
-      // Skill level distribution
+      // Skill level distribution (always safe)
       const skillBuckets: Record<string, number> = { Beginner: 0, Intermediate: 0, Advanced: 0, Unrated: 0 }
       for (const f of allMembersWithUser) {
         const rating = f.user?.duprRatingDoubles ? Number(f.user.duprRatingDoubles) : null
@@ -600,81 +431,245 @@ export const intelligenceRouter = createTRPCRouter({
           percent: Math.round((count / totalMembers) * 100),
         }))
 
-      // Format preference: count unique users by format of their bookings in last 30d
-      const formatCounts: Record<string, number> = {}
-      for (const s of completedSessions30d) {
-        const fmt = s.format
-        formatCounts[fmt] = (formatCounts[fmt] || 0) + s._count.bookings
-      }
-      const formatLabels: Record<string, string> = {
-        OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
-        LEAGUE_PLAY: 'League', SOCIAL: 'Social',
-      }
-      const totalFormatBookings = Object.values(formatCounts).reduce((a, b) => a + b, 0) || 1
-      const byFormatDist = Object.entries(formatCounts)
-        .map(([fmt, count]) => ({
-          label: formatLabels[fmt] || fmt,
-          count,
-          percent: Math.round((count / totalFormatBookings) * 100),
-        }))
-        .sort((a, b) => b.count - a.count)
+      // ── Session + Booking queries (may fail if booking table missing) ──
+      try {
+        const [
+          completedSessions30d,
+          completedSessionsPrev30d,
+          bookings30d,
+          bookingsPrev30d,
+          upcomingSessions,
+          recentBookers,
+        ] = await Promise.all([
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
+            include: {
+              clubCourt: true,
+              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+            },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d60, lt: d30 } },
+            include: {
+              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+            },
+          }),
+          ctx.prisma.playSessionBooking.count({
+            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30 } },
+          }),
+          ctx.prisma.playSessionBooking.count({
+            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d60, lt: d30 } },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, status: 'SCHEDULED', date: { gte: now } },
+            include: {
+              clubCourt: true,
+              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+            },
+            orderBy: { date: 'asc' },
+            take: 20,
+          }),
+          ctx.prisma.playSessionBooking.findMany({
+            where: {
+              status: 'CONFIRMED',
+              playSession: { clubId: input.clubId },
+              bookedAt: { gte: d14 },
+            },
+            select: { userId: true },
+            distinct: ['userId'],
+          }),
+        ])
 
-      // ── Occupancy sparkline ──
-      const occSparkline: number[] = []
-      for (let i = 6; i >= 0; i--) {
-        const dayStart = new Date(now.getTime() - i * 86400000)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(dayStart)
-        dayEnd.setHours(23, 59, 59, 999)
-        const daySessions = completedSessions30d.filter(
-          s => new Date(s.date) >= dayStart && new Date(s.date) <= dayEnd
-        )
-        if (daySessions.length > 0) {
-          const avg = daySessions.reduce((sum, s) =>
-            sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0), 0
-          ) / daySessions.length
-          occSparkline.push(Math.round(avg))
-        } else {
-          occSparkline.push(0)
+        // ── Compute occupancy metrics ──
+        const calcAvgOcc = (sessions: Array<{ maxPlayers: number; _count: { bookings: number } }>) => {
+          if (sessions.length === 0) return 0
+          const total = sessions.reduce((sum, s) => {
+            return sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0)
+          }, 0)
+          return Math.round(total / sessions.length)
         }
-      }
+        const avgOcc30d = calcAvgOcc(completedSessions30d)
+        const avgOccPrev30d = calcAvgOcc(completedSessionsPrev30d)
 
-      return {
-        metrics: {
-          members: {
-            label: 'Members',
-            value: membersNow,
-            trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
-            subtitle: `${newMembersThisMonth} new this month`,
+        // Sparklines
+        const bookingSparkline: number[] = []
+        const occSparkline: number[] = []
+        for (let i = 6; i >= 0; i--) {
+          const dayStart = new Date(now.getTime() - i * 86400000)
+          dayStart.setHours(0, 0, 0, 0)
+          const dayEnd = new Date(dayStart)
+          dayEnd.setHours(23, 59, 59, 999)
+          const daySessions = completedSessions30d.filter(
+            s => new Date(s.date) >= dayStart && new Date(s.date) <= dayEnd
+          )
+          bookingSparkline.push(daySessions.reduce((sum, s) => sum + s._count.bookings, 0))
+          if (daySessions.length > 0) {
+            const avg = daySessions.reduce((sum, s) =>
+              sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0), 0
+            ) / daySessions.length
+            occSparkline.push(Math.round(avg))
+          } else {
+            occSparkline.push(0)
+          }
+        }
+
+        // Lost revenue
+        const avgPricePerSlot = 15
+        const emptySlots = upcomingSessions.reduce(
+          (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
+        )
+        const lostRevenue = emptySlots * avgPricePerSlot
+        const prevEmptySlots = completedSessionsPrev30d.reduce(
+          (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
+        )
+        const prevLostRevenue = prevEmptySlots * avgPricePerSlot
+
+        // Occupancy breakdowns
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        const byDayMap: Record<string, { total: number; count: number }> = {}
+        const bySlotMap: Record<string, { total: number; count: number }> = {}
+        const byFormatMap: Record<string, { total: number; count: number }> = {}
+        for (const s of completedSessions30d) {
+          const occ = s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0
+          const dayName = dayNames[new Date(s.date).getDay()]
+          if (!byDayMap[dayName]) byDayMap[dayName] = { total: 0, count: 0 }
+          byDayMap[dayName].total += occ
+          byDayMap[dayName].count++
+          const hour = parseInt(s.startTime.split(':')[0], 10)
+          const slot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+          if (!bySlotMap[slot]) bySlotMap[slot] = { total: 0, count: 0 }
+          bySlotMap[slot].total += occ
+          bySlotMap[slot].count++
+          if (!byFormatMap[s.format]) byFormatMap[s.format] = { total: 0, count: 0 }
+          byFormatMap[s.format].total += occ
+          byFormatMap[s.format].count++
+        }
+        const orderedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        const byDay = orderedDays.map(day => ({
+          day,
+          avgOccupancy: byDayMap[day] ? Math.round(byDayMap[day].total / byDayMap[day].count) : 0,
+          sessionCount: byDayMap[day]?.count || 0,
+        }))
+        const slotOrder: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
+        const byTimeSlot = slotOrder.map(slot => ({
+          slot,
+          avgOccupancy: bySlotMap[slot] ? Math.round(bySlotMap[slot].total / bySlotMap[slot].count) : 0,
+          sessionCount: bySlotMap[slot]?.count || 0,
+        }))
+        const byFormat = Object.entries(byFormatMap).map(([format, data]) => ({
+          format: format as any,
+          avgOccupancy: Math.round(data.total / data.count),
+          sessionCount: data.count,
+        })).sort((a, b) => b.sessionCount - a.sessionCount)
+
+        // Session rankings
+        const allSessionsWithOcc = completedSessions30d.map(s => ({
+          id: s.id,
+          title: s.title,
+          date: s.date.toISOString(),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          format: s.format as any,
+          courtName: s.clubCourt?.name || null,
+          occupancyPercent: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
+          confirmedCount: s._count.bookings,
+          maxPlayers: s.maxPlayers,
+        }))
+        const sortedByOcc = [...allSessionsWithOcc].sort((a, b) => b.occupancyPercent - a.occupancyPercent)
+        const topSessions = sortedByOcc.slice(0, 5)
+        const problematicSessions = [...allSessionsWithOcc]
+          .sort((a, b) => a.occupancyPercent - b.occupancyPercent)
+          .slice(0, 5)
+
+        // Player activity
+        const activeUserIds = new Set(recentBookers.map(b => b.userId))
+        const activeCount = activeUserIds.size
+        const inactiveCount = Math.max(0, membersNow - activeCount)
+
+        // Format preference
+        const formatCounts: Record<string, number> = {}
+        for (const s of completedSessions30d) {
+          formatCounts[s.format] = (formatCounts[s.format] || 0) + s._count.bookings
+        }
+        const fmtLabels: Record<string, string> = {
+          OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+          LEAGUE_PLAY: 'League', SOCIAL: 'Social',
+        }
+        const totalFmtBookings = Object.values(formatCounts).reduce((a, b) => a + b, 0) || 1
+        const byFormatDist = Object.entries(formatCounts)
+          .map(([fmt, count]) => ({
+            label: fmtLabels[fmt] || fmt,
+            count,
+            percent: Math.round((count / totalFmtBookings) * 100),
+          }))
+          .sort((a, b) => b.count - a.count)
+
+        return {
+          metrics: {
+            members: {
+              label: 'Members',
+              value: membersNow,
+              trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
+              subtitle: `${newMembersThisMonth} new this month`,
+            },
+            occupancy: {
+              label: 'Avg Occupancy',
+              value: `${avgOcc30d}%`,
+              trend: computeTrend(avgOcc30d, avgOccPrev30d, occSparkline),
+              subtitle: `${completedSessions30d.length} sessions (30d)`,
+            },
+            lostRevenue: {
+              label: 'Est. Lost Revenue',
+              value: `$${lostRevenue.toLocaleString()}`,
+              trend: computeTrend(lostRevenue, prevLostRevenue),
+              subtitle: `${emptySlots} empty slots`,
+            },
+            bookings: {
+              label: 'Bookings',
+              value: bookings30d,
+              trend: computeTrend(bookings30d, bookingsPrev30d, bookingSparkline),
+              subtitle: 'last 30 days',
+            },
+          },
+          occupancy: { byDay, byTimeSlot, byFormat },
+          sessions: { topSessions, problematicSessions },
+          players: {
+            bySkillLevel,
+            byFormat: byFormatDist,
+            activeCount,
+            inactiveCount,
+            newThisMonth: newMembersThisMonth,
+          },
+        }
+      } catch (err) {
+        // Booking table may not exist — return members-only dashboard
+        console.warn('[getDashboardV2] Falling back to members-only mode:', err)
+        return {
+          metrics: {
+            members: {
+              label: 'Members',
+              value: membersNow,
+              trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
+              subtitle: `${newMembersThisMonth} new this month`,
+            },
+            occupancy: { label: 'Avg Occupancy', value: '0%', trend: emptyTrend, subtitle: 'No session data' },
+            lostRevenue: { label: 'Est. Lost Revenue', value: '$0', trend: emptyTrend, subtitle: '0 empty slots' },
+            bookings: { label: 'Bookings', value: 0, trend: emptyTrend, subtitle: 'last 30 days' },
           },
           occupancy: {
-            label: 'Avg Occupancy',
-            value: `${avgOcc30d}%`,
-            trend: computeTrend(avgOcc30d, avgOccPrev30d, occSparkline),
-            subtitle: `${completedSessions30d.length} sessions (30d)`,
+            byDay: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({ day, avgOccupancy: 0, sessionCount: 0 })),
+            byTimeSlot: (['morning', 'afternoon', 'evening'] as const).map(slot => ({ slot, avgOccupancy: 0, sessionCount: 0 })),
+            byFormat: [],
           },
-          lostRevenue: {
-            label: 'Est. Lost Revenue',
-            value: `$${lostRevenue.toLocaleString()}`,
-            trend: computeTrend(lostRevenue, prevLostRevenue),
-            subtitle: `${emptySlots} empty slots`,
+          sessions: { topSessions: [], problematicSessions: [] },
+          players: {
+            bySkillLevel,
+            byFormat: [],
+            activeCount: 0,
+            inactiveCount: membersNow,
+            newThisMonth: newMembersThisMonth,
           },
-          bookings: {
-            label: 'Bookings',
-            value: bookings30d,
-            trend: computeTrend(bookings30d, bookingsPrev30d, bookingSparkline),
-            subtitle: 'last 30 days',
-          },
-        },
-        occupancy: { byDay, byTimeSlot, byFormat },
-        sessions: { topSessions, problematicSessions },
-        players: {
-          bySkillLevel,
-          byFormat: byFormatDist,
-          activeCount,
-          inactiveCount,
-          newThisMonth: newMembersThisMonth,
-        },
+        }
       }
     }),
 
