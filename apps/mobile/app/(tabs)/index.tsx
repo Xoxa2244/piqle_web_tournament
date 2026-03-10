@@ -5,7 +5,7 @@ import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
+import { ActionButton, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
 import { formatDateRange, formatLocation } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
@@ -32,21 +32,24 @@ export default function HomeTab() {
     { enabled: isAuthenticated && tournamentIds.length > 0 }
   )
 
-  const myEvents = useMemo(() => {
+  const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
     if (!items.length) return []
 
     if (!isAuthenticated) {
-      return items.slice(0, 3)
+      return []
     }
 
-    const filtered = items.filter((item) => {
+    return items.filter((item) => {
       const status = registrationStatusesQuery.data?.[item.id]?.status
       return status === 'active' || status === 'waitlisted'
     })
-
-    return filtered.length ? filtered.slice(0, 3) : items.slice(0, 3)
   }, [isAuthenticated, registrationStatusesQuery.data, tournamentsQuery.data])
+
+  const myEvents = useMemo(() => allMyEvents.slice(0, 3), [allMyEvents])
+
+  const isMyEventsLoading =
+    tournamentsQuery.isLoading || (isAuthenticated && tournamentIds.length > 0 && registrationStatusesQuery.isLoading)
 
   const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string }>
   const confirmed = Object.values(statuses).filter((value) => value.status === 'active').length
@@ -86,10 +89,18 @@ export default function HomeTab() {
         action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
       />
 
-      {tournamentsQuery.isLoading ? <LoadingBlock label="Loading events…" /> : null}
+      {isMyEventsLoading ? <LoadingBlock label="Loading events…" /> : null}
 
-      {!tournamentsQuery.isLoading && myEvents.length === 0 ? (
-        <EmptyState title="No upcoming events" body="Register for a tournament to get started." />
+      {!isMyEventsLoading && myEvents.length === 0 ? (
+        <SurfaceCard tone="soft">
+          <Text style={styles.emptyEventsTitle}>No events yet</Text>
+          <Text style={styles.emptyEventsBody}>
+            Once you join a tournament, it will show up here.{' '}
+            <Text style={styles.emptyEventsLink} onPress={() => router.push('/tournaments')}>
+              Find events here.
+            </Text>
+          </Text>
+        </SurfaceCard>
       ) : null}
 
       {myEvents.map((event) => {
@@ -136,7 +147,7 @@ export default function HomeTab() {
         <Text style={styles.monthTitle}>This Month</Text>
         <View style={styles.statsRow}>
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{myEvents.length}</Text>
+            <Text style={styles.statValue}>{allMyEvents.length}</Text>
             <Text style={styles.statLabel}>Events</Text>
           </View>
           <View style={styles.statDivider} />
@@ -253,6 +264,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: spacing.sm,
+  },
+  emptyEventsTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptyEventsBody: {
+    marginTop: 8,
+    color: palette.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  emptyEventsLink: {
+    color: palette.primary,
+    fontWeight: '700',
   },
   monthTitle: {
     color: palette.text,

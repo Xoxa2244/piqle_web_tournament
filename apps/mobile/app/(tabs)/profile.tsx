@@ -1,217 +1,769 @@
-import { useEffect, useState } from 'react'
-import { Text, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useMemo, useState } from 'react'
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { PageLayout } from '../../src/components/navigation/PageLayout'
-import {
-  ActionButton,
-  AvatarBadge,
-  EmptyState,
-  InputField,
-  LoadingBlock,
-  MetricTile,
-  Pill,
-  Screen,
-  SectionTitle,
-  SurfaceCard,
-} from '../../src/components/ui'
-import { palette, spacing } from '../../src/lib/theme'
+import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
+import { formatDate, formatLocation } from '../../src/lib/formatters'
+import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 
-export default function ProfileTab() {
-  const { token, signOut } = useAuth()
-  const isAuthenticated = Boolean(token)
-  const api = trpc as any
-  const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
-  const updateProfile = api.user.updateProfile.useMutation({
-    onSuccess: async () => {
-      await profileQuery.refetch()
-      setEditing(false)
-    },
-  })
+type ProfileSection = 'activity' | 'achievements'
 
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState('')
-  const [city, setCity] = useState('')
-  const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
-  const [duprLink, setDuprLink] = useState('')
+const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  year: 'numeric',
+})
 
-  useEffect(() => {
-    if (!profileQuery.data || editing) return
-    setName(profileQuery.data.name || '')
-    setCity(profileQuery.data.city || '')
-    setGender((profileQuery.data.gender as 'M' | 'F' | 'X' | null) || '')
-    setDuprLink(profileQuery.data.duprLink || '')
-  }, [profileQuery.data, editing])
+const getInitials = (label: string) =>
+  label
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'P'
 
-  if (!isAuthenticated) {
-    return (
-      <PageLayout>
-        <SurfaceCard tone="hero">
-          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 18 }}>You are browsing as a guest</Text>
-          <Text style={{ marginTop: 8, color: palette.textMuted, lineHeight: 20 }}>
-            The mobile app keeps tournaments and clubs public, but profile editing and chats require authentication.
-          </Text>
-        </SurfaceCard>
-        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
-      </PageLayout>
-    )
+const parseNumberish = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  if (value && typeof value === 'object' && 'toString' in value) {
+    const parsed = Number(String(value))
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const formatRating = (value: unknown) => {
+  const parsed = parseNumberish(value)
+  return parsed === null ? '—' : parsed.toFixed(2)
+}
+
+const statusMeta = (status?: string | null) => {
+  if (status === 'waitlisted') {
+    return { label: 'Waitlist', backgroundColor: 'rgba(255, 214, 10, 0.14)', textColor: '#8a6b00' }
   }
 
+  if (status === 'active') {
+    return { label: 'Registered', backgroundColor: 'rgba(40, 205, 65, 0.12)', textColor: palette.primary }
+  }
+
+  return { label: 'Open', backgroundColor: palette.surfaceMuted, textColor: palette.text }
+}
+
+const ProfileAvatar = ({
+  label,
+  image,
+  onCameraPress,
+}: {
+  label: string
+  image?: string | null
+  onCameraPress?: () => void
+}) => {
+  const size = 96
+  const borderRadius = size / 2
+
   return (
-    <PageLayout>
-      {profileQuery.isLoading ? <LoadingBlock label="Loading profile…" /> : null}
-
-      {profileQuery.data ? (
-        <>
-          <SurfaceCard tone="hero">
-            <View style={styles.profileHeader}>
-              <AvatarBadge label={profileQuery.data.name || profileQuery.data.email} size={86} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.heroName}>{profileQuery.data.name || profileQuery.data.email}</Text>
-                <Text style={styles.heroEmail}>{profileQuery.data.email}</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
-                  <Pill label={`${profileQuery.data.clubsJoinedCount} clubs`} tone="success" />
-                  <Pill label={`${profileQuery.data.tournamentsPlayedCount} played`} />
-                  {profileQuery.data.duprLinked ? <Pill label="DUPR linked" tone="primary" /> : null}
-                </View>
-              </View>
-            </View>
-          </SurfaceCard>
-
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
-            <MetricTile label="Played" value={`${profileQuery.data.tournamentsPlayedCount}`} subtitle="Tracked from web" />
-            <MetricTile label="Created" value={`${profileQuery.data.tournamentsCreatedCount}`} subtitle="Organizer activity" />
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
-            <MetricTile label="Singles" value={`${profileQuery.data.duprRatingSingles ?? '—'}`} subtitle="DUPR" />
-            <MetricTile label="Doubles" value={`${profileQuery.data.duprRatingDoubles ?? '—'}`} subtitle="DUPR" />
-          </View>
-
-          <SurfaceCard>
-            <SectionTitle
-              title="Player details"
-              subtitle="The same user record and DUPR-linked data that powers the web experience."
-              action={
-                editing ? undefined : <ActionButton label="Edit" variant="secondary" onPress={() => setEditing(true)} />
-              }
-            />
-            <View style={{ gap: 12, marginTop: spacing.md }}>
-              <Text style={styles.label}>Name</Text>
-              <InputField value={name} onChangeText={setName} placeholder="Your name" editable={editing} />
-
-              <Text style={styles.label}>City</Text>
-              <InputField value={city} onChangeText={setCity} placeholder="Your city" editable={editing} />
-
-              <Text style={styles.label}>Gender</Text>
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                {(['', 'M', 'F', 'X'] as const).map((value) => (
-                  <ActionButton
-                    key={value || 'unset'}
-                    label={value || 'Unset'}
-                    variant={gender === value ? 'primary' : 'secondary'}
-                    disabled={!editing}
-                    onPress={() => setGender(value)}
-                  />
-                ))}
-              </View>
-
-              <Text style={styles.label}>DUPR link</Text>
-              <InputField value={duprLink} onChangeText={setDuprLink} placeholder="https://..." editable={editing} />
-            </View>
-
-            {editing ? (
-              <View style={{ marginTop: spacing.md, gap: 10 }}>
-                <ActionButton
-                  label="Save changes"
-                  loading={updateProfile.isPending}
-                  onPress={() =>
-                    updateProfile.mutate({
-                      name: name || undefined,
-                      city: city || undefined,
-                      gender: gender || undefined,
-                      duprLink: duprLink || undefined,
-                    })
-                  }
-                />
-                <ActionButton
-                  label="Cancel"
-                  variant="secondary"
-                  onPress={() => {
-                    setEditing(false)
-                    if (profileQuery.data) {
-                      setName(profileQuery.data.name || '')
-                      setCity(profileQuery.data.city || '')
-                      setGender((profileQuery.data.gender as 'M' | 'F' | 'X' | null) || '')
-                      setDuprLink(profileQuery.data.duprLink || '')
-                    }
-                  }}
-                />
-              </View>
-            ) : null}
-          </SurfaceCard>
-
-          <SurfaceCard tone="soft">
-            <Text style={styles.metricTitle}>Profile notes</Text>
-            <Text style={styles.metric}>
-              Clubs joined: {profileQuery.data.clubsJoinedCount} · DUPR linked: {profileQuery.data.duprLinked ? 'Yes' : 'No'}
-            </Text>
-            <Text style={styles.metric}>
-              Mobile keeps profile, clubs, and tournament history in sync with the main web experience.
-            </Text>
-          </SurfaceCard>
-
-          <ActionButton
-            label="Sign out"
-            variant="danger"
-            onPress={async () => {
-              await signOut()
-              router.replace('/(tabs)')
-            }}
-          />
-        </>
+    <View style={styles.avatarWrap}>
+      {image ? (
+        <Image source={{ uri: image }} style={[styles.avatarImage, { width: size, height: size, borderRadius }]} />
       ) : (
-        <EmptyState title="Profile unavailable" body="We could not load your player profile right now." />
+        <OptionalLinearGradient
+          colors={[palette.purple, palette.primary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.avatarFallback, { width: size, height: size, borderRadius }]}
+        >
+          <Text style={styles.avatarInitials}>{getInitials(label)}</Text>
+        </OptionalLinearGradient>
       )}
-    </PageLayout>
+
+      <Pressable onPress={onCameraPress} style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}>
+        <Feather name="camera" size={14} color={palette.white} />
+      </Pressable>
+    </View>
   )
 }
 
-const styles = {
-  profileHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+const ProfileActionButton = ({
+  label,
+  icon,
+  onPress,
+  variant = 'outline',
+}: {
+  label: string
+  icon?: keyof typeof Feather.glyphMap
+  onPress?: () => void
+  variant?: 'outline' | 'ghost'
+}) => (
+  <Pressable
+    onPress={onPress}
+    style={({ pressed }) => [
+      styles.profileActionButton,
+      variant === 'outline' ? styles.profileActionButtonOutline : styles.profileActionButtonGhost,
+      pressed && styles.profileActionButtonPressed,
+    ]}
+  >
+    {icon ? <Feather name={icon} size={16} color={palette.text} /> : null}
+    <Text style={styles.profileActionLabel}>{label}</Text>
+  </Pressable>
+)
+
+const StatCard = ({
+  icon,
+  value,
+  label,
+  accent,
+}: {
+  icon: keyof typeof Feather.glyphMap
+  value: string
+  label: string
+  accent: string
+}) => (
+  <SurfaceCard style={styles.statCard}>
+    <Feather name={icon} size={20} color={accent} />
+    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
+  </SurfaceCard>
+)
+
+export default function ProfileTab() {
+  const { token } = useAuth()
+  const isAuthenticated = Boolean(token)
+  const api = trpc as any
+  const [activeSection, setActiveSection] = useState<ProfileSection>('activity')
+
+  const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
+  const tournamentsQuery = api.public.listBoards.useQuery(undefined, { enabled: isAuthenticated })
+
+  const tournamentIds = useMemo(
+    () => ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id),
+    [tournamentsQuery.data]
+  )
+
+  const registrationStatusesQuery = api.registration.getMyStatuses.useQuery(
+    { tournamentIds },
+    { enabled: isAuthenticated && tournamentIds.length > 0 }
+  )
+
+  const profile = profileQuery.data as any
+  const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string }>
+
+  const recentTournaments = useMemo(() => {
+    const items = (tournamentsQuery.data ?? []) as any[]
+    return items
+      .filter((item) => {
+        const status = statuses[item.id]?.status
+        return status === 'active' || status === 'waitlisted'
+      })
+      .sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime())
+      .slice(0, 3)
+      .map((item) => ({ ...item, myStatus: statuses[item.id]?.status }))
+  }, [statuses, tournamentsQuery.data])
+
+  const achievements = useMemo(() => {
+    if (!profile) return []
+
+    const items = []
+
+    if (Number(profile.tournamentsPlayedCount ?? 0) > 0) {
+      items.push({
+        key: 'first-tournament',
+        icon: 'award' as const,
+        title: Number(profile.tournamentsPlayedCount) > 1 ? 'Tournament Regular' : 'First Tournament',
+        subtitle: `${profile.tournamentsPlayedCount} event${Number(profile.tournamentsPlayedCount) === 1 ? '' : 's'} played`,
+      })
+    }
+
+    if (Number(profile.clubsJoinedCount ?? 0) > 0) {
+      items.push({
+        key: 'club-member',
+        icon: 'users' as const,
+        title: Number(profile.clubsJoinedCount) > 1 ? 'Community Player' : 'Club Member',
+        subtitle: `${profile.clubsJoinedCount} club${Number(profile.clubsJoinedCount) === 1 ? '' : 's'} joined`,
+      })
+    }
+
+    if (Number(profile.tournamentsCreatedCount ?? 0) > 0) {
+      items.push({
+        key: 'organizer',
+        icon: 'target' as const,
+        title: 'Tournament Organizer',
+        subtitle: `${profile.tournamentsCreatedCount} event${Number(profile.tournamentsCreatedCount) === 1 ? '' : 's'} created`,
+      })
+    }
+
+    if (profile.duprLinked || profile.duprLink) {
+      items.push({
+        key: 'dupr',
+        icon: 'trending-up' as const,
+        title: profile.duprLinked ? 'DUPR Connected' : 'DUPR Ready',
+        subtitle: profile.duprLinked ? 'Ratings synced to your profile' : 'Profile link saved for sync',
+      })
+    }
+
+    return items.slice(0, 4)
+  }, [profile])
+
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <SurfaceCard tone="hero" style={styles.guestCard}>
+              <View style={styles.guestIconWrap}>
+                <Feather name="user" size={22} color={palette.primary} />
+              </View>
+              <Text style={styles.guestTitle}>You are browsing as a guest</Text>
+              <Text style={styles.guestBody}>
+                Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity.
+              </Text>
+              <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+            </SurfaceCard>
+          </ScrollView>
+        </OptionalLinearGradient>
+      </SafeAreaView>
+    )
+  }
+
+  const isActivityLoading =
+    tournamentsQuery.isLoading || (isAuthenticated && tournamentIds.length > 0 && registrationStatusesQuery.isLoading)
+
+  if (profileQuery.isLoading) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
+          <View style={styles.loadingWrap}>
+            <LoadingBlock label="Loading profile…" />
+          </View>
+        </OptionalLinearGradient>
+      </SafeAreaView>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
+          <View style={styles.loadingWrap}>
+            <EmptyState title="Profile unavailable" body="We could not load your player profile right now." />
+          </View>
+        </OptionalLinearGradient>
+      </SafeAreaView>
+    )
+  }
+
+  const singlesRating = formatRating(profile.duprRatingSingles)
+  const doublesRating = formatRating(profile.duprRatingDoubles)
+  const bestRating = [parseNumberish(profile.duprRatingSingles), parseNumberish(profile.duprRatingDoubles)]
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => right - left)[0]
+  const bestRatingLabel = bestRating === undefined ? '—' : bestRating.toFixed(2)
+  const handleLabel = `@${String(profile.email || '').split('@')[0] || 'piqle'}`
+  const memberSinceLabel = profile.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
+  const locationLabel = formatLocation([profile.city])
+  const duprLink = profile.duprLink as string | null | undefined
+  const openDupr = async () => {
+    if (!duprLink) {
+      router.push('/profile/edit')
+      return
+    }
+
+    try {
+      await Linking.openURL(duprLink)
+    } catch {}
+  }
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.headerCard}>
+            <View style={styles.headerTopRow}>
+              <ProfileAvatar
+                label={profile.name || profile.email}
+                image={profile.image}
+                onCameraPress={() => router.push('/profile/edit')}
+              />
+
+              <View style={styles.headerActions}>
+                <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} />
+                <ProfileActionButton
+                  label="Settings"
+                  icon="settings"
+                  variant="ghost"
+                  onPress={() => router.push('/profile/settings')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.userInfoBlock}>
+              <Text style={styles.userName}>{profile.name || profile.email}</Text>
+              <Text style={styles.userHandle}>{handleLabel}</Text>
+
+              <View style={styles.userMetaRow}>
+                <Text style={styles.userMetaText}>{`📍 ${locationLabel}`}</Text>
+                <Text style={styles.userMetaSeparator}>•</Text>
+                <Text style={styles.userMetaText}>{`Member since ${memberSinceLabel}`}</Text>
+              </View>
+            </View>
+
+            <SurfaceCard style={styles.duprCard}>
+              <View style={styles.duprTopRow}>
+                <View style={styles.duprBadgeIcon}>
+                  <Feather name="trending-up" size={20} color={palette.white} />
+                </View>
+
+                <View style={styles.duprRatingBlock}>
+                  <Text style={styles.duprLabel}>DUPR Rating</Text>
+                  <Text style={styles.duprValue}>{bestRatingLabel}</Text>
+                </View>
+
+                <View style={styles.duprStatusBadge}>
+                  <Text style={styles.duprStatusText}>
+                    {profile.duprLinked ? 'Synced from web' : duprLink ? 'Profile link saved' : 'Connect to sync'}
+                  </Text>
+                </View>
+              </View>
+
+              <ProfileActionButton
+                label={duprLink ? 'View on DUPR' : 'Add DUPR link'}
+                icon="external-link"
+                onPress={() => void openDupr()}
+              />
+            </SurfaceCard>
+
+            <View style={styles.statsGrid}>
+              <StatCard icon="award" value={`${profile.tournamentsPlayedCount}`} label="Events" accent={palette.brandAccent} />
+              <StatCard icon="trending-up" value={bestRatingLabel} label="DUPR" accent={palette.primary} />
+              <StatCard icon="target" value={`${profile.tournamentsCreatedCount}`} label="Created" accent={palette.purple} />
+              <StatCard icon="users" value={`${profile.clubsJoinedCount}`} label="Clubs" accent={palette.accent} />
+            </View>
+          </View>
+
+          <View style={styles.tabSwitch}>
+            {(['activity', 'achievements'] as const).map((section) => {
+              const active = activeSection === section
+              return (
+                <Pressable
+                  key={section}
+                  onPress={() => setActiveSection(section)}
+                  style={[styles.tabButton, active && styles.tabButtonActive]}
+                >
+                  <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
+                    {section === 'activity' ? 'Activity' : 'Achievements'}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+
+          {activeSection === 'activity' ? (
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitle}>Recent Tournaments</Text>
+
+              {isActivityLoading ? <LoadingBlock label="Loading activity…" /> : null}
+
+              {!isActivityLoading && recentTournaments.length === 0 ? (
+                <SurfaceCard style={styles.emptyCard}>
+                  <Text style={styles.emptyCardTitle}>No tournaments yet</Text>
+                  <Text style={styles.emptyCardBody}>
+                    Once you register for an event, it will show up here with status and date.
+                  </Text>
+                </SurfaceCard>
+              ) : null}
+
+              {recentTournaments.map((tournament) => {
+                const status = statusMeta(tournament.myStatus)
+                const divisionLabel =
+                  tournament.divisions?.[0]?.name ||
+                  `${Math.max(Number(tournament.divisions?.length ?? 0), 1)} division${Number(tournament.divisions?.length ?? 0) === 1 ? '' : 's'}`
+
+                return (
+                  <Pressable
+                    key={tournament.id}
+                    onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })}
+                    style={({ pressed }) => [pressed && styles.cardPressed]}
+                  >
+                    <SurfaceCard style={styles.activityCard}>
+                      <View style={styles.activityTopRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.activityTitle}>{tournament.title}</Text>
+                          <Text style={styles.activitySubtitle}>{divisionLabel}</Text>
+                        </View>
+
+                        <View style={[styles.activityStatusBadge, { backgroundColor: status.backgroundColor }]}>
+                          <Text style={[styles.activityStatusText, { color: status.textColor }]}>{status.label}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.activityMetaRow}>
+                        <Feather name="calendar" size={14} color={palette.textMuted} />
+                        <Text style={styles.activityMetaText}>{formatDate(tournament.startDate)}</Text>
+                      </View>
+                    </SurfaceCard>
+                  </Pressable>
+                )
+              })}
+            </View>
+          ) : (
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitle}>Unlocked Achievements</Text>
+
+              {achievements.length === 0 ? (
+                <SurfaceCard style={styles.emptyCard}>
+                  <Text style={styles.emptyCardTitle}>No achievements yet</Text>
+                  <Text style={styles.emptyCardBody}>
+                    Play events, join clubs, or connect DUPR to start building your profile milestones.
+                  </Text>
+                </SurfaceCard>
+              ) : null}
+
+              {achievements.map((achievement) => (
+                <SurfaceCard key={achievement.key} style={styles.achievementCard}>
+                  <View style={styles.achievementIconWrap}>
+                    <Feather name={achievement.icon} size={20} color={palette.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.achievementTitle}>{achievement.title}</Text>
+                    <Text style={styles.achievementSubtitle}>{achievement.subtitle}</Text>
+                  </View>
+                </SurfaceCard>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.footerSpace} />
+        </ScrollView>
+      </OptionalLinearGradient>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
+  fill: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: 120,
+    gap: spacing.lg,
+  },
+  loadingWrap: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+  },
+  guestCard: {
     gap: spacing.md,
   },
-  heroName: {
+  guestIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.brandPrimaryTint,
+  },
+  guestTitle: {
     color: palette.text,
     fontSize: 24,
-    fontWeight: '700' as const,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
-  heroEmail: {
-    marginTop: 4,
+  guestBody: {
     color: palette.textMuted,
-    fontSize: 14,
+    lineHeight: 21,
   },
-  label: {
-    color: palette.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.6,
+  headerCard: {
+    gap: spacing.md,
   },
-  metricTitle: {
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  avatarWrap: {
+    position: 'relative',
+  },
+  avatarImage: {
+    backgroundColor: palette.surfaceMuted,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    color: palette.white,
+    fontSize: 26,
+    fontWeight: '700',
+  },
+  cameraButton: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.primary,
+    borderWidth: 3,
+    borderColor: palette.surface,
+  },
+  cameraButtonPressed: {
+    opacity: 0.88,
+  },
+  headerActions: {
+    flex: 1,
+    gap: 10,
+    paddingTop: 6,
+  },
+  profileActionButton: {
+    minHeight: 44,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  profileActionButtonOutline: {
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  profileActionButtonGhost: {
+    backgroundColor: 'transparent',
+  },
+  profileActionButtonPressed: {
+    opacity: 0.85,
+  },
+  profileActionLabel: {
     color: palette.text,
-    fontWeight: '700' as const,
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '600',
   },
-  metric: {
-    marginTop: 10,
+  userInfoBlock: {
+    gap: 4,
+  },
+  userName: {
+    color: palette.text,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.9,
+  },
+  userHandle: {
     color: palette.textMuted,
     fontSize: 15,
-    lineHeight: 22,
   },
-}
+  userMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  userMetaText: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  userMetaSeparator: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  duprCard: {
+    gap: spacing.md,
+    backgroundColor: 'rgba(40, 205, 65, 0.05)',
+    borderColor: palette.brandPrimaryBorder,
+  },
+  duprTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  duprBadgeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.primary,
+  },
+  duprRatingBlock: {
+    flex: 1,
+  },
+  duprLabel: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  duprValue: {
+    color: palette.text,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.7,
+    marginTop: 2,
+  },
+  duprStatusBadge: {
+    maxWidth: 120,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.brandPrimaryBorder,
+  },
+  duprStatusText: {
+    color: palette.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statCard: {
+    width: '48.5%',
+    minHeight: 106,
+    justifyContent: 'center',
+  },
+  statValue: {
+    marginTop: 8,
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  statLabel: {
+    marginTop: 4,
+    color: palette.textMuted,
+    fontSize: 12,
+  },
+  tabSwitch: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 4,
+    borderRadius: radius.pill,
+    backgroundColor: palette.surfaceElevated,
+  },
+  tabButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  tabButtonText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabButtonTextActive: {
+    color: palette.text,
+  },
+  sectionBlock: {
+    gap: spacing.md,
+  },
+  sectionTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    gap: 8,
+  },
+  emptyCardTitle: {
+    color: palette.text,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  emptyCardBody: {
+    color: palette.textMuted,
+    lineHeight: 21,
+  },
+  activityCard: {
+    gap: 10,
+  },
+  activityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  activityTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  activitySubtitle: {
+    marginTop: 4,
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  activityStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+  },
+  activityStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activityMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activityMetaText: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  achievementCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  achievementIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.brandPrimaryTint,
+  },
+  achievementTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  achievementSubtitle: {
+    marginTop: 4,
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  cardPressed: {
+    opacity: 0.92,
+  },
+  footerSpace: {
+    height: 16,
+  },
+})
 
 
 

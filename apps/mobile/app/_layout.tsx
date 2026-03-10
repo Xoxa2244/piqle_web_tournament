@@ -25,6 +25,8 @@ const RootNavigator = () => {
         <Stack.Screen name="index" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="profile/edit" />
+        <Stack.Screen name="profile/settings" />
         <Stack.Screen name="tournaments/[id]/index" />
         <Stack.Screen name="tournaments/[id]/register" />
         <Stack.Screen name="clubs/[id]/index" />

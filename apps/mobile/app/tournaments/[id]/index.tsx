@@ -95,6 +95,21 @@ type StatusMeta = {
   backgroundColor: string
 }
 
+const isRegistrationOpen = (tournament: {
+  registrationStartDate?: string | Date | null
+  registrationEndDate?: string | Date | null
+  startDate: string | Date
+}) => {
+  const start = tournament.registrationStartDate
+    ? new Date(tournament.registrationStartDate)
+    : new Date(tournament.startDate)
+  const end = tournament.registrationEndDate
+    ? new Date(tournament.registrationEndDate)
+    : new Date(tournament.startDate)
+  const now = new Date()
+  return now >= start && now <= end
+}
+
 const getStatusMeta = (tournament: any, myStatus?: string | null): StatusMeta => {
   if (myStatus === 'active') {
     return { label: 'Registered', backgroundColor: 'rgba(40, 205, 65, 0.92)' }
@@ -102,7 +117,7 @@ const getStatusMeta = (tournament: any, myStatus?: string | null): StatusMeta =>
   if (myStatus === 'waitlisted') {
     return { label: 'Waitlist', backgroundColor: 'rgba(255, 214, 10, 0.88)' }
   }
-  if (new Date(tournament.endDate).getTime() < Date.now()) {
+  if (new Date(tournament.endDate).getTime() < Date.now() || !isRegistrationOpen(tournament)) {
     return { label: 'Closed', backgroundColor: 'rgba(10, 10, 10, 0.58)' }
   }
 
@@ -209,6 +224,7 @@ export default function TournamentDetailScreen() {
     (sum, division) => sum + Number(division?._count?.teams ?? 0),
     0
   )
+  const registrationOpen = isRegistrationOpen(tournament)
   const statusMeta = getStatusMeta(tournament, myStatus)
   const organizerLabel = tournament.user?.name || tournament.user?.email || 'Piqle'
   const ctaLabel = pendingInvitation
@@ -230,6 +246,11 @@ export default function TournamentDetailScreen() {
   const organizerMetaLabel = `${tournament.divisions.length} divisions • ${playerCount || totalTeams} ${
     playerCount ? 'players' : 'teams'
   }`
+  const showPrimaryCta =
+    Boolean(pendingInvitation) ||
+    myStatus === 'active' ||
+    myStatus === 'waitlisted' ||
+    registrationOpen
 
   const handlePrimaryAction = () => {
     if (pendingInvitation) {
@@ -270,7 +291,10 @@ export default function TournamentDetailScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <TopBar />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, !showPrimaryCta && styles.scrollContentNoCta]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
           {tournament.image ? (
             <Image source={{ uri: tournament.image }} style={styles.heroImage} />
@@ -520,23 +544,25 @@ export default function TournamentDetailScreen() {
                           </View>
                         </View>
                       </View>
-                      <Pressable
-                        onPress={() =>
-                          isAuthenticated
-                            ? router.push({ pathname: '/tournaments/[id]/register', params: { id: tournament.id } })
-                            : router.push('/sign-in')
-                        }
-                        style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
-                      >
-                        <OptionalLinearGradient
-                          colors={[palette.primary, palette.purple]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                          style={styles.smallCtaGradient}
+                      {registrationOpen ? (
+                        <Pressable
+                          onPress={() =>
+                            isAuthenticated
+                              ? router.push({ pathname: '/tournaments/[id]/register', params: { id: tournament.id } })
+                              : router.push('/sign-in')
+                          }
+                          style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
                         >
-                          <Text style={styles.smallCtaText}>{`Register for ${division.name}`}</Text>
-                        </OptionalLinearGradient>
-                      </Pressable>
+                          <OptionalLinearGradient
+                            colors={[palette.primary, palette.purple]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.smallCtaGradient}
+                          >
+                            <Text style={styles.smallCtaText}>{`Register for ${division.name}`}</Text>
+                          </OptionalLinearGradient>
+                        </Pressable>
+                      ) : null}
                     </SurfaceCard>
                   )
                 })
@@ -552,30 +578,35 @@ export default function TournamentDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.ctaShell}>
-        <OptionalLinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', palette.background]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.ctaFade}
-        />
-        <SafeAreaView edges={['bottom']} style={styles.ctaSafeArea}>
-          <Pressable
-            onPress={handlePrimaryAction}
-            disabled={acceptInvitation.isPending}
-            style={({ pressed }) => [styles.ctaButton, pressed && !acceptInvitation.isPending && styles.ctaButtonPressed]}
-          >
-            <OptionalLinearGradient
-              colors={[palette.primary, palette.purple]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.ctaGradient, acceptInvitation.isPending && styles.ctaGradientDisabled]}
+      {showPrimaryCta ? (
+        <View style={styles.ctaShell}>
+          <OptionalLinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', palette.background]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.ctaFade}
+          />
+          <SafeAreaView edges={['bottom']} style={styles.ctaSafeArea}>
+            <Pressable
+              onPress={handlePrimaryAction}
+              disabled={acceptInvitation.isPending}
+              style={({ pressed }) => [
+                styles.ctaButton,
+                pressed && !acceptInvitation.isPending && styles.ctaButtonPressed,
+              ]}
             >
-              <Text style={styles.ctaText}>{ctaLabel}</Text>
-            </OptionalLinearGradient>
-          </Pressable>
-        </SafeAreaView>
-      </View>
+              <OptionalLinearGradient
+                colors={[palette.primary, palette.purple]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.ctaGradient, acceptInvitation.isPending && styles.ctaGradientDisabled]}
+              >
+                <Text style={styles.ctaText}>{ctaLabel}</Text>
+              </OptionalLinearGradient>
+            </Pressable>
+          </SafeAreaView>
+        </View>
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -592,6 +623,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 136,
+  },
+  scrollContentNoCta: {
+    paddingBottom: spacing.xl,
   },
   hero: {
     position: 'relative',
