@@ -4,7 +4,6 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Zap, Calendar, Send, CheckCircle, Star, Clock, Search,
@@ -14,7 +13,7 @@ import ConfirmModal from '@/components/ConfirmModal'
 import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useDashboard, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
+import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
 
 export default function SlotFillerPage() {
   const params = useParams()
@@ -29,11 +28,11 @@ export default function SlotFillerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
-  // Get dashboard for session list
-  const { data: dashboard, isLoading: loadingDashboard } = useDashboard(clubId)
+  // Get dashboard for session list (V2 has CSV fallback)
+  const { data: dashboard, isLoading: loadingDashboard } = useDashboardV2(clubId)
 
-  // Get recommendations for selected session
-  const { data: recommendations, isLoading: loadingRecs } = useSlotFillerRecommendations(selectedSessionId, 15)
+  // Get recommendations for selected session (pass clubId for CSV sessions)
+  const { data: recommendations, isLoading: loadingRecs } = useSlotFillerRecommendations(selectedSessionId, 15, clubId)
 
   // Send invites mutation
   const sendInvitesMutationRaw = useSendInvites()
@@ -50,9 +49,12 @@ export default function SlotFillerPage() {
     },
   }
 
-  const underfilledSessions = dashboard?.underfilledSessions || []
-  const allSessions = dashboard?.upcomingSessions || []
-  const sessionsToShow = underfilledSessions.length > 0 ? underfilledSessions : allSessions
+  // V2: problematicSessions = underfilled, topSessions = well-performing
+  const problematic = dashboard?.sessions?.problematicSessions || []
+  const topSessions = dashboard?.sessions?.topSessions || []
+  const allSessions = [...problematic, ...topSessions]
+    .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i) // dedupe
+  const sessionsToShow = problematic.length > 0 ? problematic : allSessions
 
   // Filter recommendations by search
   const filteredRecs = useMemo(() => {
@@ -117,15 +119,16 @@ export default function SlotFillerPage() {
           />
         ) : (
           <div className="space-y-2">
-            {underfilledSessions.length > 0 && (
+            {problematic.length > 0 && (
               <div className="text-xs font-medium text-orange-600 uppercase tracking-wide mb-1">
                 Needs Attention — Below 50% capacity
               </div>
             )}
             {sessionsToShow.map((session: any) => {
-              const occ = session.maxPlayers > 0
+              const occ = session.occupancyPercent ?? (session.maxPlayers > 0
                 ? Math.round((session.confirmedCount / session.maxPlayers) * 100)
-                : 0
+                : 0)
+              const spotsRemaining = session.maxPlayers - session.confirmedCount
 
               return (
                 <button
@@ -159,7 +162,7 @@ export default function SlotFillerPage() {
                         {session.confirmedCount}/{session.maxPlayers}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {session.spotsRemaining} to fill
+                        {spotsRemaining} to fill
                       </div>
                     </div>
                   </div>
@@ -188,7 +191,7 @@ export default function SlotFillerPage() {
               })}
               {' '}· {selectedSession.startTime}–{selectedSession.endTime}
               {' '}· {selectedSession.format.replace(/_/g, ' ')}
-              {' '}· {selectedSession.skillLevel.replace(/_/g, ' ')}
+              {selectedSession.skillLevel && ` · ${selectedSession.skillLevel.replace(/_/g, ' ')}`}
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">

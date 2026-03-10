@@ -1,9 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   DollarSign, TrendingUp, TrendingDown, BarChart3,
@@ -13,70 +11,31 @@ import { MetricCard } from '../_components/metric-card'
 import { HorizontalBarChart, VerticalBarChart } from '../_components/charts'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useDashboard, useListSessions } from '../_hooks/use-intelligence'
+import { useDashboardV2 } from '../_hooks/use-intelligence'
+
+const timeSlotLabels: Record<string, string> = {
+  morning: 'Morning (6–12)',
+  afternoon: 'Afternoon (12–17)',
+  evening: 'Evening (17–21)',
+}
+
+const formatLabels: Record<string, string> = {
+  OPEN_PLAY: 'Open Play',
+  CLINIC: 'Clinic',
+  DRILL: 'Drill',
+  LEAGUE_PLAY: 'League',
+  SOCIAL: 'Social',
+}
 
 export default function RevenueIntelligencePage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data: dashboard, isLoading: loadingDash } = useDashboard(clubId)
-
-  const { data: sessions, isLoading: loadingSessions } = useListSessions(clubId)
-
-  const isLoading = loadingDash || loadingSessions
-
-  // ── Compute analytics from session data ──
-  const analytics = useMemo(() => {
-    if (!sessions) return null
-
-    const allSessions = sessions as any[]
-
-    // Time-of-day
-    const timeSlots: Record<string, { label: string; sessions: number; booked: number; capacity: number }> = {
-      morning: { label: 'Morning (6–12)', sessions: 0, booked: 0, capacity: 0 },
-      afternoon: { label: 'Afternoon (12–17)', sessions: 0, booked: 0, capacity: 0 },
-      evening: { label: 'Evening (17–21)', sessions: 0, booked: 0, capacity: 0 },
-    }
-
-    // Day-of-week
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const days: Record<string, { sessions: number; booked: number; capacity: number }> = {}
-    dayNames.forEach((d) => (days[d] = { sessions: 0, booked: 0, capacity: 0 }))
-
-    // Format
-    const formats: Record<string, { sessions: number; booked: number; capacity: number }> = {}
-
-    allSessions.forEach((s) => {
-      const hour = parseInt(s.startTime?.split(':')[0] || '12', 10)
-      const slotKey = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
-      const booked = s._count?.bookings || 0
-      const cap = s.maxPlayers || 8
-
-      // Time slot
-      timeSlots[slotKey].sessions++
-      timeSlots[slotKey].booked += booked
-      timeSlots[slotKey].capacity += cap
-
-      // Day
-      const day = dayNames[new Date(s.date).getDay()]
-      days[day].sessions++
-      days[day].booked += booked
-      days[day].capacity += cap
-
-      // Format
-      const fmt = (s.format || 'UNKNOWN').replace(/_/g, ' ')
-      if (!formats[fmt]) formats[fmt] = { sessions: 0, booked: 0, capacity: 0 }
-      formats[fmt].sessions++
-      formats[fmt].booked += booked
-      formats[fmt].capacity += cap
-    })
-
-    return { timeSlots, days, dayNames, formats, totalSessions: allSessions.length }
-  }, [sessions])
+  const { data: dashboard, isLoading } = useDashboardV2(clubId)
 
   if (isLoading) return <DashboardSkeleton />
 
-  if (!dashboard || !analytics) {
+  if (!dashboard) {
     return (
       <EmptyState
         icon={BarChart3}
@@ -86,8 +45,11 @@ export default function RevenueIntelligencePage() {
     )
   }
 
-  const { metrics } = dashboard
-  const recoveryPotential = Math.round(metrics.estimatedLostRevenue * 0.6)
+  const { metrics, occupancy } = dashboard
+  const lostRevenueRaw = typeof metrics.lostRevenue.trend.value === 'number'
+    ? metrics.lostRevenue.trend.value
+    : 0
+  const recoveryPotential = Math.round(lostRevenueRaw * 0.6)
 
   return (
     <div className="space-y-6">
@@ -95,23 +57,38 @@ export default function RevenueIntelligencePage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           icon={TrendingDown}
-          label="Lost Revenue"
-          value={`$${metrics.estimatedLostRevenue.toLocaleString()}`}
-          subtitle={`${metrics.emptySlots} empty slots`}
+          label={metrics.lostRevenue.label}
+          value={metrics.lostRevenue.value}
+          subtitle={metrics.lostRevenue.subtitle}
+          trendValue={metrics.lostRevenue.trend.changePercent}
+          trendDirection={metrics.lostRevenue.trend.direction}
           variant="danger"
+          invertTrend
+          tooltip={metrics.lostRevenue.description}
         />
         <MetricCard
           icon={BarChart3}
-          label="Avg Occupancy"
-          value={`${metrics.avgOccupancy}%`}
-          subtitle={`${analytics.totalSessions} total sessions`}
+          label={metrics.occupancy.label}
+          value={metrics.occupancy.value}
+          subtitle={metrics.occupancy.subtitle}
+          trendValue={metrics.occupancy.trend.changePercent}
+          trendDirection={metrics.occupancy.trend.direction}
+          sparkline={metrics.occupancy.trend.sparkline}
+          variant={
+            (metrics.occupancy.trend.value as number) >= 70 ? 'success' :
+            (metrics.occupancy.trend.value as number) >= 40 ? 'warning' : 'danger'
+          }
+          tooltip={metrics.occupancy.description}
         />
         <MetricCard
-          icon={AlertTriangle}
-          label="Underfilled"
-          value={metrics.underfilledCount}
-          subtitle="sessions below 50%"
-          variant={metrics.underfilledCount > 0 ? 'warning' : 'success'}
+          icon={DollarSign}
+          label={metrics.bookings.label}
+          value={metrics.bookings.value}
+          subtitle={metrics.bookings.subtitle}
+          trendValue={metrics.bookings.trend.changePercent}
+          trendDirection={metrics.bookings.trend.direction}
+          sparkline={metrics.bookings.trend.sparkline}
+          tooltip={metrics.bookings.description}
         />
         <MetricCard
           icon={TrendingUp}
@@ -154,19 +131,14 @@ export default function RevenueIntelligencePage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <HorizontalBarChart
-                items={Object.values(analytics.timeSlots).map((slot) => {
-                  const occ = slot.capacity > 0 ? Math.round((slot.booked / slot.capacity) * 100) : 0
-                  return {
-                    label: slot.label,
-                    value: occ,
-                    sublabel: `${slot.sessions} sessions`,
-                  }
-                })}
+                items={occupancy.byTimeSlot.map(slot => ({
+                  label: timeSlotLabels[slot.slot] || slot.slot,
+                  value: slot.avgOccupancy,
+                  sublabel: `${slot.sessionCount} sessions`,
+                }))}
                 maxValue={100}
               />
-
-              {/* Pricing recommendations */}
-              <PricingRecommendations timeSlots={analytics.timeSlots} />
+              <PricingRecommendations timeSlots={occupancy.byTimeSlot} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -189,21 +161,15 @@ export default function RevenueIntelligencePage() {
             </CardHeader>
             <CardContent>
               <VerticalBarChart
-                items={analytics.dayNames.map((day) => {
-                  const d = analytics.days[day]
-                  const occ = d.capacity > 0 ? Math.round((d.booked / d.capacity) * 100) : 0
-                  return {
-                    label: day,
-                    value: occ,
-                    sublabel: `${d.sessions} sess`,
-                  }
-                })}
+                items={occupancy.byDay.map(d => ({
+                  label: d.day,
+                  value: d.avgOccupancy,
+                  sublabel: `${d.sessionCount} sess`,
+                }))}
                 maxValue={100}
                 height={140}
               />
-
-              {/* Best / worst day insight */}
-              <DayInsight days={analytics.days} dayNames={analytics.dayNames} />
+              <DayInsight days={occupancy.byDay} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -226,24 +192,16 @@ export default function RevenueIntelligencePage() {
             </CardHeader>
             <CardContent>
               <HorizontalBarChart
-                items={Object.entries(analytics.formats)
-                  .sort(([, a], [, b]) => {
-                    const occA = a.capacity > 0 ? a.booked / a.capacity : 0
-                    const occB = b.capacity > 0 ? b.booked / b.capacity : 0
-                    return occB - occA
-                  })
-                  .map(([format, data]) => {
-                    const occ = data.capacity > 0 ? Math.round((data.booked / data.capacity) * 100) : 0
-                    return {
-                      label: format,
-                      value: occ,
-                      sublabel: `${data.sessions} sessions`,
-                    }
-                  })}
+                items={[...occupancy.byFormat]
+                  .sort((a, b) => b.avgOccupancy - a.avgOccupancy)
+                  .map(f => ({
+                    label: formatLabels[f.format] || f.format.replace(/_/g, ' '),
+                    value: f.avgOccupancy,
+                    sublabel: `${f.sessionCount} sessions`,
+                  }))}
                 maxValue={100}
               />
-
-              <FormatInsight formats={analytics.formats} />
+              <FormatInsight formats={occupancy.byFormat as Array<{ format: string; avgOccupancy: number; sessionCount: number }>} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -256,14 +214,14 @@ export default function RevenueIntelligencePage() {
 function PricingRecommendations({
   timeSlots,
 }: {
-  timeSlots: Record<string, { label: string; sessions: number; booked: number; capacity: number }>
+  timeSlots: Array<{ slot: string; avgOccupancy: number; sessionCount: number }>
 }) {
-  const recs = Object.entries(timeSlots)
-    .map(([key, slot]) => {
-      const occ = slot.capacity > 0 ? Math.round((slot.booked / slot.capacity) * 100) : 0
-      if (slot.sessions === 0) return null
-      if (occ < 40) return { key, label: slot.label, occ, type: 'discount' as const }
-      if (occ > 85) return { key, label: slot.label, occ, type: 'increase' as const }
+  const recs = timeSlots
+    .filter(slot => slot.sessionCount > 0)
+    .map(slot => {
+      const label = timeSlotLabels[slot.slot] || slot.slot
+      if (slot.avgOccupancy < 40) return { key: slot.slot, label, occ: slot.avgOccupancy, type: 'discount' as const }
+      if (slot.avgOccupancy > 85) return { key: slot.slot, label, occ: slot.avgOccupancy, type: 'increase' as const }
       return null
     })
     .filter(Boolean) as { key: string; label: string; occ: number; type: 'discount' | 'increase' }[]
@@ -298,31 +256,25 @@ function PricingRecommendations({
 // ── Day insight component ──
 function DayInsight({
   days,
-  dayNames,
 }: {
-  days: Record<string, { sessions: number; booked: number; capacity: number }>
-  dayNames: string[]
+  days: Array<{ day: string; avgOccupancy: number; sessionCount: number }>
 }) {
-  const withOcc = dayNames
-    .filter((d) => days[d].sessions > 0)
-    .map((d) => ({
-      name: d,
-      occ: days[d].capacity > 0 ? Math.round((days[d].booked / days[d].capacity) * 100) : 0,
-    }))
-    .sort((a, b) => b.occ - a.occ)
+  const withOcc = days
+    .filter(d => d.sessionCount > 0)
+    .sort((a, b) => b.avgOccupancy - a.avgOccupancy)
 
   if (withOcc.length < 2) return null
 
   const best = withOcc[0]
   const worst = withOcc[withOcc.length - 1]
 
-  if (best.occ === worst.occ) return null
+  if (best.avgOccupancy === worst.avgOccupancy) return null
 
   return (
     <div className="mt-4 p-3 rounded-lg bg-muted/30 text-sm text-muted-foreground">
-      <strong className="text-foreground">{best.name}</strong> is your strongest day ({best.occ}% occupancy) while{' '}
-      <strong className="text-foreground">{worst.name}</strong> needs attention ({worst.occ}%).
-      Consider adding popular formats or promotions on {worst.name}.
+      <strong className="text-foreground">{best.day}</strong> is your strongest day ({best.avgOccupancy}% occupancy) while{' '}
+      <strong className="text-foreground">{worst.day}</strong> needs attention ({worst.avgOccupancy}%).
+      Consider adding popular formats or promotions on {worst.day}.
     </div>
   )
 }
@@ -331,25 +283,21 @@ function DayInsight({
 function FormatInsight({
   formats,
 }: {
-  formats: Record<string, { sessions: number; booked: number; capacity: number }>
+  formats: Array<{ format: string; avgOccupancy: number; sessionCount: number }>
 }) {
-  const sorted = Object.entries(formats)
-    .filter(([, d]) => d.sessions > 0)
-    .map(([name, d]) => ({
-      name,
-      occ: d.capacity > 0 ? Math.round((d.booked / d.capacity) * 100) : 0,
-      sessions: d.sessions,
-    }))
-    .sort((a, b) => b.occ - a.occ)
+  const sorted = [...formats]
+    .filter(f => f.sessionCount > 0)
+    .sort((a, b) => b.avgOccupancy - a.avgOccupancy)
 
   if (sorted.length < 2) return null
 
   const best = sorted[0]
+  const label = formatLabels[best.format] || best.format.replace(/_/g, ' ')
 
   return (
     <div className="mt-4 p-3 rounded-lg bg-muted/30 text-sm text-muted-foreground">
-      <strong className="text-foreground">{best.name}</strong> is your most popular format at{' '}
-      {best.occ}% occupancy across {best.sessions} sessions. Consider scheduling more of these during off-peak hours.
+      <strong className="text-foreground">{label}</strong> is your most popular format at{' '}
+      {best.avgOccupancy}% occupancy across {best.sessionCount} sessions. Consider scheduling more of these during off-peak hours.
     </div>
   )
 }

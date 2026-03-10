@@ -99,12 +99,28 @@ export const intelligenceRouter = createTRPCRouter({
   // ── Slot Filler: Recommend members for underfilled sessions ──
   getSlotFillerRecommendations: protectedProcedure
     .input(z.object({
-      sessionId: z.string().uuid(),
+      sessionId: z.string().min(1),
       limit: z.number().int().min(1).max(20).default(5),
       enhance: z.boolean().default(false),
+      clubId: z.string().uuid().optional(), // Required for CSV session IDs
     }))
     .query(async ({ ctx, input }) => {
-      // Get session to find clubId
+      // CSV fallback path: session IDs like "csv-0", "csv-1"
+      if (input.sessionId.startsWith('csv-')) {
+        if (!input.clubId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'clubId required for CSV sessions' })
+        }
+        await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+        const { getSlotFillerRecommendationsCsv } = await import('@/lib/ai/intelligence-service')
+        const result = await getSlotFillerRecommendationsCsv(ctx.prisma, {
+          sessionId: input.sessionId,
+          clubId: input.clubId,
+          limit: input.limit,
+        })
+        return { ...result, aiEnhancements: [] }
+      }
+
+      // Standard PlaySession UUID path
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
         select: { clubId: true },

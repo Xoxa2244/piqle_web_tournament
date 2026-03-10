@@ -58,11 +58,15 @@ export function useDashboardV2(clubId: string, dateFrom?: string, dateTo?: strin
 }
 
 // ── Slot Filler Recommendations ──
-export function useSlotFillerRecommendations(sessionId: string | null, limit: number = 15) {
+export function useSlotFillerRecommendations(sessionId: string | null, limit: number = 15, clubId?: string) {
   const isDemo = useIsDemo()
 
   const query = trpc.intelligence.getSlotFillerRecommendations.useQuery(
-    { sessionId: sessionId!, limit },
+    {
+      sessionId: sessionId!,
+      limit,
+      ...(sessionId?.startsWith('csv-') && clubId ? { clubId } : {}),
+    },
     { enabled: !!sessionId && !isDemo }
   )
 

@@ -242,6 +242,186 @@ export async function getSlotFillerRecommendations(
 }
 
 /**
+ * intelligence.getSlotFillerRecommendationsCsv
+ * CSV fallback for slot filler — uses document_embeddings instead of PlaySession tables
+ */
+export async function getSlotFillerRecommendationsCsv(
+  prisma: any,
+  input: { sessionId: string; clubId: string; limit: number }
+) {
+  const { sessionId, clubId, limit } = input
+
+  // 1. Load CSV sessions from document_embeddings
+  let csvSessions: CsvSessionMeta[] = []
+  try {
+    const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
+      SELECT metadata FROM document_embeddings
+      WHERE club_id = ${clubId}::uuid
+        AND content_type = 'session'
+        AND source_table = 'csv_import'
+    `
+    csvSessions = rows
+      .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
+      .filter((m: CsvSessionMeta) => m && m.date && m.capacity > 0)
+  } catch (err) {
+    console.warn('[SlotFiller CSV] query failed for club', clubId, err)
+    throw new Error('Failed to load CSV sessions')
+  }
+
+  if (csvSessions.length === 0) {
+    throw new Error('No CSV sessions found')
+  }
+
+  // 2. Find the target session by csv-{index}
+  const csvIndex = parseInt(sessionId.replace('csv-', ''), 10)
+  // Sort the same way as V2 dashboard to ensure stable indices
+  const sorted = [...csvSessions].sort((a, b) => {
+    const occDiff = a.occupancy - b.occupancy
+    if (occDiff !== 0) return occDiff
+    return a.date.localeCompare(b.date)
+  })
+  const targetSession = sorted[csvIndex]
+  if (!targetSession) {
+    throw new Error(`CSV session at index ${csvIndex} not found`)
+  }
+
+  // 3. Build virtual PlaySession-like object
+  const virtualSession = {
+    id: sessionId,
+    clubId,
+    clubCourtId: null,
+    title: `${targetSession.format.replace(/_/g, ' ')} — ${targetSession.court}`,
+    description: null,
+    format: targetSession.format,
+    skillLevel: targetSession.skillLevel || 'ALL_LEVELS',
+    date: new Date(targetSession.date + 'T00:00:00'),
+    startTime: targetSession.startTime,
+    endTime: targetSession.endTime,
+    maxPlayers: targetSession.capacity,
+    priceInCents: targetSession.pricePerPlayer ? Math.round(targetSession.pricePerPlayer * 100) : null,
+    hostUserId: null,
+    status: 'SCHEDULED',
+    confirmedCount: targetSession.registered,
+  }
+
+  // 4. Load club members
+  const members = await prisma.clubFollower.findMany({
+    where: { clubId },
+    include: {
+      user: {
+        select: {
+          id: true, email: true, name: true, image: true, gender: true, city: true,
+          duprRatingDoubles: true, duprRatingSingles: true,
+        },
+      },
+    },
+  })
+
+  // 5. Build player activity map from CSV data
+  const allPlayerNames = new Set<string>()
+  const playerActivity = new Map<string, { lastDate: string; totalSessions: number; sessionsLast7d: number; sessionsLast30d: number }>()
+
+  const allDates = csvSessions.map(s => s.date).sort()
+  const latestDateStr = allDates[allDates.length - 1]
+  const latestDate = new Date(latestDateStr + 'T23:59:59')
+  const d7Str = new Date(latestDate.getTime() - 7 * 86400000).toISOString().slice(0, 10)
+  const d30Str = new Date(latestDate.getTime() - 30 * 86400000).toISOString().slice(0, 10)
+
+  for (const s of csvSessions) {
+    for (const name of (s.playerNames || [])) {
+      allPlayerNames.add(name)
+      const existing = playerActivity.get(name) || { lastDate: '', totalSessions: 0, sessionsLast7d: 0, sessionsLast30d: 0 }
+      existing.totalSessions++
+      if (s.date > existing.lastDate) existing.lastDate = s.date
+      if (s.date >= d7Str) existing.sessionsLast7d++
+      if (s.date >= d30Str) existing.sessionsLast30d++
+      playerActivity.set(name, existing)
+    }
+  }
+
+  const allCsvNames = Array.from(allPlayerNames)
+
+  // 6. Build already-booked set from CSV player names for this session
+  const alreadyBookedUserIds = new Set<string>()
+  for (const cf of members) {
+    const matchedName = matchPlayerName(cf.user.name, targetSession.playerNames || [])
+    if (matchedName) alreadyBookedUserIds.add(cf.user.id)
+  }
+
+  // 7. Batch-load preferences
+  const memberUserIds = members.map((cf: any) => cf.user.id)
+  let allPreferences: any[] = []
+  try {
+    allPreferences = await prisma.userPlayPreference.findMany({
+      where: { userId: { in: memberUserIds }, clubId },
+    })
+  } catch { /* not critical */ }
+  const prefMap = new Map(allPreferences.map((p: any) => [p.userId, p]))
+
+  // 8. Build member data with CSV-based history
+  const membersWithData = members.map((cf: any) => {
+    const preference = prefMap.get(cf.user.id) || null
+    const matchedName = matchPlayerName(cf.user.name, allCsvNames)
+    const activity = matchedName ? playerActivity.get(matchedName) : null
+
+    let history: BookingHistory
+    if (activity) {
+      const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
+      const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+      history = {
+        totalBookings: activity.totalSessions,
+        bookingsLastWeek: activity.sessionsLast7d,
+        bookingsLastMonth: activity.sessionsLast30d,
+        daysSinceLastConfirmedBooking: daysSince,
+        cancelledCount: 0,
+        noShowCount: 0,
+        inviteAcceptanceRate: 1.0,
+      }
+    } else {
+      history = {
+        totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+        daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+        noShowCount: 0, inviteAcceptanceRate: 0.5,
+      }
+    }
+
+    return {
+      member: toMemberData(cf.user),
+      preference: toPreferenceData(preference),
+      history,
+    }
+  })
+
+  // 9. Add virtual members for CSV-only players
+  const virtualMembers = buildVirtualCsvMembers(members, allCsvNames, playerActivity, latestDate)
+  const allMembers = [...membersWithData, ...virtualMembers]
+
+  // 10. Run scoring
+  const recommendations = generateSlotFillerRecommendations({
+    session: virtualSession as any,
+    members: allMembers,
+    alreadyBookedUserIds,
+  })
+
+  return {
+    session: {
+      id: sessionId,
+      title: virtualSession.title,
+      date: virtualSession.date,
+      startTime: virtualSession.startTime,
+      endTime: virtualSession.endTime,
+      format: virtualSession.format,
+      skillLevel: virtualSession.skillLevel,
+      maxPlayers: virtualSession.maxPlayers,
+      confirmedCount: virtualSession.confirmedCount,
+      spotsRemaining: virtualSession.maxPlayers - virtualSession.confirmedCount,
+    },
+    recommendations: recommendations.slice(0, limit),
+    totalCandidatesScored: allMembers.length,
+  }
+}
+
+/**
  * intelligence.getWeeklyPlan
  * Generate a personalized weekly session plan for a player
  */

@@ -144,7 +144,10 @@ mockDashboard.underfilledSessions = mockDashboard.upcomingSessions.filter(
 
 // ── Slot Filler Recommendations ──
 export function mockSlotFillerRecommendations(sessionId: string) {
+  // Search in V1 sessions first, then V2 sessions
+  const v2Sessions = [...mockDashboardV2.sessions.problematicSessions, ...mockDashboardV2.sessions.topSessions]
   const session = mockDashboard.upcomingSessions.find((s) => s.id === sessionId) ||
+    v2Sessions.find((s) => s.id === sessionId) ||
     mockDashboard.underfilledSessions[0] ||
     mockDashboard.upcomingSessions[0]
 
