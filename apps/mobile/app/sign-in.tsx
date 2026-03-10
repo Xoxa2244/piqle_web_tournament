@@ -17,16 +17,29 @@ const GoogleMark = () => (
 )
 
 export default function SignInScreen() {
-  const { user, signIn, signUp, requestCode, signInWithGoogle } = useAuth()
+  const {
+    user,
+    signIn,
+    signUp,
+    requestCode,
+    requestPasswordReset,
+    resetPassword: resetPasswordWithCode,
+    signInWithGoogle,
+  } = useAuth()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [signInStep, setSignInStep] = useState<'password' | 'resetEmail' | 'resetDetails'>('password')
   const [step, setStep] = useState<'email' | 'details'>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [code, setCode] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | undefined>()
@@ -34,6 +47,10 @@ export default function SignInScreen() {
   const normalizedEmail = email.trim()
   const canSubmitSignIn = normalizedEmail.length > 0 && password.length > 0
   const canRequestCode = normalizedEmail.length > 0
+  const canSubmitPasswordReset =
+    resetCode.trim().length > 0 &&
+    resetNewPassword.length > 0 &&
+    resetConfirmPassword.length > 0
   const canSubmitSignUp =
     code.trim().length > 0 &&
     firstName.trim().length > 0 &&
@@ -49,14 +66,21 @@ export default function SignInScreen() {
 
   const resetForMode = (value: 'signin' | 'signup') => {
     setMode(value)
+    setSignInStep('password')
     setStep('email')
     setError(null)
+    setNotice(null)
+    setExpiresAt(undefined)
+    setResetCode('')
+    setResetNewPassword('')
+    setResetConfirmPassword('')
     setShowPassword(false)
   }
 
   const submitSignIn = async () => {
     setLoading(true)
     setError(null)
+    setNotice(null)
     try {
       await signIn(normalizedEmail, password)
       router.replace('/(tabs)')
@@ -70,6 +94,7 @@ export default function SignInScreen() {
   const submitRequestCode = async () => {
     setLoading(true)
     setError(null)
+    setNotice(null)
     try {
       const nextExpiry = await requestCode(normalizedEmail)
       setExpiresAt(nextExpiry)
@@ -93,6 +118,7 @@ export default function SignInScreen() {
 
     setLoading(true)
     setError(null)
+    setNotice(null)
     try {
       await signUp({
         email: normalizedEmail,
@@ -109,9 +135,49 @@ export default function SignInScreen() {
     }
   }
 
+  const submitRequestPasswordReset = async () => {
+    setLoading(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const nextExpiry = await requestPasswordReset(normalizedEmail)
+      setExpiresAt(nextExpiry)
+      setSignInStep('resetDetails')
+      setNotice('We sent a password reset code to your email.')
+    } catch (nextError: any) {
+      setError(nextError?.message || 'Failed to send password reset code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const submitPasswordReset = async () => {
+    if (resetNewPassword.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await resetPasswordWithCode(normalizedEmail, resetCode.trim(), resetNewPassword)
+      router.replace('/(tabs)')
+    } catch (nextError: any) {
+      setError(nextError?.message || 'Failed to reset password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const submitGoogleSignIn = async () => {
     setGoogleLoading(true)
     setError(null)
+    setNotice(null)
     try {
       await signInWithGoogle()
       router.replace('/(tabs)')
@@ -139,14 +205,13 @@ export default function SignInScreen() {
       >
         <View style={styles.content}>
           <View style={styles.hero}>
-            <OptionalLinearGradient
-              colors={brandGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoWrap}
-            >
-              <Text style={styles.logoText}>P</Text>
-            </OptionalLinearGradient>
+            <View style={styles.logoWrap}>
+              <Image
+                source={require('../assets/piqle-ball-logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={styles.title}>Piqle</Text>
             <Text style={styles.subtitle}>Your pickleball journey starts here</Text>
           </View>
@@ -199,60 +264,241 @@ export default function SignInScreen() {
               </View>
 
               {mode === 'signin' ? (
-                <>
-                  <View style={styles.formBlock}>
-                    <Text style={styles.label}>Password</Text>
-                    <InputField
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="••••••••"
-                      secureTextEntry={!showPassword}
-                      left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
-                      right={
-                        <Pressable onPress={() => setShowPassword((value) => !value)}>
-                          <Feather
-                            name={showPassword ? 'eye-off' : 'eye'}
-                            size={20}
-                            color="rgba(10, 10, 10, 0.4)"
-                          />
-                        </Pressable>
-                      }
-                      containerStyle={styles.textField}
-                    />
-                  </View>
-
-                  <Pressable
-                    onPress={() => setError('Password reset is not available yet on mobile.')}
-                    style={styles.forgotPasswordWrap}
-                  >
-                    <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-                  </Pressable>
-
-                  {error ? (
-                    <View style={styles.errorBox}>
-                      <Text style={styles.errorText}>{error}</Text>
+                signInStep === 'password' ? (
+                  <>
+                    <View style={styles.formBlock}>
+                      <Text style={styles.label}>Password</Text>
+                      <InputField
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholder="••••••••"
+                        secureTextEntry={!showPassword}
+                        left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        right={
+                          <Pressable onPress={() => setShowPassword((value) => !value)}>
+                            <Feather
+                              name={showPassword ? 'eye-off' : 'eye'}
+                              size={20}
+                              color="rgba(10, 10, 10, 0.4)"
+                            />
+                          </Pressable>
+                        }
+                        containerStyle={styles.textField}
+                      />
                     </View>
-                  ) : null}
 
-                  <Pressable
-                    onPress={submitSignIn}
-                    disabled={!canSubmitSignIn || loading || googleLoading}
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      !canSubmitSignIn && styles.primaryButtonDisabled,
-                      pressed && canSubmitSignIn && !(loading || googleLoading) && styles.primaryButtonPressed,
-                    ]}
-                  >
-                    <OptionalLinearGradient
-                      colors={canSubmitSignIn ? brandGradient : mutedBrandGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                    <Pressable
+                      onPress={() => {
+                        setSignInStep('resetEmail')
+                        setError(null)
+                        setNotice(null)
+                        setResetCode('')
+                        setResetNewPassword('')
+                        setResetConfirmPassword('')
+                        setExpiresAt(undefined)
+                      }}
+                      style={styles.forgotPasswordWrap}
                     >
-                      <Text style={styles.primaryButtonText}>{loading ? 'Signing In...' : 'Sign In'}</Text>
-                    </OptionalLinearGradient>
-                  </Pressable>
-                </>
+                      <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+                    </Pressable>
+
+                    {error ? (
+                      <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{error}</Text>
+                      </View>
+                    ) : null}
+
+                    {notice ? (
+                      <View style={styles.noticeBox}>
+                        <Text style={styles.noticeText}>{notice}</Text>
+                      </View>
+                    ) : null}
+
+                    <Pressable
+                      onPress={submitSignIn}
+                      disabled={!canSubmitSignIn || loading || googleLoading}
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        !canSubmitSignIn && styles.primaryButtonDisabled,
+                        pressed && canSubmitSignIn && !(loading || googleLoading) && styles.primaryButtonPressed,
+                      ]}
+                    >
+                      <OptionalLinearGradient
+                        colors={canSubmitSignIn ? brandGradient : mutedBrandGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                      >
+                        <Text style={styles.primaryButtonText}>{loading ? 'Signing In...' : 'Sign In'}</Text>
+                      </OptionalLinearGradient>
+                    </Pressable>
+                  </>
+                ) : signInStep === 'resetEmail' ? (
+                  <>
+                    <Text style={styles.help}>
+                      We'll send a verification code to your email so you can choose a new password.
+                    </Text>
+
+                    {error ? (
+                      <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{error}</Text>
+                      </View>
+                    ) : null}
+
+                    {notice ? (
+                      <View style={styles.noticeBox}>
+                        <Text style={styles.noticeText}>{notice}</Text>
+                      </View>
+                    ) : null}
+
+                    <Pressable
+                      onPress={submitRequestPasswordReset}
+                      disabled={!canRequestCode || loading || googleLoading}
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        !canRequestCode && styles.primaryButtonDisabled,
+                        pressed && canRequestCode && !(loading || googleLoading) && styles.primaryButtonPressed,
+                      ]}
+                    >
+                      <OptionalLinearGradient
+                        colors={canRequestCode ? brandGradient : mutedBrandGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                      >
+                        <Text style={styles.primaryButtonText}>
+                          {loading ? 'Sending Code...' : 'Send Reset Code'}
+                        </Text>
+                      </OptionalLinearGradient>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        setSignInStep('password')
+                        setError(null)
+                        setNotice(null)
+                      }}
+                      style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                    >
+                      <Text style={styles.secondaryButtonText}>Back to sign in</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.verificationRow}>
+                      <View style={styles.verificationBadge}>
+                        <Text style={styles.verificationBadgeText}>Reset pending</Text>
+                      </View>
+                      {expiresAt ? (
+                        <View style={styles.secondaryBadge}>
+                          <Text style={styles.secondaryBadgeText}>
+                            Expires{' '}
+                            {new Date(expiresAt).toLocaleTimeString([], {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.formBlock}>
+                      <Text style={styles.label}>Reset code</Text>
+                      <InputField
+                        value={resetCode}
+                        onChangeText={setResetCode}
+                        placeholder="Enter 6-digit code"
+                        left={<Feather name="hash" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        containerStyle={styles.textField}
+                      />
+                    </View>
+
+                    <View style={styles.formBlock}>
+                      <Text style={styles.label}>New password</Text>
+                      <InputField
+                        value={resetNewPassword}
+                        onChangeText={setResetNewPassword}
+                        placeholder="At least 8 characters"
+                        secureTextEntry={!showPassword}
+                        left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        right={
+                          <Pressable onPress={() => setShowPassword((value) => !value)}>
+                            <Feather
+                              name={showPassword ? 'eye-off' : 'eye'}
+                              size={20}
+                              color="rgba(10, 10, 10, 0.4)"
+                            />
+                          </Pressable>
+                        }
+                        containerStyle={styles.textField}
+                      />
+                    </View>
+
+                    <View style={styles.formBlock}>
+                      <Text style={styles.label}>Confirm new password</Text>
+                      <InputField
+                        value={resetConfirmPassword}
+                        onChangeText={setResetConfirmPassword}
+                        placeholder="Repeat new password"
+                        secureTextEntry={!showPassword}
+                        left={<Feather name="check-circle" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        containerStyle={styles.textField}
+                      />
+                    </View>
+
+                    {error ? (
+                      <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{error}</Text>
+                      </View>
+                    ) : null}
+
+                    {notice ? (
+                      <View style={styles.noticeBox}>
+                        <Text style={styles.noticeText}>{notice}</Text>
+                      </View>
+                    ) : null}
+
+                    <Pressable
+                      onPress={submitPasswordReset}
+                      disabled={!canSubmitPasswordReset || loading || googleLoading}
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        !canSubmitPasswordReset && styles.primaryButtonDisabled,
+                        pressed && canSubmitPasswordReset && !(loading || googleLoading) && styles.primaryButtonPressed,
+                      ]}
+                    >
+                      <OptionalLinearGradient
+                        colors={canSubmitPasswordReset ? brandGradient : mutedBrandGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
+                      >
+                        <Text style={styles.primaryButtonText}>
+                          {loading ? 'Updating Password...' : 'Update Password'}
+                        </Text>
+                      </OptionalLinearGradient>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => {
+                        setSignInStep('password')
+                        setError(null)
+                        setNotice(null)
+                      }}
+                      style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                    >
+                      <Text style={styles.secondaryButtonText}>Back to sign in</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={submitRequestPasswordReset}
+                      style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                      disabled={loading || googleLoading}
+                    >
+                      <Text style={styles.secondaryButtonText}>Resend code</Text>
+                    </Pressable>
+                  </>
+                )
               ) : step === 'email' ? (
                 <>
                   <Text style={styles.help}>
@@ -464,21 +710,19 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   logoWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: 28,
+    width: 108,
+    height: 108,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: palette.primary,
-    shadowOpacity: 0.32,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 10,
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
   },
-  logoText: {
-    color: palette.white,
-    fontSize: 48,
-    fontWeight: '800',
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: {
     marginTop: 24,
@@ -595,8 +839,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  noticeBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.18)',
+    backgroundColor: 'rgba(34, 197, 94, 0.10)',
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   errorText: {
     color: palette.danger,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  noticeText: {
+    color: '#166534',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',

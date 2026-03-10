@@ -66,9 +66,22 @@ export type SignUpInput = {
   password: string
 }
 
+export type ResetPasswordInput = {
+  email: string
+  code: string
+  password: string
+}
+
 export const authApi = {
   requestCode(email: string) {
     return requestJson<RequestCodeResponse>('/api/auth/email/request-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  requestPasswordReset(email: string) {
+    return requestJson<RequestCodeResponse>('/api/auth/email/password-reset/request-code', {
       method: 'POST',
       body: JSON.stringify({ email }),
     })
@@ -100,6 +113,13 @@ export const authApi = {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+    })
+  },
+
+  resetPassword(input: ResetPasswordInput) {
+    return requestJson<{ ok: true }>('/api/auth/email/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify(input),
     })
   },
 

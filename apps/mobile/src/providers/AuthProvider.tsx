@@ -103,6 +103,8 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (input: SignUpInput) => Promise<void>
   requestCode: (email: string) => Promise<string | undefined>
+  requestPasswordReset: (email: string) => Promise<string | undefined>
+  resetPassword: (email: string, code: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -149,6 +151,16 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     async requestCode(email: string) {
       const response = await authApi.requestCode(email)
       return response.expiresAt
+    },
+    async requestPasswordReset(email: string) {
+      const response = await authApi.requestPasswordReset(email)
+      return response.expiresAt
+    },
+    async resetPassword(email: string, code: string, password: string) {
+      await authApi.resetPassword({ email, code, password })
+      const nextSession = await authApi.signIn(email, password)
+      await authStorage.save(nextSession)
+      setSession(nextSession)
     },
     async signInWithGoogle() {
       const googleSignIn = await loadGoogleSignInModule().catch((error) => {
