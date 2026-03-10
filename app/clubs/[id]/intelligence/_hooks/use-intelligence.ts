@@ -156,6 +156,24 @@ export function useSendInvites() {
   return mutation
 }
 
+// ── Send event invites (personalized per player) ──
+export function useSendEventInvites() {
+  const isDemo = useIsDemo()
+  const mutation = trpc.intelligence.sendEventInvites.useMutation()
+
+  if (isDemo) {
+    return {
+      mutate: (input: any, opts?: any) => {
+        const count = input?.candidates?.length || 0
+        setTimeout(() => opts?.onSuccess?.({ sent: count, failed: 0, csvSkipped: 0, results: [] }), 500)
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
 // ── Send reactivation messages (email/SMS) ──
 export function useSendReactivation() {
   const isDemo = useIsDemo()

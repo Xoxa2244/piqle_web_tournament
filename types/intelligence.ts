@@ -238,6 +238,7 @@ export interface DashboardV2Data {
 export type EventType = 'Open Play' | 'Round Robin' | 'Clinic' | 'Drill' | 'League' | 'Ladder'
 
 export interface MatchedPlayer {
+  id: string           // member ID (uuid or 'csv-xxx')
   name: string
   dupr: number
   emoji: string        // 🔥⭐📈🆕🎯🤝

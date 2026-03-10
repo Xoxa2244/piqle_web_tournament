@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,22 +8,41 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import {
-  ChevronLeft, Sparkles, Users, Calendar, Clock, DollarSign,
-  Trophy, MapPin, Zap, CheckCircle2, Send, ArrowRight,
-  BarChart3, Star, TrendingUp, Target, Loader2, Upload
+  ChevronLeft, Sparkles, Users, Calendar, Clock,
+  Trophy, MapPin, CheckCircle2, Send,
+  Target, Loader2, Upload, Mail, MessageSquare,
 } from 'lucide-react'
-import { useEventRecommendations } from '../_hooks/use-intelligence'
+import { useToast } from '@/components/ui/use-toast'
+import { useEventRecommendations, useSendEventInvites } from '../_hooks/use-intelligence'
+import { MessageSelector } from '../_components/message-selector'
+import ConfirmModal from '@/components/ConfirmModal'
+import {
+  generateEventInviteMessages,
+  classifyPlayerRole,
+  type EventMessageVariant,
+} from '@/lib/ai/event-messages'
+import type { MatchedPlayer, EventRecommendation } from '@/types/intelligence'
 
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function EventGeneratorPage() {
   const params = useParams()
   const clubId = params.id as string
+  const { toast } = useToast()
   const { data, isLoading, error } = useEventRecommendations(clubId)
+  const sendEventInvites = useSendEventInvites()
 
   const aiEvents = data?.events ?? []
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [createdIds, setCreatedIds] = useState<Set<string>>(new Set())
+
+  // Invite state
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteEventId, setInviteEventId] = useState<string | null>(null)
+  const [inviteMode, setInviteMode] = useState<'single' | 'all'>('all')
+  const [selectedPlayerIdx, setSelectedPlayerIdx] = useState<number | null>(null)
+  const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms'>('email')
+  const [selectedMessageId, setSelectedMessageId] = useState('')
+  const [sentEventIds, setSentEventIds] = useState<Set<string>>(new Set())
 
   // Auto-expand first event when data loads
   useEffect(() => {
@@ -35,8 +54,139 @@ export default function EventGeneratorPage() {
   const totalRevenue = aiEvents.reduce((s, e) => s + e.netRevenue, 0)
   const totalPlayers = aiEvents.reduce((s, e) => s + e.matchedPlayers.length, 0)
 
-  const handleCreate = (id: string) => {
-    setCreatedIds(prev => new Set([...Array.from(prev), id]))
+  // Current event for invite modal
+  const inviteEvent = aiEvents.find(e => e.id === inviteEventId)
+
+  // Target players for the invite
+  const targetPlayers = useMemo(() => {
+    if (!inviteEvent) return []
+    if (inviteMode === 'single' && selectedPlayerIdx !== null) {
+      return [inviteEvent.matchedPlayers[selectedPlayerIdx]].filter(Boolean)
+    }
+    return inviteEvent.matchedPlayers
+  }, [inviteEvent, inviteMode, selectedPlayerIdx])
+
+  // Generate message variants for the first target player (preview)
+  const messageVariants = useMemo((): EventMessageVariant[] => {
+    if (!inviteEvent || targetPlayers.length === 0) return []
+    const player = targetPlayers[0]
+    const allDuprs = inviteEvent.matchedPlayers.map(p => p.dupr)
+    const role = classifyPlayerRole({
+      dupr: player.dupr,
+      totalEvents: player.tournaments,
+      lastPlayed: player.lastPlayed,
+      allDuprs,
+    })
+    return generateEventInviteMessages({
+      playerName: player.name,
+      clubName: 'Your Club',
+      eventType: inviteEvent.type,
+      eventTitle: inviteEvent.title,
+      eventDate: inviteEvent.suggestedDate,
+      eventTime: inviteEvent.suggestedTime,
+      eventPrice: inviteEvent.suggestedPrice,
+      spotsLeft: inviteEvent.maxPlayers - inviteEvent.matchedPlayers.length,
+      totalSpots: inviteEvent.maxPlayers,
+      playerRole: role,
+      duprRating: player.dupr,
+      lastPlayed: player.lastPlayed,
+      totalEvents: player.tournaments,
+      skillRange: inviteEvent.skillRange,
+    })
+  }, [inviteEvent, targetPlayers])
+
+  // Auto-select recommended message
+  useEffect(() => {
+    if (messageVariants.length > 0 && !selectedMessageId) {
+      const rec = messageVariants.find(v => v.recommended)
+      setSelectedMessageId(rec?.id || messageVariants[0].id)
+    }
+  }, [messageVariants]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openInviteModal = (event: EventRecommendation, mode: 'single' | 'all', playerIdx?: number) => {
+    setInviteEventId(event.id)
+    setInviteMode(mode)
+    setSelectedPlayerIdx(playerIdx ?? null)
+    setSelectedMessageId('')
+    setShowInviteModal(true)
+  }
+
+  const handleSendInvites = () => {
+    if (!inviteEvent) return
+    const selectedVariant = messageVariants.find(v => v.id === selectedMessageId) || messageVariants[0]
+    if (!selectedVariant) return
+
+    // Build per-player candidates with personalized messages
+    const candidates = targetPlayers
+      .filter(p => !p.id.startsWith('csv-'))
+      .map(player => {
+        const allDuprs = inviteEvent.matchedPlayers.map(p => p.dupr)
+        const role = classifyPlayerRole({
+          dupr: player.dupr,
+          totalEvents: player.tournaments,
+          lastPlayed: player.lastPlayed,
+          allDuprs,
+        })
+        const variants = generateEventInviteMessages({
+          playerName: player.name,
+          clubName: 'Your Club',
+          eventType: inviteEvent.type,
+          eventTitle: inviteEvent.title,
+          eventDate: inviteEvent.suggestedDate,
+          eventTime: inviteEvent.suggestedTime,
+          eventPrice: inviteEvent.suggestedPrice,
+          spotsLeft: inviteEvent.maxPlayers - inviteEvent.matchedPlayers.length,
+          totalSpots: inviteEvent.maxPlayers,
+          playerRole: role,
+          duprRating: player.dupr,
+          lastPlayed: player.lastPlayed,
+          totalEvents: player.tournaments,
+          skillRange: inviteEvent.skillRange,
+        })
+        const variant = variants.find(v => v.id === selectedMessageId) || variants[0]
+        return {
+          memberId: player.id,
+          channel: selectedChannel as 'email' | 'sms' | 'both',
+          customMessage: selectedChannel === 'sms' ? variant.smsBody : variant.emailBody,
+        }
+      })
+
+    const csvCount = targetPlayers.filter(p => p.id.startsWith('csv-')).length
+
+    sendEventInvites.mutate(
+      {
+        clubId,
+        eventTitle: inviteEvent.title,
+        eventDate: inviteEvent.suggestedDate,
+        eventTime: inviteEvent.suggestedTime,
+        eventPrice: inviteEvent.suggestedPrice,
+        candidates,
+      },
+      {
+        onSuccess: (result: any) => {
+          const sent = result.sent || 0
+          const failed = result.failed || 0
+          toast({
+            title: sent > 0 ? 'Invites sent!' : 'Failed to send',
+            description: sent > 0
+              ? `Sent ${sent} personalized ${selectedChannel === 'sms' ? 'SMS' : 'email'}${sent > 1 ? 's' : ''}.${csvCount > 0 ? ` ${csvCount} CSV player${csvCount > 1 ? 's' : ''} skipped (no email).` : ''}${failed > 0 ? ` ${failed} failed.` : ''}`
+              : result.results?.[0]?.error || 'Unknown error',
+            variant: sent > 0 ? 'default' : 'destructive',
+          })
+          if (sent > 0) {
+            setSentEventIds(prev => new Set([...Array.from(prev), inviteEvent.id]))
+          }
+          setShowInviteModal(false)
+        },
+        onError: (err: any) => {
+          toast({
+            title: 'Failed to send',
+            description: err.message,
+            variant: 'destructive',
+          })
+        },
+      }
+    )
   }
 
   const getUrgencyBadge = (u: 'high' | 'medium' | 'low') => {
@@ -44,6 +194,8 @@ export default function EventGeneratorPage() {
     if (u === 'medium') return 'bg-amber-100 text-amber-800'
     return 'bg-gray-100 text-gray-800'
   }
+
+  const isCsvPlayer = (player: MatchedPlayer) => player.id.startsWith('csv-')
 
   return (
     <div className="min-h-screen bg-background">
@@ -160,10 +312,11 @@ export default function EventGeneratorPage() {
         {/* Event Cards */}
         {aiEvents.map(event => {
           const isExpanded = expandedId === event.id
-          const isCreated = createdIds.has(event.id)
+          const isSent = sentEventIds.has(event.id)
+          const invitableCount = event.matchedPlayers.filter(p => !isCsvPlayer(p)).length
 
           return (
-            <Card key={event.id} className={cn(isCreated && 'border-green-300 bg-green-50/30')}>
+            <Card key={event.id} className={cn(isSent && 'border-green-300 bg-green-50/30')}>
               <CardHeader
                 className="cursor-pointer"
                 onClick={() => setExpandedId(isExpanded ? null : event.id)}
@@ -177,10 +330,10 @@ export default function EventGeneratorPage() {
                         {event.urgency} opportunity
                       </Badge>
                       <Badge variant="outline">{event.type}</Badge>
-                      {isCreated && (
+                      {isSent && (
                         <Badge className="bg-green-100 text-green-800">
                           <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Created
+                          Invites Sent
                         </Badge>
                       )}
                     </div>
@@ -274,20 +427,34 @@ export default function EventGeneratorPage() {
                       AI-Matched Players ({event.matchedPlayers.length}/{event.maxPlayers})
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {event.matchedPlayers.map((player, i) => (
-                        <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/50">
-                          <span>{player.emoji}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{player.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {player.lastPlayed} · {player.tournaments} events
-                            </p>
+                      {event.matchedPlayers.map((player, i) => {
+                        const csv = isCsvPlayer(player)
+                        return (
+                          <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/50">
+                            <span>{player.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{player.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {player.lastPlayed} · {player.tournaments} events
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                              {player.dupr}
+                            </Badge>
+                            {csv ? (
+                              <Badge variant="secondary" className="text-[10px] flex-shrink-0">CSV</Badge>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openInviteModal(event, 'single', i) }}
+                                className="p-1 rounded hover:bg-muted transition-colors flex-shrink-0"
+                                title="Send invite"
+                              >
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                              </button>
+                            )}
                           </div>
-                          <Badge variant="outline" className="text-xs flex-shrink-0">
-                            {player.dupr}
-                          </Badge>
-                        </div>
-                      ))}
+                        )
+                      })}
                       {event.maxPlayers > event.matchedPlayers.length && (
                         <div className="flex items-center justify-center p-2.5 rounded-lg border-2 border-dashed border-muted-foreground/20">
                           <span className="text-sm text-muted-foreground">
@@ -315,30 +482,49 @@ export default function EventGeneratorPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-3 pt-2">
-                    {!isCreated ? (
-                      <>
-                        <Button onClick={() => handleCreate(event.id)} className="gap-2">
-                          <Zap className="w-4 h-4" />
-                          Create Event & Send Invites
-                        </Button>
-                        <Button variant="outline" className="gap-2">
-                          Edit Details
-                        </Button>
-                      </>
-                    ) : (
+                  <div className="flex items-center gap-3 pt-2">
+                    {/* Channel selector */}
+                    <div className="flex bg-muted/60 rounded-lg p-0.5">
+                      <button
+                        onClick={() => setSelectedChannel('email')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                          selectedChannel === 'email'
+                            ? 'bg-background shadow-sm text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <Mail className="h-3 w-3" /> Email
+                      </button>
+                      <button
+                        onClick={() => setSelectedChannel('sms')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                          selectedChannel === 'sms'
+                            ? 'bg-background shadow-sm text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <MessageSquare className="h-3 w-3" /> SMS
+                      </button>
+                    </div>
+
+                    {isSent ? (
                       <div className="flex items-center gap-2 text-green-600">
-                        <CheckCircle2 className="w-5 h-5" />
-                        <span className="font-medium">
-                          Event created! Invites sent to {event.matchedPlayers.length} players.
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          Invites sent to {invitableCount} players
                         </span>
-                        <Link
-                          href={`/clubs/${clubId}/intelligence`}
-                          className="text-primary hover:underline ml-2 text-sm"
-                        >
-                          View in Dashboard →
-                        </Link>
                       </div>
+                    ) : (
+                      <Button
+                        onClick={() => openInviteModal(event, 'all')}
+                        className="gap-2"
+                        disabled={invitableCount === 0}
+                      >
+                        <Send className="h-4 w-4" />
+                        Invite All ({invitableCount} players)
+                      </Button>
                     )}
                   </div>
                 </CardContent>
@@ -347,6 +533,50 @@ export default function EventGeneratorPage() {
           )
         })}
         </>)}
+
+        {/* Invite Modal */}
+        <ConfirmModal
+          open={showInviteModal}
+          size="lg"
+          title={
+            inviteMode === 'all'
+              ? `Invite ${targetPlayers.filter(p => !isCsvPlayer(p)).length} Players`
+              : `Invite ${targetPlayers[0]?.name || 'Player'}`
+          }
+          description={
+            inviteMode === 'all'
+              ? `Send personalized ${selectedChannel === 'sms' ? 'SMS' : 'email'} invites to each matched player for ${inviteEvent?.title || 'this event'}.`
+              : `Send a personalized ${selectedChannel === 'sms' ? 'SMS' : 'email'} invite.`
+          }
+          confirmText={
+            inviteMode === 'all'
+              ? `Send ${targetPlayers.filter(p => !isCsvPlayer(p)).length} Personalized Invites`
+              : 'Send Invite'
+          }
+          isPending={sendEventInvites.isPending}
+          onClose={() => { setShowInviteModal(false); setSelectedMessageId('') }}
+          onConfirm={handleSendInvites}
+        >
+          {messageVariants.length > 0 && (
+            <MessageSelector
+              variants={messageVariants as any}
+              selectedId={selectedMessageId}
+              channel={selectedChannel}
+              onSelect={setSelectedMessageId}
+            />
+          )}
+          {inviteMode === 'all' && (
+            <div className="text-xs text-muted-foreground mt-3 bg-muted/50 rounded-lg p-3">
+              <Sparkles className="w-3.5 h-3.5 inline mr-1.5 text-primary" />
+              Each player will receive a <strong>personalized message</strong> based on their DUPR, activity level, and role in this event.
+              {targetPlayers.filter(p => isCsvPlayer(p)).length > 0 && (
+                <span className="block mt-1 text-amber-600">
+                  {targetPlayers.filter(p => isCsvPlayer(p)).length} CSV player{targetPlayers.filter(p => isCsvPlayer(p)).length > 1 ? 's' : ''} will be skipped (no email on file).
+                </span>
+              )}
+            </div>
+          )}
+        </ConfirmModal>
       </div>
     </div>
   )

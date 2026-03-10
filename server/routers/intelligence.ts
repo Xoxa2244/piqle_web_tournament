@@ -8,6 +8,7 @@ import {
   getEventRecommendations,
   sendInvites,
   sendReactivationMessages,
+  sendEventInviteMessages,
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
@@ -229,6 +230,25 @@ export const intelligenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       return sendReactivationMessages(ctx.prisma, input)
+    }),
+
+  // ── Event Invites: Send personalized invites to matched players ──
+  sendEventInvites: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      eventTitle: z.string(),
+      eventDate: z.string(),
+      eventTime: z.string(),
+      eventPrice: z.number().optional(),
+      candidates: z.array(z.object({
+        memberId: z.string(),
+        channel: z.enum(['email', 'sms', 'both']),
+        customMessage: z.string().max(1000),
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      return sendEventInviteMessages(ctx.prisma, input)
     }),
 
   // ── Preferences: Get/Set user play preferences ──

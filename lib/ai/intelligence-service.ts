@@ -9,7 +9,7 @@ import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
 import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
 import { classifyArchetype } from './reactivation-messages';
-import { sendReactivationEmail } from '../email';
+import { sendReactivationEmail, sendEventInviteEmail } from '../email';
 import { sendSms, buildReactivationSms } from '../sms';
 import type { BookingHistory, UserPlayPreferenceData, MemberData } from '../../types/intelligence';
 
@@ -49,6 +49,19 @@ const sendReactivationInput = z.object({
     channel: z.enum(['email', 'sms', 'both']),
   })),
   customMessage: z.string().max(500).optional(),
+});
+
+const sendEventInviteInput = z.object({
+  clubId: z.string().uuid(),
+  eventTitle: z.string(),
+  eventDate: z.string(),
+  eventTime: z.string(),
+  eventPrice: z.number().optional(),
+  candidates: z.array(z.object({
+    memberId: z.string(),
+    channel: z.enum(['email', 'sms', 'both']),
+    customMessage: z.string().max(1000),
+  })),
 });
 
 const preferencesInput = z.object({
@@ -887,6 +900,106 @@ export async function sendReactivationMessages(
   return { sent, failed, results }
 }
 
+/**
+ * intelligence.sendEventInviteMessages
+ * Send personalized event invite emails/SMS to matched players
+ */
+export async function sendEventInviteMessages(
+  prisma: any,
+  input: z.infer<typeof sendEventInviteInput>
+) {
+  const { clubId, eventTitle, eventDate, eventTime, eventPrice, candidates: candidateInputs } = input
+
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { id: true, name: true, slug: true },
+  })
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  // Filter out csv- members (no real user in DB)
+  const realCandidates = candidateInputs.filter(c => !c.memberId.startsWith('csv-'))
+  const csvSkipped = candidateInputs.length - realCandidates.length
+
+  // Load users
+  const memberIds = realCandidates.map(c => c.memberId)
+  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+    where: { id: { in: memberIds } },
+    select: { id: true, email: true, name: true },
+  })
+  const usersById = new Map(users.map((u: { id: string; email: string; name: string | null }) => [u.id, u]))
+
+  const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
+
+  for (const candidate of realCandidates) {
+    const user = usersById.get(candidate.memberId)
+    if (!user) {
+      results.push({ memberId: candidate.memberId, channel: candidate.channel, status: 'failed', error: 'User not found' })
+      continue
+    }
+
+    // Send email
+    if (candidate.channel === 'email' || candidate.channel === 'both') {
+      try {
+        if (!user.email) throw new Error('No email address')
+        await sendEventInviteEmail({
+          to: user.email,
+          memberName: user.name || 'there',
+          clubName: club.name,
+          eventTitle,
+          eventDate,
+          eventTime,
+          eventPrice: eventPrice || 0,
+          bookingUrl,
+          customMessage: candidate.customMessage,
+        })
+        results.push({ memberId: user.id, channel: 'email', status: 'sent' })
+      } catch (err: any) {
+        results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
+      }
+    }
+
+    // Send SMS
+    if (candidate.channel === 'sms' || candidate.channel === 'both') {
+      try {
+        const phone = (user as any).phone
+        if (!phone) throw new Error('Phone number not available')
+        await sendSms({ to: phone, body: candidate.customMessage })
+        results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
+      } catch (err: any) {
+        results.push({ memberId: user.id, channel: 'sms', status: 'failed', error: err.message })
+      }
+    }
+
+    // Log to DB
+    try {
+      await prisma.aIRecommendationLog.create({
+        data: {
+          clubId,
+          userId: user.id,
+          type: 'EVENT_INVITE',
+          reasoning: {
+            channel: candidate.channel,
+            eventTitle,
+            eventDate,
+            customMessage: candidate.customMessage,
+          },
+          status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
+        },
+      })
+    } catch (logErr) {
+      console.error('[EventInvite] Failed to log recommendation:', logErr)
+    }
+  }
+
+  const sent = results.filter(r => r.status === 'sent').length
+  const failed = results.filter(r => r.status === 'failed').length
+
+  return { sent, failed, csvSkipped, results }
+}
+
 // ── CSV fallback: build event data from document_embeddings ──
 
 async function buildCsvEventData(
@@ -1133,5 +1246,6 @@ export const intelligenceSchemas = {
   eventRecommendationInput,
   sendInviteInput,
   sendReactivationInput,
+  sendEventInviteInput,
   preferencesInput,
 };

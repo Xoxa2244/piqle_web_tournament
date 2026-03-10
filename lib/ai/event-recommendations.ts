@@ -762,6 +762,7 @@ function buildMatchedPlayers(members: MemberWithData[]): MatchedPlayer[] {
     }
 
     return {
+      id: m.member.id,
       name: m.member.name || 'Unknown Player',
       dupr: Math.round(dupr * 10) / 10,
       emoji,

@@ -258,6 +258,144 @@ export async function sendReactivationEmail({
   return { messageId: info.messageId }
 }
 
+// ── Event Invite Email ──
+
+function buildEventInviteEmailHtml({
+  memberName,
+  clubName,
+  eventTitle,
+  eventDate,
+  eventTime,
+  eventPrice,
+  bookingUrl,
+  customMessage,
+}: {
+  memberName: string
+  clubName: string
+  eventTitle: string
+  eventDate: string
+  eventTime: string
+  eventPrice: number
+  bookingUrl: string
+  customMessage: string
+}) {
+  const baseUrl = getAppBaseUrl()
+  const logoUrl = `${baseUrl}/Logo.png`
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You're invited to ${eventTitle}!</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="Logo" width="120" height="40" style="display: block; max-width: 120px; height: auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #ffffff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 28px 24px 16px;">
+                    <p style="margin: 0; font-size: 15px; color: #4b5563;">
+                      ${customMessage}
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 24px 16px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                      <tr>
+                        <td style="padding: 14px 16px; background: #f8fafc;">
+                          <strong style="font-size: 16px; color: #111827;">${eventTitle}</strong><br/>
+                          <span style="color: #6b7280; font-size: 14px;">
+                            ${eventDate} &middot; ${eventTime} &middot; $${eventPrice}/person
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 24px 24px; text-align: center;">
+                    <a href="${bookingUrl}" style="display: inline-block; padding: 12px 32px; background-color: #111827; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                      Reserve Your Spot
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 16px 24px 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                      You received this because you are a member of ${clubName}.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
+export async function sendEventInviteEmail({
+  to,
+  memberName,
+  clubName,
+  eventTitle,
+  eventDate,
+  eventTime,
+  eventPrice,
+  bookingUrl,
+  customMessage,
+}: {
+  to: string
+  memberName: string
+  clubName: string
+  eventTitle: string
+  eventDate: string
+  eventTime: string
+  eventPrice: number
+  bookingUrl: string
+  customMessage: string
+}): Promise<{ messageId: string }> {
+  const firstName = memberName.split(' ')[0] || 'there'
+  const subject = `${firstName}, you're invited to ${eventTitle}! 🎾`
+  const text = `${customMessage}\n\n${eventTitle} — ${eventDate}, ${eventTime}. $${eventPrice}/person.\n\nReserve your spot: ${bookingUrl}`
+  const html = buildEventInviteEmailHtml({
+    memberName,
+    clubName,
+    eventTitle,
+    eventDate,
+    eventTime,
+    eventPrice,
+    bookingUrl,
+    customMessage,
+  })
+
+  const info = await transporter.sendMail({
+    to,
+    from: fromHeader,
+    subject,
+    text,
+    html,
+  })
+
+  return { messageId: info.messageId }
+}
+
 // ── OTP Email ──
 
 export async function sendOtpEmail({
