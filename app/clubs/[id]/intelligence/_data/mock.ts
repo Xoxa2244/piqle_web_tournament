@@ -765,18 +765,34 @@ function seededRand(seed: number) {
   return x - Math.floor(x)
 }
 
+// Seasonal modifier: summer months higher occupancy, winter lower (pickleball seasonality)
+function seasonalMod(dateStr: string): number {
+  const month = new Date(dateStr + 'T12:00:00').getMonth() // 0-11
+  // Peak: May-Sep (+5-10%), Low: Dec-Feb (-8-12%), Shoulder: Mar-Apr, Oct-Nov (0)
+  const mods = [-0.10, -0.08, -0.03, 0.0, 0.05, 0.08, 0.10, 0.10, 0.08, 0.02, -0.02, -0.08]
+  return mods[month]
+}
+
+// Growth trend: club gets more popular over time (older = lower base)
+function growthMod(dayOffset: number): number {
+  // dayOffset is negative for past. -540 = 18 months ago → -0.12, 0 = today → 0
+  const monthsAgo = Math.max(0, -dayOffset) / 30
+  return -monthsAgo * 0.007 // ~1% lower per month going back
+}
+
 function generateDaySessions(dayOffset: number, id: number): CalItem[] {
   const date = fmtDate(dayOffset)
   const dayOfWeek = new Date(date + 'T12:00:00').getDay() // 0=Sun
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
   const template = isWeekend ? dailySlots[2] : dailySlots[Math.abs(dayOffset) % 2]
   const status: CalItem['status'] = dayOffset < 0 ? 'past' : dayOffset === 0 ? 'today' : 'upcoming'
+  const isRecent = dayOffset > -30 // Only generate recs for last 30 days + upcoming
 
   return template.map((slot, si) => {
     const seed = dayOffset * 100 + si + 42
     const rand = seededRand(seed)
 
-    // Realistic fill rates: morning open play high, clinics lower, evening round robin high
+    // Base fill rates per format
     let baseFill = 0.65
     if (slot.format === 'Open Play') baseFill = 0.72
     if (slot.format === 'Round Robin') baseFill = 0.78
@@ -786,33 +802,36 @@ function generateDaySessions(dayOffset: number, id: number): CalItem[] {
     if (slot.format === 'Social') baseFill = 0.45
     if (isWeekend) baseFill += 0.08
 
-    // Add variance
-    const fillRate = Math.max(0.1, Math.min(1, baseFill + (rand - 0.5) * 0.4))
-    const registered = Math.round(fillRate * slot.cap)
-    const occupancy = Math.round((registered / slot.cap) * 100)
+    // Apply seasonal + growth modifiers
+    baseFill += seasonalMod(date) + growthMod(dayOffset)
 
-    const peerAvg = Math.round(baseFill * 100)
+    // Add variance
+    const fillRate = Math.max(0.05, Math.min(1, baseFill + (rand - 0.5) * 0.4))
+    const registered = Math.max(0, Math.round(fillRate * slot.cap))
+    const occupancy = slot.cap > 0 ? Math.round((registered / slot.cap) * 100) : 0
+
+    const peerAvg = Math.round(Math.max(0, baseFill) * 100)
     const deviation = occupancy - peerAvg
 
     const revenue = status === 'past' ? registered * slot.price : null
     const lostRevenue = status === 'past' ? (slot.cap - registered) * slot.price : null
 
-    // Generate recommendations
+    // Only generate recommendations for recent sessions
     const recs: CalRec[] = []
-    if (status !== 'past' && occupancy < 50) {
-      recs.push({ type: 'send_invites', label: 'Send targeted invites', reason: `Only ${registered}/${slot.cap} filled. Use Slot Filler to find matching players.`, priority: occupancy < 30 ? 'high' : 'medium', actionLink: '/clubs/demo/intelligence/slot-filler' })
+    if (isRecent) {
+      if (status !== 'past' && occupancy < 50) {
+        recs.push({ type: 'send_invites', label: 'Send targeted invites', reason: `Only ${registered}/${slot.cap} filled. Use Slot Filler to find matching players.`, priority: occupancy < 30 ? 'high' : 'medium', actionLink: '/clubs/demo/intelligence/slot-filler' })
+      }
+      if (occupancy < 35 && slot.format === 'Clinic') {
+        recs.push({ type: 'swap_format', label: 'Try Open Play instead', reason: `Clinics average ${peerAvg}% here. Open Play averages 72% in the same slot.`, priority: 'medium' })
+      }
+      if (occupancy > 95 && status === 'past') {
+        recs.push({ type: 'raise_price', label: 'High demand — raise price?', reason: `Sold out! Consider raising from $${slot.price} to $${slot.price + 3} or adding a parallel session.`, priority: 'low' })
+      }
+      if (occupancy < 25 && status === 'past') {
+        recs.push({ type: 'cancel_consider', label: 'Consistently low', reason: `Only ${registered}/${slot.cap} players. Consider replacing this slot.`, priority: 'high' })
+      }
     }
-    if (occupancy < 35 && slot.format === 'Clinic') {
-      recs.push({ type: 'swap_format', label: 'Try Open Play instead', reason: `Clinics average ${peerAvg}% here. Open Play averages 72% in the same slot.`, priority: 'medium' })
-    }
-    if (occupancy > 95 && status === 'past') {
-      recs.push({ type: 'raise_price', label: 'High demand — raise price?', reason: `Sold out! Consider raising from $${slot.price} to $${slot.price + 3} or adding a parallel session.`, priority: 'low' })
-    }
-    if (occupancy < 25 && status === 'past') {
-      recs.push({ type: 'cancel_consider', label: 'Consistently low', reason: `Only ${registered}/${slot.cap} players. Consider replacing this slot.`, priority: 'high' })
-    }
-
-    const names = Array.from({ length: registered }, (_, k) => `P${id + si}-${k + 1}`)
 
     return {
       id: `cal-${id + si}`,
@@ -825,7 +844,7 @@ function generateDaySessions(dayOffset: number, id: number): CalItem[] {
       registered,
       capacity: slot.cap,
       occupancy,
-      playerNames: names,
+      playerNames: [], // omitted for perf — not shown in calendar
       pricePerPlayer: slot.price,
       revenue,
       lostRevenue: lostRevenue && lostRevenue > 0 ? lostRevenue : null,
@@ -837,12 +856,16 @@ function generateDaySessions(dayOffset: number, id: number): CalItem[] {
   })
 }
 
+let _cachedCalendar: import('@/types/intelligence').SessionCalendarData | null = null
+
 export function mockSessionsCalendar(): import('@/types/intelligence').SessionCalendarData {
+  if (_cachedCalendar) return _cachedCalendar
+
   const sessions: CalItem[] = []
   let nextId = 1
 
-  // Generate 7 past days + today + 7 upcoming days = 15 days
-  for (let d = -7; d <= 7; d++) {
+  // 18 months back + 1 month forward ≈ 570 days → ~1500+ sessions
+  for (let d = -540; d <= 30; d++) {
     const daySessions = generateDaySessions(d, nextId)
     sessions.push(...daySessions)
     nextId += daySessions.length
@@ -851,9 +874,11 @@ export function mockSessionsCalendar(): import('@/types/intelligence').SessionCa
   const pastSessions = sessions.filter(s => s.status === 'past')
   const totalRevenue = pastSessions.reduce((sum, s) => sum + (s.revenue ?? 0), 0)
   const totalLostRevenue = pastSessions.reduce((sum, s) => sum + (s.lostRevenue ?? 0), 0)
-  const avgOccupancy = Math.round(sessions.reduce((sum, s) => sum + s.occupancy, 0) / sessions.length)
+  const avgOccupancy = sessions.length > 0
+    ? Math.round(sessions.reduce((sum, s) => sum + s.occupancy, 0) / sessions.length)
+    : 0
 
-  return {
+  _cachedCalendar = {
     sessions,
     summary: {
       totalSessions: sessions.length,
@@ -864,15 +889,22 @@ export function mockSessionsCalendar(): import('@/types/intelligence').SessionCa
       pastCount: pastSessions.length,
     },
     peerAverages: {
-      'Open Play|Monday|morning': { avgOccupancy: 72, avgRevenue: 108, count: 12 },
-      'Open Play|Saturday|morning': { avgOccupancy: 80, avgRevenue: 144, count: 8 },
-      'Round Robin|Monday|evening': { avgOccupancy: 78, avgRevenue: 240, count: 10 },
-      'Round Robin|Saturday|evening': { avgOccupancy: 85, avgRevenue: 264, count: 6 },
-      'Clinic|Tuesday|morning': { avgOccupancy: 48, avgRevenue: 120, count: 8 },
-      'Clinic|Sunday|morning': { avgOccupancy: 55, avgRevenue: 154, count: 4 },
-      'Drill|Wednesday|morning': { avgOccupancy: 70, avgRevenue: 126, count: 6 },
-      'League Play|Saturday|morning': { avgOccupancy: 88, avgRevenue: 200, count: 5 },
-      'Social|Sunday|evening': { avgOccupancy: 45, avgRevenue: 86, count: 4 },
+      'Open Play|Monday|morning': { avgOccupancy: 72, avgRevenue: 108, count: 65 },
+      'Open Play|Saturday|morning': { avgOccupancy: 80, avgRevenue: 144, count: 40 },
+      'Open Play|Wednesday|morning': { avgOccupancy: 70, avgRevenue: 105, count: 60 },
+      'Round Robin|Monday|evening': { avgOccupancy: 78, avgRevenue: 240, count: 55 },
+      'Round Robin|Saturday|evening': { avgOccupancy: 85, avgRevenue: 264, count: 38 },
+      'Round Robin|Thursday|evening': { avgOccupancy: 76, avgRevenue: 228, count: 50 },
+      'Clinic|Tuesday|morning': { avgOccupancy: 48, avgRevenue: 120, count: 45 },
+      'Clinic|Sunday|morning': { avgOccupancy: 55, avgRevenue: 154, count: 30 },
+      'Drill|Wednesday|morning': { avgOccupancy: 70, avgRevenue: 126, count: 50 },
+      'Drill|Friday|morning': { avgOccupancy: 68, avgRevenue: 122, count: 48 },
+      'League Play|Saturday|morning': { avgOccupancy: 88, avgRevenue: 200, count: 35 },
+      'League Play|Sunday|morning': { avgOccupancy: 86, avgRevenue: 196, count: 30 },
+      'Social|Sunday|evening': { avgOccupancy: 45, avgRevenue: 86, count: 28 },
+      'Social|Saturday|evening': { avgOccupancy: 50, avgRevenue: 96, count: 25 },
     },
   }
+
+  return _cachedCalendar
 }

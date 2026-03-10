@@ -8,7 +8,7 @@ import {
   Users, DollarSign, TrendingDown, AlertTriangle,
   Lightbulb, Send, ArrowUpRight,
 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardSkeleton } from '../_components/skeleton'
@@ -23,7 +23,7 @@ type ViewMode = 'list' | 'week' | 'month'
 function getWeekStart(date: Date): Date {
   const d = new Date(date)
   const day = d.getDay()
-  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1)) // Monday start
+  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1))
   d.setHours(0, 0, 0, 0)
   return d
 }
@@ -32,10 +32,24 @@ function getMonthStart(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
+function getMonthEnd(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0)
+}
+
 function addDays(date: Date, days: number): Date {
   const d = new Date(date)
   d.setDate(d.getDate() + days)
   return d
+}
+
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date)
+  d.setMonth(d.getMonth() + months)
+  return d
+}
+
+function toDateStr(date: Date): string {
+  return date.toISOString().slice(0, 10)
 }
 
 function formatDateShort(dateStr: string): string {
@@ -188,16 +202,28 @@ function SessionCard({ session, clubId, compact }: { session: SessionCalendarIte
 
 // ── Summary Bar ──
 
-function SummaryBar({ summary }: { summary: { totalSessions: number; avgOccupancy: number; totalRevenue: number; totalLostRevenue: number; upcomingCount: number; pastCount: number } }) {
+function SummaryBar({ sessions }: { sessions: SessionCalendarItem[] }) {
+  const stats = useMemo(() => {
+    const past = sessions.filter(s => s.status === 'past')
+    return {
+      total: sessions.length,
+      avgOcc: sessions.length > 0 ? Math.round(sessions.reduce((s, x) => s + x.occupancy, 0) / sessions.length) : 0,
+      revenue: past.reduce((s, x) => s + (x.revenue ?? 0), 0),
+      lost: past.reduce((s, x) => s + (x.lostRevenue ?? 0), 0),
+      upcoming: sessions.filter(s => s.status !== 'past').length,
+      past: past.length,
+    }
+  }, [sessions])
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
       {[
-        { label: 'Total Sessions', value: summary.totalSessions, icon: Calendar },
-        { label: 'Avg Occupancy', value: `${summary.avgOccupancy}%`, icon: Users },
-        { label: 'Revenue', value: `$${summary.totalRevenue.toLocaleString()}`, icon: DollarSign },
-        { label: 'Lost Revenue', value: `$${summary.totalLostRevenue.toLocaleString()}`, icon: TrendingDown, danger: summary.totalLostRevenue > 0 },
-        { label: 'Upcoming', value: summary.upcomingCount, icon: Calendar },
-        { label: 'Past', value: summary.pastCount, icon: Calendar },
+        { label: 'Sessions', value: stats.total, icon: Calendar },
+        { label: 'Avg Occupancy', value: `${stats.avgOcc}%`, icon: Users },
+        { label: 'Revenue', value: `$${stats.revenue.toLocaleString()}`, icon: DollarSign },
+        { label: 'Lost Revenue', value: `$${stats.lost.toLocaleString()}`, icon: TrendingDown, danger: stats.lost > 0 },
+        { label: 'Upcoming', value: stats.upcoming, icon: Calendar },
+        { label: 'Past', value: stats.past, icon: Calendar },
       ].map(({ label, value, icon: Icon, danger }) => (
         <Card key={label} className="p-3">
           <div className="flex items-center gap-2">
@@ -213,28 +239,59 @@ function SummaryBar({ summary }: { summary: { totalSessions: number; avgOccupanc
   )
 }
 
-// ── List View ──
+// ── List View (paginated by month) ──
 
-function ListView({ sessions, clubId }: { sessions: SessionCalendarItem[]; clubId: string }) {
+function ListView({ sessions, clubId, navDate, onNav }: { sessions: SessionCalendarItem[]; clubId: string; navDate: Date; onNav: (d: Date) => void }) {
+  const monthStart = getMonthStart(navDate)
+  const monthEnd = getMonthEnd(navDate)
+  const startStr = toDateStr(monthStart)
+  const endStr = toDateStr(monthEnd)
+
+  const monthSessions = useMemo(
+    () => sessions.filter(s => s.date >= startStr && s.date <= endStr),
+    [sessions, startStr, endStr]
+  )
+
   const grouped = useMemo(() => {
     const groups: Record<string, SessionCalendarItem[]> = {}
-    for (const s of sessions) {
+    for (const s of monthSessions) {
       if (!groups[s.date]) groups[s.date] = []
       groups[s.date].push(s)
     }
     return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [sessions])
+  }, [monthSessions])
 
   return (
-    <div className="space-y-6">
-      {grouped.map(([date, items]) => (
-        <div key={date}>
-          <h3 className="text-sm font-semibold text-muted-foreground mb-2">{formatDateShort(date)}</h3>
-          <div className="space-y-2">
-            {items.map(s => <SessionCard key={s.id} session={s} clubId={clubId} />)}
-          </div>
+    <div>
+      {/* Navigation */}
+      <div className="flex items-center justify-between mb-4">
+        <Button variant="ghost" size="sm" onClick={() => onNav(addMonths(navDate, -1))}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-sm font-medium">{formatMonthYear(monthStart)}</span>
+        <Button variant="ghost" size="sm" onClick={() => onNav(addMonths(navDate, 1))}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Summary for visible month */}
+      <SummaryBar sessions={monthSessions} />
+
+      {/* Sessions grouped by date */}
+      {grouped.length === 0 ? (
+        <div className="text-center text-sm text-muted-foreground py-12">No sessions in {formatMonthYear(monthStart)}</div>
+      ) : (
+        <div className="space-y-6">
+          {grouped.map(([date, items]) => (
+            <div key={date}>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">{formatDateShort(date)}</h3>
+              <div className="space-y-2">
+                {items.map(s => <SessionCard key={s.id} session={s} clubId={clubId} />)}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -242,36 +299,40 @@ function ListView({ sessions, clubId }: { sessions: SessionCalendarItem[]; clubI
 // ── Week View ──
 
 function WeekView({ sessions, weekStart, clubId }: { sessions: SessionCalendarItem[]; weekStart: Date; clubId: string }) {
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = addDays(weekStart, i)
-    return d.toISOString().slice(0, 10)
-  })
+  const days = Array.from({ length: 7 }, (_, i) => toDateStr(addDays(weekStart, i)))
+  const weekSessions = useMemo(
+    () => sessions.filter(s => s.date >= days[0] && s.date <= days[6]),
+    [sessions, days[0], days[6]]
+  )
 
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = toDateStr(new Date())
 
   return (
-    <div className="grid grid-cols-7 gap-2">
-      {days.map((dateStr, i) => {
-        const daySessions = sessions.filter(s => s.date === dateStr)
-        const isToday = dateStr === todayStr
+    <div>
+      <SummaryBar sessions={weekSessions} />
+      <div className="grid grid-cols-7 gap-2">
+        {days.map((dateStr, i) => {
+          const daySessions = weekSessions.filter(s => s.date === dateStr)
+          const isToday = dateStr === todayStr
 
-        return (
-          <div key={dateStr} className={`min-h-[200px] rounded-lg border p-2 ${isToday ? 'border-blue-400 bg-blue-50/30' : 'border-border'}`}>
-            <div className={`text-xs font-medium mb-2 ${isToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
-              {dayLabels[i]} {new Date(dateStr + 'T12:00:00').getDate()}
+          return (
+            <div key={dateStr} className={`min-h-[200px] rounded-lg border p-2 ${isToday ? 'border-blue-400 bg-blue-50/30' : 'border-border'}`}>
+              <div className={`text-xs font-medium mb-2 ${isToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                {dayLabels[i]} {new Date(dateStr + 'T12:00:00').getDate()}
+              </div>
+              <div className="space-y-1.5">
+                {daySessions.map(s => (
+                  <SessionCard key={s.id} session={s} clubId={clubId} compact />
+                ))}
+                {daySessions.length === 0 && (
+                  <div className="text-xs text-muted-foreground/50 italic">No sessions</div>
+                )}
+              </div>
             </div>
-            <div className="space-y-1.5">
-              {daySessions.map(s => (
-                <SessionCard key={s.id} session={s} clubId={clubId} compact />
-              ))}
-              {daySessions.length === 0 && (
-                <div className="text-xs text-muted-foreground/50 italic">No sessions</div>
-              )}
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -285,16 +346,23 @@ function MonthView({ sessions, monthStart, clubId }: { sessions: SessionCalendar
   const lastDay = new Date(year, month + 1, 0)
   const totalDays = lastDay.getDate()
 
-  // Monday-start offset: 0=Mon..6=Sun
+  const startStr = toDateStr(firstDay)
+  const endStr = toDateStr(lastDay)
+  const monthSessions = useMemo(
+    () => sessions.filter(s => s.date >= startStr && s.date <= endStr),
+    [sessions, startStr, endStr]
+  )
+
   let startOffset = firstDay.getDay() - 1
   if (startOffset < 0) startOffset = 6
 
   const totalCells = Math.ceil((totalDays + startOffset) / 7) * 7
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = toDateStr(new Date())
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   return (
     <div>
+      <SummaryBar sessions={monthSessions} />
       <div className="grid grid-cols-7 gap-px mb-1">
         {dayLabels.map(d => (
           <div key={d} className="text-xs font-medium text-muted-foreground text-center py-1">{d}</div>
@@ -307,8 +375,14 @@ function MonthView({ sessions, monthStart, clubId }: { sessions: SessionCalendar
           const dateStr = isValidDay
             ? `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
             : ''
-          const daySessions = isValidDay ? sessions.filter(s => s.date === dateStr) : []
+          const daySessions = isValidDay ? monthSessions.filter(s => s.date === dateStr) : []
           const isToday = dateStr === todayStr
+
+          // Compute day-level aggregate for month view
+          const dayOcc = daySessions.length > 0
+            ? Math.round(daySessions.reduce((s, x) => s + x.occupancy, 0) / daySessions.length)
+            : -1
+          const hasLowSession = daySessions.some(s => s.occupancy < 40)
 
           return (
             <div
@@ -317,11 +391,23 @@ function MonthView({ sessions, monthStart, clubId }: { sessions: SessionCalendar
             >
               {isValidDay && (
                 <>
-                  <div className={`text-xs font-medium mb-1 ${isToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
-                    {dayNum}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-medium ${isToday ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                      {dayNum}
+                    </span>
+                    {daySessions.length > 0 && (
+                      <span className="text-[10px] text-muted-foreground">{daySessions.length}s</span>
+                    )}
                   </div>
+                  {daySessions.length > 0 && (
+                    <div className="mt-1 mb-1">
+                      <div className={`text-[10px] font-medium ${dayOcc >= 75 ? 'text-green-600' : dayOcc >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>
+                        {dayOcc}% avg
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-0.5">
-                    {daySessions.map(s => (
+                    {daySessions.slice(0, 4).map(s => (
                       <div
                         key={s.id}
                         className={`text-[10px] px-1 py-0.5 rounded border-l-2 ${occupancyColor(s.occupancy)} bg-muted/50 truncate`}
@@ -330,7 +416,13 @@ function MonthView({ sessions, monthStart, clubId }: { sessions: SessionCalendar
                         {s.startTime} {s.format}
                       </div>
                     ))}
+                    {daySessions.length > 4 && (
+                      <div className="text-[10px] text-muted-foreground pl-1">+{daySessions.length - 4} more</div>
+                    )}
                   </div>
+                  {hasLowSession && (
+                    <AlertTriangle className="h-3 w-3 text-red-400 mt-0.5" />
+                  )}
                 </>
               )}
             </div>
@@ -367,15 +459,15 @@ export default function SessionsCalendarPage() {
     )
   }
 
-  const { sessions, summary } = calendarData
+  const { sessions } = calendarData
 
   return (
     <div>
       {/* Header + View Toggle */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
-          <h2 className="text-xl font-semibold">Sessions Calendar</h2>
-          <p className="text-sm text-muted-foreground">Per-session analysis with AI recommendations</p>
+          <h2 className="text-xl font-semibold">Sessions</h2>
+          <p className="text-sm text-muted-foreground">{calendarData.summary.totalSessions.toLocaleString()} sessions total</p>
         </div>
 
         <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg">
@@ -400,26 +492,28 @@ export default function SessionsCalendarPage() {
         </div>
       </div>
 
-      {/* Summary */}
-      <SummaryBar summary={summary} />
-
-      {/* Navigation for week/month */}
+      {/* Navigation for week/month views */}
       {viewMode !== 'list' && (
         <div className="flex items-center justify-between mb-4">
-          <Button variant="ghost" size="sm" onClick={() => setNavDate(addDays(navDate, viewMode === 'week' ? -7 : -30))}>
+          <Button variant="ghost" size="sm" onClick={() => setNavDate(viewMode === 'week' ? addDays(navDate, -7) : addMonths(navDate, -1))}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-sm font-medium">
-            {viewMode === 'week' ? formatWeekRange(weekStart) : formatMonthYear(monthStart)}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => setNavDate(addDays(navDate, viewMode === 'week' ? 7 : 30))}>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">
+              {viewMode === 'week' ? formatWeekRange(weekStart) : formatMonthYear(monthStart)}
+            </span>
+            <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setNavDate(new Date())}>
+              Today
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setNavDate(viewMode === 'week' ? addDays(navDate, 7) : addMonths(navDate, 1))}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       )}
 
-      {/* View */}
-      {viewMode === 'list' && <ListView sessions={sessions} clubId={clubId} />}
+      {/* Views */}
+      {viewMode === 'list' && <ListView sessions={sessions} clubId={clubId} navDate={navDate} onNav={setNavDate} />}
       {viewMode === 'week' && <WeekView sessions={sessions} weekStart={weekStart} clubId={clubId} />}
       {viewMode === 'month' && <MonthView sessions={sessions} monthStart={monthStart} clubId={clubId} />}
     </div>
