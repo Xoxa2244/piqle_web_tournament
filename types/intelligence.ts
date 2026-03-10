@@ -277,3 +277,47 @@ export interface EventRecommendationsResult {
   generatedAt: string
   needsCsvImport?: boolean
 }
+
+// ====== Sessions Calendar Types ======
+
+export interface SessionRecommendation {
+  type: 'swap_format' | 'adjust_time' | 'send_invites' | 'lower_price' | 'raise_price' | 'add_session' | 'cancel_consider'
+  label: string
+  reason: string
+  priority: 'high' | 'medium' | 'low'
+  actionLink?: string
+}
+
+export interface SessionCalendarItem {
+  id: string
+  date: string
+  startTime: string
+  endTime: string
+  court: string
+  format: string
+  skillLevel: string
+  registered: number
+  capacity: number
+  occupancy: number
+  playerNames: string[]
+  pricePerPlayer: number | null
+  revenue: number | null
+  lostRevenue: number | null
+  status: 'past' | 'today' | 'upcoming'
+  peerAvgOccupancy: number | null
+  deviationFromPeer: number | null
+  recommendations: SessionRecommendation[]
+}
+
+export interface SessionCalendarData {
+  sessions: SessionCalendarItem[]
+  summary: {
+    totalSessions: number
+    avgOccupancy: number
+    totalRevenue: number
+    totalLostRevenue: number
+    upcomingCount: number
+    pastCount: number
+  }
+  peerAverages: Record<string, { avgOccupancy: number; avgRevenue: number; count: number }>
+}

@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
-  ChevronLeft, Zap, MessageSquare, CalendarPlus
+  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
+  { label: 'Sessions', href: '/sessions', icon: Calendar },
   { label: 'AI Advisor', href: '/advisor', icon: MessageSquare },
   { label: 'Slot Filler', href: '/slot-filler', icon: TrendingUp },
   { label: 'Reactivation', href: '/reactivation', icon: UserMinus },

@@ -1158,6 +1158,31 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // ── Sessions Calendar: Per-session view with analysis ──
+  getSessionsCalendar: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      let csvSessions: any[] = []
+      try {
+        const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
+          SELECT metadata FROM document_embeddings
+          WHERE club_id = ${input.clubId}::uuid
+            AND content_type = 'session'
+            AND source_table = 'csv_import'
+        `
+        csvSessions = rows
+          .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata))
+          .filter((m: any) => m && m.date && m.capacity > 0)
+      } catch (err) {
+        console.warn('[Intelligence] getSessionsCalendar query failed:', (err as Error).message?.slice(0, 80))
+      }
+
+      const { buildSessionCalendarData } = await import('@/lib/ai/session-analysis')
+      return buildSessionCalendarData(csvSessions, input.clubId)
+    }),
+
   // ── RAG: Trigger embedding index for a club ──
   reindexClub: protectedProcedure
     .input(z.object({

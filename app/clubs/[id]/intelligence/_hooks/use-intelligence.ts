@@ -9,6 +9,7 @@ import {
   mockReactivationCandidates,
   mockSessions,
   mockEventRecommendations,
+  mockSessionsCalendar,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -176,6 +177,26 @@ export function useSendEventInvites() {
   }
 
   return mutation
+}
+
+// ── Sessions Calendar ──
+export function useSessionsCalendar(clubId: string) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getSessionsCalendar.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockSessionsCalendar(),
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
 }
 
 // ── Send reactivation messages (email/SMS) ──
