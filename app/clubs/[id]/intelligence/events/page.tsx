@@ -250,7 +250,10 @@ export default function EventGeneratorPage() {
                         <p className="text-xs text-muted-foreground">Court Cost</p>
                         <p className="text-lg font-bold text-red-500">-${event.courtCost}</p>
                         <p className="text-xs text-muted-foreground">
-                          {event.courts} courts × {event.type === 'Mini League' ? '6 weeks' : '3 hrs'}
+                          {event.type === 'Ladder'
+                            ? 'registration fee'
+                            : `${event.courts} courts × ${event.type === 'League' ? `${event.leagueWeeks || 6} weeks` : `${event.durationHours || 3} hrs`}`
+                          }
                         </p>
                       </CardContent>
                     </Card>

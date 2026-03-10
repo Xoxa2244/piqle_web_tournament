@@ -235,7 +235,7 @@ export interface DashboardV2Data {
 
 // ====== Event Recommendation Types ======
 
-export type EventType = 'Round Robin' | 'Social Mixer' | 'Mini League' | 'Clinic/Drill'
+export type EventType = 'Open Play' | 'Round Robin' | 'Clinic' | 'Drill' | 'League' | 'Ladder'
 
 export interface MatchedPlayer {
   name: string
@@ -265,6 +265,8 @@ export interface EventRecommendation {
   netRevenue: number
   fillConfidence: number
   insights: string[]
+  leagueWeeks?: number     // 4 | 6 | 8 — only for League
+  durationHours: number    // duration of a single session
 }
 
 export interface EventRecommendationsResult {
