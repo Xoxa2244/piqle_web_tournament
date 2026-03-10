@@ -38,8 +38,8 @@ const sendInviteInput = z.object({
   candidates: z.array(z.object({
     memberId: z.string(),
     channel: z.enum(['email', 'sms', 'both']),
+    customMessage: z.string().max(1000).optional(),
   })),
-  customMessage: z.string().max(500).optional(),
 });
 
 const eventRecommendationInput = z.object({
@@ -912,7 +912,7 @@ export async function getReactivationCandidates(
  * intelligence.sendInvites - Send invites to recommended users for a session
  */
 export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteInput>) {
-  const { sessionId, clubId, candidates: candidateInputs, customMessage } = input
+  const { sessionId, clubId, candidates: candidateInputs } = input
 
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
@@ -1009,7 +1009,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           sessionTime: sessionData.time,
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
-          customMessage,
+          customMessage: candidate.customMessage,
         })
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {
@@ -1030,7 +1030,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           sessionTime: sessionData.time,
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
-          customMessage,
+          customMessage: candidate.customMessage,
         })
         await sendSms({ to: phone, body })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
@@ -1051,7 +1051,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           reasoning: {
             sessionTitle: sessionData.title,
             sessionDate: sessionData.date,
-            customMessage: customMessage || null,
+            customMessage: candidate.customMessage || null,
           },
           status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
         },

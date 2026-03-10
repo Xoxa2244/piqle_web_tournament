@@ -15,6 +15,8 @@ import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
+import { MessageSelector } from '../_components/message-selector'
+import { generateSlotFillerMessages, classifySlotFillerPlayerType, playerTypeLabels } from '@/lib/ai/slot-filler-messages'
 
 export default function SlotFillerPage() {
   const params = useParams()
@@ -27,6 +29,7 @@ export default function SlotFillerPage() {
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [inviteSent, setInviteSent] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [selectedMessageId, setSelectedMessageId] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
@@ -69,6 +72,36 @@ export default function SlotFillerPage() {
     )
   }, [recommendations, searchQuery])
 
+  const selectedSession = recommendations?.session
+
+  // Generate preview message variants based on first selected player
+  const previewVariants = useMemo(() => {
+    if (!selectedSession || selectedUserIds.size === 0 || !recommendations?.recommendations) return []
+    const firstId = Array.from(selectedUserIds)[0]
+    const rec = recommendations.recommendations.find((r: any) => r.member.id === firstId)
+    if (!rec) return []
+
+    const playerType = classifySlotFillerPlayerType({
+      score: rec.score,
+      likelihood: rec.estimatedLikelihood as 'high' | 'medium' | 'low',
+      scheduleFitScore: rec.reasoning?.components?.schedule_fit?.score || 0,
+    })
+
+    return generateSlotFillerMessages({
+      playerName: rec.member.name || 'there',
+      clubName: selectedSession.clubName || 'the club',
+      sessionTitle: selectedSession.title,
+      sessionDate: selectedSession.date,
+      sessionTime: `${selectedSession.startTime}–${selectedSession.endTime}`,
+      sessionFormat: selectedSession.format,
+      spotsLeft: selectedSession.spotsRemaining,
+      playerType,
+      score: rec.score,
+      duprRating: rec.member.duprRatingDoubles,
+      daysSinceLastPlay: rec.reasoning?.components?.recency?.score,
+    })
+  }, [selectedUserIds, recommendations, selectedSession])
+
   const toggleUser = (userId: string) => {
     setSelectedUserIds((prev) => {
       const next = new Set(prev)
@@ -86,18 +119,52 @@ export default function SlotFillerPage() {
   const deselectAll = () => setSelectedUserIds(new Set())
 
   const handleSendInvites = () => {
-    if (!selectedSessionId || selectedUserIds.size === 0) return
+    if (!selectedSessionId || selectedUserIds.size === 0 || !selectedSession) return
+
+    // Determine which message variant style the admin picked
+    const selectedVariant = previewVariants.find(v => v.id === selectedMessageId)
+      || previewVariants.find(v => v.recommended)
+      || previewVariants[0]
+
     sendInvitesMutation.mutate({
       sessionId: selectedSessionId,
       clubId,
-      candidates: Array.from(selectedUserIds).map(memberId => ({
-        memberId,
-        channel: selectedChannel,
-      })),
+      candidates: Array.from(selectedUserIds).map(memberId => {
+        const rec = recommendations?.recommendations?.find((r: any) => r.member.id === memberId)
+
+        // Generate per-player personalized message
+        const playerType = classifySlotFillerPlayerType({
+          score: rec?.score || 0,
+          likelihood: (rec?.estimatedLikelihood || 'low') as 'high' | 'medium' | 'low',
+          scheduleFitScore: rec?.reasoning?.components?.schedule_fit?.score || 0,
+        })
+        const variants = generateSlotFillerMessages({
+          playerName: rec?.member?.name || 'there',
+          clubName: selectedSession.clubName || 'the club',
+          sessionTitle: selectedSession.title,
+          sessionDate: selectedSession.date,
+          sessionTime: `${selectedSession.startTime}–${selectedSession.endTime}`,
+          sessionFormat: selectedSession.format,
+          spotsLeft: selectedSession.spotsRemaining,
+          playerType,
+          score: rec?.score || 0,
+          duprRating: rec?.member?.duprRatingDoubles,
+          daysSinceLastPlay: rec?.reasoning?.components?.recency?.score,
+        })
+
+        // Use same variant style but personalized to this player
+        const variant = selectedVariant
+          ? (variants.find(v => v.id === selectedVariant.id) || variants[0])
+          : variants[0]
+
+        return {
+          memberId,
+          channel: selectedChannel,
+          customMessage: selectedChannel === 'sms' ? variant.smsBody : variant.emailBody,
+        }
+      }),
     })
   }
-
-  const selectedSession = recommendations?.session
 
   // ── Session selector state ──
   if (!selectedSessionId) {
@@ -308,6 +375,16 @@ export default function SlotFillerPage() {
             </div>
           </div>
 
+          {/* Message style selector */}
+          {selectedUserIds.size > 0 && previewVariants.length > 0 && (
+            <MessageSelector
+              variants={previewVariants}
+              selectedId={selectedMessageId}
+              channel={selectedChannel}
+              onSelect={setSelectedMessageId}
+            />
+          )}
+
           {/* Cards */}
           {filteredRecs.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">
@@ -362,6 +439,18 @@ export default function SlotFillerPage() {
                             : 'No rating'}
                           {rec.member.gender && ` · ${rec.member.gender === 'M' ? 'Male' : 'Female'}`}
                           {' '}· {rec.estimatedLikelihood} likelihood
+                          {' '}· <span className={cn(
+                            'font-medium',
+                            rec.score >= 80 && rec.estimatedLikelihood === 'high' ? 'text-green-600' :
+                            rec.score >= 60 ? 'text-blue-600' :
+                            rec.score >= 40 ? 'text-amber-600' : 'text-gray-500'
+                          )}>
+                            {playerTypeLabels[classifySlotFillerPlayerType({
+                              score: rec.score,
+                              likelihood: rec.estimatedLikelihood as 'high' | 'medium' | 'low',
+                              scheduleFitScore: rec.reasoning?.components?.schedule_fit?.score || 0,
+                            })]}
+                          </span>
                         </div>
                       </div>
 

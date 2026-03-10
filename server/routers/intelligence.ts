@@ -222,8 +222,8 @@ export const intelligenceRouter = createTRPCRouter({
       candidates: z.array(z.object({
         memberId: z.string(),
         channel: z.enum(['email', 'sms', 'both']),
+        customMessage: z.string().max(1000).optional(),
       })),
-      customMessage: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
