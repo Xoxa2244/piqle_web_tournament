@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
-  UserMinus, Calendar, Clock, Search, Users,
+  UserMinus, Calendar, Clock, Search, Users, AlertTriangle,
   TrendingDown, Mail, MessageSquare, ChevronDown, ChevronUp,
   Smile, Bell, Check, CheckCheck
 } from 'lucide-react'
@@ -102,7 +102,7 @@ export default function ReactivationPage() {
       : 0
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* ── Filters ── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="text-sm text-muted-foreground">Inactive for:</div>
@@ -135,7 +135,7 @@ export default function ReactivationPage() {
 
       {/* ── Metrics ── */}
       {data && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             icon={Users}
             label="Total Members"
@@ -153,6 +153,14 @@ export default function ReactivationPage() {
             value={`${churnRate}%`}
             variant={churnRate >= 20 ? 'danger' : churnRate >= 10 ? 'warning' : 'success'}
           />
+          <MetricCard
+            icon={Calendar}
+            label="Avg Days Inactive"
+            value={data.candidates.length > 0
+              ? Math.round(data.candidates.reduce((s: number, c: any) => s + c.daysSinceLastActivity, 0) / data.candidates.length)
+              : 0
+            }
+          />
         </div>
       )}
 
@@ -161,10 +169,11 @@ export default function ReactivationPage() {
 
       {/* ── Error ── */}
       {error && !isLoading && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <div className="font-medium mb-1">Failed to load reactivation data</div>
-          <div className="text-red-600 text-xs font-mono">{(error as any)?.message || 'Unknown error'}</div>
-        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Failed to load reactivation data"
+          description={(error as any)?.message || 'Could not load member data.'}
+        />
       )}
 
       {/* ── Empty: all active ── */}
@@ -197,7 +206,7 @@ export default function ReactivationPage() {
               }[urgency]
 
               return (
-                <div key={candidate.member.id} className="rounded-lg border bg-card">
+                <div key={candidate.member.id} className="rounded-xl border border-border/60 bg-card shadow-sm">
                   {/* Main row */}
                   <div className="flex items-center gap-3 p-3">
                     {/* Days badge */}

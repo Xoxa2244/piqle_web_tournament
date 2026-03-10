@@ -90,9 +90,9 @@ export default function RevenueIntelligencePage() {
   const recoveryPotential = Math.round(metrics.estimatedLostRevenue * 0.6)
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* ── Top Metrics ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           icon={TrendingDown}
           label="Lost Revenue"
@@ -138,12 +138,19 @@ export default function RevenueIntelligencePage() {
 
         {/* ── Time of Day ── */}
         <TabsContent value="time">
-          <Card>
+          <Card className="rounded-xl border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-sm">Occupancy by Time of Day</CardTitle>
-              <CardDescription>
-                Identify peak and off-peak periods to optimize pricing
-              </CardDescription>
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/20">
+                  <Clock className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm">Occupancy by Time of Day</CardTitle>
+                  <CardDescription>
+                    Identify peak and off-peak periods to optimize pricing
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <HorizontalBarChart
@@ -166,12 +173,19 @@ export default function RevenueIntelligencePage() {
 
         {/* ── Day of Week ── */}
         <TabsContent value="day">
-          <Card>
+          <Card className="rounded-xl border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-sm">Occupancy by Day of Week</CardTitle>
-              <CardDescription>
-                Understand weekly demand patterns to balance your schedule
-              </CardDescription>
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-md shadow-violet-500/20">
+                  <Calendar className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm">Occupancy by Day of Week</CardTitle>
+                  <CardDescription>
+                    Understand weekly demand patterns to balance your schedule
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <VerticalBarChart
@@ -196,12 +210,19 @@ export default function RevenueIntelligencePage() {
 
         {/* ── Format ── */}
         <TabsContent value="format">
-          <Card>
+          <Card className="rounded-xl border-border/60 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-sm">Occupancy by Session Format</CardTitle>
-              <CardDescription>
-                See which formats drive the most engagement
-              </CardDescription>
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20">
+                  <BarChart3 className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm">Occupancy by Session Format</CardTitle>
+                  <CardDescription>
+                    See which formats drive the most engagement
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <HorizontalBarChart

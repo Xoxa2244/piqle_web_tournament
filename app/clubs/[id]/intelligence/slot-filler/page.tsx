@@ -95,11 +95,16 @@ export default function SlotFillerPage() {
   if (!selectedSessionId) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold mb-1">Select a Session</h2>
-          <p className="text-sm text-muted-foreground">
-            Choose a session to see AI-recommended members to invite.
-          </p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 shadow-md shadow-emerald-500/20">
+            <CalendarPlus className="h-4 w-4 text-white" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold">Select a Session</h2>
+            <p className="text-xs text-muted-foreground">
+              Choose a session to see AI-recommended members to invite.
+            </p>
+          </div>
         </div>
 
         {loadingDashboard ? (
@@ -130,7 +135,7 @@ export default function SlotFillerPage() {
                     setInviteSent(false)
                     setSelectedUserIds(new Set())
                   }}
-                  className="w-full flex items-center justify-between p-4 rounded-lg border bg-card hover:border-primary/40 hover:shadow-sm transition-all text-left group"
+                  className="w-full flex items-center justify-between p-4 rounded-xl border border-border/60 bg-card shadow-sm hover:border-primary/40 hover:shadow-md transition-all text-left group"
                 >
                   <div className="min-w-0">
                     <div className="font-medium text-sm group-hover:text-primary transition-colors">
@@ -172,7 +177,7 @@ export default function SlotFillerPage() {
     <div className="space-y-4">
       {/* Session header */}
       {selectedSession && (
-        <div className="flex items-start justify-between gap-4 p-4 rounded-lg border bg-card">
+        <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-border/60 bg-card shadow-sm">
           <div className="min-w-0">
             <div className="font-semibold">{selectedSession.title}</div>
             <div className="text-sm text-muted-foreground mt-0.5">
@@ -279,7 +284,7 @@ export default function SlotFillerPage() {
                 return (
                   <div
                     key={rec.member.id}
-                    className={`rounded-lg border bg-card transition-all ${
+                    className={`rounded-xl border border-border/60 bg-card shadow-sm transition-all ${
                       isSelected ? 'border-primary ring-1 ring-primary/20' : 'hover:border-muted-foreground/20'
                     }`}
                   >
