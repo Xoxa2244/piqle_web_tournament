@@ -871,12 +871,17 @@ export const intelligenceRouter = createTRPCRouter({
         const problematicSessions = [...allMapped].sort((a, b) => a.occupancyPercent - b.occupancyPercent).slice(0, 5)
 
         // ── Player activity from CSV player names ──
+        // "Active" = played in the current period (not just last 14d)
         const allPlayers = new Set<string>()
         const recentPlayers = new Set<string>()
         for (const s of allCsvSessions) {
           for (const name of (s.playerNames || [])) {
             allPlayers.add(name)
-            if (s.date >= csvD14Str) recentPlayers.add(name)
+          }
+        }
+        for (const s of currentSessions) {
+          for (const name of (s.playerNames || [])) {
+            recentPlayers.add(name)
           }
         }
         const csvActive = recentPlayers.size
