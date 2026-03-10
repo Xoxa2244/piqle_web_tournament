@@ -86,7 +86,7 @@ export function MetricCard({
           {tooltip && (
             <span className="group/tip relative inline-flex">
               <HelpCircle className="h-3 w-3 text-muted-foreground/40 cursor-help hover:text-muted-foreground/70 transition-colors" />
-              <span className="invisible group-hover/tip:visible absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 text-[11px] leading-snug font-normal text-popover-foreground bg-popover border border-border rounded-md shadow-md whitespace-nowrap max-w-[200px] text-center">
+              <span className="invisible group-hover/tip:visible absolute z-50 bottom-full left-0 mb-1.5 px-2.5 py-1.5 text-[11px] leading-snug font-normal text-popover-foreground bg-popover border border-border rounded-md shadow-md whitespace-normal w-48">
                 {tooltip}
               </span>
             </span>

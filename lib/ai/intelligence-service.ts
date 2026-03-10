@@ -324,19 +324,106 @@ interface CsvSessionMeta {
   pricePerPlayer?: number | null
 }
 
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
+    .replace(/[^a-z0-9 ]/g, '') // remove non-alphanumeric (keep spaces)
+    .replace(/\s+/g, ' ')
+}
+
 function matchPlayerName(userName: string | null, csvNames: string[]): string | null {
   if (!userName) return null
-  const lower = userName.toLowerCase().trim()
-  // Exact match (case-insensitive)
+  const norm = normalizeForMatch(userName)
+  if (!norm) return null
+  // Pass 1: Exact normalized match
   for (const csv of csvNames) {
-    if (csv.toLowerCase().trim() === lower) return csv
+    if (normalizeForMatch(csv) === norm) return csv
   }
-  // Partial: CSV name contains user name or vice versa (for "John" vs "John Smith")
+  // Pass 2: Substring match (for "John" vs "John Smith")
   for (const csv of csvNames) {
-    const csvLower = csv.toLowerCase().trim()
-    if (csvLower.includes(lower) || lower.includes(csvLower)) return csv
+    const csvNorm = normalizeForMatch(csv)
+    if (csvNorm.includes(norm) || norm.includes(csvNorm)) return csv
+  }
+  // Pass 3: First name + last initial ("John S" ↔ "John Smith")
+  const parts = norm.split(' ')
+  if (parts.length >= 2) {
+    const firstName = parts[0]
+    const lastInitial = parts[parts.length - 1][0]
+    for (const csv of csvNames) {
+      const csvParts = normalizeForMatch(csv).split(' ')
+      if (csvParts.length >= 2) {
+        const csvFirst = csvParts[0]
+        const csvLastInitial = csvParts[csvParts.length - 1][0]
+        if (firstName === csvFirst && lastInitial === csvLastInitial) return csv
+        if (csvFirst === firstName && csvParts[csvParts.length - 1] === parts[parts.length - 1].slice(0, 1)) return csv
+      }
+    }
   }
   return null
+}
+
+function hashStr(s: string): string {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  return Math.abs(h).toString(36)
+}
+
+function buildVirtualCsvMembers(
+  existingMembers: Array<{ user: any }>,
+  allCsvNames: string[],
+  playerActivity: Map<string, { lastDate: string; totalSessions: number; sessionsLast7d: number; sessionsLast30d: number }>,
+  latestDate: Date,
+): Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }> {
+  // Find which CSV names are already matched to existing members
+  const matchedCsvNames = new Set<string>()
+  for (const cf of existingMembers) {
+    const matched = matchPlayerName(cf.user.name, allCsvNames)
+    if (matched) matchedCsvNames.add(matched)
+  }
+
+  // Create virtual members for unmatched CSV names
+  const virtualMembers: Array<{ member: MemberData; preference: UserPlayPreferenceData | null; history: BookingHistory }> = []
+  for (const csvName of allCsvNames) {
+    if (matchedCsvNames.has(csvName)) continue
+
+    const activity = playerActivity.get(csvName)
+    let history: BookingHistory
+    if (activity) {
+      const lastActivityDate = new Date(activity.lastDate + 'T23:59:59')
+      const daysSince = Math.floor((latestDate.getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+      history = {
+        totalBookings: activity.totalSessions,
+        bookingsLastWeek: activity.sessionsLast7d,
+        bookingsLastMonth: activity.sessionsLast30d,
+        daysSinceLastConfirmedBooking: daysSince,
+        cancelledCount: 0,
+        noShowCount: 0,
+        inviteAcceptanceRate: 1.0,
+      }
+    } else {
+      history = {
+        totalBookings: 0, bookingsLastWeek: 0, bookingsLastMonth: 0,
+        daysSinceLastConfirmedBooking: null, cancelledCount: 0,
+        noShowCount: 0, inviteAcceptanceRate: 0.5,
+      }
+    }
+
+    virtualMembers.push({
+      member: {
+        id: `csv-${hashStr(csvName)}`,
+        email: '',
+        name: csvName,
+        image: null,
+        gender: null,
+        city: null,
+        duprRatingDoubles: null,
+        duprRatingSingles: null,
+      },
+      preference: null,
+      history,
+    })
+  }
+  return virtualMembers
 }
 
 async function buildCsvReactivationData(
@@ -461,7 +548,10 @@ async function buildCsvReactivationData(
       spotsRemaining: s.capacity - s.registered,
     }))
 
-  return { membersWithData, upcomingSessions, totalPlayersFromCsv: allPlayerNames.size }
+  // Add virtual members for CSV-only players (not matched to any clubFollower)
+  const virtualMembers = buildVirtualCsvMembers(members, allCsvNames, playerActivity, latestDate)
+
+  return { membersWithData: [...membersWithData, ...virtualMembers], upcomingSessions, totalPlayersFromCsv: allPlayerNames.size }
 }
 
 /**
@@ -894,7 +984,10 @@ async function buildCsvEventData(
     }
   })
 
-  return { membersWithData, csvSessions }
+  // Add virtual members for CSV-only players (not matched to any clubFollower)
+  const virtualMembers = buildVirtualCsvMembers(members, allCsvNames, playerActivity, latestDate)
+
+  return { membersWithData: [...membersWithData, ...virtualMembers], csvSessions }
 }
 
 /**

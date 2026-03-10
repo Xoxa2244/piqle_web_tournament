@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,6 +35,7 @@ const timeSlotLabels: Record<string, string> = {
 }
 
 type OccupancyTab = 'day' | 'time' | 'format'
+type DatePreset = '7d' | '14d' | '30d' | '90d' | 'custom'
 
 export default function IntelligenceDashboardPage() {
   const params = useParams()
@@ -42,8 +43,25 @@ export default function IntelligenceDashboardPage() {
   const clubId = params.id as string
   const demoSuffix = searchParams.get('demo') === 'true' ? '?demo=true' : ''
   const [occTab, setOccTab] = useState<OccupancyTab>('day')
+  const [datePreset, setDatePreset] = useState<DatePreset>('30d')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
 
-  const { data, isLoading, error } = useDashboardV2(clubId)
+  const dateFilters = useMemo(() => {
+    if (datePreset === 'custom') {
+      return { dateFrom: customFrom || undefined, dateTo: customTo || undefined }
+    }
+    const days = datePreset === '7d' ? 7 : datePreset === '14d' ? 14 : datePreset === '90d' ? 90 : 30
+    if (days === 30) return {} // default — no params needed
+    const to = new Date()
+    const from = new Date(to.getTime() - days * 86400000)
+    return {
+      dateFrom: from.toISOString().slice(0, 10),
+      dateTo: to.toISOString().slice(0, 10),
+    }
+  }, [datePreset, customFrom, customTo])
+
+  const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -86,6 +104,50 @@ export default function IntelligenceDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Date Filter ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-xs font-semibold text-muted-foreground">Period:</span>
+        <div className="flex bg-muted/60 rounded-lg p-0.5">
+          {([
+            { key: '7d', label: '7D' },
+            { key: '14d', label: '14D' },
+            { key: '30d', label: '30D' },
+            { key: '90d', label: '90D' },
+            { key: 'custom', label: 'Custom' },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setDatePreset(tab.key)}
+              className={cn(
+                'px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200',
+                datePreset === tab.key
+                  ? 'bg-white text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {datePreset === 'custom' && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="h-8 px-2 text-xs border border-border rounded-md bg-background"
+            />
+            <span className="text-xs text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={e => setCustomTo(e.target.value)}
+              className="h-8 px-2 text-xs border border-border rounded-md bg-background"
+            />
+          </div>
+        )}
+      </div>
+
       {/* ── KPI Metrics ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard

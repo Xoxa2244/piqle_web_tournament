@@ -38,11 +38,11 @@ export function useDashboard(clubId: string) {
 }
 
 // ── Dashboard V2 ──
-export function useDashboardV2(clubId: string) {
+export function useDashboardV2(clubId: string, dateFrom?: string, dateTo?: string) {
   const isDemo = useIsDemo()
 
   const query = trpc.intelligence.getDashboardV2.useQuery(
-    { clubId },
+    { clubId, dateFrom, dateTo },
     { enabled: !!clubId && !isDemo }
   )
 

@@ -324,43 +324,51 @@ export default function ReactivationPage() {
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 text-xs"
-                          onClick={() => {
-                            setSelectedMemberId(candidate.member.id)
-                            setSelectedChannel('email')
-                            setSelectedMessageId('')
-                            setShowEmailConfirm(true)
-                          }}
-                        >
-                          <Mail className="h-3 w-3" /> Send Re-engagement Email
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1.5 text-xs"
-                          onClick={() => {
-                            setSelectedMemberId(candidate.member.id)
-                            setSelectedChannel('sms')
-                            setSelectedMessageId('')
-                            setShowEmailConfirm(true)
-                          }}
-                        >
-                          <MessageSquare className="h-3 w-3" /> Send SMS
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1.5 text-xs opacity-50 cursor-not-allowed"
-                          disabled
-                        >
-                          <Bell className="h-3 w-3" /> Push
-                          <Badge className="bg-purple-100 text-purple-700 text-[10px] px-1 py-0 font-medium ml-0.5">
-                            Soon
+                        {candidate.member.id.startsWith('csv-') ? (
+                          <Badge variant="secondary" className="text-[10px] font-medium bg-slate-100 text-slate-600">
+                            CSV Player
                           </Badge>
-                        </Button>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs"
+                              onClick={() => {
+                                setSelectedMemberId(candidate.member.id)
+                                setSelectedChannel('email')
+                                setSelectedMessageId('')
+                                setShowEmailConfirm(true)
+                              }}
+                            >
+                              <Mail className="h-3 w-3" /> Send Re-engagement Email
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1.5 text-xs"
+                              onClick={() => {
+                                setSelectedMemberId(candidate.member.id)
+                                setSelectedChannel('sms')
+                                setSelectedMessageId('')
+                                setShowEmailConfirm(true)
+                              }}
+                            >
+                              <MessageSquare className="h-3 w-3" /> Send SMS
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="gap-1.5 text-xs opacity-50 cursor-not-allowed"
+                              disabled
+                            >
+                              <Bell className="h-3 w-3" /> Push
+                              <Badge className="bg-purple-100 text-purple-700 text-[10px] px-1 py-0 font-medium ml-0.5">
+                                Soon
+                              </Badge>
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

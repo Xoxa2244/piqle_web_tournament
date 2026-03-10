@@ -388,16 +388,27 @@ export const intelligenceRouter = createTRPCRouter({
 
   // ── Dashboard V2: Full analytics overview ──
   getDashboardV2: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid() }))
+    .input(z.object({
+      clubId: z.string().uuid(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       const now = new Date()
-      const d7 = new Date(now.getTime() - 7 * 86400000)
-      const d14 = new Date(now.getTime() - 14 * 86400000)
-      const d30 = new Date(now.getTime() - 30 * 86400000)
-      const d60 = new Date(now.getTime() - 60 * 86400000)
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const currentEnd = input.dateTo ? new Date(input.dateTo + 'T23:59:59') : now
+      const currentStart = input.dateFrom ? new Date(input.dateFrom + 'T00:00:00')
+        : new Date(currentEnd.getTime() - 30 * 86400000)
+      const periodMs = currentEnd.getTime() - currentStart.getTime()
+      const previousStart = new Date(currentStart.getTime() - periodMs)
+
+      // Aliases for backward compatibility with existing DB queries
+      const d30 = currentStart
+      const d60 = previousStart
+      const d7 = new Date(currentEnd.getTime() - 7 * 86400000)
+      const d14 = new Date(currentEnd.getTime() - 14 * 86400000)
+      const monthStart = new Date(currentEnd.getFullYear(), currentEnd.getMonth(), 1)
 
       // ── Helper: compute trend ──
       function computeTrend(current: number, previous: number, sparkline: number[] = []): {
@@ -736,15 +747,24 @@ export const intelligenceRouter = createTRPCRouter({
         }
 
         // ── Compute dashboard from CSV data ──
-        // Determine date ranges from the CSV data itself
+        // Use input date range if provided, otherwise default to latest CSV date
         const allDates = allCsvSessions.map(s => s.date).sort()
         const latestDateStr = allDates[allDates.length - 1]
         const latestDate = new Date(latestDateStr + 'T23:59:59')
-        const csvD30Str = new Date(latestDate.getTime() - 30 * 86400000).toISOString().slice(0, 10)
-        const csvD60Str = new Date(latestDate.getTime() - 60 * 86400000).toISOString().slice(0, 10)
-        const csvD14Str = new Date(latestDate.getTime() - 14 * 86400000).toISOString().slice(0, 10)
 
-        let currentSessions = allCsvSessions.filter(s => s.date >= csvD30Str)
+        const effectiveEndStr = input.dateTo || latestDateStr
+        const effectiveEnd = new Date(effectiveEndStr + 'T23:59:59')
+        const defaultPeriodMs = 30 * 86400000
+        const effectiveStartStr = input.dateFrom
+          || new Date(effectiveEnd.getTime() - defaultPeriodMs).toISOString().slice(0, 10)
+        const csvPeriodMs = effectiveEnd.getTime() - new Date(effectiveStartStr + 'T00:00:00').getTime()
+        const csvPrevStartStr = new Date(new Date(effectiveStartStr + 'T00:00:00').getTime() - csvPeriodMs).toISOString().slice(0, 10)
+
+        const csvD30Str = effectiveStartStr
+        const csvD60Str = csvPrevStartStr
+        const csvD14Str = new Date(effectiveEnd.getTime() - 14 * 86400000).toISOString().slice(0, 10)
+
+        let currentSessions = allCsvSessions.filter(s => s.date >= csvD30Str && s.date <= effectiveEndStr)
         let previousSessions = allCsvSessions.filter(s => s.date >= csvD60Str && s.date < csvD30Str)
 
         // If no sessions in the recent 30d window, split all data into halves for trend comparison
@@ -783,7 +803,7 @@ export const intelligenceRouter = createTRPCRouter({
         const occSpark: number[] = []
         const bookSpark: number[] = []
         for (let i = 6; i >= 0; i--) {
-          const dayStr = new Date(latestDate.getTime() - i * 86400000).toISOString().slice(0, 10)
+          const dayStr = new Date(effectiveEnd.getTime() - i * 86400000).toISOString().slice(0, 10)
           const ds = currentSessions.filter(s => s.date === dayStr)
           occSpark.push(ds.length > 0 ? Math.round(ds.reduce((a, s) => a + s.occupancy, 0) / ds.length) : 0)
           bookSpark.push(ds.reduce((a, s) => a + s.registered, 0))
@@ -884,7 +904,7 @@ export const intelligenceRouter = createTRPCRouter({
         // Sparkline for players (unique players per day over last 7 data points)
         const playerSpark: number[] = []
         for (let i = 6; i >= 0; i--) {
-          const dayStr = new Date(latestDate.getTime() - i * 86400000).toISOString().slice(0, 10)
+          const dayStr = new Date(effectiveEnd.getTime() - i * 86400000).toISOString().slice(0, 10)
           const dayPlayers = new Set<string>()
           for (const s of currentSessions) {
             if (s.date === dayStr) {
