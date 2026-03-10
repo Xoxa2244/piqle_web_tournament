@@ -217,19 +217,16 @@ export const intelligenceRouter = createTRPCRouter({
   // ── Send Invites: Invite recommended users to a session ──
   sendInvites: protectedProcedure
     .input(z.object({
-      sessionId: z.string().uuid(),
-      userIds: z.array(z.string().uuid()),
-      message: z.string().max(500).optional(),
+      sessionId: z.string().min(1),
+      clubId: z.string().uuid(),
+      candidates: z.array(z.object({
+        memberId: z.string(),
+        channel: z.enum(['email', 'sms', 'both']),
+      })),
+      customMessage: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const session = await ctx.prisma.playSession.findUnique({
-        where: { id: input.sessionId },
-        select: { clubId: true },
-      })
-      if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
-      }
-      await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       return sendInvites(ctx.prisma, input)
     }),
 

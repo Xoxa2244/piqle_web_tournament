@@ -1409,6 +1409,7 @@ enum AIRecommendationType {
   SLOT_FILLER
   REACTIVATION
   WEEKLY_PLAN
+  EVENT_INVITE
   DYNAMIC_PRICING
   REBOOKING
   AI_ADVISOR
@@ -1504,6 +1505,7 @@ model UserPlayPreference {
   skillLevel            PlaySessionSkillLevel @default(ALL_LEVELS)
   preferredFormats      String[] @default([])
   targetSessionsPerWeek Int      @default(2)
+  notificationsOptOut   Boolean  @default(false) @map("notifications_opt_out")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -1519,12 +1521,15 @@ model AIRecommendationLog {
   user             User                    @relation("AIRecommendationLogs", fields: [userId], references: [id])
   type             AIRecommendationType
   sessionId        String?
+  channel          String?
   score            Float?
   reasoning        Json?
   status           String                  @default("pending")
   respondedAt      DateTime?
   createdAt        DateTime                @default(now())
 
+  @@index([userId, clubId, createdAt])
+  @@index([userId, sessionId, type])
   @@map("ai_recommendation_logs")
 }
 

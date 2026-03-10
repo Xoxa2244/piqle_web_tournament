@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Zap, Calendar, Send, CheckCircle, Star, Clock, Search,
-  Users, ChevronDown, ChevronUp, CalendarPlus
+  Users, ChevronDown, ChevronUp, CalendarPlus, Mail, MessageSquare
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import ConfirmModal from '@/components/ConfirmModal'
 import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
@@ -23,6 +24,7 @@ export default function SlotFillerPage() {
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(preSelectedSessionId)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [inviteSent, setInviteSent] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,7 +89,11 @@ export default function SlotFillerPage() {
     if (!selectedSessionId || selectedUserIds.size === 0) return
     sendInvitesMutation.mutate({
       sessionId: selectedSessionId,
-      userIds: Array.from(selectedUserIds),
+      clubId,
+      candidates: Array.from(selectedUserIds).map(memberId => ({
+        memberId,
+        channel: selectedChannel,
+      })),
     })
   }
 
@@ -225,8 +231,13 @@ export default function SlotFillerPage() {
           <div className="text-sm">
             <span className="font-medium text-green-800">Invites sent!</span>{' '}
             <span className="text-green-600">
-              {sendInvitesMutation.data?.invitedCount} members were invited to this session.
+              {sendInvitesMutation.data?.sent} member{sendInvitesMutation.data?.sent !== 1 ? 's' : ''} invited via {selectedChannel}.
             </span>
+            {(sendInvitesMutation.data?.results?.some((r: any) => r.status === 'skipped')) && (
+              <span className="text-amber-600 ml-1">
+                {sendInvitesMutation.data.results.filter((r: any) => r.status === 'skipped').length} skipped (recently contacted).
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -261,6 +272,30 @@ export default function SlotFillerPage() {
                   Clear
                 </Button>
               )}
+              <div className="flex bg-muted/60 rounded-lg p-0.5">
+                <button
+                  onClick={() => setSelectedChannel('email')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                    selectedChannel === 'email'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Mail className="h-3 w-3" /> Email
+                </button>
+                <button
+                  onClick={() => setSelectedChannel('sms')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                    selectedChannel === 'sms'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <MessageSquare className="h-3 w-3" /> SMS
+                </button>
+              </div>
               <Button
                 size="sm"
                 onClick={() => setShowConfirm(true)}
@@ -417,7 +452,7 @@ export default function SlotFillerPage() {
       <ConfirmModal
         open={showConfirm}
         title="Send Invitations"
-        description={`Invite ${selectedUserIds.size} member${selectedUserIds.size !== 1 ? 's' : ''} to this session? They'll receive a notification to join.`}
+        description={`Send ${selectedChannel === 'sms' ? 'SMS' : 'email'} invite to ${selectedUserIds.size} member${selectedUserIds.size !== 1 ? 's' : ''} for this session?`}
         confirmText={`Send ${selectedUserIds.size} Invite${selectedUserIds.size !== 1 ? 's' : ''}`}
         isPending={sendInvitesMutation.isPending}
         onClose={() => setShowConfirm(false)}

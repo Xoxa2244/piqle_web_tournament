@@ -9,8 +9,9 @@ import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
 import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
 import { classifyArchetype } from './reactivation-messages';
-import { sendReactivationEmail, sendEventInviteEmail } from '../email';
-import { sendSms, buildReactivationSms } from '../sms';
+import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail } from '../email';
+import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
+import { checkAntiSpam } from './anti-spam';
 import type { BookingHistory, UserPlayPreferenceData, MemberData } from '../../types/intelligence';
 
 // ── Input Schemas ──
@@ -32,9 +33,13 @@ const reactivationInput = z.object({
 });
 
 const sendInviteInput = z.object({
-  sessionId: z.string().uuid(),
-  userIds: z.array(z.string().uuid()),
-  message: z.string().max(500).optional(),
+  sessionId: z.string().min(1),
+  clubId: z.string().uuid(),
+  candidates: z.array(z.object({
+    memberId: z.string(),
+    channel: z.enum(['email', 'sms', 'both']),
+  })),
+  customMessage: z.string().max(500).optional(),
 });
 
 const eventRecommendationInput = z.object({
@@ -904,34 +909,162 @@ export async function getReactivationCandidates(
 }
 
 /**
- * intelligence.sendInvites - Send invites to recommended users (MOCK)
+ * intelligence.sendInvites - Send invites to recommended users for a session
  */
 export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteInput>) {
-  const session = await prisma.playSession.findUniqueOrThrow({
-    where: { id: input.sessionId },
-    select: { id: true, title: true, date: true, startTime: true },
-  });
+  const { sessionId, clubId, candidates: candidateInputs, customMessage } = input
 
-  const users = await prisma.user.findMany({
-    where: { id: { in: input.userIds } },
-    select: { id: true, name: true, email: true },
-  });
+  // Load club
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { id: true, name: true, slug: true },
+  })
 
-  // MOCK: In production, send email/SMS via Resend/Twilio
-  console.log(`\n[MOCK INVITE] Session: ${session.title} on ${session.date}`);
-  users.forEach((u: any) => {
-    console.log(`  → Would send invite to ${u.name} (${u.email})`);
-  });
-  if (input.message) {
-    console.log(`  Message: ${input.message}`);
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  // Load session data (handle CSV vs real)
+  let sessionData: { title: string; date: string; time: string; spotsLeft: number }
+  if (sessionId.startsWith('csv-')) {
+    // CSV fallback: read session metadata from document_embeddings
+    try {
+      const csvRows = await prisma.$queryRaw<Array<{ metadata: any }>>`
+        SELECT metadata FROM document_embeddings
+        WHERE club_id = ${clubId}
+          AND content_type = 'session'
+          AND source_table = 'csv_import'
+        ORDER BY (metadata->>'occupancy_percent')::float ASC,
+                 metadata->>'date' ASC
+      `
+      const idx = parseInt(sessionId.replace('csv-', ''), 10)
+      const meta = csvRows[idx]?.metadata
+      if (!meta) throw new Error(`CSV session ${sessionId} not found`)
+      sessionData = {
+        title: meta.title || meta.format || 'Open Play',
+        date: meta.date || '',
+        time: meta.start_time ? `${meta.start_time}–${meta.end_time || ''}` : '',
+        spotsLeft: Math.max(0, (meta.max_players || 8) - (meta.confirmed_count || 0)),
+      }
+    } catch (err: any) {
+      throw new Error(`Failed to load CSV session: ${err.message}`)
+    }
+  } else {
+    const session = await prisma.playSession.findUniqueOrThrow({
+      where: { id: sessionId },
+      include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
+    })
+    sessionData = {
+      title: session.title || 'Open Play',
+      date: session.date instanceof Date ? session.date.toLocaleDateString() : String(session.date),
+      time: session.startTime ? `${session.startTime}–${session.endTime || ''}` : '',
+      spotsLeft: Math.max(0, (session.maxPlayers || 8) - session._count.bookings),
+    }
   }
 
-  return {
-    sessionId: session.id,
-    invitedCount: users.length,
-    invitedUsers: users,
-    status: 'mock_sent',
-  };
+  // Filter out csv- members (virtual, no real user in DB)
+  const realCandidates = candidateInputs.filter(c => !c.memberId.startsWith('csv-'))
+  const csvSkipped = candidateInputs.length - realCandidates.length
+
+  // Load users
+  const memberIds = realCandidates.map(c => c.memberId)
+  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+    where: { id: { in: memberIds } },
+    select: { id: true, email: true, name: true },
+  })
+  const usersById = new Map(users.map(u => [u.id, u]))
+
+  const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
+
+  for (const candidate of realCandidates) {
+    const user = usersById.get(candidate.memberId)
+    if (!user) {
+      results.push({ memberId: candidate.memberId, channel: candidate.channel, status: 'failed', error: 'User not found' })
+      continue
+    }
+
+    // Anti-spam check
+    const spamCheck = await checkAntiSpam({
+      prisma,
+      userId: user.id,
+      clubId,
+      type: 'SLOT_FILLER',
+      sessionId: sessionId.startsWith('csv-') ? null : sessionId,
+    })
+    if (!spamCheck.allowed) {
+      results.push({ memberId: user.id, channel: candidate.channel, status: 'skipped', error: spamCheck.reason })
+      continue
+    }
+
+    // Send email
+    if (candidate.channel === 'email' || candidate.channel === 'both') {
+      try {
+        if (!user.email) throw new Error('No email address')
+        await sendSlotFillerInviteEmail({
+          to: user.email,
+          memberName: user.name || 'there',
+          clubName: club.name,
+          sessionTitle: sessionData.title,
+          sessionDate: sessionData.date,
+          sessionTime: sessionData.time,
+          spotsLeft: sessionData.spotsLeft,
+          bookingUrl,
+          customMessage,
+        })
+        results.push({ memberId: user.id, channel: 'email', status: 'sent' })
+      } catch (err: any) {
+        results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
+      }
+    }
+
+    // Send SMS
+    if (candidate.channel === 'sms' || candidate.channel === 'both') {
+      try {
+        const phone = (user as any).phone
+        if (!phone) throw new Error('Phone number not available')
+        const body = buildSlotFillerSms({
+          memberName: user.name || 'there',
+          clubName: club.name,
+          sessionTitle: sessionData.title,
+          sessionDate: sessionData.date,
+          sessionTime: sessionData.time,
+          spotsLeft: sessionData.spotsLeft,
+          bookingUrl,
+          customMessage,
+        })
+        await sendSms({ to: phone, body })
+        results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
+      } catch (err: any) {
+        results.push({ memberId: user.id, channel: 'sms', status: 'failed', error: err.message })
+      }
+    }
+
+    // Log to DB
+    try {
+      await prisma.aIRecommendationLog.create({
+        data: {
+          clubId,
+          userId: user.id,
+          type: 'SLOT_FILLER',
+          sessionId: sessionId.startsWith('csv-') ? null : sessionId,
+          channel: candidate.channel,
+          reasoning: {
+            sessionTitle: sessionData.title,
+            sessionDate: sessionData.date,
+            customMessage: customMessage || null,
+          },
+          status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
+        },
+      })
+    } catch (logErr) {
+      console.error('[SlotFiller] Failed to log recommendation:', logErr)
+    }
+  }
+
+  const sent = results.filter(r => r.status === 'sent').length
+  const failed = results.filter(r => r.status === 'failed').length
+
+  return { sent, failed, csvSkipped, results }
 }
 
 /**
@@ -1012,6 +1145,15 @@ export async function sendReactivationMessages(
       continue
     }
 
+    // Anti-spam check
+    const spamCheck = await checkAntiSpam({
+      prisma, userId: user.id, clubId, type: 'REACTIVATION',
+    })
+    if (!spamCheck.allowed) {
+      results.push({ memberId: user.id, channel: candidateInput.channel, status: 'skipped', error: spamCheck.reason })
+      continue
+    }
+
     const reactivation = candidateDataById.get(candidateInput.memberId)
     const suggestedSessions = (reactivation?.suggestedSessions || []).slice(0, 3).map((s: any) => ({
       title: s.title || 'Open Play',
@@ -1060,8 +1202,8 @@ export async function sendReactivationMessages(
           clubId,
           userId: user.id,
           type: 'REACTIVATION',
+          channel: candidateInput.channel,
           reasoning: {
-            channel: candidateInput.channel,
             daysSinceLastActivity: daysSince,
             suggestedSessionCount: suggestedSessions.length,
             customMessage: customMessage || null,
@@ -1120,6 +1262,15 @@ export async function sendEventInviteMessages(
       continue
     }
 
+    // Anti-spam check
+    const spamCheck = await checkAntiSpam({
+      prisma, userId: user.id, clubId, type: 'EVENT_INVITE',
+    })
+    if (!spamCheck.allowed) {
+      results.push({ memberId: user.id, channel: candidate.channel, status: 'skipped', error: spamCheck.reason })
+      continue
+    }
+
     // Send email
     if (candidate.channel === 'email' || candidate.channel === 'both') {
       try {
@@ -1160,8 +1311,8 @@ export async function sendEventInviteMessages(
           clubId,
           userId: user.id,
           type: 'EVENT_INVITE',
+          channel: candidate.channel,
           reasoning: {
-            channel: candidate.channel,
             eventTitle,
             eventDate,
             customMessage: candidate.customMessage,

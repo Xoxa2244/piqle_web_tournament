@@ -35,6 +35,43 @@ export async function sendSms({
 /**
  * Build an SMS message for member reactivation.
  */
+/**
+ * Build an SMS message for slot filler invite.
+ */
+export function buildSlotFillerSms({
+  memberName,
+  clubName,
+  sessionTitle,
+  sessionDate,
+  sessionTime,
+  spotsLeft,
+  bookingUrl,
+  customMessage,
+}: {
+  memberName: string
+  clubName: string
+  sessionTitle: string
+  sessionDate: string
+  sessionTime: string
+  spotsLeft: number
+  bookingUrl: string
+  customMessage?: string
+}): string {
+  if (customMessage) {
+    return `${customMessage} Join now: ${bookingUrl}`
+  }
+  const name = memberName.split(' ')[0] || 'there'
+  return (
+    `Hey ${name}! You're invited to ${sessionTitle} at ${clubName} ` +
+    `on ${sessionDate}, ${sessionTime}. ` +
+    `${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left. ` +
+    `Join now: ${bookingUrl}`
+  )
+}
+
+/**
+ * Build an SMS message for member reactivation.
+ */
 export function buildReactivationSms({
   memberName,
   clubName,

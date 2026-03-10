@@ -148,12 +148,12 @@ export function useSendInvites() {
 
   if (isDemo) {
     return {
-      mutate: (_input: any, opts?: any) => {
-        // Simulate success after brief delay
-        setTimeout(() => opts?.onSuccess?.({ invitedCount: 3 }), 500)
+      mutate: (input: any, opts?: any) => {
+        const count = input?.candidates?.length || 0
+        setTimeout(() => opts?.onSuccess?.({ sent: count, failed: 0, csvSkipped: 0, results: [] }), 500)
       },
       isPending: false,
-      data: { invitedCount: 3 },
+      data: { sent: 3, failed: 0, csvSkipped: 0, results: [] },
     } as any
   }
 
