@@ -719,40 +719,134 @@ export function mockEventRecommendations(): EventRecommendationsResult {
 }
 
 // ── Sessions Calendar ──
+// Realistic club schedule: 3-5 sessions per day, morning block (7-13) + evening block (17-21), every day
 const fmtDate = (daysFromNow: number) => {
   const d = new Date(today)
   d.setDate(d.getDate() + daysFromNow)
   return d.toISOString().slice(0, 10)
 }
 
+type CalItem = import('@/types/intelligence').SessionCalendarItem
+type CalRec = import('@/types/intelligence').SessionRecommendation
+
+// Daily schedule templates — rotate through these
+const dailySlots = [
+  // Weekday template A
+  [
+    { start: '07:00', end: '09:00', format: 'Open Play', skill: 'All Levels', court: 'Court 1', cap: 8, price: 15 },
+    { start: '09:00', end: '11:00', format: 'Clinic', skill: 'Beginner', court: 'Court 2', cap: 10, price: 25 },
+    { start: '11:00', end: '13:00', format: 'Drill', skill: 'Intermediate', court: 'Court 1', cap: 6, price: 30 },
+    { start: '17:00', end: '19:00', format: 'Round Robin', skill: 'Intermediate', court: 'Court 1', cap: 12, price: 20 },
+    { start: '19:00', end: '21:00', format: 'Open Play', skill: 'Advanced', court: 'Court 2', cap: 8, price: 18 },
+  ],
+  // Weekday template B
+  [
+    { start: '07:00', end: '09:00', format: 'Drill', skill: 'Advanced', court: 'Court 2', cap: 6, price: 30 },
+    { start: '09:00', end: '11:00', format: 'Open Play', skill: 'All Levels', court: 'Court 1', cap: 8, price: 15 },
+    { start: '11:00', end: '13:00', format: 'Clinic', skill: 'Intermediate', court: 'Court 3', cap: 10, price: 25 },
+    { start: '17:00', end: '19:00', format: 'Open Play', skill: 'All Levels', court: 'Court 1', cap: 8, price: 15 },
+    { start: '19:00', end: '21:00', format: 'Round Robin', skill: 'Advanced', court: 'Court 2', cap: 12, price: 22 },
+  ],
+  // Weekend template
+  [
+    { start: '08:00', end: '10:00', format: 'Open Play', skill: 'All Levels', court: 'Court 1', cap: 8, price: 18 },
+    { start: '08:00', end: '10:00', format: 'Clinic', skill: 'Beginner', court: 'Court 3', cap: 10, price: 28 },
+    { start: '10:00', end: '12:00', format: 'Round Robin', skill: 'Intermediate', court: 'Court 1', cap: 12, price: 22 },
+    { start: '10:00', end: '12:00', format: 'League Play', skill: 'Advanced', court: 'Court 2', cap: 8, price: 25 },
+    { start: '12:00', end: '13:00', format: 'Drill', skill: 'Intermediate', court: 'Court 3', cap: 6, price: 30 },
+    { start: '17:00', end: '19:00', format: 'Social', skill: 'All Levels', court: 'Court 1', cap: 16, price: 12 },
+    { start: '19:00', end: '21:00', format: 'Round Robin', skill: 'Advanced', court: 'Court 2', cap: 12, price: 22 },
+  ],
+]
+
+// Seeded random for consistent mock data
+function seededRand(seed: number) {
+  const x = Math.sin(seed) * 10000
+  return x - Math.floor(x)
+}
+
+function generateDaySessions(dayOffset: number, id: number): CalItem[] {
+  const date = fmtDate(dayOffset)
+  const dayOfWeek = new Date(date + 'T12:00:00').getDay() // 0=Sun
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+  const template = isWeekend ? dailySlots[2] : dailySlots[Math.abs(dayOffset) % 2]
+  const status: CalItem['status'] = dayOffset < 0 ? 'past' : dayOffset === 0 ? 'today' : 'upcoming'
+
+  return template.map((slot, si) => {
+    const seed = dayOffset * 100 + si + 42
+    const rand = seededRand(seed)
+
+    // Realistic fill rates: morning open play high, clinics lower, evening round robin high
+    let baseFill = 0.65
+    if (slot.format === 'Open Play') baseFill = 0.72
+    if (slot.format === 'Round Robin') baseFill = 0.78
+    if (slot.format === 'Clinic') baseFill = 0.48
+    if (slot.format === 'Drill') baseFill = 0.70
+    if (slot.format === 'League Play') baseFill = 0.88
+    if (slot.format === 'Social') baseFill = 0.45
+    if (isWeekend) baseFill += 0.08
+
+    // Add variance
+    const fillRate = Math.max(0.1, Math.min(1, baseFill + (rand - 0.5) * 0.4))
+    const registered = Math.round(fillRate * slot.cap)
+    const occupancy = Math.round((registered / slot.cap) * 100)
+
+    const peerAvg = Math.round(baseFill * 100)
+    const deviation = occupancy - peerAvg
+
+    const revenue = status === 'past' ? registered * slot.price : null
+    const lostRevenue = status === 'past' ? (slot.cap - registered) * slot.price : null
+
+    // Generate recommendations
+    const recs: CalRec[] = []
+    if (status !== 'past' && occupancy < 50) {
+      recs.push({ type: 'send_invites', label: 'Send targeted invites', reason: `Only ${registered}/${slot.cap} filled. Use Slot Filler to find matching players.`, priority: occupancy < 30 ? 'high' : 'medium', actionLink: '/clubs/demo/intelligence/slot-filler' })
+    }
+    if (occupancy < 35 && slot.format === 'Clinic') {
+      recs.push({ type: 'swap_format', label: 'Try Open Play instead', reason: `Clinics average ${peerAvg}% here. Open Play averages 72% in the same slot.`, priority: 'medium' })
+    }
+    if (occupancy > 95 && status === 'past') {
+      recs.push({ type: 'raise_price', label: 'High demand — raise price?', reason: `Sold out! Consider raising from $${slot.price} to $${slot.price + 3} or adding a parallel session.`, priority: 'low' })
+    }
+    if (occupancy < 25 && status === 'past') {
+      recs.push({ type: 'cancel_consider', label: 'Consistently low', reason: `Only ${registered}/${slot.cap} players. Consider replacing this slot.`, priority: 'high' })
+    }
+
+    const names = Array.from({ length: registered }, (_, k) => `P${id + si}-${k + 1}`)
+
+    return {
+      id: `cal-${id + si}`,
+      date,
+      startTime: slot.start,
+      endTime: slot.end,
+      court: slot.court,
+      format: slot.format,
+      skillLevel: slot.skill,
+      registered,
+      capacity: slot.cap,
+      occupancy,
+      playerNames: names,
+      pricePerPlayer: slot.price,
+      revenue,
+      lostRevenue: lostRevenue && lostRevenue > 0 ? lostRevenue : null,
+      status,
+      peerAvgOccupancy: peerAvg,
+      deviationFromPeer: deviation,
+      recommendations: recs,
+    }
+  })
+}
+
 export function mockSessionsCalendar(): import('@/types/intelligence').SessionCalendarData {
-  const sessions: import('@/types/intelligence').SessionCalendarItem[] = [
-    // Past sessions (last 2 weeks)
-    { id: 'cal-1', date: fmtDate(-13), startTime: '08:00', endTime: '10:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 7, capacity: 8, occupancy: 88, playerNames: ['Alice', 'Bob', 'Carlos', 'Diana', 'Eve', 'Frank', 'Grace'], pricePerPlayer: 15, revenue: 105, lostRevenue: 15, status: 'past', peerAvgOccupancy: 72, deviationFromPeer: 16, recommendations: [] },
-    { id: 'cal-2', date: fmtDate(-12), startTime: '18:00', endTime: '20:00', court: 'Court 2', format: 'Round Robin', skillLevel: 'Intermediate', registered: 10, capacity: 12, occupancy: 83, playerNames: ['H1','H2','H3','H4','H5','H6','H7','H8','H9','H10'], pricePerPlayer: 20, revenue: 200, lostRevenue: 40, status: 'past', peerAvgOccupancy: 78, deviationFromPeer: 5, recommendations: [] },
-    { id: 'cal-3', date: fmtDate(-10), startTime: '09:00', endTime: '11:00', court: 'Court 3', format: 'Clinic', skillLevel: 'Beginner', registered: 3, capacity: 10, occupancy: 30, playerNames: ['Ian', 'Jane', 'Kim'], pricePerPlayer: 25, revenue: 75, lostRevenue: 175, status: 'past', peerAvgOccupancy: 55, deviationFromPeer: -25, recommendations: [{ type: 'swap_format', label: 'Try Open Play', reason: 'Open Play averages 72% here vs Clinic at 30%.', priority: 'medium' }] },
-    { id: 'cal-4', date: fmtDate(-8), startTime: '07:00', endTime: '09:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 6, capacity: 8, occupancy: 75, playerNames: ['L1','L2','L3','L4','L5','L6'], pricePerPlayer: 15, revenue: 90, lostRevenue: 30, status: 'past', peerAvgOccupancy: 72, deviationFromPeer: 3, recommendations: [] },
-    { id: 'cal-5', date: fmtDate(-7), startTime: '17:00', endTime: '19:00', court: 'Court 2', format: 'Drill', skillLevel: 'Advanced', registered: 4, capacity: 6, occupancy: 67, playerNames: ['M1','M2','M3','M4'], pricePerPlayer: 30, revenue: 120, lostRevenue: 60, status: 'past', peerAvgOccupancy: 70, deviationFromPeer: -3, recommendations: [] },
-    { id: 'cal-6', date: fmtDate(-5), startTime: '08:00', endTime: '10:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 2, capacity: 8, occupancy: 25, playerNames: ['N1','N2'], pricePerPlayer: 15, revenue: 30, lostRevenue: 90, status: 'past', peerAvgOccupancy: 72, deviationFromPeer: -47, recommendations: [{ type: 'cancel_consider', label: 'Consistently low — reconsider?', reason: 'This slot has been underperforming for 3+ weeks.', priority: 'high' }] },
-    { id: 'cal-7', date: fmtDate(-4), startTime: '18:00', endTime: '20:00', court: 'Court 2', format: 'Round Robin', skillLevel: 'Intermediate', registered: 12, capacity: 12, occupancy: 100, playerNames: ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','P11','P12'], pricePerPlayer: 20, revenue: 240, lostRevenue: 0, status: 'past', peerAvgOccupancy: 78, deviationFromPeer: 22, recommendations: [{ type: 'raise_price', label: 'High demand — raise price?', reason: 'Sold out 3 of last 4 weeks. Consider $25 or add a second session.', priority: 'low' }] },
-    { id: 'cal-8', date: fmtDate(-3), startTime: '10:00', endTime: '12:00', court: 'Court 3', format: 'League Play', skillLevel: 'Advanced', registered: 8, capacity: 8, occupancy: 100, playerNames: ['Q1','Q2','Q3','Q4','Q5','Q6','Q7','Q8'], pricePerPlayer: 25, revenue: 200, lostRevenue: 0, status: 'past', peerAvgOccupancy: 85, deviationFromPeer: 15, recommendations: [] },
-    { id: 'cal-9', date: fmtDate(-2), startTime: '09:00', endTime: '11:00', court: 'Court 1', format: 'Clinic', skillLevel: 'Beginner', registered: 4, capacity: 10, occupancy: 40, playerNames: ['R1','R2','R3','R4'], pricePerPlayer: 25, revenue: 100, lostRevenue: 150, status: 'past', peerAvgOccupancy: 55, deviationFromPeer: -15, recommendations: [{ type: 'lower_price', label: 'Consider lower price', reason: '$25 may be high. Similar clinics fill better at $18-20.', priority: 'low' }] },
-    { id: 'cal-10', date: fmtDate(-1), startTime: '17:00', endTime: '19:00', court: 'Court 2', format: 'Open Play', skillLevel: 'All Levels', registered: 5, capacity: 8, occupancy: 63, playerNames: ['S1','S2','S3','S4','S5'], pricePerPlayer: 15, revenue: 75, lostRevenue: 45, status: 'past', peerAvgOccupancy: 60, deviationFromPeer: 3, recommendations: [] },
+  const sessions: CalItem[] = []
+  let nextId = 1
 
-    // Today
-    { id: 'cal-11', date: fmtDate(0), startTime: '08:00', endTime: '10:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 4, capacity: 8, occupancy: 50, playerNames: ['T1','T2','T3','T4'], pricePerPlayer: 15, revenue: null, lostRevenue: null, status: 'today', peerAvgOccupancy: 72, deviationFromPeer: -22, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: 'Only 4/8 filled. Send quick invites to fill remaining spots.', priority: 'high', actionLink: '/clubs/demo/intelligence/slot-filler' }] },
-    { id: 'cal-12', date: fmtDate(0), startTime: '18:00', endTime: '20:00', court: 'Court 2', format: 'Round Robin', skillLevel: 'Intermediate', registered: 9, capacity: 12, occupancy: 75, playerNames: ['U1','U2','U3','U4','U5','U6','U7','U8','U9'], pricePerPlayer: 20, revenue: null, lostRevenue: null, status: 'today', peerAvgOccupancy: 78, deviationFromPeer: -3, recommendations: [] },
-
-    // Upcoming (next 2 weeks)
-    { id: 'cal-13', date: fmtDate(1), startTime: '08:00', endTime: '10:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 3, capacity: 8, occupancy: 38, playerNames: ['V1','V2','V3'], pricePerPlayer: 15, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 72, deviationFromPeer: -34, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: 'Only 3/8 spots filled. Use Slot Filler to invite matching players.', priority: 'high', actionLink: '/clubs/demo/intelligence/slot-filler' }] },
-    { id: 'cal-14', date: fmtDate(2), startTime: '18:00', endTime: '20:00', court: 'Court 2', format: 'Round Robin', skillLevel: 'Intermediate', registered: 6, capacity: 12, occupancy: 50, playerNames: ['W1','W2','W3','W4','W5','W6'], pricePerPlayer: 20, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 78, deviationFromPeer: -28, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: '6 spots still open. Invite intermediate players.', priority: 'medium', actionLink: '/clubs/demo/intelligence/slot-filler' }] },
-    { id: 'cal-15', date: fmtDate(3), startTime: '09:00', endTime: '11:00', court: 'Court 3', format: 'Clinic', skillLevel: 'Beginner', registered: 1, capacity: 10, occupancy: 10, playerNames: ['X1'], pricePerPlayer: 25, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 55, deviationFromPeer: -45, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: 'Only 1/10 registered — urgent!', priority: 'high', actionLink: '/clubs/demo/intelligence/slot-filler' }, { type: 'swap_format', label: 'Try Open Play', reason: 'Open Play averages 72% vs Clinic at 30% for this time.', priority: 'medium' }] },
-    { id: 'cal-16', date: fmtDate(5), startTime: '07:00', endTime: '09:00', court: 'Court 1', format: 'Open Play', skillLevel: 'All Levels', registered: 5, capacity: 8, occupancy: 63, playerNames: ['Y1','Y2','Y3','Y4','Y5'], pricePerPlayer: 15, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 72, deviationFromPeer: -9, recommendations: [] },
-    { id: 'cal-17', date: fmtDate(7), startTime: '10:00', endTime: '12:00', court: 'Court 3', format: 'League Play', skillLevel: 'Advanced', registered: 7, capacity: 8, occupancy: 88, playerNames: ['Z1','Z2','Z3','Z4','Z5','Z6','Z7'], pricePerPlayer: 25, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 85, deviationFromPeer: 3, recommendations: [] },
-    { id: 'cal-18', date: fmtDate(8), startTime: '18:00', endTime: '20:00', court: 'Court 2', format: 'Round Robin', skillLevel: 'Intermediate', registered: 4, capacity: 12, occupancy: 33, playerNames: ['AA1','AA2','AA3','AA4'], pricePerPlayer: 20, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 78, deviationFromPeer: -45, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: 'Only 4/12 spots filled — 8 spots open!', priority: 'high', actionLink: '/clubs/demo/intelligence/slot-filler' }] },
-    { id: 'cal-19', date: fmtDate(10), startTime: '08:00', endTime: '10:00', court: 'Court 1', format: 'Drill', skillLevel: 'Intermediate', registered: 5, capacity: 6, occupancy: 83, playerNames: ['BB1','BB2','BB3','BB4','BB5'], pricePerPlayer: 30, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 70, deviationFromPeer: 13, recommendations: [] },
-    { id: 'cal-20', date: fmtDate(12), startTime: '17:00', endTime: '19:00', court: 'Court 2', format: 'Social', skillLevel: 'All Levels', registered: 6, capacity: 16, occupancy: 38, playerNames: ['CC1','CC2','CC3','CC4','CC5','CC6'], pricePerPlayer: 10, revenue: null, lostRevenue: null, status: 'upcoming', peerAvgOccupancy: 50, deviationFromPeer: -12, recommendations: [{ type: 'send_invites', label: 'Send targeted invites', reason: '10 spots open. Invite social players.', priority: 'medium', actionLink: '/clubs/demo/intelligence/slot-filler' }] },
-  ]
+  // Generate 7 past days + today + 7 upcoming days = 15 days
+  for (let d = -7; d <= 7; d++) {
+    const daySessions = generateDaySessions(d, nextId)
+    sessions.push(...daySessions)
+    nextId += daySessions.length
+  }
 
   const pastSessions = sessions.filter(s => s.status === 'past')
   const totalRevenue = pastSessions.reduce((sum, s) => sum + (s.revenue ?? 0), 0)
@@ -770,11 +864,15 @@ export function mockSessionsCalendar(): import('@/types/intelligence').SessionCa
       pastCount: pastSessions.length,
     },
     peerAverages: {
-      'Open Play|Saturday|morning': { avgOccupancy: 72, avgRevenue: 90, count: 8 },
-      'Round Robin|Tuesday|evening': { avgOccupancy: 78, avgRevenue: 200, count: 6 },
-      'Clinic|Thursday|morning': { avgOccupancy: 55, avgRevenue: 125, count: 4 },
-      'League Play|Sunday|morning': { avgOccupancy: 85, avgRevenue: 200, count: 5 },
-      'Drill|Friday|evening': { avgOccupancy: 70, avgRevenue: 150, count: 3 },
+      'Open Play|Monday|morning': { avgOccupancy: 72, avgRevenue: 108, count: 12 },
+      'Open Play|Saturday|morning': { avgOccupancy: 80, avgRevenue: 144, count: 8 },
+      'Round Robin|Monday|evening': { avgOccupancy: 78, avgRevenue: 240, count: 10 },
+      'Round Robin|Saturday|evening': { avgOccupancy: 85, avgRevenue: 264, count: 6 },
+      'Clinic|Tuesday|morning': { avgOccupancy: 48, avgRevenue: 120, count: 8 },
+      'Clinic|Sunday|morning': { avgOccupancy: 55, avgRevenue: 154, count: 4 },
+      'Drill|Wednesday|morning': { avgOccupancy: 70, avgRevenue: 126, count: 6 },
+      'League Play|Saturday|morning': { avgOccupancy: 88, avgRevenue: 200, count: 5 },
+      'Social|Sunday|evening': { avgOccupancy: 45, avgRevenue: 86, count: 4 },
     },
   }
 }
