@@ -40,14 +40,28 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 - `types/intelligence.ts` — TypeScript interfaces
 
 ### Database (prisma/schema.prisma)
-New models: ClubCourt, PlaySession, PlaySessionBooking, PlaySessionWaitlist, UserPlayPreference, AIRecommendationLog
-**Migration NOT yet run** — needs DATABASE_URL in .env (ask Rodion for Supabase password)
+10 Intelligence models: ClubCourt, PlaySession, PlaySessionBooking, PlaySessionWaitlist, UserPlayPreference, AIRecommendationLog, DocumentEmbedding, AIConversation, AIMessage, MemberHealthSnapshot
+
+**DB Type Notes** (critical for future migrations):
+- `clubs.id` = UUID in DB, `users.id` = TEXT in DB
+- All `clubId` FK columns = UUID, all `userId`/`hostId` FK columns = TEXT
+- ⚠️ **NEVER run `prisma db push`** — schema ↔ DB types diverge. All migrations via SQL only.
+- pgvector: `document_embeddings.embedding` = `vector(1536)`, HNSW index, `match_documents()` RPC
+
+### AI Features
+- `lib/ai/inferred-preferences.ts` — infer player preferences from booking history (≥5 bookings, 30% threshold)
+- `lib/ai/onboarding-schema.ts` — Zod validation for club onboarding wizard
+- `lib/ai/csv-schedule-analyzer.ts` — auto-extract operating hours, peak times from CSV
+- `lib/ai/llm/prompts.ts` — `buildClubContextPrompt()` for AI Advisor system prompt
 
 ## Current Status
 - ✅ All 4 pages built with proper UX components
 - ✅ Demo mode working (?demo=true)
 - ✅ ?demo=true preserved across navigation
-- ⏳ Prisma migration pending (needs DB password)
+- ✅ Intelligence tables created in Supabase (10 tables, 6 enums, pgvector)
+- ✅ DATABASE_URL + DIRECT_URL configured in .env / .env.local
+- ✅ Prisma Client generated
+- ⏳ Vercel env vars need DATABASE_URL (for stest.piqle.io without ?demo=true)
 - ⏳ Seed script for dev/staging not yet created
 
 ## Git Workflow

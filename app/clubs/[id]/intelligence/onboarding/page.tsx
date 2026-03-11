@@ -223,7 +223,7 @@ function Step1Welcome({ settings, update }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Let's set up your club</h2>
+        <h2 className="text-xl font-semibold">Let&apos;s set up your club</h2>
         <p className="text-sm text-muted-foreground mt-1">
           A few quick details so we can help fill your courts and keep players coming back.
         </p>
@@ -612,7 +612,7 @@ function Step5Goals({ settings, update }: StepProps) {
       <div>
         <h2 className="text-xl font-semibold">What matters most?</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Pick your top priorities — we'll focus on these first.
+          Pick your top priorities — we&apos;ll focus on these first.
         </p>
       </div>
 
