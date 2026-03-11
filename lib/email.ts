@@ -569,3 +569,75 @@ If you didn't request this, you can ignore this email.`
     html,
   })
 }
+
+// ── Health-Based Outreach Email (CHECK_IN / RETENTION_BOOST) ──
+
+export async function sendOutreachEmail({
+  to,
+  subject,
+  body,
+  clubName,
+  bookingUrl,
+}: {
+  to: string
+  subject: string
+  body: string
+  clubName: string
+  bookingUrl: string
+}): Promise<{ messageId: string }> {
+  const baseUrl = getAppBaseUrl()
+  const logoUrl = `${baseUrl}/Logo.png`
+  const text = `${body}\n\nBook now: ${bookingUrl}`
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="${clubName}" width="48" height="48" style="border-radius: 12px;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              ${body.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 12px 0; font-size: 15px;">${line}</p>` : '').join('\n')}
+              <div style="text-align: center; margin-top: 24px;">
+                <a href="${bookingUrl}" style="display: inline-block; background: linear-gradient(135deg, #84cc16, #22c55e); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none;">
+                  Book a Session
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-top: 20px;">
+              <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+                Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  const info = await transporter.sendMail({
+    to,
+    from: fromHeader,
+    subject,
+    text,
+    html,
+  })
+
+  return { messageId: info.messageId }
+}

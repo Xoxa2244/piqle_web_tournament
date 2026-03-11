@@ -1569,6 +1569,137 @@ export async function getPreferences(prisma: any, userId: string, clubId: string
   });
 }
 
+// ── Health-Based Outreach: CHECK_IN + RETENTION_BOOST ──
+
+const sendOutreachInput = z.object({
+  clubId: z.string().uuid(),
+  memberId: z.string(),
+  type: z.enum(['CHECK_IN', 'RETENTION_BOOST']),
+  channel: z.enum(['email', 'sms', 'both']).default('email'),
+  variantId: z.string().optional(),
+  healthScore: z.number().optional(),
+  riskLevel: z.string().optional(),
+  lowComponents: z.array(z.object({
+    key: z.string(),
+    label: z.string(),
+    score: z.number(),
+  })).optional(),
+  daysSinceLastActivity: z.number().nullable().optional(),
+  preferredDays: z.array(z.string()).optional(),
+  suggestedSessionTitle: z.string().optional(),
+  totalBookings: z.number().optional(),
+})
+
+export async function sendOutreachMessage(
+  prisma: any,
+  input: z.infer<typeof sendOutreachInput>
+) {
+  const {
+    clubId, memberId, type, channel, variantId,
+    healthScore, riskLevel, lowComponents,
+    daysSinceLastActivity, preferredDays, suggestedSessionTitle, totalBookings,
+  } = input
+
+  // Load club
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { id: true, name: true, slug: true },
+  })
+
+  // Load user
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: memberId },
+    select: { id: true, email: true, name: true },
+  })
+
+  // Anti-spam check
+  const spamCheck = await checkAntiSpam({
+    prisma, userId: user.id, clubId, type,
+  })
+  if (!spamCheck.allowed) {
+    return { sent: 0, failed: 0, skipped: 1, reason: spamCheck.reason }
+  }
+
+  // Generate messages
+  const { generateOutreachMessages } = await import('./outreach-messages')
+  const variants = generateOutreachMessages(type, {
+    memberName: user.name || 'there',
+    clubName: club.name,
+    healthScore: healthScore || 50,
+    riskLevel: (riskLevel || 'watch') as any,
+    lowComponents: lowComponents || [],
+    daysSinceLastActivity: daysSinceLastActivity ?? null,
+    preferredDays,
+    suggestedSessionTitle,
+    totalBookings,
+  })
+
+  // Pick variant
+  const variant = variantId
+    ? variants.find(v => v.id === variantId) || variants.find(v => v.recommended) || variants[0]
+    : variants.find(v => v.recommended) || variants[0]
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  const results: Array<{ channel: string; status: string; error?: string }> = []
+
+  // Send email
+  if (channel === 'email' || channel === 'both') {
+    try {
+      if (!user.email) throw new Error('No email address')
+      const { sendOutreachEmail } = await import('../email')
+      await sendOutreachEmail({
+        to: user.email,
+        subject: variant.emailSubject,
+        body: variant.emailBody,
+        clubName: club.name,
+        bookingUrl,
+      })
+      results.push({ channel: 'email', status: 'sent' })
+    } catch (err: any) {
+      results.push({ channel: 'email', status: 'failed', error: err.message })
+    }
+  }
+
+  // Send SMS
+  if (channel === 'sms' || channel === 'both') {
+    results.push({
+      channel: 'sms',
+      status: 'failed',
+      error: 'Phone number not available (field not yet in User model)',
+    })
+  }
+
+  // Log to DB
+  try {
+    await prisma.aIRecommendationLog.create({
+      data: {
+        clubId,
+        userId: user.id,
+        type,
+        channel,
+        reasoning: {
+          variantId: variant.id,
+          healthScore,
+          riskLevel,
+          lowComponents,
+          daysSinceLastActivity,
+        },
+        status: results.some(r => r.status === 'sent') ? 'sent' : 'failed',
+      },
+    })
+  } catch (logErr) {
+    console.error(`[Outreach:${type}] Failed to log:`, logErr)
+  }
+
+  const sent = results.filter(r => r.status === 'sent').length
+  const failed = results.filter(r => r.status === 'failed').length
+
+  return { sent, failed, skipped: 0, results }
+}
+
 // Export input schemas for use in tRPC router definition
 export const intelligenceSchemas = {
   slotFillerInput,
@@ -1578,5 +1709,6 @@ export const intelligenceSchemas = {
   sendInviteInput,
   sendReactivationInput,
   sendEventInviteInput,
+  sendOutreachInput,
   preferencesInput,
 };

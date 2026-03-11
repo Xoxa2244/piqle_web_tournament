@@ -2,17 +2,19 @@
 
 import { useParams } from 'next/navigation'
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Users, Search, AlertTriangle, Heart, Activity,
   TrendingDown, TrendingUp, Minus, ChevronDown, ChevronUp,
-  DollarSign, Shield, Eye, Zap,
+  DollarSign, Shield, Eye, Zap, Mail, Send, ExternalLink, Loader2,
 } from 'lucide-react'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useMemberHealth } from '../_hooks/use-intelligence'
+import { useMemberHealth, useSendOutreach, useIsDemo } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import type { MemberHealthResult, RiskLevel, LifecycleStage } from '@/types/intelligence'
 
@@ -223,7 +225,8 @@ export default function MembersPage() {
           </div>
 
           {/* Table header */}
-          <div className="hidden sm:grid grid-cols-[1fr_80px_90px_90px_80px_60px_28px] gap-3 px-3 py-2 text-xs font-semibold text-muted-foreground">
+          <div className="hidden sm:grid grid-cols-[40px_1fr_80px_90px_80px_50px_20px_28px] gap-3 px-3 py-2 text-xs font-semibold text-muted-foreground">
+            <div />
             <SortHeader label="Member" sortKey="name" current={sortBy} asc={sortAsc} onClick={handleSort} />
             <SortHeader label="Health" sortKey="health" current={sortBy} asc={sortAsc} onClick={handleSort} />
             <div>Stage</div>
@@ -239,6 +242,7 @@ export default function MembersPage() {
               <MemberRow
                 key={m.memberId}
                 member={m}
+                clubId={clubId}
                 isExpanded={expandedId === m.memberId}
                 onToggle={() => setExpandedId(expandedId === m.memberId ? null : m.memberId)}
               />
@@ -337,10 +341,12 @@ function SortHeader({
 
 function MemberRow({
   member: m,
+  clubId,
   isExpanded,
   onToggle,
 }: {
   member: MemberHealthResult
+  clubId: string
   isExpanded: boolean
   onToggle: () => void
 }) {
@@ -357,7 +363,7 @@ function MemberRow({
     <div className="rounded-xl border border-border/60 bg-card shadow-sm">
       {/* Main row */}
       <div
-        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-xl"
+        className="flex sm:grid sm:grid-cols-[40px_1fr_80px_90px_80px_50px_20px_28px] items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-xl"
         onClick={onToggle}
       >
         {/* Health score badge */}
@@ -369,7 +375,7 @@ function MemberRow({
         </div>
 
         {/* Name + email */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0">
           <div className="font-medium text-sm truncate">
             {m.member.name || m.member.email}
           </div>
@@ -381,33 +387,33 @@ function MemberRow({
         {/* Risk badge */}
         <Badge
           variant="outline"
-          className={cn('text-xs shrink-0', risk.color, risk.bg, risk.border)}
+          className={cn('text-xs w-full justify-center truncate', risk.color, risk.bg, risk.border)}
         >
           {risk.label}
         </Badge>
 
         {/* Stage */}
-        <Badge variant="secondary" className="text-xs shrink-0 hidden sm:flex">
+        <Badge variant="secondary" className="text-xs w-full justify-center truncate hidden sm:flex">
           {stageLabels[m.lifecycleStage]}
         </Badge>
 
         {/* Last played */}
-        <span className="text-xs text-muted-foreground tabular-nums w-16 text-right shrink-0 hidden sm:block">
+        <span className="text-xs text-muted-foreground tabular-nums text-right hidden sm:block">
           {daysLabel}
         </span>
 
         {/* Bookings */}
-        <span className="text-xs text-muted-foreground tabular-nums w-12 text-right shrink-0 hidden sm:block">
+        <span className="text-xs text-muted-foreground tabular-nums text-right hidden sm:block">
           {m.totalBookings}
         </span>
 
         {/* Trend */}
-        <span className="shrink-0 hidden sm:block">
+        <span className="hidden sm:flex justify-center">
           {trendIcon(m.trend)}
         </span>
 
         {/* Expand */}
-        <div className="shrink-0">
+        <div className="flex justify-center">
           {isExpanded ? (
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
           ) : (
@@ -489,6 +495,9 @@ function MemberRow({
             </div>
           )}
 
+          {/* Action buttons */}
+          <OutreachActions member={m} clubId={clubId} />
+
           {/* Quick stats */}
           <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Joined: <strong className="text-foreground">{m.joinedDaysAgo}d ago</strong></span>
@@ -500,6 +509,103 @@ function MemberRow({
             )}>{m.trend}</strong></span>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Outreach Action Buttons ──
+
+function OutreachActions({ member: m, clubId }: { member: MemberHealthResult; clubId: string }) {
+  const isDemo = useIsDemo()
+  const sendOutreach = useSendOutreach()
+  const [sentType, setSentType] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const lowComponents = Object.entries(m.components)
+    .map(([key, comp]) => ({ key, label: comp.label, score: comp.score }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3)
+
+  const handleSend = (type: 'CHECK_IN' | 'RETENTION_BOOST') => {
+    setError(null)
+    sendOutreach.mutate({
+      clubId,
+      memberId: m.memberId,
+      type,
+      channel: 'email',
+      healthScore: m.healthScore,
+      riskLevel: m.riskLevel,
+      lowComponents,
+      daysSinceLastActivity: m.daysSinceLastBooking,
+      totalBookings: m.totalBookings,
+    }, {
+      onSuccess: (data: any) => {
+        if (data.skipped > 0) {
+          setError(data.reason || 'Anti-spam limit reached')
+        } else {
+          setSentType(type)
+        }
+      },
+      onError: (err: any) => {
+        setError(err.message || 'Failed to send')
+      },
+    })
+  }
+
+  // Churned → link to reactivation page
+  if (m.lifecycleStage === 'churned') {
+    const demoSuffix = isDemo ? '?demo=true' : ''
+    return (
+      <div className="flex items-center gap-2">
+        <Link href={`/clubs/${clubId}/intelligence/reactivation${demoSuffix}`}>
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 h-8">
+            <ExternalLink className="h-3 w-3" />
+            Send Win-back
+          </Button>
+        </Link>
+        <span className="text-[11px] text-muted-foreground">Via Reactivation flow</span>
+      </div>
+    )
+  }
+
+  // Healthy → no action needed
+  if (m.riskLevel === 'healthy') return null
+
+  const outreachType: 'CHECK_IN' | 'RETENTION_BOOST' =
+    m.riskLevel === 'watch' ? 'CHECK_IN' : 'RETENTION_BOOST'
+
+  const buttonLabel = m.riskLevel === 'watch' ? 'Send Check-in' : 'Send Retention Boost'
+  const buttonColor = m.riskLevel === 'watch'
+    ? 'bg-amber-500 hover:bg-amber-600 text-white'
+    : 'bg-orange-500 hover:bg-orange-600 text-white'
+
+  if (sentType) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
+        <Mail className="h-3.5 w-3.5" />
+        {sentType === 'CHECK_IN' ? 'Check-in' : 'Retention boost'} sent via email
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Button
+        size="sm"
+        className={cn('text-xs gap-1.5 h-8', buttonColor)}
+        disabled={sendOutreach.isPending}
+        onClick={() => handleSend(outreachType)}
+      >
+        {sendOutreach.isPending ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Send className="h-3 w-3" />
+        )}
+        {buttonLabel}
+      </Button>
+      {error && (
+        <span className="text-[11px] text-red-500">{error}</span>
       )}
     </div>
   )

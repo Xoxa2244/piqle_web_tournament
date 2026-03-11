@@ -10,6 +10,7 @@ import {
   sendInvites,
   sendReactivationMessages,
   sendEventInviteMessages,
+  sendOutreachMessage,
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
@@ -1304,6 +1305,31 @@ export const intelligenceRouter = createTRPCRouter({
           summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
         }
       }
+    }),
+
+  // ── Health-Based Outreach: Send CHECK_IN or RETENTION_BOOST ──
+  sendOutreachMessage: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      memberId: z.string(),
+      type: z.enum(['CHECK_IN', 'RETENTION_BOOST']),
+      channel: z.enum(['email', 'sms', 'both']).default('email'),
+      variantId: z.string().optional(),
+      healthScore: z.number().optional(),
+      riskLevel: z.string().optional(),
+      lowComponents: z.array(z.object({
+        key: z.string(),
+        label: z.string(),
+        score: z.number(),
+      })).optional(),
+      daysSinceLastActivity: z.number().nullable().optional(),
+      preferredDays: z.array(z.string()).optional(),
+      suggestedSessionTitle: z.string().optional(),
+      totalBookings: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      return sendOutreachMessage(ctx.prisma, input)
     }),
 
   // ── RAG: Trigger embedding index for a club ──

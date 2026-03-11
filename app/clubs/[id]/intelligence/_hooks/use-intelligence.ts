@@ -236,3 +236,24 @@ export function useSendReactivation() {
 
   return mutation
 }
+
+// ── Send health-based outreach (CHECK_IN / RETENTION_BOOST) ──
+export function useSendOutreach() {
+  const isDemo = useIsDemo()
+  const mutation = trpc.intelligence.sendOutreachMessage.useMutation()
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ sent: 1, failed: 0, skipped: 0, results: [{ channel: 'email', status: 'sent' }] }), 500)
+      },
+      mutateAsync: async (_input: any) => {
+        await new Promise(r => setTimeout(r, 500))
+        return { sent: 1, failed: 0, skipped: 0, results: [{ channel: 'email', status: 'sent' }] }
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}

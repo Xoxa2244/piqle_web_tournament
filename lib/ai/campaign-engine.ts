@@ -1,0 +1,409 @@
+/**
+ * Health-Based Campaign Engine
+ *
+ * Runs daily via Vercel cron. For each club:
+ * 1. Calculates current health scores for all members
+ * 2. Compares against previous MemberHealthSnapshot
+ * 3. Detects risk level worsening (threshold crossings)
+ * 4. Sends appropriate outreach messages (CHECK_IN / RETENTION_BOOST)
+ * 5. Saves new snapshots for all members
+ *
+ * Key design: only sends messages when risk level WORSENS, not on stable states.
+ */
+
+import { generateMemberHealth } from './member-health'
+import { checkAntiSpam } from './anti-spam'
+import { generateOutreachMessages } from './outreach-messages'
+import type { RiskLevel, DayOfWeek, PlaySessionFormat } from '../../types/intelligence'
+
+// ── Types ──
+
+export interface CampaignResult {
+  clubId: string
+  clubName: string
+  membersProcessed: number
+  messagesSent: number
+  messagesSkipped: number
+  snapshotsSaved: number
+  transitions: Array<{
+    userId: string
+    from: string
+    to: string
+    action: string
+    status: 'sent' | 'skipped' | 'failed'
+  }>
+}
+
+interface ClubAutomationSettings {
+  enabled: boolean
+  triggers: {
+    healthyToWatch: boolean
+    watchToAtRisk: boolean
+    atRiskToCritical: boolean
+    churned: boolean
+  }
+  channel: 'email' | 'sms' | 'both'
+}
+
+const DEFAULT_SETTINGS: ClubAutomationSettings = {
+  enabled: true,
+  triggers: {
+    healthyToWatch: true,
+    watchToAtRisk: true,
+    atRiskToCritical: true,
+    churned: true,
+  },
+  channel: 'email',
+}
+
+// Risk severity order for detecting worsening
+const RISK_SEVERITY: Record<string, number> = {
+  healthy: 0,
+  watch: 1,
+  at_risk: 2,
+  critical: 3,
+}
+
+function isWorsening(from: string, to: string): boolean {
+  return (RISK_SEVERITY[to] ?? 0) > (RISK_SEVERITY[from] ?? 0)
+}
+
+function getOutreachType(newRisk: string): 'CHECK_IN' | 'RETENTION_BOOST' | null {
+  if (newRisk === 'watch') return 'CHECK_IN'
+  if (newRisk === 'at_risk' || newRisk === 'critical') return 'RETENTION_BOOST'
+  return null
+}
+
+// ── Main Campaign Runner ──
+
+export async function runHealthCampaign(
+  prisma: any,
+  clubId: string,
+): Promise<CampaignResult> {
+  // Load club
+  const club = await prisma.club.findUniqueOrThrow({
+    where: { id: clubId },
+    select: { id: true, name: true, slug: true, automationSettings: true },
+  })
+
+  const settings: ClubAutomationSettings = {
+    ...DEFAULT_SETTINGS,
+    ...(typeof club.automationSettings === 'object' && club.automationSettings !== null
+      ? club.automationSettings as Partial<ClubAutomationSettings>
+      : {}),
+  }
+
+  if (!settings.enabled) {
+    return {
+      clubId, clubName: club.name,
+      membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
+      transitions: [],
+    }
+  }
+
+  // Load members + bookings (same query as getMemberHealth tRPC)
+  const followers = await prisma.clubFollower.findMany({
+    where: { clubId },
+    include: {
+      user: {
+        select: {
+          id: true, email: true, name: true, image: true,
+          gender: true, city: true,
+          duprRatingDoubles: true, duprRatingSingles: true,
+        },
+      },
+    },
+  })
+
+  const userIds = followers.map((f: any) => f.userId)
+  if (userIds.length === 0) {
+    return {
+      clubId, clubName: club.name,
+      membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
+      transitions: [],
+    }
+  }
+
+  const bookings = await prisma.playSessionBooking.findMany({
+    where: {
+      userId: { in: userIds },
+      playSession: { clubId },
+    },
+    select: { userId: true, status: true, bookedAt: true },
+    orderBy: { bookedAt: 'desc' },
+  })
+
+  const preferences = await prisma.userPlayPreference.findMany({
+    where: { clubId, userId: { in: userIds } },
+  })
+
+  // Build health score inputs
+  const now = new Date()
+  const d30 = new Date(now.getTime() - 30 * 86400000)
+  const d60 = new Date(now.getTime() - 60 * 86400000)
+
+  const prefMap = new Map<string, any>(preferences.map((p: any) => [p.userId, p]))
+  const bookingMap = new Map<string, any[]>()
+  for (const b of bookings) {
+    if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
+    bookingMap.get(b.userId)!.push(b)
+  }
+
+  const memberInputs = followers.map((f: any) => {
+    const userBookings = bookingMap.get(f.userId) || []
+    const confirmed = userBookings.filter((b: any) => b.status === 'CONFIRMED')
+    const lastConfirmed = confirmed[0]?.bookedAt ?? null
+    const daysSinceLast = lastConfirmed
+      ? Math.floor((now.getTime() - lastConfirmed.getTime()) / 86400000)
+      : null
+
+    const bookingsLast30 = confirmed.filter((b: any) => b.bookedAt >= d30).length
+    const bookings30to60 = confirmed.filter((b: any) => b.bookedAt >= d60 && b.bookedAt < d30).length
+
+    return {
+      member: {
+        id: f.user.id,
+        email: f.user.email,
+        name: f.user.name,
+        image: f.user.image,
+        gender: (f.user.gender as 'M' | 'F' | 'X') ?? null,
+        city: f.user.city,
+        duprRatingDoubles: f.user.duprRatingDoubles ? Number(f.user.duprRatingDoubles) : null,
+        duprRatingSingles: f.user.duprRatingSingles ? Number(f.user.duprRatingSingles) : null,
+      },
+      preference: (() => {
+        const pref = prefMap.get(f.userId)
+        if (!pref) return null
+        return {
+          id: pref.id,
+          userId: pref.userId,
+          clubId: pref.clubId,
+          preferredDays: pref.preferredDays as DayOfWeek[],
+          preferredTimeSlots: {
+            morning: pref.preferredTimeMorning,
+            afternoon: pref.preferredTimeAfternoon,
+            evening: pref.preferredTimeEvening,
+          },
+          skillLevel: pref.skillLevel,
+          preferredFormats: pref.preferredFormats as PlaySessionFormat[],
+          targetSessionsPerWeek: pref.targetSessionsPerWeek,
+          isActive: true,
+        }
+      })(),
+      history: {
+        totalBookings: userBookings.length,
+        bookingsLastWeek: confirmed.filter((b: any) => b.bookedAt >= new Date(now.getTime() - 7 * 86400000)).length,
+        bookingsLastMonth: bookingsLast30,
+        daysSinceLastConfirmedBooking: daysSinceLast,
+        cancelledCount: userBookings.filter((b: any) => b.status === 'CANCELLED').length,
+        noShowCount: userBookings.filter((b: any) => b.status === 'NO_SHOW').length,
+        inviteAcceptanceRate: 0.7,
+      },
+      joinedAt: f.createdAt ?? new Date(),
+      bookingDates: userBookings.map((b: any) => ({
+        date: b.bookedAt,
+        status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
+      })),
+      previousPeriodBookings: bookings30to60,
+    }
+  })
+
+  // Calculate current health scores
+  const healthData = generateMemberHealth(memberInputs)
+
+  // Load previous snapshots (latest per user)
+  const prevSnapshots = await prisma.memberHealthSnapshot.findMany({
+    where: { clubId },
+    orderBy: { date: 'desc' },
+    distinct: ['userId'],
+    select: { userId: true, riskLevel: true, healthScore: true },
+  })
+  const prevRiskMap = new Map<string, string>(prevSnapshots.map((s: any) => [s.userId, s.riskLevel as string]))
+
+  // Detect transitions and send messages
+  const transitions: CampaignResult['transitions'] = []
+  let messagesSent = 0
+  let messagesSkipped = 0
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  for (const member of healthData.members) {
+    const prevRisk = prevRiskMap.get(member.memberId) || 'healthy'
+    const newRisk = member.riskLevel
+
+    // Only act on worsening
+    if (!isWorsening(prevRisk, newRisk)) continue
+
+    // Check trigger settings
+    const triggerKey = `${prevRisk}To${newRisk.charAt(0).toUpperCase() + newRisk.slice(1).replace('_', '')}` as string
+    const triggerMap: Record<string, keyof ClubAutomationSettings['triggers']> = {
+      healthyToWatch: 'healthyToWatch',
+      watchToAt_risk: 'watchToAtRisk',
+      watchToAtRisk: 'watchToAtRisk',
+      at_riskToCritical: 'atRiskToCritical',
+      atRiskToCritical: 'atRiskToCritical',
+    }
+    const settingsKey = triggerMap[triggerKey]
+    if (settingsKey && !settings.triggers[settingsKey]) {
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: 'disabled', status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
+
+    const outreachType = getOutreachType(newRisk)
+    if (!outreachType) continue
+
+    // Anti-spam check
+    const spamCheck = await checkAntiSpam({
+      prisma, userId: member.memberId, clubId, type: outreachType,
+    })
+    if (!spamCheck.allowed) {
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: outreachType, status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
+
+    // Generate and send message
+    const lowComponents = Object.entries(member.components)
+      .map(([key, comp]) => ({ key, label: comp.label, score: comp.score }))
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 3)
+
+    const variants = generateOutreachMessages(outreachType, {
+      memberName: member.member.name || 'there',
+      clubName: club.name,
+      healthScore: member.healthScore,
+      riskLevel: member.riskLevel,
+      lowComponents,
+      daysSinceLastActivity: member.daysSinceLastBooking,
+      totalBookings: member.totalBookings,
+    })
+
+    const variant = variants.find(v => v.recommended) || variants[0]
+
+    // Send email
+    let sent = false
+    if (settings.channel === 'email' || settings.channel === 'both') {
+      try {
+        const userEmail = member.member.email
+        if (userEmail) {
+          const { sendOutreachEmail } = await import('../email')
+          await sendOutreachEmail({
+            to: userEmail,
+            subject: variant.emailSubject,
+            body: variant.emailBody,
+            clubName: club.name,
+            bookingUrl,
+          })
+          sent = true
+        }
+      } catch (err) {
+        console.error(`[Campaign] Email failed for ${member.memberId}:`, (err as Error).message?.slice(0, 100))
+      }
+    }
+
+    // Log to DB
+    try {
+      await prisma.aIRecommendationLog.create({
+        data: {
+          clubId,
+          userId: member.memberId,
+          type: outreachType,
+          channel: settings.channel,
+          reasoning: {
+            campaign: true,
+            transition: `${prevRisk} → ${newRisk}`,
+            variantId: variant.id,
+            healthScore: member.healthScore,
+          },
+          status: sent ? 'sent' : 'failed',
+        },
+      })
+    } catch (logErr) {
+      console.error(`[Campaign] Log failed for ${member.memberId}:`, logErr)
+    }
+
+    transitions.push({
+      userId: member.memberId,
+      from: prevRisk,
+      to: newRisk,
+      action: outreachType,
+      status: sent ? 'sent' : 'failed',
+    })
+    if (sent) messagesSent++
+    else messagesSkipped++
+  }
+
+  // Save new snapshots for ALL members
+  let snapshotsSaved = 0
+  for (const member of healthData.members) {
+    try {
+      await prisma.memberHealthSnapshot.create({
+        data: {
+          clubId,
+          userId: member.memberId,
+          healthScore: member.healthScore,
+          riskLevel: member.riskLevel,
+          lifecycleStage: member.lifecycleStage,
+          features: {},
+        },
+      })
+      snapshotsSaved++
+    } catch (err) {
+      // Ignore individual snapshot failures
+    }
+  }
+
+  return {
+    clubId,
+    clubName: club.name,
+    membersProcessed: healthData.members.length,
+    messagesSent,
+    messagesSkipped,
+    snapshotsSaved,
+    transitions,
+  }
+}
+
+// ── Run for all clubs ──
+
+export async function runHealthCampaignForAllClubs(
+  prisma: any,
+): Promise<{ results: CampaignResult[]; totalSent: number; totalSkipped: number }> {
+  // Get clubs that have at least one follower (active clubs)
+  const clubs = await prisma.club.findMany({
+    where: {
+      followers: { some: {} },
+    },
+    select: { id: true },
+    take: 100, // safety limit
+  })
+
+  const results: CampaignResult[] = []
+  let totalSent = 0
+  let totalSkipped = 0
+
+  for (const club of clubs) {
+    try {
+      const result = await runHealthCampaign(prisma, club.id)
+      results.push(result)
+      totalSent += result.messagesSent
+      totalSkipped += result.messagesSkipped
+    } catch (err) {
+      console.error(`[Campaign] Failed for club ${club.id}:`, (err as Error).message?.slice(0, 120))
+      results.push({
+        clubId: club.id,
+        clubName: 'Error',
+        membersProcessed: 0,
+        messagesSent: 0,
+        messagesSkipped: 0,
+        snapshotsSaved: 0,
+        transitions: [],
+      })
+    }
+  }
+
+  return { results, totalSent, totalSkipped }
+}

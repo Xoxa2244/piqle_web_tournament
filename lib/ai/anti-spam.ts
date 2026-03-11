@@ -4,7 +4,7 @@
  * All 3 flows (slot filler, reactivation, event invites) import this.
  */
 
-type InviteType = 'SLOT_FILLER' | 'REACTIVATION' | 'EVENT_INVITE'
+type InviteType = 'SLOT_FILLER' | 'REACTIVATION' | 'EVENT_INVITE' | 'CHECK_IN' | 'RETENTION_BOOST'
 
 interface SpamCheckInput {
   prisma: any

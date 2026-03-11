@@ -6,6 +6,10 @@
     {
       "path": "/api/payments/process-due",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/campaigns/health",
+      "schedule": "0 14 * * *"
     }
   ]
 }

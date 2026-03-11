@@ -211,6 +211,7 @@ model Club {
   isVerified         Boolean              @default(false) @map("is_verified")
   courtReserveUrl    String?              @map("court_reserve_url")
   bookingRequestEmail String?             @map("booking_request_email")
+  automationSettings Json?                @default("{}") @map("automation_settings")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -1418,6 +1419,8 @@ enum AIRecommendationType {
   CHURN_PREDICTION
   GROUP_CHEMISTRY
   AUTOPILOT
+  CHECK_IN
+  RETENTION_BOOST
 }
 
 // ── Intelligence Module: Models ──
