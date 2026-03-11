@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getModel, getFallbackModel } from '@/lib/ai/llm/provider';
-import { ADVISOR_SYSTEM_PROMPT } from '@/lib/ai/llm/prompts';
+import { ADVISOR_SYSTEM_PROMPT, buildClubContextPrompt } from '@/lib/ai/llm/prompts';
 import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
 import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '@/lib/ai/llm/language';
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
@@ -233,7 +233,15 @@ export async function POST(req: Request) {
     const clubBaseUrl = `/clubs/${clubId}`
     const resolvedAdvisorPrompt = ADVISOR_SYSTEM_PROMPT.replace(/\{\{clubBaseUrl\}\}/g, clubBaseUrl)
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}
+    // Load club intelligence settings for context
+    let clubContextBlock = ''
+    try {
+      const club: any = await prisma.club.findUnique({ where: { id: clubId } })
+      const intelligenceSettings = club?.automationSettings?.intelligence || null
+      clubContextBlock = buildClubContextPrompt(intelligenceSettings)
+    } catch { /* non-critical */ }
+
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}
 
 --- Club Data (retrieved from knowledge base) ---
 ${ragContext}

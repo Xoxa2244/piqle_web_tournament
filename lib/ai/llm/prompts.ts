@@ -87,6 +87,38 @@ Generate a short invite message (2-3 sentences) that matches their persona.
 Include the session details naturally. Make it feel personal, not templated.
 Respond with just the invite text, no JSON wrapper.`;
 
+// ── Club Context Builder (from onboarding settings) ──
+export function buildClubContextPrompt(settings: {
+  timezone?: string
+  sportTypes?: string[]
+  courtCount?: number
+  hasIndoorCourts?: boolean
+  hasOutdoorCourts?: boolean
+  operatingHours?: { open: string; close: string }
+  peakHours?: { start: string; end: string }
+  pricingModel?: string
+  avgSessionPriceCents?: number | null
+  goals?: string[]
+  communicationPreferences?: { tone?: string }
+} | null): string {
+  if (!settings) return ''
+
+  const parts: string[] = ['Club context:']
+  if (settings.timezone) parts.push(`- Timezone: ${settings.timezone}`)
+  if (settings.sportTypes?.length) parts.push(`- Sports: ${settings.sportTypes.join(', ')}`)
+  if (settings.courtCount) {
+    const types = [settings.hasIndoorCourts && 'indoor', settings.hasOutdoorCourts && 'outdoor'].filter(Boolean).join(' + ')
+    parts.push(`- Courts: ${settings.courtCount} (${types || 'unspecified'})`)
+  }
+  if (settings.operatingHours) parts.push(`- Hours: ${settings.operatingHours.open} – ${settings.operatingHours.close}`)
+  if (settings.peakHours) parts.push(`- Peak hours: ${settings.peakHours.start} – ${settings.peakHours.end}`)
+  if (settings.pricingModel) parts.push(`- Pricing: ${settings.pricingModel}${settings.avgSessionPriceCents ? ` ($${(settings.avgSessionPriceCents / 100).toFixed(2)}/session)` : ''}`)
+  if (settings.goals?.length) parts.push(`- Club goals: ${settings.goals.join(', ')}`)
+  if (settings.communicationPreferences?.tone) parts.push(`- Communication tone: ${settings.communicationPreferences.tone}`)
+
+  return parts.length > 1 ? '\n\n' + parts.join('\n') : ''
+}
+
 // ── Churn Prediction Prompt ──
 export const CHURN_ANALYSIS_PROMPT = `You are analyzing member engagement patterns to predict churn risk.
 Given a member's booking history, activity trends, and behavioral signals, assess:

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Users, BarChart3, DollarSign,
   TrendingUp, UserMinus, ArrowRight, AlertTriangle,
-  Brain, Sparkles, CalendarDays, ChevronRight, Shield,
+  Brain, Sparkles, CalendarDays, ChevronRight, Shield, Zap,
 } from 'lucide-react'
 import { MetricCard } from './_components/metric-card'
 import { VerticalBarChart, HorizontalBarChart } from './_components/charts'
@@ -17,7 +17,7 @@ import { SessionTable } from './_components/session-table'
 import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboardV2, useMemberHealth } from './_hooks/use-intelligence'
+import { useDashboardV2, useMemberHealth, useIntelligenceSettings } from './_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 
 const formatLabels: Record<string, string> = {
@@ -63,6 +63,8 @@ export default function IntelligenceDashboardPage() {
 
   const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
   const { data: healthData } = useMemberHealth(clubId)
+  const { data: settingsData } = useIntelligenceSettings(clubId)
+  const hasOnboarded = !!settingsData?.settings?.onboardingCompletedAt
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -77,6 +79,21 @@ export default function IntelligenceDashboardPage() {
   }
 
   if (!data) return null
+
+  const SetupBanner = !hasOnboarded ? (
+    <Link href={`/clubs/${clubId}/intelligence/onboarding${demoSuffix}`}>
+      <div className="mb-6 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors cursor-pointer">
+        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Zap className="h-5 w-5 text-primary" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold">Complete Intelligence Setup</p>
+          <p className="text-xs text-muted-foreground">Help the AI understand your club for better recommendations.</p>
+        </div>
+        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+      </div>
+    </Link>
+  ) : null
 
   const { metrics, occupancy, sessions, players } = data
   const hasData = players.activeCount > 0 || players.inactiveCount > 0
@@ -105,6 +122,7 @@ export default function IntelligenceDashboardPage() {
 
   return (
     <div className="space-y-6">
+      {SetupBanner}
       {/* ── Date Filter ── */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-xs font-semibold text-muted-foreground">Period:</span>

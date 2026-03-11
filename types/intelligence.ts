@@ -395,3 +395,62 @@ export interface MLFeatureVector {
   churnedWithin30d?: boolean
   churnedWithin60d?: boolean
 }
+
+// ====== Inferred Preferences (from booking history) ======
+
+export interface BookingWithSession {
+  status: BookingStatus
+  session: {
+    date: Date
+    startTime: string      // "HH:MM"
+    format: string         // PlaySessionFormat
+  }
+}
+
+export interface InferredPreferences {
+  preferredDays: DayOfWeek[]
+  preferredTimeSlots: Record<TimeSlot, boolean>
+  preferredFormats: string[]
+  confidence: number        // 0-100, scales with booking count
+  bookingsAnalyzed: number
+}
+
+// ====== Club Intelligence Settings (from onboarding wizard) ======
+
+export type PricingModel = 'per_session' | 'membership' | 'free' | 'hybrid'
+export type CommunicationTone = 'friendly' | 'professional' | 'casual'
+export type ClubGoal = 'fill_sessions' | 'grow_membership' | 'improve_retention' | 'increase_revenue' | 'reduce_no_shows'
+
+export interface ClubIntelligenceSettings {
+  timezone: string                    // IANA timezone e.g. "America/New_York"
+  sportTypes: string[]                // ["pickleball"]
+  operatingDays: DayOfWeek[]
+  operatingHours: { open: string; close: string }
+  peakHours: { start: string; end: string }
+  typicalSessionDurationMinutes: number
+  courtCount: number
+  hasIndoorCourts: boolean
+  hasOutdoorCourts: boolean
+  pricingModel: PricingModel
+  avgSessionPriceCents: number | null
+  communicationPreferences: {
+    preferredChannel: 'email' | 'sms' | 'both'
+    maxMessagesPerWeek: number
+    tone: CommunicationTone
+  }
+  goals: ClubGoal[]
+  onboardingCompletedAt: string | null
+  onboardingVersion: number
+}
+
+export interface ClubAutomationSettingsV2 {
+  enabled: boolean
+  triggers: {
+    healthyToWatch: boolean
+    watchToAtRisk: boolean
+    atRiskToCritical: boolean
+    churned: boolean
+  }
+  channel: 'email' | 'sms' | 'both'
+  intelligence?: ClubIntelligenceSettings
+}

@@ -257,3 +257,15 @@ export function useSendOutreach() {
 
   return mutation
 }
+
+// ── Intelligence Settings ──
+export function useIntelligenceSettings(clubId: string) {
+  return trpc.intelligence.getIntelligenceSettings.useQuery(
+    { clubId },
+    { enabled: !!clubId }
+  )
+}
+
+export function useSaveIntelligenceSettings() {
+  return trpc.intelligence.saveIntelligenceSettings.useMutation()
+}

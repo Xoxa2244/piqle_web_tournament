@@ -1345,4 +1345,47 @@ export const intelligenceRouter = createTRPCRouter({
       const { indexAll } = await import('@/lib/ai/rag/indexer')
       return indexAll(input.clubId)
     }),
+
+  // ── Intelligence Settings: Get onboarding/config ──
+  getIntelligenceSettings: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+      })
+      const settings = club.automationSettings?.intelligence || null
+      return { settings }
+    }),
+
+  // ── Intelligence Settings: Save onboarding/config ──
+  saveIntelligenceSettings: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      settings: z.record(z.any()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { isAdmin } = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can update intelligence settings' })
+      }
+      const { intelligenceSettingsSchema } = await import('@/lib/ai/onboarding-schema')
+      const validated = intelligenceSettingsSchema.parse(input.settings)
+
+      // Merge into existing automationSettings
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+      })
+      const existing = club.automationSettings || {}
+      await (ctx.prisma.club as any).update({
+        where: { id: input.clubId },
+        data: {
+          automationSettings: {
+            ...existing,
+            intelligence: validated,
+          },
+        },
+      })
+      return { success: true }
+    }),
 })

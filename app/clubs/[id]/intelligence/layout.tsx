@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
-  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users
+  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users, Settings
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +54,12 @@ export default function IntelligenceLayout({
             </div>
           </div>
         </div>
+        <Link href={`${basePath}/onboarding${demoSuffix}`}>
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+            <Settings className="h-4 w-4" />
+            Settings
+          </Button>
+        </Link>
       </div>
 
       {/* Tab navigation */}

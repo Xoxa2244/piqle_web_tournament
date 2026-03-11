@@ -15,8 +15,9 @@ import { generateMemberHealth } from './member-health'
 import { checkAntiSpam } from './anti-spam'
 import { generateOutreachMessages } from './outreach-messages'
 import { findBestSessionForMember, formatSessionDate, formatSessionTime } from './session-matcher'
+import { resolvePreferences } from './inferred-preferences'
 import { inferSkillLevel } from './scoring'
-import type { RiskLevel, DayOfWeek, PlaySessionFormat } from '../../types/intelligence'
+import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
 // ── Types ──
 
@@ -88,12 +89,18 @@ export async function runHealthCampaign(
     select: { id: true, name: true, slug: true, automationSettings: true },
   })
 
+  const rawSettings = typeof club.automationSettings === 'object' && club.automationSettings !== null
+    ? club.automationSettings as any : {}
   const settings: ClubAutomationSettings = {
     ...DEFAULT_SETTINGS,
-    ...(typeof club.automationSettings === 'object' && club.automationSettings !== null
-      ? club.automationSettings as Partial<ClubAutomationSettings>
-      : {}),
+    ...rawSettings,
   }
+  // Intelligence settings from onboarding wizard (overrides channel/tone if set)
+  const intelligence = rawSettings.intelligence as { communicationPreferences?: { preferredChannel?: string; tone?: string; maxMessagesPerWeek?: number } } | undefined
+  if (intelligence?.communicationPreferences?.preferredChannel) {
+    settings.channel = intelligence.communicationPreferences.preferredChannel as 'email' | 'sms' | 'both'
+  }
+  const clubTone = intelligence?.communicationPreferences?.tone as 'friendly' | 'professional' | 'casual' | undefined
 
   if (!settings.enabled) {
     return {
@@ -131,7 +138,10 @@ export async function runHealthCampaign(
       userId: { in: userIds },
       playSession: { clubId },
     },
-    select: { userId: true, status: true, bookedAt: true },
+    select: {
+      userId: true, status: true, bookedAt: true,
+      playSession: { select: { date: true, startTime: true, format: true } },
+    },
     orderBy: { bookedAt: 'desc' },
   })
 
@@ -163,6 +173,23 @@ export async function runHealthCampaign(
   for (const b of bookings) {
     if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
     bookingMap.get(b.userId)!.push(b)
+  }
+
+  // Build resolved preferences (DB preference or inferred from booking history)
+  const resolvedPrefMap = new Map<string, ReturnType<typeof resolvePreferences>>()
+  for (const userId of userIds) {
+    const dbPref = prefMap.get(userId)
+    const dbPrefData = dbPref ? {
+      id: dbPref.id, userId: dbPref.userId, clubId: dbPref.clubId,
+      preferredDays: dbPref.preferredDays as DayOfWeek[],
+      preferredTimeSlots: { morning: dbPref.preferredTimeMorning, afternoon: dbPref.preferredTimeAfternoon, evening: dbPref.preferredTimeEvening },
+      skillLevel: dbPref.skillLevel, preferredFormats: dbPref.preferredFormats as PlaySessionFormat[],
+      targetSessionsPerWeek: dbPref.targetSessionsPerWeek, isActive: true,
+    } : null
+    const userBookingsForInference: BookingWithSession[] = (bookingMap.get(userId) || [])
+      .filter((b: any) => b.playSession)
+      .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
+    resolvedPrefMap.set(userId, resolvePreferences(dbPrefData, userBookingsForInference))
   }
 
   const memberInputs = followers.map((f: any) => {
@@ -281,22 +308,13 @@ export async function runHealthCampaign(
       continue
     }
 
-    // Find best session for this member
-    const memberPref = prefMap.get(member.memberId)
+    // Find best session for this member (uses resolved preferences: DB or inferred from history)
     const memberSkillLevel = inferSkillLevel(
       member.member.duprRatingDoubles ? Number(member.member.duprRatingDoubles) : null
     )
     const matched = findBestSessionForMember({
       memberSkillLevel,
-      preference: memberPref ? {
-        preferredDays: memberPref.preferredDays as DayOfWeek[],
-        preferredTimeSlots: {
-          morning: memberPref.preferredTimeMorning,
-          afternoon: memberPref.preferredTimeAfternoon,
-          evening: memberPref.preferredTimeEvening,
-        },
-        preferredFormats: memberPref.preferredFormats as string[],
-      } : null,
+      preference: resolvedPrefMap.get(member.memberId) || null,
       sessions: upcomingSessions,
       clubSlug: club.slug || club.id,
       appBaseUrl: appUrl,
@@ -315,7 +333,7 @@ export async function runHealthCampaign(
       riskLevel: member.riskLevel,
       lowComponents,
       daysSinceLastActivity: member.daysSinceLastBooking,
-      preferredDays: memberPref?.preferredDays as string[] | undefined,
+      preferredDays: resolvedPrefMap.get(member.memberId)?.preferredDays as string[] | undefined,
       suggestedSessionTitle: matched?.session.title,
       suggestedSessionDate: matched ? formatSessionDate(new Date(matched.session.date)) : undefined,
       suggestedSessionTime: matched ? formatSessionTime(matched.session.startTime, matched.session.endTime) : undefined,
@@ -324,6 +342,7 @@ export async function runHealthCampaign(
       sameLevelCount: matched?.sameLevelCount,
       spotsLeft: matched?.spotsLeft,
       totalBookings: member.totalBookings,
+      tone: clubTone,
     })
 
     const variant = variants.find(v => v.recommended) || variants[0]

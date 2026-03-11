@@ -39,6 +39,7 @@ export interface OutreachMessageInput {
   sameLevelCount?: number
   spotsLeft?: number
   totalBookings?: number
+  tone?: 'friendly' | 'professional' | 'casual'  // from club intelligence settings
 }
 
 // ── Generator ──
