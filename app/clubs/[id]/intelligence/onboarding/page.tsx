@@ -33,11 +33,11 @@ const STEPS = [
 ]
 
 const GOAL_LABELS: Record<string, string> = {
-  fill_sessions: 'Fill empty sessions',
-  grow_membership: 'Grow membership',
-  improve_retention: 'Improve retention',
-  increase_revenue: 'Increase revenue',
-  reduce_no_shows: 'Reduce no-shows',
+  fill_sessions: 'Fill empty court time',
+  grow_membership: 'Bring in new players',
+  improve_retention: 'Keep players coming back',
+  increase_revenue: 'Grow revenue',
+  reduce_no_shows: 'Cut down on no-shows',
 }
 
 const PRICING_LABELS: Record<string, string> = {
@@ -223,9 +223,9 @@ function Step1Welcome({ settings, update }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Welcome to Intelligence Setup</h2>
+        <h2 className="text-xl font-semibold">Let's set up your club</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Help the AI understand your club for better recommendations.
+          A few quick details so we can help fill your courts and keep players coming back.
         </p>
       </div>
 
@@ -277,9 +277,9 @@ function Step2Courts({ settings, update }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Court Setup</h2>
+        <h2 className="text-xl font-semibold">Your courts</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Tell us about your courts.
+          How many courts do you run?
         </p>
       </div>
 
@@ -368,9 +368,9 @@ function Step3Schedule({ settings, update }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Schedule & Operating Hours</h2>
+        <h2 className="text-xl font-semibold">When do you run sessions?</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload a CSV to auto-detect, or set manually.
+          Upload your schedule or enter hours manually.
         </p>
       </div>
 
@@ -498,9 +498,9 @@ function Step4Pricing({ settings, update, updateComms }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Pricing & Communication</h2>
+        <h2 className="text-xl font-semibold">Pricing & messages</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          How you charge and how the AI should communicate.
+          How you charge players and how we should reach out to them.
         </p>
       </div>
 
@@ -610,9 +610,9 @@ function Step5Goals({ settings, update }: StepProps) {
   return (
     <>
       <div>
-        <h2 className="text-xl font-semibold">Goals & Review</h2>
+        <h2 className="text-xl font-semibold">What matters most?</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          What are your main goals? This helps the AI prioritize recommendations.
+          Pick your top priorities — we'll focus on these first.
         </p>
       </div>
 

@@ -87,8 +87,8 @@ export default function IntelligenceDashboardPage() {
           <Zap className="h-5 w-5 text-primary" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold">Complete Intelligence Setup</p>
-          <p className="text-xs text-muted-foreground">Help the AI understand your club for better recommendations.</p>
+          <p className="text-sm font-semibold">Finish setting up your club</p>
+          <p className="text-xs text-muted-foreground">Takes 2 minutes — helps us fill your courts smarter.</p>
         </div>
         <ChevronRight className="h-5 w-5 text-muted-foreground" />
       </div>
@@ -105,9 +105,9 @@ export default function IntelligenceDashboardPage() {
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-6 shadow-lg shadow-lime-500/20">
           <Brain className="w-8 h-8 text-white" />
         </div>
-        <h3 className="text-xl font-bold mb-2">Set Up AI Intelligence</h3>
+        <h3 className="text-xl font-bold mb-2">Get started</h3>
         <p className="text-sm text-muted-foreground max-w-md mb-6">
-          Upload your court schedule to unlock AI-powered insights about occupancy, member engagement, revenue opportunities, and more.
+          Upload your court schedule so we can spot empty slots, re-engage inactive players, and help you grow revenue.
         </p>
         <Link href={`/clubs/${clubId}/intelligence/advisor`}>
           <Button className="gap-2">
