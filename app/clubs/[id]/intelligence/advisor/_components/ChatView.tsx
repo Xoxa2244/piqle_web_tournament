@@ -10,6 +10,7 @@ import {
   Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
@@ -370,7 +371,24 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
-                              <ReactMarkdown>
+                              <ReactMarkdown
+                                components={{
+                                  a: ({ href, children }) => {
+                                    if (href?.startsWith('/')) {
+                                      return (
+                                        <Link href={href} className="text-lime-600 hover:underline font-medium">
+                                          {children}
+                                        </Link>
+                                      )
+                                    }
+                                    return (
+                                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
+                                        {children}
+                                      </a>
+                                    )
+                                  },
+                                }}
+                              >
                                 {cleanText}
                               </ReactMarkdown>
                             </div>

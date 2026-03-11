@@ -34,6 +34,7 @@ export interface MessageInput {
   bookingsLastMonth?: number
   noShowRate?: number
   suggestedSessionTitles?: string[]
+  suggestedSessionConfirmedCounts?: number[]
   archetype?: PlayerArchetype
 }
 
@@ -103,8 +104,12 @@ function duprStr(rating?: number | null): string {
   return String(rating)
 }
 
-function topSession(titles?: string[]): string {
-  return titles && titles.length > 0 ? titles[0] : 'an upcoming session'
+function topSession(titles?: string[], counts?: number[]): string {
+  if (!titles || titles.length === 0) return 'an upcoming session'
+  const name = titles[0]
+  const count = counts?.[0]
+  if (count && count > 0) return `${name} (${count} player${count === 1 ? '' : 's'} signed up)`
+  return name
 }
 
 function prefDay(days?: string[]): string {
@@ -189,7 +194,7 @@ function generateGenericMessages(input: MessageInput): MessageVariant[] {
 function lapsedRegularMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days, totalBookings } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const dupr = duprStr(input.duprRating)
   const day = prefDay(input.preferredDays)
 
@@ -228,7 +233,7 @@ function lapsedRegularMessages(input: MessageInput): MessageVariant[] {
 function fadingRegularMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days, totalBookings, sessionCount } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const day = prefDay(input.preferredDays)
   const format = prefFormat(input.preferredFormats)
 
@@ -263,7 +268,7 @@ function fadingRegularMessages(input: MessageInput): MessageVariant[] {
 function ghostNewbieMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days, totalBookings } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const time = prefTimeSlot(input.preferredTimeSlots)
 
   return [
@@ -297,7 +302,7 @@ function ghostNewbieMessages(input: MessageInput): MessageVariant[] {
 function neverStartedMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, sessionCount } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const time = prefTimeSlot(input.preferredTimeSlots)
   const format = prefFormat(input.preferredFormats)
 
@@ -332,7 +337,7 @@ function neverStartedMessages(input: MessageInput): MessageVariant[] {
 function competitorMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const dupr = duprStr(input.duprRating)
   const day = prefDay(input.preferredDays)
 
@@ -367,7 +372,7 @@ function competitorMessages(input: MessageInput): MessageVariant[] {
 function weekendWarriorMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days, sessionCount } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const dupr = duprStr(input.duprRating)
 
   return [
@@ -401,7 +406,7 @@ function weekendWarriorMessages(input: MessageInput): MessageVariant[] {
 function flakyPlayerMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const day = prefDay(input.preferredDays)
   const time = prefTimeSlot(input.preferredTimeSlots)
 
@@ -436,7 +441,7 @@ function flakyPlayerMessages(input: MessageInput): MessageVariant[] {
 function socialButterflyMessages(input: MessageInput): MessageVariant[] {
   const fn = firstName(input.memberName)
   const { clubName, daysSinceLastActivity: days, sessionCount } = input
-  const session = topSession(input.suggestedSessionTitles)
+  const session = topSession(input.suggestedSessionTitles, input.suggestedSessionConfirmedCounts)
   const day = prefDay(input.preferredDays)
 
   return [

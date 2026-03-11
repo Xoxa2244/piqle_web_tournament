@@ -1121,10 +1121,16 @@ export async function sendReactivationMessages(
     })
   )
 
-  // Get upcoming sessions for suggestions
+  // Get upcoming sessions for suggestions (with booking data for social proof)
   const upcomingSessions = await prisma.playSession.findMany({
     where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
-    include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
+    include: {
+      _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        select: { user: { select: { duprRatingDoubles: true } } },
+      },
+    },
   })
 
   const reactivationData = generateReactivationCandidates({
@@ -1155,15 +1161,22 @@ export async function sendReactivationMessages(
     }
 
     const reactivation = candidateDataById.get(candidateInput.memberId)
-    const suggestedSessions = (reactivation?.suggestedSessions || []).slice(0, 3).map((s: any) => ({
-      title: s.title || 'Open Play',
-      date: s.date instanceof Date ? s.date.toLocaleDateString() : String(s.date),
-      startTime: s.startTime || '',
-      endTime: s.endTime || '',
-      format: s.format || 'OPEN_PLAY',
-      spotsLeft: Math.max(0, (s.maxPlayers || 8) - (s.confirmedCount || 0)),
-    }))
+    const suggestedSessions = (reactivation?.suggestedSessions || []).slice(0, 3).map((s: any) => {
+      const confirmedCount = s.confirmedCount || s._count?.bookings || 0
+      const spotsLeft = Math.max(0, (s.maxPlayers || 8) - confirmedCount)
+      return {
+        title: s.title || 'Open Play',
+        date: s.date instanceof Date ? s.date.toLocaleDateString() : String(s.date),
+        startTime: s.startTime || '',
+        endTime: s.endTime || '',
+        format: s.format || 'OPEN_PLAY',
+        spotsLeft,
+        confirmedCount,
+        deepLinkUrl: `${appUrl}/clubs/${club.slug || club.id}/play?session=${s.id}`,
+      }
+    })
     const daysSince = reactivation?.daysSinceLastActivity || 0
+    const firstSessionDeepLink = suggestedSessions[0]?.deepLinkUrl || bookingUrl
 
     // ── Send Email ──
     if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
@@ -1175,7 +1188,7 @@ export async function sendReactivationMessages(
           clubName: club.name,
           daysSinceLastActivity: daysSince,
           suggestedSessions,
-          bookingUrl,
+          bookingUrl: firstSessionDeepLink,
           customMessage,
         })
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
@@ -1609,7 +1622,7 @@ export async function sendOutreachMessage(
   // Load user
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: memberId },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, duprRatingDoubles: true },
   })
 
   // Anti-spam check
@@ -1619,6 +1632,48 @@ export async function sendOutreachMessage(
   if (!spamCheck.allowed) {
     return { sent: 0, failed: 0, skipped: 1, reason: spamCheck.reason }
   }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const genericBookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+
+  // Load upcoming sessions + find best match for this member
+  const { findBestSessionForMember, formatSessionDate, formatSessionTime } = await import('./session-matcher')
+  const { inferSkillLevel } = await import('./scoring')
+
+  const upcomingSessions = await prisma.playSession.findMany({
+    where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
+    include: {
+      _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        select: { user: { select: { duprRatingDoubles: true } } },
+      },
+    },
+    orderBy: { date: 'asc' },
+    take: 20,
+  })
+
+  const memberPref = await prisma.userPlayPreference.findUnique({
+    where: { userId_clubId: { userId: memberId, clubId } },
+  })
+  const memberSkillLevel = inferSkillLevel(user.duprRatingDoubles ? Number(user.duprRatingDoubles) : null)
+
+  const matched = findBestSessionForMember({
+    memberSkillLevel,
+    preference: memberPref ? {
+      preferredDays: memberPref.preferredDays,
+      preferredTimeSlots: {
+        morning: memberPref.preferredTimeMorning,
+        afternoon: memberPref.preferredTimeAfternoon,
+        evening: memberPref.preferredTimeEvening,
+      },
+      preferredFormats: memberPref.preferredFormats,
+    } : null,
+    sessions: upcomingSessions,
+    clubSlug: club.slug || club.id,
+    appBaseUrl: appUrl,
+  })
 
   // Generate messages
   const { generateOutreachMessages } = await import('./outreach-messages')
@@ -1630,7 +1685,13 @@ export async function sendOutreachMessage(
     lowComponents: lowComponents || [],
     daysSinceLastActivity: daysSinceLastActivity ?? null,
     preferredDays,
-    suggestedSessionTitle,
+    suggestedSessionTitle: matched?.session.title || suggestedSessionTitle,
+    suggestedSessionDate: matched ? formatSessionDate(new Date(matched.session.date)) : undefined,
+    suggestedSessionTime: matched ? formatSessionTime(matched.session.startTime, matched.session.endTime) : undefined,
+    suggestedSessionFormat: matched?.session.format,
+    confirmedCount: matched?.confirmedCount,
+    sameLevelCount: matched?.sameLevelCount,
+    spotsLeft: matched?.spotsLeft,
     totalBookings,
   })
 
@@ -1639,9 +1700,7 @@ export async function sendOutreachMessage(
     ? variants.find(v => v.id === variantId) || variants.find(v => v.recommended) || variants[0]
     : variants.find(v => v.recommended) || variants[0]
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = matched?.deepLinkUrl || genericBookingUrl
 
   const results: Array<{ channel: string; status: string; error?: string }> = []
 
@@ -1656,6 +1715,15 @@ export async function sendOutreachMessage(
         body: variant.emailBody,
         clubName: club.name,
         bookingUrl,
+        sessionCard: matched ? {
+          title: matched.session.title,
+          date: formatSessionDate(new Date(matched.session.date)),
+          time: formatSessionTime(matched.session.startTime, matched.session.endTime),
+          format: matched.session.format,
+          spotsLeft: matched.spotsLeft,
+          confirmedCount: matched.confirmedCount,
+          sameLevelCount: matched.sameLevelCount,
+        } : undefined,
       })
       results.push({ channel: 'email', status: 'sent' })
     } catch (err: any) {

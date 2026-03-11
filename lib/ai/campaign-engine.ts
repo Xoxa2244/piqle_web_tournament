@@ -14,6 +14,8 @@
 import { generateMemberHealth } from './member-health'
 import { checkAntiSpam } from './anti-spam'
 import { generateOutreachMessages } from './outreach-messages'
+import { findBestSessionForMember, formatSessionDate, formatSessionTime } from './session-matcher'
+import { inferSkillLevel } from './scoring'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat } from '../../types/intelligence'
 
 // ── Types ──
@@ -135,6 +137,20 @@ export async function runHealthCampaign(
 
   const preferences = await prisma.userPlayPreference.findMany({
     where: { clubId, userId: { in: userIds } },
+  })
+
+  // Load upcoming sessions for session matching + social proof
+  const upcomingSessions = await prisma.playSession.findMany({
+    where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
+    include: {
+      _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        select: { user: { select: { duprRatingDoubles: true } } },
+      },
+    },
+    orderBy: { date: 'asc' },
+    take: 20,
   })
 
   // Build health score inputs
@@ -265,6 +281,27 @@ export async function runHealthCampaign(
       continue
     }
 
+    // Find best session for this member
+    const memberPref = prefMap.get(member.memberId)
+    const memberSkillLevel = inferSkillLevel(
+      member.member.duprRatingDoubles ? Number(member.member.duprRatingDoubles) : null
+    )
+    const matched = findBestSessionForMember({
+      memberSkillLevel,
+      preference: memberPref ? {
+        preferredDays: memberPref.preferredDays as DayOfWeek[],
+        preferredTimeSlots: {
+          morning: memberPref.preferredTimeMorning,
+          afternoon: memberPref.preferredTimeAfternoon,
+          evening: memberPref.preferredTimeEvening,
+        },
+        preferredFormats: memberPref.preferredFormats as string[],
+      } : null,
+      sessions: upcomingSessions,
+      clubSlug: club.slug || club.id,
+      appBaseUrl: appUrl,
+    })
+
     // Generate and send message
     const lowComponents = Object.entries(member.components)
       .map(([key, comp]) => ({ key, label: comp.label, score: comp.score }))
@@ -278,10 +315,19 @@ export async function runHealthCampaign(
       riskLevel: member.riskLevel,
       lowComponents,
       daysSinceLastActivity: member.daysSinceLastBooking,
+      preferredDays: memberPref?.preferredDays as string[] | undefined,
+      suggestedSessionTitle: matched?.session.title,
+      suggestedSessionDate: matched ? formatSessionDate(new Date(matched.session.date)) : undefined,
+      suggestedSessionTime: matched ? formatSessionTime(matched.session.startTime, matched.session.endTime) : undefined,
+      suggestedSessionFormat: matched?.session.format,
+      confirmedCount: matched?.confirmedCount,
+      sameLevelCount: matched?.sameLevelCount,
+      spotsLeft: matched?.spotsLeft,
       totalBookings: member.totalBookings,
     })
 
     const variant = variants.find(v => v.recommended) || variants[0]
+    const memberBookingUrl = matched?.deepLinkUrl || bookingUrl
 
     // Send email
     let sent = false
@@ -295,7 +341,16 @@ export async function runHealthCampaign(
             subject: variant.emailSubject,
             body: variant.emailBody,
             clubName: club.name,
-            bookingUrl,
+            bookingUrl: memberBookingUrl,
+            sessionCard: matched ? {
+              title: matched.session.title,
+              date: formatSessionDate(new Date(matched.session.date)),
+              time: formatSessionTime(matched.session.startTime, matched.session.endTime),
+              format: matched.session.format,
+              spotsLeft: matched.spotsLeft,
+              confirmedCount: matched.confirmedCount,
+              sameLevelCount: matched.sameLevelCount,
+            } : undefined,
           })
           sent = true
         }

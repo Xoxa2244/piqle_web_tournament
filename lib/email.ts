@@ -102,6 +102,9 @@ interface SuggestedSessionInfo {
   endTime: string
   format: string
   spotsLeft: number
+  confirmedCount?: number
+  sameLevelCount?: number
+  deepLinkUrl?: string
 }
 
 function buildReactivationEmailHtml({
@@ -127,20 +130,31 @@ function buildReactivationEmailHtml({
   const sessionRows = suggestedSessions
     .slice(0, 3)
     .map(
-      (s) => `
+      (s) => {
+        const socialLine = s.sameLevelCount && s.sameLevelCount > 0
+          ? `<br/><span style="color: #6b7280; font-size: 12px;">${s.sameLevelCount} player${s.sameLevelCount === 1 ? '' : 's'} at your level signed up</span>`
+          : s.confirmedCount && s.confirmedCount > 0
+            ? `<br/><span style="color: #6b7280; font-size: 12px;">${s.confirmedCount} player${s.confirmedCount === 1 ? '' : 's'} signed up</span>`
+            : ''
+        const rowTag = s.deepLinkUrl ? `<a href="${s.deepLinkUrl}" style="display: contents; text-decoration: none; color: inherit;">` : ''
+        const rowClose = s.deepLinkUrl ? '</a>' : ''
+        return `
       <tr>
+        ${rowTag}
         <td style="padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #f0f0f0;">
           <strong>${s.title}</strong><br/>
           <span style="color: #6b7280; font-size: 13px;">
             ${s.date} &middot; ${s.startTime}&ndash;${s.endTime} &middot; ${formatLabel(s.format)}
-          </span>
+          </span>${socialLine}
         </td>
         <td style="padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #f0f0f0; text-align: right; white-space: nowrap;">
           <span style="color: ${s.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-weight: 600;">
             ${s.spotsLeft} spot${s.spotsLeft !== 1 ? 's' : ''} left
           </span>
         </td>
+        ${rowClose}
       </tr>`
+      }
     )
     .join('')
 
@@ -572,22 +586,61 @@ If you didn't request this, you can ignore this email.`
 
 // ── Health-Based Outreach Email (CHECK_IN / RETENTION_BOOST) ──
 
+export interface OutreachSessionCard {
+  title: string
+  date: string
+  time: string
+  format: string
+  spotsLeft: number
+  confirmedCount: number
+  sameLevelCount: number
+}
+
 export async function sendOutreachEmail({
   to,
   subject,
   body,
   clubName,
   bookingUrl,
+  sessionCard,
 }: {
   to: string
   subject: string
   body: string
   clubName: string
   bookingUrl: string
+  sessionCard?: OutreachSessionCard
 }): Promise<{ messageId: string }> {
   const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/Logo.png`
   const text = `${body}\n\nBook now: ${bookingUrl}`
+
+  const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  let sessionCardHtml = ''
+  if (sessionCard) {
+    const socialProofLine = sessionCard.sameLevelCount > 0
+      ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.sameLevelCount} player${sessionCard.sameLevelCount === 1 ? '' : 's'} at your level signed up</span>`
+      : sessionCard.confirmedCount > 0
+        ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.confirmedCount} player${sessionCard.confirmedCount === 1 ? '' : 's'} signed up</span>`
+        : ''
+
+    sessionCardHtml = `
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 16px 0;">
+                <tr>
+                  <td style="padding: 14px 16px; background: #f8fafc;">
+                    <strong style="font-size: 16px; color: #111827;">${sessionCard.title}</strong><br/>
+                    <span style="color: #6b7280; font-size: 14px;">
+                      ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
+                    </span><br/>
+                    <span style="color: ${sessionCard.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-size: 14px; font-weight: 600;">
+                      ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
+                    </span>
+                    ${socialProofLine ? `<br/>${socialProofLine}` : ''}
+                  </td>
+                </tr>
+              </table>`
+  }
 
   const html = `
 <!DOCTYPE html>
@@ -610,6 +663,7 @@ export async function sendOutreachEmail({
           <tr>
             <td style="background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
               ${body.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 12px 0; font-size: 15px;">${line}</p>` : '').join('\n')}
+              ${sessionCardHtml}
               <div style="text-align: center; margin-top: 24px;">
                 <a href="${bookingUrl}" style="display: inline-block; background: linear-gradient(135deg, #84cc16, #22c55e); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none;">
                   Book a Session

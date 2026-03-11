@@ -229,7 +229,11 @@ export async function POST(req: Request) {
 
     const languageInstruction = getLanguageInstruction(conversationLanguage);
 
-    const systemPrompt = `${ADVISOR_SYSTEM_PROMPT}${languageInstruction}
+    // Resolve deep link placeholders in system prompt
+    const clubBaseUrl = `/clubs/${clubId}`
+    const resolvedAdvisorPrompt = ADVISOR_SYSTEM_PROMPT.replace(/\{\{clubBaseUrl\}\}/g, clubBaseUrl)
+
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}
 
 --- Club Data (retrieved from knowledge base) ---
 ${ragContext}
