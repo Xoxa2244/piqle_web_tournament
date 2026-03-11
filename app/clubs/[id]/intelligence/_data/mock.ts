@@ -908,3 +908,174 @@ export function mockSessionsCalendar(): import('@/types/intelligence').SessionCa
 
   return _cachedCalendar
 }
+
+// ── Member Health ──
+import type { MemberHealthData, MemberHealthResult, RiskLevel, LifecycleStage, HealthScoreComponent } from '@/types/intelligence'
+
+function mkHealth(
+  id: string, name: string, email: string, dupr: number, gender: 'M' | 'F',
+  healthScore: number, riskLevel: RiskLevel, stage: LifecycleStage,
+  trend: 'improving' | 'stable' | 'declining',
+  daysSinceLast: number | null, totalBookings: number, joinedDaysAgo: number,
+  ft: HealthScoreComponent, rec: HealthScoreComponent, con: HealthScoreComponent, pb: HealthScoreComponent, ns: HealthScoreComponent,
+  topRisks: string[], suggestedAction: string,
+): MemberHealthResult {
+  return {
+    memberId: id,
+    member: { id, name, email, image: null, gender, city: null, duprRatingDoubles: dupr, duprRatingSingles: null },
+    healthScore, riskLevel, lifecycleStage: stage,
+    components: { frequencyTrend: ft, recency: rec, consistency: con, patternBreak: pb, noShowTrend: ns },
+    topRisks, suggestedAction, trend,
+    daysSinceLastBooking: daysSinceLast, totalBookings, joinedDaysAgo,
+  }
+}
+
+const c = (s: number, w: number, l: string): HealthScoreComponent => ({ score: s, weight: w, label: l })
+
+export function mockMemberHealth(): MemberHealthData {
+  const members: MemberHealthResult[] = [
+    // ── Critical (4) ──
+    mkHealth('mh1', 'Tom Bradley', 'tom@demo.com', 3.6, 'M', 18, 'critical', 'churned', 'declining', 47, 23, 280,
+      c(15, 35, 'Significant frequency drop (-80%)'), c(0, 25, 'Inactive for 47+ days'), c(70, 20, 'Was moderately consistent'), c(15, 15, 'Missed Tue, Wed, Sat sessions'), c(100, 5, 'Excellent reliability'),
+      ['Significant frequency drop (-80%)', 'Inactive for 47+ days', 'Missed Tue, Wed, Sat sessions'], 'Use Reactivation to send a win-back message'),
+    mkHealth('mh2', 'Diana Ross', 'diana@demo.com', 2.8, 'F', 12, 'critical', 'critical', 'declining', 32, 5, 120,
+      c(0, 35, 'No bookings in the last 60 days'), c(0, 25, 'Inactive for 32+ days'), c(50, 20, 'Not enough history'), c(20, 15, 'Missed most expected sessions'), c(50, 5, 'No booking history'),
+      ['No bookings in the last 60 days', 'Inactive for 32+ days'], 'Urgent: Send personalized invite before they churn'),
+    mkHealth('mh3', 'Pete Johnson', 'pete@demo.com', 4.1, 'M', 15, 'critical', 'churned', 'declining', 38, 18, 200,
+      c(15, 35, 'Significant frequency drop (-75%)'), c(0, 25, 'Inactive for 38+ days'), c(40, 20, 'Irregular visit pattern'), c(15, 15, 'Missed Mon, Wed, Fri'), c(60, 5, 'No-show rate 12%'),
+      ['Significant frequency drop (-75%)', 'Inactive for 38+ days'], 'Use Reactivation to send a win-back message'),
+    mkHealth('mh4', 'Nicole Park', 'nicole@demo.com', 3.2, 'F', 22, 'critical', 'critical', 'declining', 25, 7, 95,
+      c(15, 35, 'Visit frequency down 60%'), c(25, 25, '25 days inactive — approaching churn'), c(30, 20, 'Irregular visits'), c(20, 15, 'Missed Sat & Sun sessions'), c(100, 5, 'Excellent reliability'),
+      ['Visit frequency down 60%', '25 days inactive — approaching churn'], 'Urgent: Send personalized invite before they churn'),
+
+    // ── At-Risk (5) ──
+    mkHealth('mh5', 'Sarah Chen', 'sarah@demo.com', 4.2, 'F', 38, 'at_risk', 'at_risk', 'declining', 12, 15, 180,
+      c(40, 35, 'Visit frequency down 35%'), c(50, 25, '12 days since last session'), c(70, 20, 'Moderately consistent'), c(45, 15, 'Missed usual Tue & Thu sessions'), c(100, 5, 'Excellent reliability'),
+      ['Visit frequency down 35%', 'Missed usual Tue & Thu sessions'], 'Send targeted invite for their preferred session type'),
+    mkHealth('mh6', 'Mike Rodriguez', 'mike@demo.com', 3.8, 'M', 42, 'at_risk', 'at_risk', 'declining', 14, 22, 220,
+      c(40, 35, 'Visit frequency down 40%'), c(50, 25, '14 days since last session'), c(60, 20, 'Moderately consistent'), c(60, 15, 'Missed 1 usual session (Wednesday)'), c(60, 5, 'No-show rate 8%'),
+      ['Visit frequency down 40%', '14 days since last session'], 'Send targeted invite for their preferred session type'),
+    mkHealth('mh7', 'Emily Park', 'emily@demo.com', 4.0, 'F', 35, 'at_risk', 'at_risk', 'declining', 16, 12, 150,
+      c(15, 35, 'Visit frequency down 55%'), c(25, 25, '16 days inactive'), c(100, 20, 'Very consistent visit pattern'), c(45, 15, 'Missed Tue & Thu sessions'), c(100, 5, 'Excellent reliability'),
+      ['Visit frequency down 55%', '16 days inactive'], 'Send targeted invite for their preferred session type'),
+    mkHealth('mh8', 'James Wilson', 'james@demo.com', 3.5, 'M', 28, 'at_risk', 'at_risk', 'declining', 18, 8, 130,
+      c(40, 35, 'Visit frequency down 30%'), c(25, 25, '18 days inactive'), c(40, 20, 'Irregular visit pattern'), c(75, 15, 'Missed 1 usual session (Saturday)'), c(20, 5, 'High no-show rate (18%)'),
+      ['Visit frequency down 30%', '18 days inactive', 'High no-show rate (18%)'], 'Send targeted invite for their preferred session type'),
+    mkHealth('mh9', 'Karen Lewis', 'karen@demo.com', 4.1, 'F', 32, 'at_risk', 'at_risk', 'declining', 10, 28, 310,
+      c(40, 35, 'Visit frequency down 45%'), c(50, 25, '10 days since last session'), c(40, 20, 'Irregular visit pattern'), c(15, 15, 'Missed most expected sessions'), c(100, 5, 'Excellent reliability'),
+      ['Visit frequency down 45%', 'Missed most expected sessions'], 'Send targeted invite for their preferred session type'),
+
+    // ── Watch (8) ──
+    mkHealth('mh10', 'David Kim', 'david@demo.com', 3.9, 'M', 58, 'watch', 'active', 'declining', 5, 30, 250,
+      c(60, 35, 'Slight frequency decline (-20%)'), c(80, 25, 'Last played 5 days ago'), c(70, 20, 'Moderately consistent'), c(45, 15, 'Missed usual Thu session'), c(100, 5, 'Excellent reliability'),
+      ['Slight frequency decline (-20%)', 'Missed usual Thu session'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh11', 'Lisa Thompson', 'lisa@demo.com', 4.5, 'F', 62, 'watch', 'active', 'stable', 7, 18, 180,
+      c(75, 35, 'Visit frequency stable'), c(80, 25, 'Last played 7 days ago'), c(60, 20, 'Moderately consistent'), c(45, 15, 'Missed usual Sat session'), c(60, 5, 'No-show rate 10%'),
+      ['Missed usual Sat session'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh12', 'Alex Rivera', 'alex@demo.com', 3.3, 'M', 55, 'watch', 'active', 'declining', 6, 14, 90,
+      c(60, 35, 'Slight frequency decline (-15%)'), c(80, 25, 'Last played 6 days ago'), c(40, 20, 'Irregular visit pattern'), c(75, 15, 'Missed 1 usual session'), c(100, 5, 'Excellent reliability'),
+      ['Irregular visit pattern'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh13', 'Rachel Green', 'rachel@demo.com', 3.7, 'F', 52, 'watch', 'active', 'stable', 4, 25, 200,
+      c(75, 35, 'Visit frequency stable'), c(100, 25, 'Played 4 days ago'), c(40, 20, 'Irregular visit pattern'), c(45, 15, 'Missed usual Mon session'), c(60, 5, 'No-show rate 8%'),
+      ['Irregular visit pattern', 'Missed usual Mon session'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh14', 'Chris Martinez', 'chris@demo.com', 4.3, 'M', 68, 'watch', 'active', 'declining', 3, 31, 365,
+      c(60, 35, 'Slight frequency decline (-22%)'), c(100, 25, 'Played 3 days ago'), c(100, 20, 'Very consistent pattern'), c(45, 15, 'Missed usual Wed session'), c(100, 5, 'Excellent reliability'),
+      ['Slight frequency decline (-22%)'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh15', 'Amanda Cruz', 'amanda@demo.com', 3.4, 'F', 56, 'watch', 'active', 'stable', 5, 16, 140,
+      c(75, 35, 'Visit frequency stable'), c(80, 25, 'Last played 5 days ago'), c(70, 20, 'Moderately consistent'), c(45, 15, 'Missed usual Fri session'), c(20, 5, 'High no-show rate (20%)'),
+      ['High no-show rate (20%)', 'Missed usual Fri session'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh16', 'Kevin Park', 'kevin@demo.com', 3.6, 'M', 64, 'watch', 'active', 'stable', 4, 20, 170,
+      c(75, 35, 'Visit frequency stable'), c(100, 25, 'Played 4 days ago'), c(60, 20, 'Moderately consistent'), c(60, 15, 'Missed 1 usual session'), c(60, 5, 'No-show rate 12%'),
+      ['No-show rate 12%'], 'Monitor — consider a check-in message next week'),
+    mkHealth('mh17', 'Tina Chen', 'tina@demo.com', 3.8, 'F', 59, 'watch', 'active', 'declining', 6, 19, 160,
+      c(60, 35, 'Slight frequency decline (-18%)'), c(80, 25, 'Last played 6 days ago'), c(70, 20, 'Moderately consistent'), c(60, 15, 'Missed 1 usual session'), c(100, 5, 'Excellent reliability'),
+      ['Slight frequency decline (-18%)'], 'Monitor — consider a check-in message next week'),
+
+    // ── Healthy / Active (20) ──
+    ...[
+      { id: 'mh18', name: 'Brian Johnson', email: 'brian@demo.com', dupr: 4.4, g: 'M' as const, score: 91, days: 1, total: 45, joined: 400 },
+      { id: 'mh19', name: 'Sara Wilson', email: 'sara@demo.com', dupr: 3.5, g: 'F' as const, score: 88, days: 2, total: 38, joined: 350 },
+      { id: 'mh20', name: 'Mark Davis', email: 'mark@demo.com', dupr: 3.7, g: 'M' as const, score: 85, days: 1, total: 42, joined: 380 },
+      { id: 'mh21', name: 'Jennifer Wu', email: 'jennifer@demo.com', dupr: 3.6, g: 'F' as const, score: 92, days: 0, total: 50, joined: 420 },
+      { id: 'mh22', name: 'Carlos Mendez', email: 'carlos@demo.com', dupr: 4.5, g: 'M' as const, score: 87, days: 2, total: 35, joined: 300 },
+      { id: 'mh23', name: 'Ashley Brown', email: 'ashley@demo.com', dupr: 3.2, g: 'F' as const, score: 79, days: 3, total: 28, joined: 250 },
+      { id: 'mh24', name: 'Jason Lee', email: 'jason@demo.com', dupr: 3.9, g: 'M' as const, score: 94, days: 1, total: 55, joined: 500 },
+      { id: 'mh25', name: 'Maria Garcia', email: 'maria@demo.com', dupr: 2.8, g: 'F' as const, score: 76, days: 3, total: 18, joined: 180 },
+      { id: 'mh26', name: 'Ryan Torres', email: 'ryan@demo.com', dupr: 4.2, g: 'M' as const, score: 89, days: 1, total: 40, joined: 360 },
+      { id: 'mh27', name: 'Sophia Chen', email: 'sophia@demo.com', dupr: 4.0, g: 'F' as const, score: 83, days: 2, total: 32, joined: 280 },
+      { id: 'mh28', name: 'Tyler Adams', email: 'tyler@demo.com', dupr: 3.4, g: 'M' as const, score: 81, days: 2, total: 25, joined: 220 },
+      { id: 'mh29', name: 'Megan White', email: 'megan@demo.com', dupr: 3.1, g: 'F' as const, score: 78, days: 3, total: 20, joined: 200 },
+      { id: 'mh30', name: 'Daniel Kim', email: 'daniel@demo.com', dupr: 4.6, g: 'M' as const, score: 95, days: 0, total: 60, joined: 450 },
+      { id: 'mh31', name: 'Emma Roberts', email: 'emma@demo.com', dupr: 3.8, g: 'F' as const, score: 86, days: 1, total: 36, joined: 320 },
+      { id: 'mh32', name: 'Jack Miller', email: 'jack@demo.com', dupr: 3.5, g: 'M' as const, score: 82, days: 2, total: 30, joined: 260 },
+      { id: 'mh33', name: 'Olivia Taylor', email: 'olivia@demo.com', dupr: 3.3, g: 'F' as const, score: 77, days: 3, total: 22, joined: 210 },
+      { id: 'mh34', name: 'Josh Anderson', email: 'josh@demo.com', dupr: 4.1, g: 'M' as const, score: 90, days: 1, total: 44, joined: 390 },
+      { id: 'mh35', name: 'Natalie Hernandez', email: 'natalie@demo.com', dupr: 3.6, g: 'F' as const, score: 84, days: 2, total: 33, joined: 290 },
+      { id: 'mh36', name: 'Luke Thomas', email: 'luke@demo.com', dupr: 3.0, g: 'M' as const, score: 75, days: 3, total: 16, joined: 170 },
+      { id: 'mh37', name: 'Hannah Jackson', email: 'hannah@demo.com', dupr: 3.7, g: 'F' as const, score: 80, days: 2, total: 26, joined: 240 },
+    ].map(p => mkHealth(
+      p.id, p.name, p.email, p.dupr, p.g, p.score, 'healthy', 'active', 'stable', p.days, p.total, p.joined,
+      c(100, 35, 'Visit frequency stable or growing'), c(100, 25, `Played ${p.days} day${p.days === 1 ? '' : 's'} ago`),
+      c(p.score > 85 ? 100 : 70, 20, p.score > 85 ? 'Very consistent pattern' : 'Moderately consistent'),
+      c(100, 15, 'Attended all expected sessions'), c(100, 5, 'Excellent reliability'),
+      [], 'No action needed — member is engaged',
+    )),
+
+    // ── Onboarding (5) ──
+    ...[
+      { id: 'mh38', name: 'New Player Amy', email: 'amy@demo.com', dupr: 2.5, g: 'F' as const, days: 3, joined: 5 },
+      { id: 'mh39', name: 'New Player Ben', email: 'ben@demo.com', dupr: 2.8, g: 'M' as const, days: 2, joined: 8 },
+      { id: 'mh40', name: 'New Player Chloe', email: 'chloe@demo.com', dupr: 3.0, g: 'F' as const, days: 1, joined: 10 },
+      { id: 'mh41', name: 'New Player Derek', email: 'derek@demo.com', dupr: 2.3, g: 'M' as const, days: 0, joined: 3 },
+      { id: 'mh42', name: 'New Player Eve', email: 'eve@demo.com', dupr: 2.6, g: 'F' as const, days: null, joined: 2 },
+    ].map(p => mkHealth(
+      p.id, p.name, p.email, p.dupr, p.g, 65, 'watch', 'onboarding',
+      p.days !== null ? 'improving' : 'stable',
+      p.days, p.days !== null ? p.days : 0, p.joined,
+      c(90, 35, 'New member — building frequency'), c(p.days !== null ? 100 : 10, 25, p.days !== null ? `Played ${p.days} days ago` : 'No bookings yet'),
+      c(50, 20, 'Not enough history'), c(70, 15, 'No pattern established yet'), c(50, 5, 'No booking history'),
+      p.days === null ? ['No bookings yet'] : [], 'Send welcome message with recommended first sessions',
+    )),
+
+    // ── Ramping (8) ──
+    ...[
+      { id: 'mh43', name: 'Ramp Player Fiona', email: 'fiona@demo.com', dupr: 3.1, g: 'F' as const, score: 72, days: 2, total: 6, joined: 25 },
+      { id: 'mh44', name: 'Ramp Player Greg', email: 'greg@demo.com', dupr: 3.4, g: 'M' as const, score: 68, days: 4, total: 4, joined: 30 },
+      { id: 'mh45', name: 'Ramp Player Holly', email: 'holly@demo.com', dupr: 2.9, g: 'F' as const, score: 78, days: 1, total: 8, joined: 35 },
+      { id: 'mh46', name: 'Ramp Player Ivan', email: 'ivan@demo.com', dupr: 3.6, g: 'M' as const, score: 65, days: 5, total: 3, joined: 20 },
+      { id: 'mh47', name: 'Ramp Player Jess', email: 'jess@demo.com', dupr: 3.3, g: 'F' as const, score: 82, days: 1, total: 10, joined: 45 },
+      { id: 'mh48', name: 'Ramp Player Kyle', email: 'kyle@demo.com', dupr: 3.0, g: 'M' as const, score: 58, days: 7, total: 2, joined: 18 },
+      { id: 'mh49', name: 'Ramp Player Lara', email: 'lara@demo.com', dupr: 3.5, g: 'F' as const, score: 75, days: 2, total: 7, joined: 40 },
+      { id: 'mh50', name: 'Ramp Player Max', email: 'max@demo.com', dupr: 2.7, g: 'M' as const, score: 61, days: 6, total: 3, joined: 22 },
+    ].map(p => mkHealth(
+      p.id, p.name, p.email, p.dupr, p.g, p.score, p.score >= 75 ? 'healthy' : 'watch', 'ramping',
+      p.score >= 70 ? 'improving' : 'stable',
+      p.days, p.total, p.joined,
+      c(p.score >= 75 ? 90 : 60, 35, p.score >= 75 ? 'Building good frequency' : 'Frequency still developing'),
+      c(p.days <= 3 ? 100 : 80, 25, `Last played ${p.days} days ago`),
+      c(50, 20, 'Building consistency — early days'), c(70, 15, 'No pattern established yet'), c(100, 5, 'No issues'),
+      p.score < 65 ? ['Frequency still developing'] : [], p.score < 65 ? 'Monitor — consider a check-in message next week' : 'No action needed — member is engaged',
+    )),
+  ]
+
+  const total = members.length
+  const healthy = members.filter(m => m.riskLevel === 'healthy').length
+  const watch = members.filter(m => m.riskLevel === 'watch').length
+  const atRisk = members.filter(m => m.riskLevel === 'at_risk').length
+  const critical = members.filter(m => m.riskLevel === 'critical').length
+  const avgHealthScore = Math.round(members.reduce((s, m) => s + m.healthScore, 0) / total)
+
+  return {
+    members,
+    summary: {
+      total,
+      healthy,
+      watch,
+      atRisk,
+      critical,
+      avgHealthScore,
+      revenueAtRisk: (atRisk + critical) * 99,
+      trendVsPrevWeek: 3,
+    },
+  }
+}

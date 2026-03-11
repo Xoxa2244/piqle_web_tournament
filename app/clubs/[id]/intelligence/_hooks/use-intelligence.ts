@@ -10,6 +10,7 @@ import {
   mockSessions,
   mockEventRecommendations,
   mockSessionsCalendar,
+  mockMemberHealth,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -191,6 +192,26 @@ export function useSessionsCalendar(clubId: string) {
   if (isDemo) {
     return {
       data: mockSessionsCalendar(),
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+// ── Member Health ──
+export function useMemberHealth(clubId: string) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getMemberHealth.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockMemberHealth(),
       isLoading: false,
       error: null,
     }

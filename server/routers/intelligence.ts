@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
+import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
 import {
   getSlotFillerRecommendations,
   getWeeklyPlan,
@@ -1181,6 +1182,128 @@ export const intelligenceRouter = createTRPCRouter({
 
       const { buildSessionCalendarData } = await import('@/lib/ai/session-analysis')
       return buildSessionCalendarData(csvSessions, input.clubId)
+    }),
+
+  // ── Member Health: AI-powered churn prediction ──
+  getMemberHealth: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        // Get all club members with booking history and preferences
+        const followers = await ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId },
+          include: {
+            user: {
+              select: {
+                id: true, email: true, name: true, image: true,
+                gender: true, city: true,
+                duprRatingDoubles: true, duprRatingSingles: true,
+              },
+            },
+          },
+        })
+
+        // Get all bookings for these users at this club
+        const userIds = followers.map(f => f.userId)
+        const bookings = await ctx.prisma.playSessionBooking.findMany({
+          where: {
+            userId: { in: userIds },
+            playSession: { clubId: input.clubId },
+          },
+          select: {
+            userId: true, status: true, bookedAt: true,
+          },
+          orderBy: { bookedAt: 'desc' },
+        })
+
+        // Get preferences
+        const preferences = await ctx.prisma.userPlayPreference.findMany({
+          where: { clubId: input.clubId, userId: { in: userIds } },
+        })
+
+        // Build input for health scoring
+        const now = new Date()
+        const d30 = new Date(now.getTime() - 30 * 86400000)
+        const d60 = new Date(now.getTime() - 60 * 86400000)
+
+        const prefMap = new Map(preferences.map(p => [p.userId, p]))
+        const bookingMap = new Map<string, typeof bookings>()
+        for (const b of bookings) {
+          if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
+          bookingMap.get(b.userId)!.push(b)
+        }
+
+        const memberInputs = followers.map(f => {
+          const userBookings = bookingMap.get(f.userId) || []
+          const confirmed = userBookings.filter(b => b.status === 'CONFIRMED')
+          const lastConfirmed = confirmed[0]?.bookedAt ?? null
+          const daysSinceLast = lastConfirmed
+            ? Math.floor((now.getTime() - lastConfirmed.getTime()) / 86400000)
+            : null
+
+          const bookingsLast30 = confirmed.filter(b => b.bookedAt >= d30).length
+          const bookings30to60 = confirmed.filter(b => b.bookedAt >= d60 && b.bookedAt < d30).length
+
+          return {
+            member: {
+              id: f.user.id,
+              email: f.user.email,
+              name: f.user.name,
+              image: f.user.image,
+              gender: (f.user.gender as 'M' | 'F' | 'X') ?? null,
+              city: f.user.city,
+              duprRatingDoubles: f.user.duprRatingDoubles ? Number(f.user.duprRatingDoubles) : null,
+              duprRatingSingles: f.user.duprRatingSingles ? Number(f.user.duprRatingSingles) : null,
+            },
+            preference: (() => {
+              const pref = prefMap.get(f.userId)
+              if (!pref) return null
+              return {
+                id: pref.id,
+                userId: pref.userId,
+                clubId: pref.clubId,
+                preferredDays: pref.preferredDays as DayOfWeek[],
+                preferredTimeSlots: {
+                  morning: pref.preferredTimeMorning,
+                  afternoon: pref.preferredTimeAfternoon,
+                  evening: pref.preferredTimeEvening,
+                },
+                skillLevel: pref.skillLevel,
+                preferredFormats: pref.preferredFormats as PlaySessionFormat[],
+                targetSessionsPerWeek: pref.targetSessionsPerWeek,
+                isActive: true,
+              }
+            })(),
+            history: {
+              totalBookings: userBookings.length,
+              bookingsLastWeek: confirmed.filter(b => b.bookedAt >= new Date(now.getTime() - 7 * 86400000)).length,
+              bookingsLastMonth: bookingsLast30,
+              daysSinceLastConfirmedBooking: daysSinceLast,
+              cancelledCount: userBookings.filter(b => b.status === 'CANCELLED').length,
+              noShowCount: userBookings.filter(b => b.status === 'NO_SHOW').length,
+              inviteAcceptanceRate: 0.7, // default
+            },
+            joinedAt: f.createdAt ?? new Date(),
+            bookingDates: userBookings.map(b => ({
+              date: b.bookedAt,
+              status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
+            })),
+            previousPeriodBookings: bookings30to60,
+          }
+        })
+
+        const { generateMemberHealth } = await import('@/lib/ai/member-health')
+        return generateMemberHealth(memberInputs)
+      } catch (err) {
+        console.warn('[Intelligence] getMemberHealth failed:', (err as Error).message?.slice(0, 120))
+        // Return empty data rather than throwing
+        return {
+          members: [],
+          summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
+        }
+      }
     }),
 
   // ── RAG: Trigger embedding index for a club ──

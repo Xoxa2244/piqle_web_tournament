@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
-  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar
+  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,7 @@ const navItems = [
   { label: 'Slot Filler', href: '/slot-filler', icon: TrendingUp },
   { label: 'Reactivation', href: '/reactivation', icon: UserMinus },
   { label: 'Revenue', href: '/revenue', icon: DollarSign },
+  { label: 'Members', href: '/members', icon: Users },
   { label: 'Events', href: '/events', icon: CalendarPlus },
 ]
 

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Users, BarChart3, DollarSign,
   TrendingUp, UserMinus, ArrowRight, AlertTriangle,
-  Brain, Sparkles, CalendarDays, ChevronRight,
+  Brain, Sparkles, CalendarDays, ChevronRight, Shield,
 } from 'lucide-react'
 import { MetricCard } from './_components/metric-card'
 import { VerticalBarChart, HorizontalBarChart } from './_components/charts'
@@ -17,7 +17,7 @@ import { SessionTable } from './_components/session-table'
 import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboardV2 } from './_hooks/use-intelligence'
+import { useDashboardV2, useMemberHealth } from './_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 
 const formatLabels: Record<string, string> = {
@@ -62,6 +62,7 @@ export default function IntelligenceDashboardPage() {
   }, [datePreset, customFrom, customTo])
 
   const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
+  const { data: healthData } = useMemberHealth(clubId)
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -198,7 +199,7 @@ export default function IntelligenceDashboardPage() {
       </div>
 
       {/* ── Quick Actions ── */}
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
         <QuickActionCard
           href={`/clubs/${clubId}/intelligence/slot-filler${demoSuffix}`}
           icon={TrendingUp}
@@ -234,6 +235,20 @@ export default function IntelligenceDashboardPage() {
           gradientTo="to-indigo-600"
           title="Revenue Intelligence"
           description="Occupancy patterns and pricing opportunities."
+        />
+        <QuickActionCard
+          href={`/clubs/${clubId}/intelligence/members${demoSuffix}`}
+          icon={Shield}
+          gradientFrom="from-rose-500"
+          gradientTo="to-pink-600"
+          title="Member Health"
+          description="Churn prediction and member lifecycle tracking."
+          badge={
+            healthData && (healthData.summary.atRisk + healthData.summary.critical) > 0
+              ? `${healthData.summary.atRisk + healthData.summary.critical} at risk`
+              : undefined
+          }
+          badgeVariant="warning"
         />
       </div>
 

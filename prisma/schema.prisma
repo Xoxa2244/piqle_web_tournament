@@ -71,6 +71,7 @@ model User {
   playPreferences          UserPlayPreference[]       @relation("PlayPreferences")
   aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
+  memberHealthSnapshots    MemberHealthSnapshot[]     @relation("MemberHealthSnapshots")
 
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
@@ -231,6 +232,7 @@ model Club {
   playSessions            PlaySession[]
   userPlayPreferences     UserPlayPreference[]
   aiRecommendationLogs    AIRecommendationLog[]
+  memberHealthSnapshots   MemberHealthSnapshot[]     @relation("ClubMemberHealthSnapshots")
 
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
@@ -1588,4 +1590,27 @@ model AIMessage {
   @@index([conversationId])
   @@index([createdAt])
   @@map("ai_messages")
+}
+
+// ── Member Health Snapshots (for ML training data) ──
+model MemberHealthSnapshot {
+  id             String   @id @default(uuid())
+  clubId         String   @map("club_id")
+  userId         String   @map("user_id")
+  date           DateTime @default(now())
+
+  healthScore    Int      @map("health_score")
+  riskLevel      String   @map("risk_level")      // healthy, watch, at_risk, critical
+  lifecycleStage String   @map("lifecycle_stage")  // onboarding, ramping, active, at_risk, critical, churned
+  features       Json     @default("{}")            // MLFeatureVector for future model training
+
+  // Ground truth — filled retrospectively 30 days after snapshot
+  actuallyChurned Boolean? @map("actually_churned")
+
+  club Club @relation("ClubMemberHealthSnapshots", fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation("MemberHealthSnapshots", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, date])
+  @@index([userId, date])
+  @@map("member_health_snapshots")
 }

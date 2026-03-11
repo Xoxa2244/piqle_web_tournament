@@ -321,3 +321,77 @@ export interface SessionCalendarData {
   }
   peerAverages: Record<string, { avgOccupancy: number; avgRevenue: number; count: number }>
 }
+
+// ====== Member Health & Lifecycle Types ======
+
+export type LifecycleStage =
+  | 'onboarding'   // tenure < 14 days
+  | 'ramping'      // tenure 14-60 days
+  | 'active'       // tenure 60+, healthScore >= 50
+  | 'at_risk'      // healthScore 25-49
+  | 'critical'     // healthScore < 25
+  | 'churned'      // no booking 21+ days
+
+export type RiskLevel = 'healthy' | 'watch' | 'at_risk' | 'critical'
+
+export interface HealthScoreComponent {
+  score: number       // 0-100
+  weight: number      // percentage weight (e.g. 35 = 35%)
+  label: string       // human-readable summary
+}
+
+export interface MemberHealthResult {
+  memberId: string
+  member: MemberData
+  healthScore: number          // 0-100
+  riskLevel: RiskLevel
+  lifecycleStage: LifecycleStage
+  components: {
+    frequencyTrend: HealthScoreComponent
+    recency: HealthScoreComponent
+    consistency: HealthScoreComponent
+    patternBreak: HealthScoreComponent
+    noShowTrend: HealthScoreComponent
+  }
+  topRisks: string[]           // ["Missed usual Tuesday evening session", "Visit frequency down 35%"]
+  suggestedAction: string      // "Send personalized invite for Thursday Open Play"
+  trend: 'improving' | 'stable' | 'declining'
+  daysSinceLastBooking: number | null
+  totalBookings: number
+  joinedDaysAgo: number
+}
+
+export interface MemberHealthSummary {
+  total: number
+  healthy: number
+  watch: number
+  atRisk: number
+  critical: number
+  avgHealthScore: number
+  revenueAtRisk: number         // at-risk + critical members × avg subscription
+  trendVsPrevWeek: number       // change in at-risk count vs last week
+}
+
+export interface MemberHealthData {
+  members: MemberHealthResult[]
+  summary: MemberHealthSummary
+}
+
+// ====== ML Feature Vector (for future ML model) ======
+
+export interface MLFeatureVector {
+  tenureMonths: number
+  daysSinceLastBooking: number
+  bookingsLast30d: number
+  bookingsLast60d: number
+  bookingsLast90d: number
+  avgBookingsPerWeek: number
+  frequencyChangePercent: number
+  noShowRate: number
+  cancellationRate: number
+  hasPreferencesSet: boolean
+  consistencyScore: number
+  patternBreakCount: number
+  churnedWithin30d?: boolean
+  churnedWithin60d?: boolean
+}
