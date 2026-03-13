@@ -5,9 +5,11 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
-  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users, Settings
+  ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users, Settings,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useIntelligenceSettings } from './_hooks/use-intelligence'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
@@ -30,7 +32,13 @@ export default function IntelligenceLayout({
   const searchParams = useSearchParams()
   const clubId = params.id as string
   const basePath = `/clubs/${clubId}/intelligence`
-  const demoSuffix = searchParams.get('demo') === 'true' ? '?demo=true' : ''
+  const isDemo = searchParams.get('demo') === 'true'
+  const demoSuffix = isDemo ? '?demo=true' : ''
+
+  const settingsQuery = useIntelligenceSettings(clubId)
+  const onboardingCompleted = isDemo
+    ? true
+    : !!settingsQuery.data?.settings?.onboardingCompletedAt
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -54,12 +62,22 @@ export default function IntelligenceLayout({
             </div>
           </div>
         </div>
-        <Link href={`${basePath}/onboarding${demoSuffix}`}>
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-            <Settings className="h-4 w-4" />
-            Settings
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {!onboardingCompleted && (
+            <Link href={`${basePath}/onboarding${demoSuffix}`}>
+              <Button variant="outline" size="sm" className="gap-1.5 text-primary border-primary/30 hover:bg-primary/5">
+                <Sparkles className="h-4 w-4" />
+                Complete Setup
+              </Button>
+            </Link>
+          )}
+          <Link href={`${basePath}/settings${demoSuffix}`}>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+              <Settings className="h-4 w-4" />
+              Settings
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Tab navigation */}

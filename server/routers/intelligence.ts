@@ -1388,4 +1388,65 @@ export const intelligenceRouter = createTRPCRouter({
       })
       return { success: true }
     }),
+
+  // ── Automation Settings: Get campaign triggers ──
+  getAutomationSettings: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+      })
+      const raw = club.automationSettings || {}
+      return {
+        settings: {
+          enabled: raw.enabled ?? true,
+          triggers: {
+            healthyToWatch: raw.triggers?.healthyToWatch ?? true,
+            watchToAtRisk: raw.triggers?.watchToAtRisk ?? true,
+            atRiskToCritical: raw.triggers?.atRiskToCritical ?? true,
+            churned: raw.triggers?.churned ?? true,
+          },
+        },
+      }
+    }),
+
+  // ── Automation Settings: Save campaign triggers ──
+  saveAutomationSettings: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      settings: z.object({
+        enabled: z.boolean(),
+        triggers: z.object({
+          healthyToWatch: z.boolean(),
+          watchToAtRisk: z.boolean(),
+          atRiskToCritical: z.boolean(),
+          churned: z.boolean(),
+        }),
+      }),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { isAdmin } = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can update automation settings' })
+      }
+      const { automationTriggersSchema } = await import('@/lib/ai/onboarding-schema')
+      const validated = automationTriggersSchema.parse(input.settings)
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+      })
+      const existing = club.automationSettings || {}
+      await (ctx.prisma.club as any).update({
+        where: { id: input.clubId },
+        data: {
+          automationSettings: {
+            ...existing,
+            enabled: validated.enabled,
+            triggers: validated.triggers,
+          },
+        },
+      })
+      return { success: true }
+    }),
 })

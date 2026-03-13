@@ -269,3 +269,15 @@ export function useIntelligenceSettings(clubId: string) {
 export function useSaveIntelligenceSettings() {
   return trpc.intelligence.saveIntelligenceSettings.useMutation()
 }
+
+// ── Automation Settings (campaign triggers) ──
+export function useAutomationSettings(clubId: string) {
+  return trpc.intelligence.getAutomationSettings.useQuery(
+    { clubId },
+    { enabled: !!clubId }
+  )
+}
+
+export function useSaveAutomationSettings() {
+  return trpc.intelligence.saveAutomationSettings.useMutation()
+}

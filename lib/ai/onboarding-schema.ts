@@ -90,6 +90,30 @@ export const intelligenceSettingsSchema = z.object({
 
 export type IntelligenceSettingsInput = z.infer<typeof intelligenceSettingsSchema>
 
+// ── Automation triggers schema (top-level automationSettings) ──
+
+export const automationTriggersSchema = z.object({
+  enabled: z.boolean().default(true),
+  triggers: z.object({
+    healthyToWatch: z.boolean().default(true),
+    watchToAtRisk: z.boolean().default(true),
+    atRiskToCritical: z.boolean().default(true),
+    churned: z.boolean().default(true),
+  }),
+})
+
+export type AutomationTriggersInput = z.infer<typeof automationTriggersSchema>
+
+export const DEFAULT_AUTOMATION_TRIGGERS: AutomationTriggersInput = {
+  enabled: true,
+  triggers: {
+    healthyToWatch: true,
+    watchToAtRisk: true,
+    atRiskToCritical: true,
+    churned: true,
+  },
+}
+
 // ── Default settings ──
 
 export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettingsInput = {

@@ -61,7 +61,7 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 - ✅ Intelligence tables created in Supabase (10 tables, 6 enums, pgvector)
 - ✅ DATABASE_URL + DIRECT_URL configured in .env / .env.local
 - ✅ Prisma Client generated
-- ⏳ Vercel env vars need DATABASE_URL (for stest.piqle.io without ?demo=true)
+- ✅ Vercel env vars configured (DATABASE_URL on Vercel since 163 days ago)
 - ⏳ Seed script for dev/staging not yet created
 
 ## Git Workflow
