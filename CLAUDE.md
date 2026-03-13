@@ -62,7 +62,7 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 - ✅ DATABASE_URL + DIRECT_URL configured in .env / .env.local
 - ✅ Prisma Client generated
 - ✅ Vercel env vars configured (DATABASE_URL on Vercel since 163 days ago)
-- ⏳ Seed script for dev/staging not yet created
+- ✅ Seed script created (scripts/seed-intelligence.ts — 22 members, 15 sessions)
 
 ## Git Workflow
 - Branch: `Sol2`

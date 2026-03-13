@@ -1079,3 +1079,67 @@ export function mockMemberHealth(): MemberHealthData {
     },
   }
 }
+
+// ── Campaign Analytics (mock) ──
+
+const campaignByDay = Array.from({ length: 30 }, (_, i) => {
+  const d = new Date(today)
+  d.setDate(d.getDate() - (29 - i))
+  const sent = Math.floor(Math.random() * 5)
+  return {
+    date: d.toISOString().slice(0, 10),
+    sent,
+    failed: Math.random() > 0.85 ? 1 : 0,
+    skipped: Math.floor(Math.random() * 2),
+  }
+})
+
+const mockRecentCampaignLogs = [
+  { id: 'cl1', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Maria Santos', createdAt: fmt(-0.1) },
+  { id: 'cl2', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'James Wilson', createdAt: fmt(-0.2) },
+  { id: 'cl3', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Sofia Martinez', createdAt: fmt(-0.5) },
+  { id: 'cl4', type: 'RETENTION_BOOST', status: 'failed', channel: 'email', userName: 'Robert Chen', createdAt: fmt(-1) },
+  { id: 'cl5', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Emily Johnson', createdAt: fmt(-1.2) },
+  { id: 'cl6', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Daniel Kim', createdAt: fmt(-1.5) },
+  { id: 'cl7', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Olivia Brown', createdAt: fmt(-2) },
+  { id: 'cl8', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Alex Rivera', createdAt: fmt(-2.1) },
+  { id: 'cl9', type: 'CHECK_IN', status: 'skipped', channel: null, userName: 'Sarah Lee', createdAt: fmt(-2.5) },
+  { id: 'cl10', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Michael Park', createdAt: fmt(-3) },
+  { id: 'cl11', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Lisa Chen', createdAt: fmt(-3.5) },
+  { id: 'cl12', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'David Wong', createdAt: fmt(-4) },
+  { id: 'cl13', type: 'CHECK_IN', status: 'failed', channel: 'email', userName: 'Anna Lopez', createdAt: fmt(-4.5) },
+  { id: 'cl14', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Chris Taylor', createdAt: fmt(-5) },
+  { id: 'cl15', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Kate Williams', createdAt: fmt(-5.2) },
+  { id: 'cl16', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Tom Harris', createdAt: fmt(-6) },
+  { id: 'cl17', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Rachel Green', createdAt: fmt(-6.5) },
+  { id: 'cl18', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Ben Miller', createdAt: fmt(-7) },
+  { id: 'cl19', type: 'RETENTION_BOOST', status: 'sent', channel: 'email', userName: 'Grace Kim', createdAt: fmt(-8) },
+  { id: 'cl20', type: 'CHECK_IN', status: 'sent', channel: 'email', userName: 'Noah Davis', createdAt: fmt(-9) },
+]
+
+export const mockCampaignAnalytics = {
+  summary: {
+    totalSent: campaignByDay.reduce((sum, d) => sum + d.sent, 0),
+    totalFailed: campaignByDay.reduce((sum, d) => sum + d.failed, 0),
+    totalPending: 0,
+    thisWeek: campaignByDay.slice(-7).reduce((sum, d) => sum + d.sent, 0),
+    activeTriggers: 4,
+  },
+  byType: [
+    { type: 'CHECK_IN', count: Math.floor(campaignByDay.reduce((s, d) => s + d.sent, 0) * 0.6) },
+    { type: 'RETENTION_BOOST', count: Math.floor(campaignByDay.reduce((s, d) => s + d.sent, 0) * 0.4) },
+  ],
+  byDay: campaignByDay,
+  recentLogs: mockRecentCampaignLogs,
+}
+
+// ── Member Outreach History (mock) ──
+
+export const mockMemberOutreach = {
+  logs: [
+    { id: 'moh1', type: 'CHECK_IN', channel: 'email', status: 'sent', createdAt: fmt(-3) },
+    { id: 'moh2', type: 'RETENTION_BOOST', channel: 'email', status: 'sent', createdAt: fmt(-10) },
+    { id: 'moh3', type: 'CHECK_IN', channel: 'email', status: 'sent', createdAt: fmt(-18) },
+    { id: 'moh4', type: 'SLOT_FILLER', channel: 'email', status: 'sent', createdAt: fmt(-25) },
+  ],
+}

@@ -1449,4 +1449,113 @@ export const intelligenceRouter = createTRPCRouter({
       })
       return { success: true }
     }),
+
+  // ── Campaign Analytics ──
+  getCampaignAnalytics: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      days: z.number().int().min(7).max(90).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.days * 86400000)
+
+      // Stats by type
+      const byType = await ctx.prisma.aIRecommendationLog.groupBy({
+        by: ['type'],
+        where: { clubId: input.clubId, createdAt: { gte: since } },
+        _count: true,
+      })
+
+      // Stats by status
+      const byStatus = await ctx.prisma.aIRecommendationLog.groupBy({
+        by: ['status'],
+        where: { clubId: input.clubId, createdAt: { gte: since } },
+        _count: true,
+      })
+
+      // All logs for by-day aggregation
+      const allLogs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId, createdAt: { gte: since } },
+        select: { createdAt: true, status: true },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      const byDay: Record<string, { sent: number; failed: number; skipped: number }> = {}
+      for (const log of allLogs) {
+        const day = log.createdAt.toISOString().slice(0, 10)
+        if (!byDay[day]) byDay[day] = { sent: 0, failed: 0, skipped: 0 }
+        const bucket = log.status === 'sent' ? 'sent' : log.status === 'failed' ? 'failed' : 'skipped'
+        byDay[day][bucket]++
+      }
+
+      // Recent 20 logs with user info
+      const recentLogs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId },
+        include: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      })
+
+      // Active triggers count
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const triggers = (club.automationSettings as any)?.triggers || {}
+      const activeTriggers = Object.values(triggers).filter(Boolean).length
+
+      // This week
+      const weekAgo = new Date(Date.now() - 7 * 86400000)
+      const thisWeek = allLogs.filter(l => l.createdAt >= weekAgo && l.status === 'sent').length
+
+      return {
+        summary: {
+          totalSent: byStatus.find(s => s.status === 'sent')?._count || 0,
+          totalFailed: byStatus.find(s => s.status === 'failed')?._count || 0,
+          totalPending: byStatus.find(s => s.status === 'pending')?._count || 0,
+          thisWeek,
+          activeTriggers,
+        },
+        byType: byType.map(t => ({ type: t.type, count: t._count })),
+        byDay: Object.entries(byDay).map(([date, counts]) => ({ date, ...counts })),
+        recentLogs: recentLogs.map(l => ({
+          id: l.id,
+          type: l.type,
+          status: l.status,
+          channel: l.channel,
+          reasoning: l.reasoning,
+          createdAt: l.createdAt,
+          userName: l.user?.name || l.user?.email || 'Unknown',
+        })),
+      }
+    }),
+
+  // ── Member Outreach History ──
+  getMemberOutreachHistory: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userId: z.string(),
+      limit: z.number().int().min(1).max(50).default(10),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId, userId: input.userId },
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+        select: {
+          id: true,
+          type: true,
+          channel: true,
+          status: true,
+          reasoning: true,
+          createdAt: true,
+        },
+      })
+
+      return { logs }
+    }),
 })

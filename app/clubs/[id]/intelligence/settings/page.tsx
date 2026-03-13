@@ -10,9 +10,11 @@ import { Switch } from '@/components/ui/switch'
 import {
   Settings, Globe, Dumbbell, MapPin, Calendar, Clock, DollarSign,
   Target, Mail, MessageSquare, Volume2, Zap, ArrowRight, Check,
-  Loader2, AlertTriangle, Shield,
+  Loader2, AlertTriangle, Shield, Eye, EyeOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/use-toast'
+import { generateOutreachMessages, type OutreachType } from '@/lib/ai/outreach-messages'
 import {
   useIntelligenceSettings,
   useSaveIntelligenceSettings,
@@ -120,6 +122,42 @@ const TRIGGER_CONFIG = [
   },
 ]
 
+const TRIGGER_OUTREACH_TYPE: Record<string, OutreachType> = {
+  healthyToWatch: 'CHECK_IN',
+  watchToAtRisk: 'RETENTION_BOOST',
+  atRiskToCritical: 'RETENTION_BOOST',
+  churned: 'RETENTION_BOOST',
+}
+
+function MessagePreview({ triggerKey }: { triggerKey: string }) {
+  const type = TRIGGER_OUTREACH_TYPE[triggerKey] || 'CHECK_IN'
+  const messages = generateOutreachMessages(type, {
+    memberName: 'Alex Johnson',
+    clubName: 'Sunset Pickleball Club',
+    healthScore: triggerKey === 'healthyToWatch' ? 62 : 28,
+    riskLevel: triggerKey === 'healthyToWatch' ? 'watch' : 'at_risk',
+    lowComponents: [{ key: 'recency', label: 'Last played 12 days ago', score: 30 }],
+    daysSinceLastActivity: triggerKey === 'churned' ? 25 : 12,
+    suggestedSessionTitle: 'Thursday Open Play',
+    suggestedSessionDate: 'Thursday, Mar 19',
+    suggestedSessionTime: '6:00–8:00 PM',
+    totalBookings: 15,
+    confirmedCount: 4,
+    sameLevelCount: 2,
+    tone: 'friendly',
+  })
+  const recommended = messages.find(v => v.recommended) || messages[0]
+  if (!recommended) return null
+
+  return (
+    <div className="mt-2 ml-5 p-3 rounded-md bg-muted/40 border border-border/50 text-xs space-y-1.5">
+      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Example email</p>
+      <p className="font-semibold text-sm">{recommended.emailSubject}</p>
+      <p className="whitespace-pre-line text-muted-foreground leading-relaxed">{recommended.emailBody}</p>
+    </div>
+  )
+}
+
 // ── Chip Component ──
 
 function Chip({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
@@ -176,12 +214,14 @@ export default function SettingsPage() {
   const { data: automationData, isLoading: loadingAutomation } = useAutomationSettings(clubId)
   const saveMutation = useSaveIntelligenceSettings()
   const saveAutoMutation = useSaveAutomationSettings()
+  const { toast } = useToast()
 
   // ── Local state ──
   const [settings, setSettings] = useState<IntelligenceSettingsInput>(DEFAULT_INTELLIGENCE_SETTINGS)
   const [automation, setAutomation] = useState<AutomationTriggersInput>(DEFAULT_AUTOMATION_TRIGGERS)
   const [hasChanges, setHasChanges] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [previewTrigger, setPreviewTrigger] = useState<string | null>(null)
 
   // Hydrate from server
   useEffect(() => {
@@ -265,9 +305,15 @@ export default function SettingsPage() {
       ])
       setHasChanges(false)
       setSaved(true)
+      toast({ title: 'Settings saved', description: 'Your intelligence settings have been updated.' })
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
       console.error('Save failed:', err)
+      toast({
+        title: 'Failed to save',
+        description: (err as Error).message || 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -351,21 +397,31 @@ export default function SettingsPage() {
             </p>
 
             {TRIGGER_CONFIG.map((trigger) => (
-              <div
-                key={trigger.key}
-                className="flex items-center justify-between p-3 rounded-lg border"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={cn('h-2 w-2 rounded-full', trigger.bgColor, trigger.color.replace('text-', 'bg-'))} />
-                  <div>
-                    <p className="text-sm font-medium">{trigger.label}</p>
-                    <p className="text-xs text-muted-foreground">{trigger.description}</p>
+              <div key={trigger.key} className="rounded-lg border">
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('h-2 w-2 rounded-full', trigger.bgColor, trigger.color.replace('text-', 'bg-'))} />
+                    <div>
+                      <p className="text-sm font-medium">{trigger.label}</p>
+                      <p className="text-xs text-muted-foreground">{trigger.description}</p>
+                    </div>
                   </div>
+                  <Switch
+                    checked={automation.triggers[trigger.key]}
+                    onCheckedChange={(checked: boolean) => updateTrigger(trigger.key, checked)}
+                  />
                 </div>
-                <Switch
-                  checked={automation.triggers[trigger.key]}
-                  onCheckedChange={(checked: boolean) => updateTrigger(trigger.key, checked)}
-                />
+                <div className="px-3 pb-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTrigger(previewTrigger === trigger.key ? null : trigger.key)}
+                    className="text-[11px] text-primary hover:underline flex items-center gap-1 ml-5"
+                  >
+                    {previewTrigger === trigger.key ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    {previewTrigger === trigger.key ? 'Hide preview' : 'Preview message'}
+                  </button>
+                  {previewTrigger === trigger.key && <MessagePreview triggerKey={trigger.key} />}
+                </div>
               </div>
             ))}
           </div>

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import {
   LayoutDashboard, TrendingUp, UserMinus, DollarSign,
   ChevronLeft, Zap, MessageSquare, CalendarPlus, Calendar, Users, Settings,
-  Sparkles,
+  Sparkles, Send,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useIntelligenceSettings } from './_hooks/use-intelligence'
@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Revenue', href: '/revenue', icon: DollarSign },
   { label: 'Members', href: '/members', icon: Users },
   { label: 'Events', href: '/events', icon: CalendarPlus },
+  { label: 'Campaigns', href: '/campaigns', icon: Send },
 ]
 
 export default function IntelligenceLayout({
@@ -81,29 +82,31 @@ export default function IntelligenceLayout({
       </div>
 
       {/* Tab navigation */}
-      <nav className="flex gap-1 mb-6 p-1 bg-muted/50 rounded-lg w-fit">
-        {navItems.map((item) => {
-          const fullPath = basePath + item.href
-          const isActive = pathname === fullPath
-          const Icon = item.icon
+      <div className="overflow-x-auto scrollbar-hide mb-6">
+        <nav className="flex gap-1 p-1 bg-muted/50 rounded-lg w-fit">
+          {navItems.map((item) => {
+            const fullPath = basePath + item.href
+            const isActive = pathname === fullPath
+            const Icon = item.icon
 
-          return (
-            <Link key={item.href} href={fullPath + demoSuffix}>
-              <button
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
-                  isActive
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </button>
-            </Link>
-          )
-        })}
-      </nav>
+            return (
+              <Link key={item.href} href={fullPath + demoSuffix}>
+                <button
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap',
+                    isActive
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              </Link>
+            )
+          })}
+        </nav>
+      </div>
 
       {/* Page content */}
       {children}

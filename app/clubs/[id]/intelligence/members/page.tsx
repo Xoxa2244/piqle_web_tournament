@@ -14,7 +14,7 @@ import {
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useMemberHealth, useSendOutreach, useIsDemo } from '../_hooks/use-intelligence'
+import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import type { MemberHealthResult, RiskLevel, LifecycleStage } from '@/types/intelligence'
 
@@ -498,6 +498,9 @@ function MemberRow({
           {/* Action buttons */}
           <OutreachActions member={m} clubId={clubId} />
 
+          {/* Outreach History */}
+          <OutreachHistory clubId={clubId} userId={m.memberId} />
+
           {/* Quick stats */}
           <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Joined: <strong className="text-foreground">{m.joinedDaysAgo}d ago</strong></span>
@@ -607,6 +610,65 @@ function OutreachActions({ member: m, clubId }: { member: MemberHealthResult; cl
       {error && (
         <span className="text-[11px] text-red-500">{error}</span>
       )}
+    </div>
+  )
+}
+
+// ── Outreach History in expanded row ──
+
+const TYPE_COLORS: Record<string, string> = {
+  CHECK_IN: 'bg-amber-100 text-amber-700 border-amber-200',
+  RETENTION_BOOST: 'bg-orange-100 text-orange-700 border-orange-200',
+  SLOT_FILLER: 'bg-blue-100 text-blue-700 border-blue-200',
+  REACTIVATION: 'bg-purple-100 text-purple-700 border-purple-200',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  sent: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  failed: 'bg-red-100 text-red-700 border-red-200',
+  pending: 'bg-gray-100 text-gray-600 border-gray-200',
+  skipped: 'bg-gray-100 text-gray-500 border-gray-200',
+}
+
+function formatRelative(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Yesterday'
+  if (diff < 7) return `${diff}d ago`
+  if (diff < 30) return `${Math.floor(diff / 7)}w ago`
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function OutreachHistory({ clubId, userId }: { clubId: string; userId: string }) {
+  const { data, isLoading } = useMemberOutreachHistory(clubId, userId)
+
+  if (isLoading) return <div className="text-xs text-muted-foreground animate-pulse">Loading outreach history...</div>
+  if (!data?.logs?.length) return null
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Mail className="h-3 w-3" />
+        Outreach History
+      </div>
+      <div className="space-y-1">
+        {data.logs.map((log: any) => (
+          <div key={log.id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded-md bg-muted/30">
+            <span className="text-muted-foreground tabular-nums w-20 shrink-0">
+              {formatRelative(log.createdAt)}
+            </span>
+            <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium border', TYPE_COLORS[log.type] || 'bg-gray-100')}>
+              {log.type.replace('_', ' ')}
+            </span>
+            <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium border', STATUS_COLORS[log.status] || 'bg-gray-100')}>
+              {log.status}
+            </span>
+            {log.channel && <span className="text-muted-foreground text-[10px]">{log.channel}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

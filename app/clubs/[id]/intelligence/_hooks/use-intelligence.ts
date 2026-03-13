@@ -11,6 +11,8 @@ import {
   mockEventRecommendations,
   mockSessionsCalendar,
   mockMemberHealth,
+  mockCampaignAnalytics,
+  mockMemberOutreach,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -280,4 +282,30 @@ export function useAutomationSettings(clubId: string) {
 
 export function useSaveAutomationSettings() {
   return trpc.intelligence.saveAutomationSettings.useMutation()
+}
+
+// ── Campaign Analytics ──
+export function useCampaignAnalytics(clubId: string, days: number = 30) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getCampaignAnalytics.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) {
+    return { data: mockCampaignAnalytics, isLoading: false, error: null } as any
+  }
+  return query
+}
+
+// ── Member Outreach History ──
+export function useMemberOutreachHistory(clubId: string, userId: string | null) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getMemberOutreachHistory.useQuery(
+    { clubId, userId: userId! },
+    { enabled: !!clubId && !!userId && !isDemo }
+  )
+  if (isDemo && userId) {
+    return { data: mockMemberOutreach, isLoading: false, error: null } as any
+  }
+  return query
 }
