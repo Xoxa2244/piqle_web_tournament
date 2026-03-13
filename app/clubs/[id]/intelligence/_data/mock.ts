@@ -1082,15 +1082,17 @@ export function mockMemberHealth(): MemberHealthData {
 
 // ── Campaign Analytics (mock) ──
 
+// Deterministic pattern — no empty gaps, realistic daily volumes
+const campaignSentPattern = [3,2,4,1,3,5,2, 4,3,2,5,3,4,2, 3,4,1,3,2,5,4, 2,3,4,3,2,4,3, 5,4]
+const campaignFailedPattern = [0,0,0,0,0,1,0, 0,0,0,0,0,0,0, 0,0,0,0,0,0,0, 0,0,0,0,0,1,0, 0,0]
 const campaignByDay = Array.from({ length: 30 }, (_, i) => {
   const d = new Date(today)
   d.setDate(d.getDate() - (29 - i))
-  const sent = Math.floor(Math.random() * 5)
   return {
     date: d.toISOString().slice(0, 10),
-    sent,
-    failed: Math.random() > 0.85 ? 1 : 0,
-    skipped: Math.floor(Math.random() * 2),
+    sent: campaignSentPattern[i],
+    failed: campaignFailedPattern[i],
+    skipped: i % 7 === 3 ? 1 : 0,
   }
 })
 
