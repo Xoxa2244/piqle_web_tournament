@@ -72,11 +72,13 @@ function TimelineChart({ data }: { data: { date: string; sent: number; failed: n
                 <div className="w-full rounded-sm bg-muted/40" style={{ height: '2px' }} />
               )}
             </div>
-            {/* Label - show every 5th day */}
-            {(data.indexOf(d) % 5 === 0 || data.indexOf(d) === data.length - 1) && (
-              <span className={cn('text-[9px] tabular-nums', isWeekend ? 'text-muted-foreground/50' : 'text-muted-foreground')}>
+            {/* Label - show every Monday + first + last day */}
+            {(day.getDay() === 1 || data.indexOf(d) === 0 || data.indexOf(d) === data.length - 1) ? (
+              <span className="text-[9px] tabular-nums text-muted-foreground">
                 {day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </span>
+            ) : (
+              <span className="text-[9px]">&nbsp;</span>
             )}
           </div>
         )
