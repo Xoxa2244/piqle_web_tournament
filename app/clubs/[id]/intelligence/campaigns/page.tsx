@@ -51,7 +51,7 @@ function TimelineChart({ data }: { data: { date: string; sent: number; failed: n
             {/* Tooltip */}
             <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
               <div className="bg-popover border rounded-md shadow-md px-2 py-1 text-[10px] whitespace-nowrap text-popover-foreground">
-                <strong>{d.date.slice(5)}</strong>: {total} messages
+                <strong>{day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong>: {total} messages
               </div>
             </div>
             {/* Bar */}
@@ -75,7 +75,7 @@ function TimelineChart({ data }: { data: { date: string; sent: number; failed: n
             {/* Label - show every 5th day */}
             {(data.indexOf(d) % 5 === 0 || data.indexOf(d) === data.length - 1) && (
               <span className={cn('text-[9px] tabular-nums', isWeekend ? 'text-muted-foreground/50' : 'text-muted-foreground')}>
-                {d.date.slice(5)}
+                {day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </span>
             )}
           </div>
