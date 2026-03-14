@@ -13,11 +13,16 @@
 
 import { generateMemberHealth } from './member-health'
 import { checkAntiSpam } from './anti-spam'
-import { generateOutreachMessages } from './outreach-messages'
+import { generateOutreachMessages, generateOutreachMessagesWithLLM } from './outreach-messages'
+import type { OutreachMessageVariant, OutreachType } from './outreach-messages'
 import { findBestSessionForMember, formatSessionDate, formatSessionTime } from './session-matcher'
 import { resolvePreferences } from './inferred-preferences'
 import { inferSkillLevel } from './scoring'
 import { selectBestVariant } from './variant-optimizer'
+import { processSequences, hasActiveSequence, getSequenceType } from './sequence-runner'
+import { generateSequenceMessage, generateSequenceMessageVariants } from './sequence-messages'
+import { interpolateVariant, type MessageGenerationContext } from './llm/message-generator'
+import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
 // ── Types ──
@@ -36,6 +41,10 @@ export interface CampaignResult {
     action: string
     status: 'sent' | 'skipped' | 'failed'
   }>
+  /** Sequence follow-up results */
+  sequenceFollowUps: number
+  sequenceExits: number
+  sequenceWaits: number
 }
 
 interface ClubAutomationSettings {
@@ -162,6 +171,239 @@ function buildOutreachHtml({
 </html>`
 }
 
+// ── Execute Sequence Follow-Up Step ──
+
+async function executeSequenceStep(
+  prisma: any,
+  decision: SequenceDecision,
+  club: { id: string; name: string; slug?: string },
+  settings: ClubAutomationSettings,
+  appUrl: string,
+  upcomingSessions: any[],
+  resolvedPrefMap: Map<string, any>,
+  defaultBookingUrl: string,
+): Promise<boolean> {
+  const { sequence, action } = decision
+  const userId = sequence.rootLog.userId
+  const clubId = sequence.rootLog.clubId
+
+  // Load user data
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, duprRatingDoubles: true, phone: true },
+  })
+  if (!user) return false
+
+  // Find best session for follow-up context
+  const memberSkillLevel = inferSkillLevel(
+    user.duprRatingDoubles ? Number(user.duprRatingDoubles) : null
+  )
+  const matched = findBestSessionForMember({
+    memberSkillLevel,
+    preference: resolvedPrefMap.get(userId) || null,
+    sessions: upcomingSessions,
+    clubSlug: club.slug || club.id,
+    appBaseUrl: appUrl,
+  })
+
+  // Get original subject from Step 0 reasoning
+  const step0Reasoning = sequence.rootLog.reasoning as any
+
+  // Build member values for template interpolation
+  const memberName = user.name || 'there'
+  const firstName = memberName.split(' ')[0]
+  const socialProofText = matched?.sameLevelCount && matched.sameLevelCount > 0
+    ? `${matched.sameLevelCount} player${matched.sameLevelCount === 1 ? '' : 's'} at your level signed up`
+    : matched?.confirmedCount && matched.confirmedCount > 0
+      ? `${matched.confirmedCount} player${matched.confirmedCount === 1 ? '' : 's'} signed up`
+      : ''
+  const spotsText = matched?.spotsLeft
+    ? `Only ${matched.spotsLeft} spot${matched.spotsLeft !== 1 ? 's' : ''} left`
+    : ''
+
+  const templateValues: Record<string, string> = {
+    name: firstName,
+    club: club.name,
+    session: matched?.session.title || 'our next session',
+    days: '0', // TODO: compute from latest snapshot
+    proof: socialProofText,
+    spots: spotsText,
+  }
+
+  // Try LLM-powered variant generation with optimizer selection
+  let message = generateSequenceMessage(action.messageType!, {
+    memberName,
+    clubName: club.name,
+    daysSinceLastActivity: null,
+    suggestedSessionTitle: matched?.session.title,
+    suggestedSessionDate: matched ? formatSessionDate(new Date(matched.session.date)) : undefined,
+    suggestedSessionTime: matched ? formatSessionTime(matched.session.startTime, matched.session.endTime) : undefined,
+    confirmedCount: matched?.confirmedCount,
+    sameLevelCount: matched?.sameLevelCount,
+    spotsLeft: matched?.spotsLeft,
+    originalSubject: step0Reasoning?.originalSubject,
+    originalVariantId: sequence.rootLog.variantId || undefined,
+  })
+  let variantId = `seq_${action.messageType}`
+
+  // Try LLM variants with optimizer (best-effort, fallback to hardcoded above)
+  try {
+    const llmClubContext: MessageGenerationContext = {
+      clubName: club.name,
+      tone: (settings as any).tone || 'friendly',
+      topPerformers: [],
+      bottomPerformers: [],
+    }
+    const seqVariants = await generateSequenceMessageVariants(
+      prisma, clubId, action.messageType!, llmClubContext,
+    )
+    if (seqVariants.length > 0) {
+      const optimization = await selectBestVariant(
+        prisma, clubId, action.messageType! as any, seqVariants.map(v => ({ id: v.id })),
+      )
+      const bestVariant = seqVariants.find(v => v.id === optimization.recommendedVariantId) || seqVariants[0]
+      // Interpolate template variables for this member
+      const interpolated = interpolateVariant(
+        { id: bestVariant.id, strategy: '', emailSubject: bestVariant.message.emailSubject, emailBody: bestVariant.message.emailBody, smsBody: bestVariant.message.smsBody },
+        templateValues,
+      )
+      message = {
+        channel: bestVariant.message.channel,
+        emailSubject: interpolated.emailSubject,
+        emailBody: interpolated.emailBody,
+        smsBody: interpolated.smsBody,
+      }
+      variantId = bestVariant.id
+    }
+  } catch (err) {
+    // LLM/optimizer failed — using hardcoded fallback (already set above)
+    console.warn(`[Campaign] LLM sequence variant failed, using hardcoded:`, (err as Error).message?.slice(0, 80))
+  }
+
+  const memberBookingUrl = matched?.deepLinkUrl || defaultBookingUrl
+
+  // Create log record for this step
+  const logRecord = await prisma.aIRecommendationLog.create({
+    data: {
+      clubId,
+      userId,
+      type: sequence.rootLog.type,
+      channel: action.action === 'send_sms' ? 'sms' : 'email',
+      variantId,
+      sequenceStep: action.stepNumber,
+      parentLogId: sequence.rootLog.id,
+      reasoning: {
+        sequenceFollowUp: true,
+        parentLogId: sequence.rootLog.id,
+        stepNumber: action.stepNumber,
+        messageType: action.messageType,
+        reason: action.reason,
+        originalSubject: message.emailSubject,
+        llmVariant: variantId.startsWith('llm_'),
+      },
+      status: 'pending',
+    },
+  })
+
+  let sent = false
+  let externalMessageId: string | null = null
+
+  // Send via appropriate channel
+  if (action.action === 'send_email') {
+    try {
+      const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
+
+      if (isMandrillConfigured() && user.email) {
+        const emailHtml = buildOutreachHtml({
+          body: message.emailBody,
+          clubName: club.name,
+          bookingUrl: memberBookingUrl,
+          sessionCard: matched ? {
+            title: matched.session.title,
+            date: formatSessionDate(new Date(matched.session.date)),
+            time: formatSessionTime(matched.session.startTime, matched.session.endTime),
+            format: matched.session.format,
+            spotsLeft: matched.spotsLeft,
+            confirmedCount: matched.confirmedCount,
+            sameLevelCount: matched.sameLevelCount,
+          } : undefined,
+        })
+
+        const result = await sendViaMandrill({
+          to: user.email,
+          subject: message.emailSubject,
+          html: emailHtml,
+          metadata: {
+            logId: logRecord.id,
+            clubId,
+            userId,
+            variantId,
+          },
+          tags: ['sequence', action.messageType || 'follow_up', `step_${action.stepNumber}`, variantId.startsWith('llm_') ? 'llm' : 'hardcoded'],
+        })
+
+        externalMessageId = result.messageId
+        sent = true
+      }
+    } catch (err) {
+      console.error(`[Campaign] Sequence email failed:`, (err as Error).message?.slice(0, 100))
+    }
+  } else if (action.action === 'send_sms') {
+    try {
+      const { sendSms, isTwilioConfigured } = await import('../sms')
+      // Try to get user's phone
+      const phone = user.phone
+      const pref = await prisma.userPlayPreference.findUnique({
+        where: { userId_clubId: { userId, clubId } },
+        select: { phone: true },
+      }).catch(() => null)
+
+      const phoneNumber = phone || pref?.phone
+      if (phoneNumber && isTwilioConfigured()) {
+        const result = await sendSms({
+          to: phoneNumber,
+          body: message.smsBody,
+          logId: logRecord.id,
+        })
+        externalMessageId = result.sid
+        sent = true
+      } else if (!phoneNumber) {
+        // No phone — fallback to email for SMS steps
+        const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
+        if (isMandrillConfigured() && user.email) {
+          const emailHtml = buildOutreachHtml({
+            body: message.emailBody || message.smsBody,
+            clubName: club.name,
+            bookingUrl: memberBookingUrl,
+          })
+          const result = await sendViaMandrill({
+            to: user.email,
+            subject: message.emailSubject || `${(user.name || 'there').split(' ')[0]}, update from ${club.name}`,
+            html: emailHtml,
+            metadata: { logId: logRecord.id, clubId, userId },
+            tags: ['sequence', 'sms_fallback_email', `step_${action.stepNumber}`],
+          })
+          externalMessageId = result.messageId
+          sent = true
+        }
+      }
+    } catch (err) {
+      console.error(`[Campaign] Sequence SMS failed:`, (err as Error).message?.slice(0, 100))
+    }
+  }
+
+  // Update log with send result
+  await prisma.aIRecommendationLog.update({
+    where: { id: logRecord.id },
+    data: {
+      status: sent ? 'sent' : 'failed',
+      externalMessageId,
+    },
+  })
+
+  return sent
+}
+
 // ── Main Campaign Runner ──
 
 export async function runHealthCampaign(
@@ -192,6 +434,7 @@ export async function runHealthCampaign(
       clubId, clubName: club.name,
       membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
       transitions: [],
+      sequenceFollowUps: 0, sequenceExits: 0, sequenceWaits: 0,
     }
   }
 
@@ -215,6 +458,7 @@ export async function runHealthCampaign(
       clubId, clubName: club.name,
       membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
       transitions: [],
+      sequenceFollowUps: 0, sequenceExits: 0, sequenceWaits: 0,
     }
   }
 
@@ -357,6 +601,27 @@ export async function runHealthCampaign(
   const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
   const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
 
+  // ── Pre-generate LLM message variants per club (shared across members) ──
+  const llmVariantCache = new Map<OutreachType, OutreachMessageVariant[]>()
+  const llmClubContext: MessageGenerationContext = {
+    clubName: club.name,
+    tone: clubTone || 'friendly',
+    topPerformers: [],
+    bottomPerformers: [],
+  }
+
+  // Pre-generate for both types (best-effort, fallback to hardcoded per member)
+  for (const ot of ['CHECK_IN', 'RETENTION_BOOST'] as OutreachType[]) {
+    try {
+      const llmVariants = await generateOutreachMessagesWithLLM(prisma, clubId, ot, llmClubContext)
+      if (llmVariants.length > 0) {
+        llmVariantCache.set(ot, llmVariants)
+      }
+    } catch (err) {
+      console.warn(`[Campaign] LLM pre-generation failed for ${ot}:`, (err as Error).message?.slice(0, 80))
+    }
+  }
+
   for (const member of healthData.members) {
     const prevRisk = prevRiskMap.get(member.memberId) || 'healthy'
     const newRisk = member.riskLevel
@@ -382,6 +647,14 @@ export async function runHealthCampaign(
 
     const outreachType = getOutreachType(newRisk)
     if (!outreachType) continue
+
+    // Skip if user already has an active sequence
+    const activeSeq = await hasActiveSequence(prisma, member.memberId, clubId)
+    if (activeSeq) {
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: 'active_sequence', status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
 
     // Anti-spam check
     const spamCheck = await checkAntiSpam({
@@ -411,7 +684,8 @@ export async function runHealthCampaign(
       .sort((a, b) => a.score - b.score)
       .slice(0, 3)
 
-    const variants = generateOutreachMessages(outreachType, {
+    // Generate hardcoded variants (always available as baseline)
+    const hardcodedVariants = generateOutreachMessages(outreachType, {
       memberName: member.member.name || 'there',
       clubName: club.name,
       healthScore: member.healthScore,
@@ -430,12 +704,45 @@ export async function runHealthCampaign(
       tone: clubTone,
     })
 
+    // Combine LLM variants (if available) + hardcoded baseline for optimizer
+    let allVariants: OutreachMessageVariant[] = [...hardcodedVariants]
+    const cachedLLM = llmVariantCache.get(outreachType)
+    if (cachedLLM && cachedLLM.length > 0) {
+      // Interpolate LLM template variables for this member
+      const memberName = member.member.name || 'there'
+      const firstName = memberName.split(' ')[0]
+      const socialProof = matched?.sameLevelCount && matched.sameLevelCount > 0
+        ? `${matched.sameLevelCount} player${matched.sameLevelCount === 1 ? '' : 's'} at your level signed up`
+        : matched?.confirmedCount && matched.confirmedCount > 0
+          ? `${matched.confirmedCount} player${matched.confirmedCount === 1 ? '' : 's'} signed up`
+          : ''
+      const spotsText = matched?.spotsLeft
+        ? `Only ${matched.spotsLeft} spot${matched.spotsLeft !== 1 ? 's' : ''} left`
+        : ''
+
+      const interpolatedLLM = cachedLLM.map(v => {
+        const interp = interpolateVariant(
+          { id: v.id, strategy: '', emailSubject: v.emailSubject, emailBody: v.emailBody, smsBody: v.smsBody },
+          {
+            name: firstName,
+            club: club.name,
+            session: matched?.session.title || 'our next session',
+            days: String(member.daysSinceLastBooking ?? 0),
+            proof: socialProof,
+            spots: spotsText,
+          },
+        )
+        return { ...v, emailSubject: interp.emailSubject, emailBody: interp.emailBody, smsBody: interp.smsBody }
+      })
+      allVariants = [...interpolatedLLM, ...hardcodedVariants]
+    }
+
     // Use variant optimizer to select best-performing variant (feedback loop)
-    let variant = variants.find(v => v.recommended) || variants[0]
+    let variant = allVariants.find(v => v.recommended) || allVariants[0]
     let optimizerReason = 'default'
     try {
-      const optimization = await selectBestVariant(prisma, clubId, outreachType, variants)
-      const optimizedVariant = variants.find(v => v.id === optimization.recommendedVariantId)
+      const optimization = await selectBestVariant(prisma, clubId, outreachType, allVariants)
+      const optimizedVariant = allVariants.find(v => v.id === optimization.recommendedVariantId)
       if (optimizedVariant) {
         variant = optimizedVariant
         optimizerReason = optimization.reason
@@ -457,12 +764,16 @@ export async function runHealthCampaign(
           type: outreachType,
           channel: settings.channel,
           variantId: variant.id,
+          sequenceStep: 0,           // Mark as Step 0 (root of sequence chain)
           reasoning: {
             campaign: true,
             transition: `${prevRisk} → ${newRisk}`,
             variantId: variant.id,
             healthScore: member.healthScore,
             optimizerReason,
+            sequenceType: getSequenceType(newRisk),
+            originalSubject: variant.emailSubject,
+            llmVariant: variant.id.startsWith('llm_'),
           },
           status: 'pending',
         },
@@ -569,6 +880,29 @@ export async function runHealthCampaign(
     else messagesSkipped++
   }
 
+  // ── Process Sequence Follow-ups ──
+  let sequenceFollowUps = 0
+  let sequenceExits = 0
+  let sequenceWaits = 0
+
+  try {
+    const { results: seqDecisions, summary: seqSummary } = await processSequences(prisma, clubId)
+    sequenceExits = seqSummary.exits
+    sequenceWaits = seqSummary.waits
+
+    // Execute follow-up actions
+    for (const decision of seqDecisions) {
+      try {
+        const sent = await executeSequenceStep(prisma, decision, club, settings, appUrl, upcomingSessions, resolvedPrefMap, bookingUrl)
+        if (sent) sequenceFollowUps++
+      } catch (err) {
+        console.error(`[Campaign] Sequence step failed for ${decision.sequence.rootLog.userId}:`, (err as Error).message?.slice(0, 100))
+      }
+    }
+  } catch (err) {
+    console.error(`[Campaign] Sequence processing failed for ${clubId}:`, (err as Error).message?.slice(0, 100))
+  }
+
   // Save new snapshots for ALL members
   let snapshotsSaved = 0
   for (const member of healthData.members) {
@@ -597,6 +931,9 @@ export async function runHealthCampaign(
     messagesSkipped,
     snapshotsSaved,
     transitions,
+    sequenceFollowUps,
+    sequenceExits,
+    sequenceWaits,
   }
 }
 
@@ -634,6 +971,7 @@ export async function runHealthCampaignForAllClubs(
         messagesSkipped: 0,
         snapshotsSaved: 0,
         transitions: [],
+        sequenceFollowUps: 0, sequenceExits: 0, sequenceWaits: 0,
       })
     }
   }

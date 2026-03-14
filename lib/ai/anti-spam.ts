@@ -2,6 +2,9 @@
  * Anti-spam utility for intelligence invite flows.
  * DB-based checks (Vercel serverless — no in-memory state).
  * All 3 flows (slot filler, reactivation, event invites) import this.
+ *
+ * Sequence-aware: follow-ups within the same sequence chain
+ * don't trigger cross-type cooldown but DO count toward frequency caps.
  */
 
 type InviteType = 'SLOT_FILLER' | 'REACTIVATION' | 'EVENT_INVITE' | 'CHECK_IN' | 'RETENTION_BOOST'
@@ -12,6 +15,9 @@ interface SpamCheckInput {
   clubId: string
   type: InviteType
   sessionId?: string | null
+  /** If true, this is a follow-up within an existing sequence chain.
+   *  Relaxes: cross-type cooldown is skipped. Still enforces frequency caps. */
+  isSequenceFollowUp?: boolean
 }
 
 interface SpamCheckResult {
@@ -21,7 +27,7 @@ interface SpamCheckResult {
 
 // ── Limits ──
 const MAX_PER_24H = 2
-const MAX_PER_7D = 4
+const MAX_PER_7D = 5 // Increased from 4 to accommodate sequence follow-ups
 const CROSS_TYPE_COOLDOWN_HOURS = 4
 
 /**
@@ -29,7 +35,7 @@ const CROSS_TYPE_COOLDOWN_HOURS = 4
  * Returns { allowed: false, reason } if any rule is violated.
  */
 export async function checkAntiSpam(input: SpamCheckInput): Promise<SpamCheckResult> {
-  const { prisma, userId, clubId, type, sessionId } = input
+  const { prisma, userId, clubId, type, sessionId, isSequenceFollowUp = false } = input
 
   // 1. Opt-out check
   try {
@@ -60,17 +66,45 @@ export async function checkAntiSpam(input: SpamCheckInput): Promise<SpamCheckRes
   }
 
   // 3. 24-hour frequency cap
+  // For sequence follow-ups: only count NON-sequence messages toward the 24h cap
+  // (sequence follow-ups have their own timing controlled by sequence-runner)
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const count24h = await prisma.aIRecommendationLog.count({
-    where: {
-      userId,
-      clubId,
-      status: 'sent',
-      createdAt: { gte: since24h },
-    },
-  })
-  if (count24h >= MAX_PER_24H) {
-    return { allowed: false, reason: `Already contacted ${count24h} times in last 24 hours (limit: ${MAX_PER_24H})` }
+  if (isSequenceFollowUp) {
+    // Sequence follow-ups: count non-sequence messages only
+    const nonSequenceCount24h = await prisma.aIRecommendationLog.count({
+      where: {
+        userId,
+        clubId,
+        status: 'sent',
+        sequenceStep: null, // Only count non-sequence messages
+        createdAt: { gte: since24h },
+      },
+    })
+    // If user already got a non-sequence message recently, still allow the follow-up
+    // but cap at 3 total messages per 24h including sequence steps
+    const totalCount24h = await prisma.aIRecommendationLog.count({
+      where: {
+        userId,
+        clubId,
+        status: 'sent',
+        createdAt: { gte: since24h },
+      },
+    })
+    if (totalCount24h >= 3) {
+      return { allowed: false, reason: `Already contacted ${totalCount24h} times in last 24 hours (sequence limit: 3)` }
+    }
+  } else {
+    const count24h = await prisma.aIRecommendationLog.count({
+      where: {
+        userId,
+        clubId,
+        status: 'sent',
+        createdAt: { gte: since24h },
+      },
+    })
+    if (count24h >= MAX_PER_24H) {
+      return { allowed: false, reason: `Already contacted ${count24h} times in last 24 hours (limit: ${MAX_PER_24H})` }
+    }
   }
 
   // 4. 7-day frequency cap
@@ -88,19 +122,23 @@ export async function checkAntiSpam(input: SpamCheckInput): Promise<SpamCheckRes
   }
 
   // 5. Cross-type cooldown: different invite type within 4 hours
-  const sinceCooldown = new Date(Date.now() - CROSS_TYPE_COOLDOWN_HOURS * 60 * 60 * 1000)
-  const recentDifferentType = await prisma.aIRecommendationLog.findFirst({
-    where: {
-      userId,
-      clubId,
-      status: 'sent',
-      type: { not: type },
-      createdAt: { gte: sinceCooldown },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  if (recentDifferentType) {
-    return { allowed: false, reason: `Recently contacted via ${recentDifferentType.type} (${CROSS_TYPE_COOLDOWN_HOURS}h cooldown)` }
+  // SKIPPED for sequence follow-ups (they're part of the same campaign chain)
+  if (!isSequenceFollowUp) {
+    const sinceCooldown = new Date(Date.now() - CROSS_TYPE_COOLDOWN_HOURS * 60 * 60 * 1000)
+    const recentDifferentType = await prisma.aIRecommendationLog.findFirst({
+      where: {
+        userId,
+        clubId,
+        status: 'sent',
+        type: { not: type },
+        sequenceStep: null, // Ignore sequence follow-ups when checking cooldown
+        createdAt: { gte: sinceCooldown },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (recentDifferentType) {
+      return { allowed: false, reason: `Recently contacted via ${recentDifferentType.type} (${CROSS_TYPE_COOLDOWN_HOURS}h cooldown)` }
+    }
   }
 
   return { allowed: true }

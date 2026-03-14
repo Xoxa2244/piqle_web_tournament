@@ -24,6 +24,27 @@
 
 import type { OutreachMessageVariant } from './outreach-messages'
 
+// ── Optimizable Variant (unified interface for outreach + sequence) ──
+
+export interface OptimizableVariant {
+  id: string
+  recommended?: boolean
+}
+
+/** All types that can be optimized (outreach types + sequence message types) */
+export type OptimizableType =
+  | 'CHECK_IN'
+  | 'RETENTION_BOOST'
+  | 'resend_new_subject'
+  | 'social_proof'
+  | 'value_reminder'
+  | 'urgency_resend'
+  | 'sms_nudge'
+  | 'final_offer'
+  | 'final_email'
+  | 'community'
+  | 'winback_offer'
+
 // ── Types ──
 
 export interface VariantPerformance {
@@ -71,8 +92,8 @@ const LOOKBACK_DAYS = 30
 export async function selectBestVariant(
   prisma: any,
   clubId: string,
-  type: 'CHECK_IN' | 'RETENTION_BOOST',
-  variants: OutreachMessageVariant[],
+  type: OptimizableType,
+  variants: (OutreachMessageVariant | OptimizableVariant)[],
 ): Promise<OptimizationResult> {
   if (variants.length === 0) {
     throw new Error('[VariantOptimizer] No variants provided')
@@ -218,7 +239,7 @@ export async function selectBestVariant(
 export async function getVariantAnalytics(
   prisma: any,
   clubId: string,
-  type?: 'CHECK_IN' | 'RETENTION_BOOST',
+  type?: OptimizableType,
   days: number = 30,
 ): Promise<{
   variants: VariantPerformance[]

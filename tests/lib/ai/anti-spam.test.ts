@@ -98,19 +98,19 @@ describe('24-hour frequency cap', () => {
 // ── Rule 4: 7-day frequency cap ──
 
 describe('7-day frequency cap', () => {
-  it('blocks when sent 4+ messages in 7 days', async () => {
+  it('blocks when sent 5+ messages in 7 days', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h — ok
-      .mockResolvedValueOnce(4) // 7d — limit reached
+      .mockResolvedValueOnce(5) // 7d — limit reached (increased to 5 for sequences)
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('7 days')
   })
 
-  it('allows when sent < 4 messages in 7 days', async () => {
+  it('allows when sent < 5 messages in 7 days', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h
-      .mockResolvedValueOnce(3) // 7d
+      .mockResolvedValueOnce(4) // 7d — under limit
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(true)
   })

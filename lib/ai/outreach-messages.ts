@@ -176,3 +176,58 @@ function generateRetentionMessages(
 
   return variants
 }
+
+// ── LLM-Powered Variant Generation ──
+
+import {
+  generateLLMMessageVariants,
+  getPerformanceFeedback,
+  type MessageGenerationContext,
+} from './llm/message-generator'
+
+/**
+ * Generate outreach message variants using LLM.
+ * Returns LLM variants (with template variables) for the optimizer.
+ *
+ * Called ONCE per club per outreach type (not per member).
+ * LLM variants use {{name}}, {{club}}, {{session}}, etc.
+ * that are interpolated per-member via interpolateVariant().
+ */
+export async function generateOutreachMessagesWithLLM(
+  prisma: any,
+  clubId: string,
+  type: OutreachType,
+  clubContext: MessageGenerationContext,
+): Promise<OutreachMessageVariant[]> {
+  // Get performance history for feedback loop
+  let fullContext = { ...clubContext }
+  try {
+    const perf = await getPerformanceFeedback(prisma, clubId, type)
+    if (perf.top.length > 0 || perf.bottom.length > 0) {
+      fullContext = {
+        ...fullContext,
+        topPerformers: perf.top,
+        bottomPerformers: perf.bottom,
+      }
+    }
+  } catch (err) {
+    console.warn(`[Outreach] Performance feedback failed:`, (err as Error).message?.slice(0, 80))
+  }
+
+  // Generate LLM variants
+  const rawVariants = await generateLLMMessageVariants({
+    messageType: type,
+    context: fullContext,
+    channel: 'both',
+  })
+
+  // Map LLM variants to OutreachMessageVariant format
+  return rawVariants.map(v => ({
+    id: v.id,
+    label: `LLM: ${v.strategy}`,
+    recommended: false,
+    emailSubject: v.emailSubject,
+    emailBody: v.emailBody,
+    smsBody: v.smsBody,
+  }))
+}

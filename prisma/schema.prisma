@@ -1543,11 +1543,18 @@ model AIRecommendationLog {
   deliveredAt        DateTime?               // SMS delivered (Twilio webhook)
   bounceType         String?                 // "hard" | "soft" (Mandrill bounce classification)
 
+  // ── Sequence Chain Fields ──
+  sequenceStep       Int?                    @map("sequence_step")   // Step number in chain (0, 1, 2, 3)
+  parentLogId        String?                 @map("parent_log_id")   // FK to Step 0 record of this sequence
+  parentLog          AIRecommendationLog?    @relation("SequenceChain", fields: [parentLogId], references: [id], onDelete: SetNull)
+  childLogs          AIRecommendationLog[]   @relation("SequenceChain")
+
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])
   @@index([externalMessageId])
   @@index([variantId, type])
   @@index([clubId, type, status])
+  @@index([parentLogId])
   @@map("ai_recommendation_logs")
 }
 
