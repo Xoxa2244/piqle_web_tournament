@@ -413,7 +413,7 @@ export async function runHealthCampaign(
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true, automationSettings: true },
+    select: { id: true, name: true, automationSettings: true },
   })
 
   const rawSettings = typeof club.automationSettings === 'object' && club.automationSettings !== null
