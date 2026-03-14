@@ -47,6 +47,7 @@ async function runCampaign(request: Request) {
         messagesSent: r.messagesSent,
         messagesSkipped: r.messagesSkipped,
         transitions: r.transitions.length,
+        ...((r as any).error ? { error: (r as any).error } : {}),
       })),
     })
   } catch (error: any) {
