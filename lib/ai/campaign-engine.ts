@@ -962,7 +962,9 @@ export async function runHealthCampaignForAllClubs(
       totalSent += result.messagesSent
       totalSkipped += result.messagesSkipped
     } catch (err) {
-      console.error(`[Campaign] Failed for club ${club.id}:`, (err as Error).message?.slice(0, 120))
+      const errMsg = (err as Error).message ?? String(err)
+      const errStack = (err as Error).stack?.slice(0, 300) ?? ''
+      console.error(`[Campaign] Failed for club ${club.id}:`, errMsg, errStack)
       results.push({
         clubId: club.id,
         clubName: 'Error',
@@ -972,7 +974,8 @@ export async function runHealthCampaignForAllClubs(
         snapshotsSaved: 0,
         transitions: [],
         sequenceFollowUps: 0, sequenceExits: 0, sequenceWaits: 0,
-      })
+        error: errMsg.slice(0, 500),
+      } as any)
     }
   }
 
