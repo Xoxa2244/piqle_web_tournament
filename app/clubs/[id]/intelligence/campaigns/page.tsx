@@ -9,7 +9,7 @@ import {
   Send, Calendar, AlertTriangle, Zap, TrendingUp,
   Mail, Loader2, BarChart3, GitBranch, Sparkles,
   ArrowRight, CheckCircle2, XCircle, UserCheck,
-  Heart, Ban, MessageSquare,
+  Heart, Ban, MessageSquare, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MetricCard } from '../_components/metric-card'
@@ -198,6 +198,8 @@ export default function CampaignsPage() {
   const isDemo = useIsDemo()
   const [days, setDays] = useState(30)
   const [variantFilter, setVariantFilter] = useState<'all' | 'CHECK_IN' | 'RETENTION_BOOST'>('all')
+  const [activityPage, setActivityPage] = useState(0)
+  const ACTIVITY_PER_PAGE = 10
 
   const { data, isLoading, error } = useCampaignAnalytics(clubId, days)
   const { data: variantData } = useVariantAnalytics(clubId, days)
@@ -629,10 +631,17 @@ export default function CampaignsPage() {
       {/* Recent Activity */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Mail className="h-4 w-4 text-muted-foreground" />
-            Recent Activity
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              Recent Activity
+            </CardTitle>
+            {recentLogs.length > 0 && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {recentLogs.length} messages
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {recentLogs.length === 0 ? (
@@ -648,31 +657,75 @@ export default function CampaignsPage() {
                 <span>Status</span>
               </div>
 
-              {recentLogs.map((log: any) => {
-                const typeStyle = TYPE_STYLES[log.type] || { label: log.type, className: 'bg-gray-100 text-gray-700' }
-                const statusStyle = STATUS_STYLES[log.status] || { label: log.status, className: 'bg-gray-100 text-gray-600' }
+              {recentLogs
+                .slice(activityPage * ACTIVITY_PER_PAGE, (activityPage + 1) * ACTIVITY_PER_PAGE)
+                .map((log: any) => {
+                  const typeStyle = TYPE_STYLES[log.type] || { label: log.type, className: 'bg-gray-100 text-gray-700' }
+                  const statusStyle = STATUS_STYLES[log.status] || { label: log.status, className: 'bg-gray-100 text-gray-600' }
 
+                  return (
+                    <div
+                      key={log.id}
+                      className="grid grid-cols-[100px_1fr_100px_80px_80px] gap-2 items-center px-2 py-2 rounded-md hover:bg-muted/30 transition-colors text-xs"
+                    >
+                      <span className="text-muted-foreground tabular-nums">
+                        {formatRelative(log.createdAt)}
+                      </span>
+                      <span className="font-medium truncate">{log.userName}</span>
+                      <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium border w-fit', typeStyle.className)}>
+                        {typeStyle.label}
+                      </span>
+                      <span className="text-muted-foreground capitalize">
+                        {log.channel || '—'}
+                      </span>
+                      <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium w-fit', statusStyle.className)}>
+                        {statusStyle.label}
+                      </span>
+                    </div>
+                  )
+                })}
+
+              {/* Pagination */}
+              {recentLogs.length > ACTIVITY_PER_PAGE && (() => {
+                const totalPages = Math.ceil(recentLogs.length / ACTIVITY_PER_PAGE)
                 return (
-                  <div
-                    key={log.id}
-                    className="grid grid-cols-[100px_1fr_100px_80px_80px] gap-2 items-center px-2 py-2 rounded-md hover:bg-muted/30 transition-colors text-xs"
-                  >
-                    <span className="text-muted-foreground tabular-nums">
-                      {formatRelative(log.createdAt)}
+                  <div className="flex items-center justify-between pt-3 mt-2 border-t">
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {activityPage * ACTIVITY_PER_PAGE + 1}–{Math.min((activityPage + 1) * ACTIVITY_PER_PAGE, recentLogs.length)} of {recentLogs.length}
                     </span>
-                    <span className="font-medium truncate">{log.userName}</span>
-                    <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium border w-fit', typeStyle.className)}>
-                      {typeStyle.label}
-                    </span>
-                    <span className="text-muted-foreground capitalize">
-                      {log.channel || '—'}
-                    </span>
-                    <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium w-fit', statusStyle.className)}>
-                      {statusStyle.label}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setActivityPage(p => Math.max(0, p - 1))}
+                        disabled={activityPage === 0}
+                        className="p-1 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActivityPage(i)}
+                          className={cn(
+                            'w-6 h-6 text-[10px] font-medium rounded-md transition-colors',
+                            activityPage === i
+                              ? 'bg-foreground text-background'
+                              : 'hover:bg-muted text-muted-foreground'
+                          )}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
+                        disabled={activityPage === totalPages - 1}
+                        className="p-1 rounded-md hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 )
-              })}
+              })()}
             </div>
           )}
         </CardContent>
