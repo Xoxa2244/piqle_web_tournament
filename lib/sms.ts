@@ -3,6 +3,7 @@ import twilio from 'twilio'
 const accountSid = process.env.TWILIO_ACCOUNT_SID
 const authToken = process.env.TWILIO_AUTH_TOKEN
 const fromNumber = process.env.TWILIO_PHONE_NUMBER
+const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
 
 const client =
   accountSid && authToken ? twilio(accountSid, authToken) : null
@@ -25,7 +26,7 @@ export async function sendSms({
   /** AIRecommendationLog.id — enables delivery status tracking via webhook */
   logId?: string
 }): Promise<{ status: string; sid: string }> {
-  if (!client || !fromNumber) {
+  if (!client || (!fromNumber && !messagingServiceSid)) {
     console.log(`[SMS MOCK] To: ${to}\n  Body: ${body}`)
     return { status: 'mock', sid: 'mock_sid' }
   }
@@ -36,10 +37,12 @@ export async function sendSms({
     ? (baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`)
     : null
 
-  const createParams: any = {
-    body,
-    from: fromNumber,
-    to,
+  // Prefer Messaging Service (required for A2P 10DLC compliance)
+  const createParams: any = { body, to }
+  if (messagingServiceSid) {
+    createParams.messagingServiceSid = messagingServiceSid
+  } else {
+    createParams.from = fromNumber
   }
 
   // Only add statusCallback if we have a valid URL and logId
@@ -56,7 +59,7 @@ export async function sendSms({
  * Check if Twilio is configured and ready to send SMS.
  */
 export function isTwilioConfigured(): boolean {
-  return !!client && !!fromNumber
+  return !!client && !!(messagingServiceSid || fromNumber)
 }
 
 /**
