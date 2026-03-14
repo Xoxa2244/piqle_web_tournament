@@ -1520,22 +1520,34 @@ model UserPlayPreference {
 }
 
 model AIRecommendationLog {
-  id               String                  @id @default(uuid())
-  clubId           String
-  club             Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  userId           String
-  user             User                    @relation("AIRecommendationLogs", fields: [userId], references: [id])
-  type             AIRecommendationType
-  sessionId        String?
-  channel          String?
-  score            Float?
-  reasoning        Json?
-  status           String                  @default("pending")
-  respondedAt      DateTime?
-  createdAt        DateTime                @default(now())
+  id                 String                  @id @default(uuid())
+  clubId             String
+  club               Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User                    @relation("AIRecommendationLogs", fields: [userId], references: [id])
+  type               AIRecommendationType
+  sessionId          String?
+  channel            String?
+  score              Float?
+  reasoning          Json?
+  status             String                  @default("pending")
+  respondedAt        DateTime?
+  createdAt          DateTime                @default(now())
+
+  // ── Email/SMS Tracking (populated by Mailchimp/Twilio webhooks) ──
+  externalMessageId  String?                 // Mandrill _id or Twilio MessageSid
+  variantId          String?                 // Message variant used (e.g. "missed_session", "gentle_nudge")
+  openedAt           DateTime?               // Email opened (Mandrill webhook)
+  clickedAt          DateTime?               // Link clicked (Mandrill webhook)
+  bouncedAt          DateTime?               // Email bounced (Mandrill webhook)
+  deliveredAt        DateTime?               // SMS delivered (Twilio webhook)
+  bounceType         String?                 // "hard" | "soft" (Mandrill bounce classification)
 
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])
+  @@index([externalMessageId])
+  @@index([variantId, type])
+  @@index([clubId, type, status])
   @@map("ai_recommendation_logs")
 }
 

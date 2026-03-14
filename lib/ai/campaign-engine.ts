@@ -17,6 +17,7 @@ import { generateOutreachMessages } from './outreach-messages'
 import { findBestSessionForMember, formatSessionDate, formatSessionTime } from './session-matcher'
 import { resolvePreferences } from './inferred-preferences'
 import { inferSkillLevel } from './scoring'
+import { selectBestVariant } from './variant-optimizer'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
 // ── Types ──
@@ -75,6 +76,90 @@ function getOutreachType(newRisk: string): 'CHECK_IN' | 'RETENTION_BOOST' | null
   if (newRisk === 'watch') return 'CHECK_IN'
   if (newRisk === 'at_risk' || newRisk === 'critical') return 'RETENTION_BOOST'
   return null
+}
+
+// ── HTML Builder for Mandrill sends ──
+
+interface OutreachSessionCard {
+  title: string
+  date: string
+  time: string
+  format: string
+  spotsLeft: number
+  confirmedCount: number
+  sameLevelCount: number
+}
+
+function buildOutreachHtml({
+  body,
+  clubName,
+  bookingUrl,
+  sessionCard,
+}: {
+  body: string
+  clubName: string
+  bookingUrl: string
+  sessionCard?: OutreachSessionCard
+}): string {
+  const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  let sessionCardHtml = ''
+  if (sessionCard) {
+    const socialProofLine = sessionCard.sameLevelCount > 0
+      ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.sameLevelCount} player${sessionCard.sameLevelCount === 1 ? '' : 's'} at your level signed up</span>`
+      : sessionCard.confirmedCount > 0
+        ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.confirmedCount} player${sessionCard.confirmedCount === 1 ? '' : 's'} signed up</span>`
+        : ''
+
+    sessionCardHtml = `
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 16px 0;">
+        <tr>
+          <td style="padding: 14px 16px; background: #f8fafc;">
+            <strong style="font-size: 16px; color: #111827;">${sessionCard.title}</strong><br/>
+            <span style="color: #6b7280; font-size: 14px;">
+              ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
+            </span><br/>
+            <span style="color: ${sessionCard.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-size: 14px; font-weight: 600;">
+              ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
+            </span>
+            ${socialProofLine ? `<br/>${socialProofLine}` : ''}
+          </td>
+        </tr>
+      </table>`
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td style="background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              ${body.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 12px 0; font-size: 15px;">${line}</p>` : '').join('\n')}
+              ${sessionCardHtml}
+              <div style="text-align: center; margin-top: 24px;">
+                <a href="${bookingUrl}" style="display: inline-block; background: linear-gradient(135deg, #84cc16, #22c55e); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none;">
+                  Book a Session
+                </a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding-top: 20px;">
+              <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+                Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
 }
 
 // ── Main Campaign Runner ──
@@ -345,58 +430,132 @@ export async function runHealthCampaign(
       tone: clubTone,
     })
 
-    const variant = variants.find(v => v.recommended) || variants[0]
+    // Use variant optimizer to select best-performing variant (feedback loop)
+    let variant = variants.find(v => v.recommended) || variants[0]
+    let optimizerReason = 'default'
+    try {
+      const optimization = await selectBestVariant(prisma, clubId, outreachType, variants)
+      const optimizedVariant = variants.find(v => v.id === optimization.recommendedVariantId)
+      if (optimizedVariant) {
+        variant = optimizedVariant
+        optimizerReason = optimization.reason
+      }
+    } catch (err) {
+      // Fallback to default variant if optimizer fails
+      console.warn(`[Campaign] Variant optimizer failed, using default:`, (err as Error).message?.slice(0, 80))
+    }
+
     const memberBookingUrl = matched?.deepLinkUrl || bookingUrl
 
-    // Send email
+    // Create log record FIRST to get logId for Mailchimp metadata
+    let logId: string | null = null
+    try {
+      const logRecord = await prisma.aIRecommendationLog.create({
+        data: {
+          clubId,
+          userId: member.memberId,
+          type: outreachType,
+          channel: settings.channel,
+          variantId: variant.id,
+          reasoning: {
+            campaign: true,
+            transition: `${prevRisk} → ${newRisk}`,
+            variantId: variant.id,
+            healthScore: member.healthScore,
+            optimizerReason,
+          },
+          status: 'pending',
+        },
+      })
+      logId = logRecord.id
+    } catch (logErr) {
+      console.error(`[Campaign] Log creation failed for ${member.memberId}:`, logErr)
+    }
+
+    // Send email via Mandrill (with tracking metadata) or SMTP fallback
     let sent = false
+    let externalMessageId: string | null = null
+
     if (settings.channel === 'email' || settings.channel === 'both') {
       try {
         const userEmail = member.member.email
         if (userEmail) {
-          const { sendOutreachEmail } = await import('../email')
-          await sendOutreachEmail({
-            to: userEmail,
-            subject: variant.emailSubject,
-            body: variant.emailBody,
-            clubName: club.name,
-            bookingUrl: memberBookingUrl,
-            sessionCard: matched ? {
-              title: matched.session.title,
-              date: formatSessionDate(new Date(matched.session.date)),
-              time: formatSessionTime(matched.session.startTime, matched.session.endTime),
-              format: matched.session.format,
-              spotsLeft: matched.spotsLeft,
-              confirmedCount: matched.confirmedCount,
-              sameLevelCount: matched.sameLevelCount,
-            } : undefined,
-          })
-          sent = true
+          const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
+
+          if (isMandrillConfigured()) {
+            // Send via Mandrill with tracking metadata
+            const { sendOutreachEmail } = await import('../email')
+            // Build HTML using existing email template
+            const emailHtml = buildOutreachHtml({
+              body: variant.emailBody,
+              clubName: club.name,
+              bookingUrl: memberBookingUrl,
+              sessionCard: matched ? {
+                title: matched.session.title,
+                date: formatSessionDate(new Date(matched.session.date)),
+                time: formatSessionTime(matched.session.startTime, matched.session.endTime),
+                format: matched.session.format,
+                spotsLeft: matched.spotsLeft,
+                confirmedCount: matched.confirmedCount,
+                sameLevelCount: matched.sameLevelCount,
+              } : undefined,
+            })
+
+            const result = await sendViaMandrill({
+              to: userEmail,
+              subject: variant.emailSubject,
+              html: emailHtml,
+              metadata: logId ? {
+                logId,
+                clubId,
+                userId: member.memberId,
+                variantId: variant.id,
+              } : undefined,
+              tags: ['campaign', outreachType.toLowerCase(), variant.id],
+            })
+
+            externalMessageId = result.messageId
+            sent = true
+          } else {
+            // Fallback to SMTP (no webhook tracking)
+            const { sendOutreachEmail } = await import('../email')
+            await sendOutreachEmail({
+              to: userEmail,
+              subject: variant.emailSubject,
+              body: variant.emailBody,
+              clubName: club.name,
+              bookingUrl: memberBookingUrl,
+              sessionCard: matched ? {
+                title: matched.session.title,
+                date: formatSessionDate(new Date(matched.session.date)),
+                time: formatSessionTime(matched.session.startTime, matched.session.endTime),
+                format: matched.session.format,
+                spotsLeft: matched.spotsLeft,
+                confirmedCount: matched.confirmedCount,
+                sameLevelCount: matched.sameLevelCount,
+              } : undefined,
+            })
+            sent = true
+          }
         }
       } catch (err) {
         console.error(`[Campaign] Email failed for ${member.memberId}:`, (err as Error).message?.slice(0, 100))
       }
     }
 
-    // Log to DB
-    try {
-      await prisma.aIRecommendationLog.create({
-        data: {
-          clubId,
-          userId: member.memberId,
-          type: outreachType,
-          channel: settings.channel,
-          reasoning: {
-            campaign: true,
-            transition: `${prevRisk} → ${newRisk}`,
-            variantId: variant.id,
-            healthScore: member.healthScore,
+    // Update log record with send result
+    if (logId) {
+      try {
+        await prisma.aIRecommendationLog.update({
+          where: { id: logId },
+          data: {
+            status: sent ? 'sent' : 'failed',
+            externalMessageId,
           },
-          status: sent ? 'sent' : 'failed',
-        },
-      })
-    } catch (logErr) {
-      console.error(`[Campaign] Log failed for ${member.memberId}:`, logErr)
+        })
+      } catch (updateErr) {
+        console.error(`[Campaign] Log update failed:`, updateErr)
+      }
     }
 
     transitions.push({
