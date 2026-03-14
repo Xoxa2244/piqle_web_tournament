@@ -15,6 +15,7 @@ import {
   mockMemberOutreach,
   mockVariantAnalytics,
   mockSequenceAnalytics,
+  mockWeeklySummary,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -336,4 +337,41 @@ export function useSequenceAnalytics(clubId: string) {
     return { data: mockSequenceAnalytics, isLoading: false, error: null } as any
   }
   return query
+}
+
+// ── Weekly AI Summary ──
+export function useWeeklySummary(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getWeeklySummary.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) {
+    return {
+      data: {
+        summary: mockWeeklySummary,
+        weekStart: null,
+        weekEnd: null,
+        generatedAt: new Date().toISOString(),
+        modelUsed: 'gpt-4o-mini',
+      },
+      isLoading: false,
+      error: null,
+    } as any
+  }
+  return query
+}
+
+export function useGenerateWeeklySummary() {
+  const isDemo = useIsDemo()
+  const mutation = trpc.intelligence.generateWeeklySummary.useMutation()
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ summary: mockWeeklySummary }), 800)
+      },
+      isPending: false,
+    } as any
+  }
+  return mutation
 }

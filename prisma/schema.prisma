@@ -239,6 +239,7 @@ model Club {
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
+  weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   @@map("clubs")
 }
@@ -1636,4 +1637,23 @@ model MemberHealthSnapshot {
   @@index([clubId, date])
   @@index([userId, date])
   @@map("member_health_snapshots")
+}
+
+model WeeklySummary {
+  id          String    @id @default(uuid())
+  clubId      String    @map("club_id")
+  weekStart   DateTime  @map("week_start") @db.Date
+  weekEnd     DateTime  @map("week_end") @db.Date
+  summary     Json
+  rawData     Json?     @map("raw_data")
+  modelUsed   String?   @map("model_used")
+  generatedAt DateTime  @default(now()) @map("generated_at")
+  emailedAt   DateTime? @map("emailed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  club Club @relation("ClubWeeklySummaries", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, weekStart])
+  @@index([clubId])
+  @@map("weekly_summaries")
 }

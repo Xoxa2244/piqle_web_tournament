@@ -17,7 +17,8 @@ import { SessionTable } from './_components/session-table'
 import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboardV2, useMemberHealth, useIntelligenceSettings } from './_hooks/use-intelligence'
+import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary } from './_hooks/use-intelligence'
+import { WeeklySummaryCard } from './_components/weekly-summary-card'
 import { cn } from '@/lib/utils'
 
 const formatLabels: Record<string, string> = {
@@ -64,7 +65,10 @@ export default function IntelligenceDashboardPage() {
   const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
   const { data: healthData } = useMemberHealth(clubId)
   const { data: settingsData } = useIntelligenceSettings(clubId)
+  const { data: summaryData, isLoading: summaryLoading } = useWeeklySummary(clubId)
+  const generateSummary = useGenerateWeeklySummary()
   const hasOnboarded = !!settingsData?.settings?.onboardingCompletedAt
+  const isDemo = searchParams.get('demo') === 'true'
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -215,6 +219,15 @@ export default function IntelligenceDashboardPage() {
           tooltip={metrics.bookings.description}
         />
       </div>
+
+      {/* ── Weekly AI Summary ── */}
+      <WeeklySummaryCard
+        summary={summaryData?.summary ?? null}
+        generatedAt={summaryData?.generatedAt ?? null}
+        isGenerating={generateSummary.isPending}
+        onRegenerate={() => generateSummary.mutate({ clubId })}
+        isDemo={isDemo}
+      />
 
       {/* ── Quick Actions ── */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">

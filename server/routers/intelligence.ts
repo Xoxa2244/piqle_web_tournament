@@ -1741,4 +1741,43 @@ export const intelligenceRouter = createTRPCRouter({
         recentSequences,
       }
     }),
+
+  // ── Weekly AI Summary ──
+  getWeeklySummary: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const summary = await ctx.prisma.weeklySummary.findFirst({
+        where: { clubId: input.clubId },
+        orderBy: { weekStart: 'desc' },
+      })
+
+      if (!summary) {
+        return { summary: null, weekStart: null, weekEnd: null, generatedAt: null, modelUsed: null }
+      }
+
+      return {
+        summary: summary.summary,
+        weekStart: summary.weekStart?.toISOString() ?? null,
+        weekEnd: summary.weekEnd?.toISOString() ?? null,
+        generatedAt: summary.generatedAt?.toISOString() ?? null,
+        modelUsed: summary.modelUsed ?? null,
+      }
+    }),
+
+  generateWeeklySummary: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      force: z.boolean().default(false),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { generateAndStoreWeeklySummary } = await import('@/lib/ai/weekly-summary')
+      const content = await generateAndStoreWeeklySummary(ctx.prisma, input.clubId, input.force)
+      return { summary: content }
+    }),
 })

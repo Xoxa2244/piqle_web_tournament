@@ -10,6 +10,10 @@
     {
       "path": "/api/campaigns/health",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/campaigns/weekly-summary",
+      "schedule": "0 15 * * 1"
     }
   ]
 }

@@ -1206,3 +1206,36 @@ export const mockSequenceAnalytics = {
     { userId: 'u8', userName: 'David Kim', type: 'AT_RISK', currentStep: 3, startedAt: fmt(-18), lastStepAt: fmt(-6), status: 'exited' as const },
   ],
 }
+
+// ── Weekly AI Summary (mock) ──
+
+export const mockWeeklySummary = {
+  executiveSummary: 'Strong week overall with 62% average occupancy (+4% vs last week). The campaign engine sent 23 personalized messages, and 3 at-risk members booked sessions after receiving retention outreach.',
+  wins: [
+    'Average health score improved from 68 to 72 (+5.9%)',
+    'Tuesday evening Open Play hit 100% capacity for the 3rd straight week',
+    'LLM-generated messages outperformed templates by 43% on click rate',
+    '3 members re-engaged after retention campaigns',
+  ],
+  risks: [
+    '4 members moved from Watch to At-Risk this week (up from 2 last week)',
+    'Saturday morning clinic running at only 33% capacity',
+    'Email bounce rate spiked to 4.2% — check for stale addresses',
+  ],
+  actionsTaken: [
+    'Sent 14 check-in messages to Watch-level members',
+    'Sent 9 retention boost messages to At-Risk members',
+    'Auto-selected "Social Proof (LLM)" variant as best performer (53% open rate)',
+    'Started 5 new sequence chains for declining members',
+  ],
+  keyNumbers: [
+    { label: 'Avg Health Score', thisWeek: 72, lastWeek: 68, changePercent: 5.9, direction: 'up' as const },
+    { label: 'Occupancy', thisWeek: '62%', lastWeek: '58%', changePercent: 6.9, direction: 'up' as const },
+    { label: 'Messages Sent', thisWeek: 23, lastWeek: 19, changePercent: 21.1, direction: 'up' as const },
+    { label: 'Open Rate', thisWeek: '41%', lastWeek: '38%', changePercent: 7.9, direction: 'up' as const },
+    { label: 'At-Risk Members', thisWeek: 9, lastWeek: 7, changePercent: 28.6, direction: 'up' as const },
+    { label: 'New Members', thisWeek: 3, lastWeek: 2, changePercent: 50, direction: 'up' as const },
+  ],
+  generatedAt: new Date().toISOString(),
+  weekLabel: 'Mar 2 – Mar 8, 2026',
+}
