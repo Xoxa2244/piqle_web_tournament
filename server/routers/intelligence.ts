@@ -1558,4 +1558,187 @@ export const intelligenceRouter = createTRPCRouter({
 
       return { logs }
     }),
+
+  // ── Variant Performance Analytics ──
+  getVariantAnalytics: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      days: z.number().int().min(1).max(365).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { getVariantAnalytics } = await import('@/lib/ai/variant-optimizer')
+      return await getVariantAnalytics(ctx.prisma, input.clubId, undefined, input.days)
+    }),
+
+  // ── Sequence Chain Analytics ──
+  getSequenceAnalytics: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // All logs with sequence data
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          sequenceStep: { not: null },
+        },
+        select: {
+          id: true,
+          userId: true,
+          type: true,
+          status: true,
+          sequenceStep: true,
+          parentLogId: true,
+          openedAt: true,
+          clickedAt: true,
+          bouncedAt: true,
+          reasoning: true,
+          createdAt: true,
+          user: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      // Find root logs (step 0) and build chains
+      const rootLogs = logs.filter(l => l.sequenceStep === 0)
+      const childrenByParent = new Map<string, typeof logs>()
+      for (const l of logs) {
+        if (l.parentLogId) {
+          const children = childrenByParent.get(l.parentLogId) || []
+          children.push(l)
+          childrenByParent.set(l.parentLogId, children)
+        }
+      }
+
+      // Trace chains to find max step and status
+      type ChainInfo = { userId: string; userName: string; type: string; maxStep: number; startedAt: Date; lastStepAt: Date; exited: boolean; exitReason?: string }
+      const chains: ChainInfo[] = []
+
+      for (const root of rootLogs) {
+        let current = root
+        let maxStep = 0
+        let lastStepAt = root.createdAt
+        let exited = false
+        let exitReason: string | undefined
+
+        // Walk the chain
+        const visited = new Set<string>([root.id])
+        let next = childrenByParent.get(current.id)?.[0]
+        while (next && !visited.has(next.id)) {
+          visited.add(next.id)
+          maxStep = next.sequenceStep || 0
+          lastStepAt = next.createdAt
+          current = next
+          next = childrenByParent.get(current.id)?.[0]
+        }
+
+        // Check if chain ended early
+        const reasoning = (current.reasoning as any) || {}
+        if (reasoning.sequenceExit) {
+          exited = true
+          exitReason = reasoning.sequenceExit
+        } else if (current.bouncedAt) {
+          exited = true
+          exitReason = 'bounced'
+        }
+
+        const seqType = (root.reasoning as any)?.sequenceType || root.type
+        chains.push({
+          userId: root.userId,
+          userName: root.user?.name || root.user?.email || 'Unknown',
+          type: seqType,
+          maxStep,
+          startedAt: root.createdAt,
+          lastStepAt,
+          exited,
+          exitReason,
+        })
+      }
+
+      // Summary
+      const activeChains = chains.filter(c => !c.exited && c.maxStep < 3)
+      const completedChains = chains.filter(c => c.maxStep >= 3 || (c.exited && c.exitReason === 'max_steps'))
+      const exitedChains = chains.filter(c => c.exited && c.exitReason !== 'max_steps')
+      const avgSteps = chains.length > 0
+        ? Math.round((chains.reduce((s, c) => s + c.maxStep, 0) / chains.length) * 10) / 10
+        : 0
+
+      // By type
+      const typeGroups = ['WATCH', 'AT_RISK', 'CRITICAL']
+      const byType = typeGroups.map(t => ({
+        type: t,
+        active: chains.filter(c => c.type === t && !c.exited && c.maxStep < 3).length,
+        completed: chains.filter(c => c.type === t && (c.maxStep >= 3 || (c.exited && c.exitReason === 'max_steps'))).length,
+        exited: chains.filter(c => c.type === t && c.exited && c.exitReason !== 'max_steps').length,
+      }))
+
+      // By step
+      const byStep = [0, 1, 2, 3].map(step => {
+        const stepLogs = logs.filter(l => l.sequenceStep === step)
+        const opened = stepLogs.filter(l => l.openedAt).length
+        return {
+          step,
+          count: stepLogs.length,
+          openRate: stepLogs.length > 0 ? Math.round((opened / stepLogs.length) * 100) / 100 : 0,
+        }
+      })
+
+      // Exit reasons
+      const exitCounts = new Map<string, number>()
+      for (const c of chains) {
+        if (c.exited && c.exitReason) {
+          exitCounts.set(c.exitReason, (exitCounts.get(c.exitReason) || 0) + 1)
+        }
+      }
+      const EXIT_LABELS: Record<string, string> = {
+        booked: 'Booked Session',
+        health_improved: 'Health Improved',
+        max_steps: 'Sequence Complete',
+        opted_out: 'Opted Out',
+        bounced: 'Bounced/Spam',
+      }
+      const exitReasons = Array.from(exitCounts.entries()).map(([reason, count]) => ({
+        reason,
+        count,
+        label: EXIT_LABELS[reason] || reason,
+      })).sort((a, b) => b.count - a.count)
+
+      // Recent sequences (last 10 unique users)
+      const seen = new Set<string>()
+      const recentSequences = chains
+        .sort((a, b) => b.lastStepAt.getTime() - a.lastStepAt.getTime())
+        .filter(c => {
+          if (seen.has(c.userId)) return false
+          seen.add(c.userId)
+          return true
+        })
+        .slice(0, 10)
+        .map(c => ({
+          userId: c.userId,
+          userName: c.userName,
+          type: c.type,
+          currentStep: c.maxStep,
+          startedAt: c.startedAt.toISOString(),
+          lastStepAt: c.lastStepAt.toISOString(),
+          status: c.exited ? (c.exitReason === 'max_steps' ? 'completed' : 'exited')
+            : c.maxStep >= 3 ? 'completed' : 'active',
+        }))
+
+      return {
+        summary: {
+          activeSequences: activeChains.length,
+          completedSequences: completedChains.length,
+          exitedSequences: exitedChains.length,
+          avgStepsCompleted: avgSteps,
+        },
+        byType,
+        byStep,
+        exitReasons,
+        recentSequences,
+      }
+    }),
 })

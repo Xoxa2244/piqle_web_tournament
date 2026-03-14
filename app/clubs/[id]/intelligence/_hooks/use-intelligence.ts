@@ -13,6 +13,8 @@ import {
   mockMemberHealth,
   mockCampaignAnalytics,
   mockMemberOutreach,
+  mockVariantAnalytics,
+  mockSequenceAnalytics,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -306,6 +308,32 @@ export function useMemberOutreachHistory(clubId: string, userId: string | null) 
   )
   if (isDemo && userId) {
     return { data: mockMemberOutreach, isLoading: false, error: null } as any
+  }
+  return query
+}
+
+// ── Variant Performance Analytics ──
+export function useVariantAnalytics(clubId: string, days: number = 30) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getVariantAnalytics.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) {
+    return { data: mockVariantAnalytics, isLoading: false, error: null } as any
+  }
+  return query
+}
+
+// ── Sequence Chain Analytics ──
+export function useSequenceAnalytics(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getSequenceAnalytics.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) {
+    return { data: mockSequenceAnalytics, isLoading: false, error: null } as any
   }
   return query
 }

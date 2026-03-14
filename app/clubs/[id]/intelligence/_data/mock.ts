@@ -1145,3 +1145,64 @@ export const mockMemberOutreach = {
     { id: 'moh4', type: 'SLOT_FILLER', channel: 'email', status: 'sent', createdAt: fmt(-25) },
   ],
 }
+
+// ── Variant Performance Analytics (mock) ──
+
+export const mockVariantAnalytics = {
+  variants: [
+    // LLM variants (llm_ prefix) — generally better performance
+    { variantId: 'llm_checkin_pattern', totalSent: 45, totalOpened: 22, totalClicked: 8, totalBounced: 1, openRate: 0.49, clickRate: 0.18, bounceRate: 0.02, engagementScore: 0.30 },
+    { variantId: 'llm_checkin_social', totalSent: 32, totalOpened: 17, totalClicked: 6, totalBounced: 0, openRate: 0.53, clickRate: 0.19, bounceRate: 0, engagementScore: 0.32 },
+    { variantId: 'llm_checkin_urgency', totalSent: 28, totalOpened: 11, totalClicked: 3, totalBounced: 0, openRate: 0.39, clickRate: 0.11, bounceRate: 0, engagementScore: 0.22 },
+    { variantId: 'llm_retention_value', totalSent: 22, totalOpened: 12, totalClicked: 5, totalBounced: 1, openRate: 0.55, clickRate: 0.23, bounceRate: 0.05, engagementScore: 0.36 },
+    { variantId: 'llm_retention_community', totalSent: 18, totalOpened: 8, totalClicked: 3, totalBounced: 0, openRate: 0.44, clickRate: 0.17, bounceRate: 0, engagementScore: 0.28 },
+    // Hardcoded template variants — baseline performance
+    { variantId: 'checkin_pattern', totalSent: 15, totalOpened: 5, totalClicked: 1, totalBounced: 0, openRate: 0.33, clickRate: 0.07, bounceRate: 0, engagementScore: 0.17 },
+    { variantId: 'checkin_frequency', totalSent: 12, totalOpened: 4, totalClicked: 1, totalBounced: 0, openRate: 0.33, clickRate: 0.08, bounceRate: 0, engagementScore: 0.18 },
+    { variantId: 'checkin_recency', totalSent: 10, totalOpened: 3, totalClicked: 0, totalBounced: 1, openRate: 0.30, clickRate: 0, bounceRate: 0.10, engagementScore: 0.12 },
+    { variantId: 'retention_value', totalSent: 9, totalOpened: 3, totalClicked: 1, totalBounced: 0, openRate: 0.33, clickRate: 0.11, bounceRate: 0, engagementScore: 0.20 },
+    { variantId: 'retention_spot', totalSent: 7, totalOpened: 2, totalClicked: 0, totalBounced: 0, openRate: 0.29, clickRate: 0, bounceRate: 0, engagementScore: 0.12 },
+  ],
+  overallOpenRate: 0.41,
+  overallClickRate: 0.14,
+  totalMessages: 198,
+}
+
+// ── Sequence Chain Analytics (mock) ──
+
+export const mockSequenceAnalytics = {
+  summary: {
+    activeSequences: 12,
+    completedSequences: 34,
+    exitedSequences: 8,
+    avgStepsCompleted: 2.1,
+  },
+  byType: [
+    { type: 'WATCH', active: 5, completed: 18, exited: 3 },
+    { type: 'AT_RISK', active: 4, completed: 12, exited: 3 },
+    { type: 'CRITICAL', active: 3, completed: 4, exited: 2 },
+  ],
+  byStep: [
+    { step: 0, count: 54, openRate: 0.42 },
+    { step: 1, count: 38, openRate: 0.35 },
+    { step: 2, count: 22, openRate: 0.28 },
+    { step: 3, count: 14, openRate: 0.31 },
+  ],
+  exitReasons: [
+    { reason: 'booked', count: 18, label: 'Booked Session' },
+    { reason: 'health_improved', count: 8, label: 'Health Improved' },
+    { reason: 'max_steps', count: 12, label: 'Sequence Complete' },
+    { reason: 'opted_out', count: 3, label: 'Opted Out' },
+    { reason: 'bounced', count: 1, label: 'Bounced / Spam' },
+  ],
+  recentSequences: [
+    { userId: 'u1', userName: 'Maria Santos', type: 'WATCH', currentStep: 2, startedAt: fmt(-8), lastStepAt: fmt(-1), status: 'active' as const },
+    { userId: 'u2', userName: 'James Wilson', type: 'AT_RISK', currentStep: 3, startedAt: fmt(-12), lastStepAt: fmt(-2), status: 'completed' as const },
+    { userId: 'u3', userName: 'Sarah Chen', type: 'CRITICAL', currentStep: 1, startedAt: fmt(-3), lastStepAt: fmt(-1), status: 'active' as const },
+    { userId: 'u4', userName: 'Mike Torres', type: 'WATCH', currentStep: 3, startedAt: fmt(-15), lastStepAt: fmt(-4), status: 'completed' as const },
+    { userId: 'u5', userName: 'Lisa Park', type: 'AT_RISK', currentStep: 2, startedAt: fmt(-6), lastStepAt: fmt(-0.5), status: 'active' as const },
+    { userId: 'u6', userName: 'Tom Bradley', type: 'CRITICAL', currentStep: 1, startedAt: fmt(-5), lastStepAt: fmt(-3), status: 'exited' as const },
+    { userId: 'u7', userName: 'Ana Rodriguez', type: 'WATCH', currentStep: 1, startedAt: fmt(-2), lastStepAt: fmt(-0.3), status: 'active' as const },
+    { userId: 'u8', userName: 'David Kim', type: 'AT_RISK', currentStep: 3, startedAt: fmt(-18), lastStepAt: fmt(-6), status: 'exited' as const },
+  ],
+}
