@@ -464,8 +464,8 @@ export const intelligenceRouter = createTRPCRouter({
 
       const emptyTrend = computeTrend(0, 0)
 
-      // ── Member-only queries (tables always exist) ──
-      const [membersNow, membersAt30dAgo, newMembersThisMonth, allMembersWithUser] =
+      // ── Member + CSV player queries ──
+      const [followersCount, membersAt30dAgo, newMembersThisMonth, allMembersWithUser, csvPlayerCountRows] =
         await Promise.all([
           ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
           ctx.prisma.clubFollower.count({
@@ -478,13 +478,27 @@ export const intelligenceRouter = createTRPCRouter({
             where: { clubId: input.clubId },
             include: { user: { select: { id: true, duprRatingDoubles: true } } },
           }),
+          // Count unique player names from CSV embeddings
+          ctx.prisma.$queryRaw<[{ count: bigint }]>`
+            SELECT COUNT(DISTINCT value) as count
+            FROM document_embeddings,
+              LATERAL jsonb_array_elements_text(metadata->'playerNames') as value
+            WHERE club_id = ${input.clubId}::uuid
+              AND content_type = 'session'
+              AND source_table = 'csv_import'
+          `.catch(() => [{ count: BigInt(0) }]),
         ])
 
+      // Use the larger of: followers vs unique CSV players
+      const csvPlayerCount = Number(csvPlayerCountRows[0]?.count ?? 0)
+      const membersNow = Math.max(followersCount, csvPlayerCount)
+
       // Member sparkline (always safe)
-      const memberGrowth = membersNow - membersAt30dAgo
+      const membersBase = Math.max(membersAt30dAgo, csvPlayerCount)
+      const memberGrowth = membersNow - membersBase
       const memberSparkline: number[] = []
       for (let i = 0; i < 7; i++) {
-        memberSparkline.push(Math.round(membersAt30dAgo + (memberGrowth * (i + 1)) / 7))
+        memberSparkline.push(Math.round(membersBase + (memberGrowth * (i + 1)) / 7))
       }
 
       // Skill level distribution (always safe)
@@ -560,11 +574,25 @@ export const intelligenceRouter = createTRPCRouter({
           throw new Error('NO_SESSION_DATA_FOUND')
         }
 
+        // If sessions have registeredCount (CSV import), use that for bookings metric
+        const hasRegisteredCount = completedSessions30d.some((s: any) => s.registeredCount != null)
+        const effectiveBookings30d = hasRegisteredCount
+          ? completedSessions30d.reduce((sum: number, s: any) => sum + (s.registeredCount ?? 0), 0)
+          : bookings30d
+        const effectiveBookingsPrev30d = hasRegisteredCount
+          ? completedSessionsPrev30d.reduce((sum: number, s: any) => sum + (s.registeredCount ?? 0), 0)
+          : bookingsPrev30d
+
+        // ── Helper: prefer registeredCount from CSV over booking count ──
+        const getRegistered = (s: { registeredCount?: number | null; _count: { bookings: number } }) =>
+          s.registeredCount ?? s._count.bookings
+
         // ── Compute occupancy metrics ──
-        const calcAvgOcc = (sessions: Array<{ maxPlayers: number; _count: { bookings: number } }>) => {
+        const calcAvgOcc = (sessions: Array<{ maxPlayers: number; registeredCount?: number | null; _count: { bookings: number } }>) => {
           if (sessions.length === 0) return 0
           const total = sessions.reduce((sum, s) => {
-            return sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0)
+            const reg = getRegistered(s)
+            return sum + (s.maxPlayers > 0 ? (reg / s.maxPlayers) * 100 : 0)
           }, 0)
           return Math.round(total / sessions.length)
         }
@@ -582,10 +610,10 @@ export const intelligenceRouter = createTRPCRouter({
           const daySessions = completedSessions30d.filter(
             s => new Date(s.date) >= dayStart && new Date(s.date) <= dayEnd
           )
-          bookingSparkline.push(daySessions.reduce((sum, s) => sum + s._count.bookings, 0))
+          bookingSparkline.push(daySessions.reduce((sum, s) => sum + getRegistered(s), 0))
           if (daySessions.length > 0) {
             const avg = daySessions.reduce((sum, s) =>
-              sum + (s.maxPlayers > 0 ? (s._count.bookings / s.maxPlayers) * 100 : 0), 0
+              sum + (s.maxPlayers > 0 ? (getRegistered(s) / s.maxPlayers) * 100 : 0), 0
             ) / daySessions.length
             occSparkline.push(Math.round(avg))
           } else {
@@ -596,11 +624,11 @@ export const intelligenceRouter = createTRPCRouter({
         // Lost revenue
         const avgPricePerSlot = 15
         const emptySlots = upcomingSessions.reduce(
-          (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
+          (sum, s) => sum + Math.max(0, s.maxPlayers - getRegistered(s)), 0
         )
         const lostRevenue = emptySlots * avgPricePerSlot
         const prevEmptySlots = completedSessionsPrev30d.reduce(
-          (sum, s) => sum + Math.max(0, s.maxPlayers - s._count.bookings), 0
+          (sum, s) => sum + Math.max(0, s.maxPlayers - getRegistered(s)), 0
         )
         const prevLostRevenue = prevEmptySlots * avgPricePerSlot
 
@@ -610,7 +638,7 @@ export const intelligenceRouter = createTRPCRouter({
         const bySlotMap: Record<string, { total: number; count: number }> = {}
         const byFormatMap: Record<string, { total: number; count: number }> = {}
         for (const s of completedSessions30d) {
-          const occ = s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0
+          const occ = s.maxPlayers > 0 ? Math.round((getRegistered(s) / s.maxPlayers) * 100) : 0
           const dayName = dayNames[new Date(s.date).getDay()]
           if (!byDayMap[dayName]) byDayMap[dayName] = { total: 0, count: 0 }
           byDayMap[dayName].total += occ
@@ -651,8 +679,8 @@ export const intelligenceRouter = createTRPCRouter({
           endTime: s.endTime,
           format: s.format as any,
           courtName: s.clubCourt?.name || null,
-          occupancyPercent: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
-          confirmedCount: s._count.bookings,
+          occupancyPercent: s.maxPlayers > 0 ? Math.round((getRegistered(s) / s.maxPlayers) * 100) : 0,
+          confirmedCount: getRegistered(s),
           maxPlayers: s.maxPlayers,
         }))
         const sortedByOcc = [...allSessionsWithOcc].sort((a, b) => b.occupancyPercent - a.occupancyPercent)
@@ -661,15 +689,17 @@ export const intelligenceRouter = createTRPCRouter({
           .sort((a, b) => a.occupancyPercent - b.occupancyPercent)
           .slice(0, 5)
 
-        // Player activity
+        // Player activity — use CSV player count if available for better inactive estimate
         const activeUserIds = new Set(recentBookers.map(b => b.userId))
-        const activeCount = activeUserIds.size
+        const activeCount = csvPlayerCount > 0
+          ? Math.max(activeUserIds.size, Math.round(csvPlayerCount * 0.6)) // estimate ~60% active from CSV
+          : activeUserIds.size
         const inactiveCount = Math.max(0, membersNow - activeCount)
 
-        // Format preference
+        // Format preference — use registeredCount for accurate distribution
         const formatCounts: Record<string, number> = {}
         for (const s of completedSessions30d) {
-          formatCounts[s.format] = (formatCounts[s.format] || 0) + s._count.bookings
+          formatCounts[s.format] = (formatCounts[s.format] || 0) + getRegistered(s)
         }
         const fmtLabels: Record<string, string> = {
           OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
@@ -687,11 +717,13 @@ export const intelligenceRouter = createTRPCRouter({
         return {
           metrics: {
             members: {
-              label: 'Members',
+              label: 'Players',
               value: membersNow,
-              trend: computeTrend(membersNow, membersAt30dAgo, memberSparkline),
-              subtitle: `${newMembersThisMonth} new this month`,
-              description: 'Total active members following your club',
+              trend: computeTrend(membersNow, membersBase, memberSparkline),
+              subtitle: csvPlayerCount > followersCount
+                ? `${csvPlayerCount} from imported data`
+                : `${newMembersThisMonth} new this month`,
+              description: 'Total unique players across all sessions',
             },
             occupancy: {
               label: 'Avg Occupancy',
@@ -709,8 +741,8 @@ export const intelligenceRouter = createTRPCRouter({
             },
             bookings: {
               label: 'Bookings',
-              value: bookings30d,
-              trend: computeTrend(bookings30d, bookingsPrev30d, bookingSparkline),
+              value: effectiveBookings30d,
+              trend: computeTrend(effectiveBookings30d, effectiveBookingsPrev30d, bookingSparkline),
               subtitle: 'last 30 days',
               description: 'Total confirmed bookings across all sessions',
             },

@@ -1459,8 +1459,9 @@ model PlaySession {
   format      PlaySessionFormat    @default(OPEN_PLAY)
   skillLevel  PlaySessionSkillLevel @default(ALL_LEVELS)
   maxPlayers  Int                  @default(8)
-  pricePerSlot Float?
-  status      PlaySessionStatus    @default(SCHEDULED)
+  pricePerSlot    Float?
+  registeredCount Int?              @map("registered_count")
+  status          PlaySessionStatus @default(SCHEDULED)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 

@@ -128,6 +128,7 @@ export async function importSessionsToDB(
     skillLevel: string
     maxPlayers: number
     pricePerSlot: number | null
+    registeredCount: number
     status: string
     playerNames: string[]
   }
@@ -162,6 +163,7 @@ export async function importSessionsToDB(
       skillLevel,
       maxPlayers: s.capacity || 8,
       pricePerSlot: s.pricePerPlayer,
+      registeredCount: s.registered,
       status: isPast ? 'COMPLETED' : 'SCHEDULED',
       playerNames: s.playerNames,
     })
@@ -181,9 +183,9 @@ export async function importSessionsToDB(
     const valuesClauses: string[] = []
 
     batch.forEach((row, j) => {
-      const offset = j * 11
+      const offset = j * 12
       valuesClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::"PlaySessionStatus")`
+        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus")`
       )
       params.push(
         row.id,
@@ -196,12 +198,13 @@ export async function importSessionsToDB(
         row.format,
         row.skillLevel,
         row.maxPlayers,
+        row.registeredCount,
         row.status,
       )
     })
 
     await prisma.$executeRawUnsafe(
-      `INSERT INTO play_sessions (id, club_id, court_id, title, date, start_time, end_time, format, skill_level, max_players, status, created_at, updated_at)
+      `INSERT INTO play_sessions (id, club_id, court_id, title, date, start_time, end_time, format, skill_level, max_players, registered_count, status, created_at, updated_at)
        VALUES ${valuesClauses.map(v => v.replace(/\)$/, `, '${nowISO}'::timestamp, '${nowISO}'::timestamp)`)).join(', ')}
        ON CONFLICT DO NOTHING`,
       ...params,
