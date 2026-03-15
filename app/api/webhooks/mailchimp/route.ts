@@ -204,6 +204,24 @@ async function processMandrillEvent(event: MandrillEvent) {
           status: event.event === 'unsub' ? 'unsubscribed' : 'spam',
         },
       })
+      // Also set notificationsOptOut so campaign engine skips this user
+      if (log.userId && log.clubId) {
+        await prisma.userPlayPreference.upsert({
+          where: { userId_clubId: { userId: log.userId, clubId: log.clubId } },
+          update: { notificationsOptOut: true },
+          create: {
+            userId: log.userId,
+            clubId: log.clubId,
+            notificationsOptOut: true,
+            preferredDays: [],
+            preferredFormats: [],
+            targetSessionsPerWeek: 2,
+            skillLevel: 'ALL_LEVELS',
+          },
+        }).catch(err => {
+          console.warn('[Mandrill Webhook] Failed to set opt-out:', (err as Error).message?.slice(0, 100))
+        })
+      }
       break
 
     case 'send':

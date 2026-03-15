@@ -104,11 +104,13 @@ function buildOutreachHtml({
   clubName,
   bookingUrl,
   sessionCard,
+  unsubscribeUrl,
 }: {
   body: string
   clubName: string
   bookingUrl: string
   sessionCard?: OutreachSessionCard
+  unsubscribeUrl?: string
 }): string {
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -160,6 +162,7 @@ function buildOutreachHtml({
             <td align="center" style="padding-top: 20px;">
               <p style="font-size: 12px; color: #9ca3af; margin: 0;">
                 Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
+                ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color: #9ca3af; text-decoration: underline; font-size: 11px;">Unsubscribe</a>` : ''}
               </p>
             </td>
           </tr>
@@ -314,6 +317,9 @@ async function executeSequenceStep(
       const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
 
       if (isMandrillConfigured() && user.email) {
+        const { generateUnsubscribeUrl } = await import('../unsubscribe')
+        const unsubUrl = generateUnsubscribeUrl(userId, clubId)
+
         const emailHtml = buildOutreachHtml({
           body: message.emailBody,
           clubName: club.name,
@@ -327,6 +333,7 @@ async function executeSequenceStep(
             confirmedCount: matched.confirmedCount,
             sameLevelCount: matched.sameLevelCount,
           } : undefined,
+          unsubscribeUrl: unsubUrl,
         })
 
         const result = await sendViaMandrill({
@@ -340,6 +347,10 @@ async function executeSequenceStep(
             variantId,
           },
           tags: ['sequence', action.messageType || 'follow_up', `step_${action.stepNumber}`, variantId.startsWith('llm_') ? 'llm' : 'hardcoded'],
+          headers: {
+            'List-Unsubscribe': `<${unsubUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         })
 
         externalMessageId = result.messageId
@@ -371,10 +382,14 @@ async function executeSequenceStep(
         // No phone — fallback to email for SMS steps
         const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
         if (isMandrillConfigured() && user.email) {
+          const { generateUnsubscribeUrl } = await import('../unsubscribe')
+          const unsubUrl = generateUnsubscribeUrl(userId, clubId)
+
           const emailHtml = buildOutreachHtml({
             body: message.emailBody || message.smsBody,
             clubName: club.name,
             bookingUrl: memberBookingUrl,
+            unsubscribeUrl: unsubUrl,
           })
           const result = await sendViaMandrill({
             to: user.email,
@@ -382,6 +397,10 @@ async function executeSequenceStep(
             html: emailHtml,
             metadata: { logId: logRecord.id, clubId, userId },
             tags: ['sequence', 'sms_fallback_email', `step_${action.stepNumber}`],
+            headers: {
+              'List-Unsubscribe': `<${unsubUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
           })
           externalMessageId = result.messageId
           sent = true
@@ -794,9 +813,10 @@ export async function runHealthCampaign(
           const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
 
           if (isMandrillConfigured()) {
-            // Send via Mandrill with tracking metadata
-            const { sendOutreachEmail } = await import('../email')
-            // Build HTML using existing email template
+            // Generate unsubscribe URL for CAN-SPAM compliance
+            const { generateUnsubscribeUrl } = await import('../unsubscribe')
+            const unsubUrl = generateUnsubscribeUrl(member.memberId, clubId)
+
             const emailHtml = buildOutreachHtml({
               body: variant.emailBody,
               clubName: club.name,
@@ -810,6 +830,7 @@ export async function runHealthCampaign(
                 confirmedCount: matched.confirmedCount,
                 sameLevelCount: matched.sameLevelCount,
               } : undefined,
+              unsubscribeUrl: unsubUrl,
             })
 
             const result = await sendViaMandrill({
@@ -823,6 +844,10 @@ export async function runHealthCampaign(
                 variantId: variant.id,
               } : undefined,
               tags: ['campaign', outreachType.toLowerCase(), variant.id],
+              headers: {
+                'List-Unsubscribe': `<${unsubUrl}>`,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              },
             })
 
             externalMessageId = result.messageId

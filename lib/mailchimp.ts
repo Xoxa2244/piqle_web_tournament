@@ -36,6 +36,8 @@ export interface MandrillSendInput {
   }
   /** Mandrill tags for filtering in Mandrill dashboard */
   tags?: string[]
+  /** Custom email headers (e.g., List-Unsubscribe for RFC 8058) */
+  headers?: Record<string, string>
 }
 
 export interface MandrillSendResult {
@@ -76,6 +78,8 @@ export async function sendViaMandrill(input: MandrillSendInput): Promise<Mandril
       tags: input.tags || ['outreach'],
       // Merge tags (available in templates)
       merge_language: 'handlebars' as const,
+      // Custom headers (e.g., List-Unsubscribe for RFC 8058 compliance)
+      ...(input.headers ? { headers: input.headers } : {}),
     },
   }
 
