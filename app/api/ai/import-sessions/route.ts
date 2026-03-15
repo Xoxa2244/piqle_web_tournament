@@ -634,7 +634,7 @@ export async function POST(req: Request) {
             const offset = j * 8;
             const embeddingStr = `[${allEmbeddings[globalIdx].join(',')}]`;
             valuesClauses.push(
-              `($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5}::vector, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+              `(gen_random_uuid(), $${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5}::vector, $${offset + 6}, $${offset + 7}, $${offset + 8})`
             );
             params.push(
               clubId,
@@ -650,7 +650,7 @@ export async function POST(req: Request) {
 
           try {
             await prisma.$executeRawUnsafe(
-              `INSERT INTO document_embeddings (club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
+              `INSERT INTO document_embeddings (id, club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
                VALUES ${valuesClauses.join(', ')}`,
               ...params,
             );
