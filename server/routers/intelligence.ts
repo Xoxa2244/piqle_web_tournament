@@ -439,10 +439,10 @@ export const intelligenceRouter = createTRPCRouter({
       const previousStart = new Date(currentStart.getTime() - periodMs)
 
       // Aliases for backward compatibility with existing DB queries
-      const d30 = currentStart
-      const d60 = previousStart
-      const d7 = new Date(currentEnd.getTime() - 7 * 86400000)
-      const d14 = new Date(currentEnd.getTime() - 14 * 86400000)
+      let d30 = currentStart
+      let d60 = previousStart
+      let d7 = new Date(currentEnd.getTime() - 7 * 86400000)
+      let d14 = new Date(currentEnd.getTime() - 14 * 86400000)
       const monthStart = new Date(currentEnd.getFullYear(), currentEnd.getMonth(), 1)
 
       // ── Helper: compute trend ──
@@ -518,6 +518,25 @@ export const intelligenceRouter = createTRPCRouter({
           count,
           percent: Math.round((count / totalMembers) * 100),
         }))
+
+      // ── Auto-detect date range if CSV data is older than 30 days ──
+      if (!input.dateFrom && !input.dateTo) {
+        const latestSession = await ctx.prisma.playSession.findFirst({
+          where: { clubId: input.clubId, status: 'COMPLETED' },
+          orderBy: { date: 'desc' },
+          select: { date: true },
+        }).catch(() => null)
+
+        if (latestSession && new Date(latestSession.date) < d30) {
+          // Shift the window to cover actual data
+          const latestDate = new Date(latestSession.date)
+          latestDate.setHours(23, 59, 59, 999)
+          d30 = new Date(latestDate.getTime() - 30 * 86400000)
+          d60 = new Date(latestDate.getTime() - 60 * 86400000)
+          d7 = new Date(latestDate.getTime() - 7 * 86400000)
+          d14 = new Date(latestDate.getTime() - 14 * 86400000)
+        }
+      }
 
       // ── Session + Booking queries (may fail if booking table missing) ──
       try {
