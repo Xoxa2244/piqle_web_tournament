@@ -3,23 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
-
-const resolveAppBaseUrl = (request: Request) => {
-  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
-  const forwardedProto = request.headers.get('x-forwarded-proto')
-  if (forwardedHost) {
-    const protocol = forwardedProto || (forwardedHost.startsWith('localhost') ? 'http' : 'https')
-    return `${protocol}://${forwardedHost}`
-  }
-
-  try {
-    return new URL(request.url).origin
-  } catch {
-    const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    if (env) return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
-    return 'http://localhost:3000'
-  }
-}
+import { getRequestBaseUrl } from '@/lib/requestBaseUrl'
 
 const isSavedCardSchemaError = (error: any) => {
   const message = String(error?.message ?? '').toLowerCase()
@@ -100,7 +84,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const appBaseUrl = resolveAppBaseUrl(request)
+    const baseUrl = getRequestBaseUrl(request, {
+      scope: 'stripe-save-card-session',
+    })
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'setup',
       payment_method_types: ['card'],
@@ -111,8 +97,8 @@ export async function POST(request: Request) {
         tournamentId,
         purpose: 'AUTOPAY_SETUP',
       },
-      success_url: `${appBaseUrl}/tournaments/${tournamentId}/register?card=saved`,
-      cancel_url: `${appBaseUrl}/tournaments/${tournamentId}/register?card=cancel`,
+      success_url: `${baseUrl}/tournaments/${tournamentId}/register?card=saved`,
+      cancel_url: `${baseUrl}/tournaments/${tournamentId}/register?card=cancel`,
     })
 
     if (!checkoutSession.url) {

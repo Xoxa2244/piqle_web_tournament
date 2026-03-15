@@ -11,6 +11,7 @@ type ConfirmModalProps = {
   destructive?: boolean
   isPending?: boolean
   confirmDisabled?: boolean
+  size?: 'md' | 'lg'
   onClose: () => void
   onConfirm: () => void
   children?: React.ReactNode
@@ -25,6 +26,7 @@ export default function ConfirmModal({
   destructive = false,
   isPending = false,
   confirmDisabled = false,
+  size = 'md',
   onClose,
   onConfirm,
   children,
@@ -33,7 +35,7 @@ export default function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+      <div className={`bg-white rounded-lg shadow-xl w-full ${size === 'lg' ? 'max-w-lg' : 'max-w-md'} p-6`} onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
         {description ? <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{description}</p> : null}
         {children ? <div className="mb-4">{children}</div> : null}

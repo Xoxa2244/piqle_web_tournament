@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle, Zap } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
 
@@ -180,6 +180,13 @@ export default function AppHeader() {
                   className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
                 >
                   Tournament Management
+                </Link>
+                <Link
+                  href="/play"
+                  className="inline-flex items-center gap-1.5 text-lime-600 hover:text-lime-700 text-sm font-medium transition-colors"
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Play
                 </Link>
               </nav>
             </div>
@@ -514,6 +521,14 @@ export default function AppHeader() {
                       onClick={() => setBurgerOpen(false)}
                     >
                       Players
+                    </Link>
+                    <Link
+                      href="/play"
+                      className="flex items-center gap-1.5 px-4 py-2.5 text-lime-600 hover:bg-gray-50 text-sm font-medium"
+                      onClick={() => setBurgerOpen(false)}
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      Play
                     </Link>
                     {isLoggedIn ? (
                       <>
