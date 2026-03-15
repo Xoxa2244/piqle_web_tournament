@@ -275,3 +275,116 @@ export async function importSessionsToDB(
 
   return result
 }
+
+/**
+ * Re-match player names from CSV embeddings to newly imported users.
+ * Creates PlaySessionBooking records for matches found.
+ */
+export async function rematchSessionBookings(
+  prisma: any,
+  clubId: string,
+): Promise<{ matched: number }> {
+  let matched = 0
+
+  // 1. Load all club followers with user names
+  const followers = await prisma.clubFollower.findMany({
+    where: { clubId },
+    include: { user: { select: { id: true, name: true } } },
+  })
+  const nameToUser = new Map<string, string>()
+  followers.forEach((f: any) => {
+    if (f.user.name) {
+      nameToUser.set(f.user.name.toLowerCase().trim(), f.user.id)
+    }
+  })
+
+  if (nameToUser.size === 0) return { matched }
+
+  // 2. Load all sessions for this club with their existing bookings
+  const sessions = await prisma.playSession.findMany({
+    where: { clubId },
+    select: {
+      id: true,
+      date: true,
+      bookings: { select: { userId: true } },
+    },
+  })
+
+  // 3. Load player names from CSV embeddings
+  const embeddings: Array<{ metadata: any }> = await prisma.documentEmbedding.findMany({
+    where: {
+      clubId,
+      contentType: 'session',
+      sourceTable: 'csv_import',
+    },
+    select: { metadata: true },
+  })
+
+  // Build sessionDate+startTime → playerNames map from embeddings
+  // Embeddings store session chunks — each may contain playerNames array
+  const sessionPlayerNames = new Map<string, string[]>()
+  for (const emb of embeddings) {
+    const meta = emb.metadata as any
+    if (meta?.playerNames && Array.isArray(meta.playerNames)) {
+      // Use session ID if available in metadata, otherwise use date+time key
+      const key = meta.sessionId || `${meta.date}|${meta.startTime}`
+      const existing = sessionPlayerNames.get(key) || []
+      sessionPlayerNames.set(key, [...existing, ...meta.playerNames])
+    }
+  }
+
+  // 4. For each session, check if any playerNames now match a user
+  const bookingsToCreate: Array<{ sessionId: string; userId: string; bookedAt: string; status: string }> = []
+
+  for (const session of sessions) {
+    const existingUserIds = new Set(session.bookings.map((b: any) => b.userId))
+    const dateStr = session.date instanceof Date
+      ? session.date.toISOString().slice(0, 10)
+      : String(session.date).slice(0, 10)
+
+    // Try to find matching player names from embeddings
+    // Check all embeddings — playerNames might be spread across chunks
+    for (const [, playerNames] of Array.from(sessionPlayerNames)) {
+      for (const playerName of playerNames) {
+        const userId = nameToUser.get(playerName.toLowerCase().trim())
+        if (userId && !existingUserIds.has(userId)) {
+          existingUserIds.add(userId)
+          bookingsToCreate.push({
+            sessionId: session.id,
+            userId,
+            bookedAt: dateStr + 'T00:00:00',
+            status: 'CONFIRMED',
+          })
+        }
+      }
+    }
+  }
+
+  // 5. Batch insert new bookings
+  if (bookingsToCreate.length > 0) {
+    const batchSize = 500
+    for (let i = 0; i < bookingsToCreate.length; i += batchSize) {
+      const batch = bookingsToCreate.slice(i, i + batchSize)
+      const params: unknown[] = []
+      const valuesClauses: string[] = []
+
+      batch.forEach((b, j) => {
+        const offset = j * 4
+        valuesClauses.push(
+          `(gen_random_uuid(), $${offset + 1}::uuid, $${offset + 2}, $${offset + 3}::"BookingStatus", $${offset + 4}::timestamp)`
+        )
+        params.push(b.sessionId, b.userId, b.status, b.bookedAt)
+      })
+
+      const inserted = await prisma.$executeRawUnsafe(
+        `INSERT INTO play_session_bookings (id, session_id, user_id, status, booked_at)
+         VALUES ${valuesClauses.join(', ')}
+         ON CONFLICT (session_id, user_id) DO NOTHING`,
+        ...params,
+      )
+      matched += typeof inserted === 'number' ? inserted : 0
+    }
+  }
+
+  return { matched }
+}

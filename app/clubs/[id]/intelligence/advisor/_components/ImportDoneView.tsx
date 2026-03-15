@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { CheckCircle2, Sparkles, ArrowRight, Upload } from 'lucide-react'
+import { CheckCircle2, Sparkles, ArrowRight, Upload, Users } from 'lucide-react'
 
 type ImportDoneViewProps = {
   sessionsImported: number
@@ -10,6 +10,7 @@ type ImportDoneViewProps = {
   playersIndexed: number
   onStartChat: () => void
   onImportMore: () => void
+  onImportMembers?: () => void
 }
 
 export function ImportDoneView({
@@ -18,6 +19,7 @@ export function ImportDoneView({
   playersIndexed,
   onStartChat,
   onImportMore,
+  onImportMembers,
 }: ImportDoneViewProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6">
@@ -71,6 +73,32 @@ export function ImportDoneView({
           </div>
         </CardContent>
       </Card>
+
+      {/* Member Import CTA */}
+      {onImportMembers && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/10 dark:border-blue-800 max-w-lg w-full">
+          <CardContent className="py-6">
+            <div className="flex items-start gap-4">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex-shrink-0">
+                <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-1">
+                  Upload your member list
+                </h3>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                  Add member names, emails, and phone numbers to enable personalized slot filling, reactivation outreach, and email campaigns.
+                </p>
+                <Button size="sm" variant="outline" onClick={onImportMembers} className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300">
+                  <Users className="w-3.5 h-3.5" />
+                  Import Members
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

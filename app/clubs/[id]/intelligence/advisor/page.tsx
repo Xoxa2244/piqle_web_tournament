@@ -3,13 +3,16 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
-import { Loader2 } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Loader2, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { useAdvisorState } from './_hooks/useAdvisorState'
 import { useFileParser } from './_hooks/useFileParser'
 import { OnboardingView } from './_components/OnboardingView'
 import { ChatView } from './_components/ChatView'
 import { FilePreviewView } from './_components/FilePreviewView'
 import { ImportDoneView } from './_components/ImportDoneView'
+import { MemberImportView } from './_components/MemberImportView'
 import type { ParsedSession } from './_hooks/useFileParser'
 
 export default function AIAdvisorPage() {
@@ -33,6 +36,13 @@ export default function AIAdvisorPage() {
     sessionsImported: number
     embeddingsCreated: number
     playersIndexed: number
+  } | null>(null)
+  const [memberImportResult, setMemberImportResult] = useState<{
+    created: number
+    alreadyExisted: number
+    followersCreated: number
+    bookingsMatched: number
+    totalProcessed: number
   } | null>(null)
 
   // Handle file drop/select → go to preview
@@ -171,6 +181,20 @@ export default function AIAdvisorPage() {
     setState('file_preview')
   }
 
+  // Handle member import
+  const handleStartMemberImport = () => {
+    setState('member_import')
+  }
+
+  const handleMemberImportDone = (result: typeof memberImportResult) => {
+    setMemberImportResult(result)
+    setState('member_import_done')
+  }
+
+  const handleMemberImportCancel = () => {
+    setState(dataStatus?.hasData ? 'chat_ready' : 'onboarding')
+  }
+
   // ── Render ──
 
   if (state === 'loading') {
@@ -236,7 +260,72 @@ export default function AIAdvisorPage() {
         playersIndexed={importStats.playersIndexed}
         onStartChat={handleStartChat}
         onImportMore={handleImportMore}
+        onImportMembers={handleStartMemberImport}
       />
+    )
+  }
+
+  if (state === 'member_import') {
+    return (
+      <MemberImportView
+        clubId={clubId}
+        onDone={handleMemberImportDone}
+        onCancel={handleMemberImportCancel}
+      />
+    )
+  }
+
+  if (state === 'member_import_done' && memberImportResult) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6">
+        <Card className="border-green-200 bg-green-50 dark:bg-green-950/10 dark:border-green-800 max-w-lg w-full">
+          <CardContent className="flex flex-col items-center py-12">
+            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
+              <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-green-900 dark:text-green-200 mb-2">
+              Members Imported!
+            </h2>
+            <p className="text-sm text-green-700 dark:text-green-300 text-center max-w-md mb-6">
+              {memberImportResult.created} new members created, {memberImportResult.alreadyExisted} already existed.
+              {memberImportResult.followersCreated > 0 && ` ${memberImportResult.followersCreated} added to club.`}
+              {memberImportResult.bookingsMatched > 0 && ` ${memberImportResult.bookingsMatched} session bookings matched.`}
+            </p>
+            <div className="flex gap-3">
+              <Button onClick={handleStartChat} className="gap-2">
+                <Sparkles className="w-4 h-4" />
+                Start Asking Questions
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" onClick={() => setState('member_import')}>
+                Import More
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="max-w-lg w-full">
+          <CardHeader>
+            <CardTitle className="text-sm">Import Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{memberImportResult.totalProcessed}</p>
+                <p className="text-xs text-muted-foreground">Processed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-lime-600">{memberImportResult.created}</p>
+                <p className="text-xs text-muted-foreground">New Members</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-600">{memberImportResult.bookingsMatched}</p>
+                <p className="text-xs text-muted-foreground">Bookings Matched</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 

@@ -20,6 +20,7 @@ model User {
   isActive                 Boolean                   @default(true)
   gender                   Gender?
   city                     String?
+  phone                    String?
   duprLink                 String?
   duprId                   String?                   @map("dupr_id")
   duprNumericId            BigInt?                   @map("dupr_numeric_id")

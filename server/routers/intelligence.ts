@@ -1831,4 +1831,86 @@ export const intelligenceRouter = createTRPCRouter({
       const content = await generateAndStoreWeeklySummary(ctx.prisma, input.clubId, input.force)
       return { summary: content }
     }),
+
+  // ── Member CSV Import ──
+  importMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      members: z.array(z.object({
+        name: z.string().min(1),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+      })).min(1).max(5000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { randomUUID } = await import('crypto')
+      let created = 0
+      let alreadyExisted = 0
+      let followersCreated = 0
+
+      const userIds: string[] = []
+
+      for (const member of input.members) {
+        const email = member.email?.trim().toLowerCase()
+
+        if (email) {
+          // Upsert by email
+          const user = await ctx.prisma.user.upsert({
+            where: { email },
+            create: {
+              email,
+              name: member.name.trim(),
+              phone: member.phone?.trim() || null,
+            },
+            update: {
+              name: member.name.trim(),
+              ...(member.phone?.trim() ? { phone: member.phone.trim() } : {}),
+            },
+          })
+          userIds.push(user.id)
+          // Check if user was just created (no updatedAt would be close to createdAt)
+          const isNew = Math.abs(user.createdAt.getTime() - user.updatedAt.getTime()) < 1000
+          if (isNew) created++
+          else alreadyExisted++
+        } else {
+          // No email — create with placeholder
+          const placeholderEmail = `${randomUUID()}@imported.iqsport.ai`
+          const user = await ctx.prisma.user.create({
+            data: {
+              email: placeholderEmail,
+              name: member.name.trim(),
+              phone: member.phone?.trim() || null,
+            },
+          })
+          userIds.push(user.id)
+          created++
+        }
+      }
+
+      // Batch create ClubFollower records (skip duplicates)
+      if (userIds.length > 0) {
+        const result = await ctx.prisma.clubFollower.createMany({
+          data: userIds.map(userId => ({
+            clubId: input.clubId,
+            userId,
+          })),
+          skipDuplicates: true,
+        })
+        followersCreated = result.count
+      }
+
+      // Re-match: link newly created users to existing PlaySession bookings by name
+      const { rematchSessionBookings } = await import('@/lib/ai/session-importer')
+      const rematchResult = await rematchSessionBookings(ctx.prisma, input.clubId)
+
+      return {
+        created,
+        alreadyExisted,
+        followersCreated,
+        bookingsMatched: rematchResult.matched,
+        totalProcessed: input.members.length,
+      }
+    }),
 })

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useIntelligenceSettings } from './_hooks/use-intelligence'
+import { ChatWidget } from './_components/ChatWidget'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
@@ -110,6 +111,23 @@ export default function IntelligenceLayout({
 
       {/* Page content */}
       {children}
+
+      {/* Floating AI Chat Widget — hidden on the full Advisor page */}
+      {!pathname.endsWith('/advisor') && (
+        <ChatWidget
+          clubId={clubId}
+          pageContext={
+            pathname.endsWith('/slot-filler') ? 'User is viewing the Slot Filler page — AI recommendations to fill underfilled sessions' :
+            pathname.endsWith('/reactivation') ? 'User is viewing the Reactivation page — inactive member detection and outreach' :
+            pathname.endsWith('/revenue') ? 'User is viewing the Revenue Analytics page — occupancy breakdowns by day, time, format' :
+            pathname.endsWith('/members') ? 'User is viewing the Members page — member health scores and engagement lifecycle' :
+            pathname.endsWith('/campaigns') ? 'User is viewing the Campaigns page — email campaign management' :
+            pathname.endsWith('/sessions') ? 'User is viewing the Sessions page — session list and management' :
+            pathname.endsWith('/events') ? 'User is viewing the Events page — event recommendations' :
+            'User is viewing the Intelligence Dashboard — overview of club metrics'
+          }
+        />
+      )}
     </div>
   )
 }

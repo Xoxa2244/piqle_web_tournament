@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     // 2. Parse request
     step = 'parse';
     const body = await req.json();
-    const { messages, clubId, conversationId } = body;
+    const { messages, clubId, conversationId, pageContext } = body;
 
     if (!clubId || !messages || !Array.isArray(messages)) {
       return new Response('Bad request: clubId and messages are required', { status: 400 });
@@ -241,7 +241,9 @@ export async function POST(req: Request) {
       clubContextBlock = buildClubContextPrompt(intelligenceSettings)
     } catch { /* non-critical */ }
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}
+    const pageContextBlock = pageContext ? `\n\nCurrent page context: ${pageContext}` : ''
+
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${pageContextBlock}
 
 --- Club Data (retrieved from knowledge base) ---
 ${ragContext}

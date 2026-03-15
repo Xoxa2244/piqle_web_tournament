@@ -10,6 +10,8 @@ export type AdvisorState =
   | 'file_preview'
   | 'importing'
   | 'import_done'
+  | 'member_import'
+  | 'member_import_done'
 
 export type ClubDataStatus = {
   hasData: boolean
