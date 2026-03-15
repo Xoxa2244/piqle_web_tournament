@@ -549,6 +549,46 @@ export async function POST(req: Request) {
 
         const totalChunks = chunks.length;
 
+        // Phase 2.5: Create PlaySession + PlaySessionBooking records in DB
+        send({ phase: 'creating_sessions', message: 'Creating session records...' });
+        try {
+          const { importSessionsToDB } = await import('@/lib/ai/session-importer');
+          const importResult = await importSessionsToDB(
+            prisma,
+            clubId,
+            sessions,
+            (current, total, message) => {
+              send({ phase: 'creating_sessions', current, total, message });
+            },
+          );
+          send({
+            phase: 'creating_sessions',
+            message: `Created ${importResult.sessionsCreated} sessions, ${importResult.bookingsCreated} bookings, ${importResult.courtsCreated} courts. Matched ${importResult.playersMatched} players.`,
+            current: sessions.length,
+            total: sessions.length,
+            ...importResult,
+          });
+        } catch (importErr) {
+          console.error('[Import] Session DB creation failed (non-fatal):', importErr);
+          send({ phase: 'creating_sessions', message: `Warning: session records not created: ${importErr instanceof Error ? importErr.message : String(importErr)}` });
+        }
+
+        // Phase 2.6: Auto-trigger campaign engine for this club
+        send({ phase: 'campaign', message: 'Calculating health scores...' });
+        try {
+          const { runHealthCampaign } = await import('@/lib/ai/campaign-engine');
+          const campaignResult = await runHealthCampaign(prisma, clubId);
+          send({
+            phase: 'campaign',
+            message: `Health scores calculated: ${campaignResult.membersProcessed} members, ${campaignResult.messagesSent} messages sent.`,
+            membersProcessed: campaignResult.membersProcessed,
+            messagesSent: campaignResult.messagesSent,
+          });
+        } catch (campaignErr) {
+          console.error('[Import] Campaign trigger failed (non-fatal):', campaignErr);
+          send({ phase: 'campaign', message: `Warning: campaign not triggered: ${campaignErr instanceof Error ? campaignErr.message : String(campaignErr)}` });
+        }
+
         // Phase 3: Generate embeddings in batches with progress
         const batchSize = 100;
         const totalBatches = Math.ceil(totalChunks / batchSize);
