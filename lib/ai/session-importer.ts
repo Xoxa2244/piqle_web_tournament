@@ -100,10 +100,24 @@ export async function importSessionsToDB(
 
   const now = new Date()
 
-  // 3. Create sessions + bookings
+  // 3. Load existing sessions for dedup (ONE query instead of N findFirst)
+  const existingSessions = await prisma.playSession.findMany({
+    where: { clubId },
+    select: { date: true, startTime: true, courtId: true },
+  })
+  const existingKeys = new Set<string>()
+  existingSessions.forEach((s: any) => {
+    const dateStr = s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10)
+    existingKeys.add(`${dateStr}|${s.startTime}|${s.courtId || ''}`)
+  })
+
+  // 4. Create sessions + bookings
+  // Collect all bookings to batch-insert at the end
+  const allBookings: { sessionId: string; userId: string; bookedAt: Date; status: string }[] = []
+
   for (let i = 0; i < sessions.length; i++) {
     const s = sessions[i]
-    if (onProgress && i % 20 === 0) {
+    if (onProgress && i % 500 === 0) {
       onProgress(i, sessions.length, `Creating sessions... (${i}/${sessions.length})`)
     }
 
@@ -113,21 +127,13 @@ export async function importSessionsToDB(
     const format = normalizeFormat(s.format)
     const skillLevel = normalizeSkillLevel(s.skillLevel)
 
-    // Deduplication: check if session already exists
-    const existing = await prisma.playSession.findFirst({
-      where: {
-        clubId,
-        date: sessionDate,
-        startTime: s.startTime,
-        ...(courtId ? { courtId } : {}),
-      },
-      select: { id: true },
-    })
-
-    if (existing) {
+    // In-memory deduplication (O(1) lookup vs DB roundtrip)
+    const dedupKey = `${s.date}|${s.startTime}|${courtId || ''}`
+    if (existingKeys.has(dedupKey)) {
       result.sessionsSkipped++
       continue
     }
+    existingKeys.add(dedupKey) // prevent dupes within same import
 
     // Create PlaySession
     const formatLabel = format.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
@@ -148,14 +154,12 @@ export async function importSessionsToDB(
     })
     result.sessionsCreated++
 
-    // Match player names to club followers and create bookings
+    // Match player names to club followers — collect bookings for batch insert
     if (s.playerNames.length > 0) {
-      const bookingsToCreate: { sessionId: string; userId: string; bookedAt: Date; status: string }[] = []
-
       for (const playerName of s.playerNames) {
         const userId = nameToUser.get(playerName.toLowerCase().trim())
         if (userId) {
-          bookingsToCreate.push({
+          allBookings.push({
             sessionId: playSession.id,
             userId,
             bookedAt: sessionDate,
@@ -166,14 +170,23 @@ export async function importSessionsToDB(
           result.playersUnmatched++
         }
       }
+    }
+  }
 
-      if (bookingsToCreate.length > 0) {
-        const created = await prisma.playSessionBooking.createMany({
-          data: bookingsToCreate,
-          skipDuplicates: true,
-        })
-        result.bookingsCreated += created.count
-      }
+  // 5. Batch insert all bookings at once
+  if (allBookings.length > 0) {
+    if (onProgress) {
+      onProgress(sessions.length, sessions.length, `Creating ${allBookings.length} bookings...`)
+    }
+    // Insert in chunks of 500 to avoid query size limits
+    const bookingBatchSize = 500
+    for (let i = 0; i < allBookings.length; i += bookingBatchSize) {
+      const batch = allBookings.slice(i, i + bookingBatchSize)
+      const created = await prisma.playSessionBooking.createMany({
+        data: batch,
+        skipDuplicates: true,
+      })
+      result.bookingsCreated += created.count
     }
   }
 
