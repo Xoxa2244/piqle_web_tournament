@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -17,7 +17,7 @@ const buildDeepLink = (rawPath: string, payment: string | null, scheme: string) 
   return `${scheme}://${normalizedPath}${query ? `?${query}` : ''}`
 }
 
-export default function MobileReturnPage() {
+function MobileReturnContent() {
   const searchParams = useSearchParams()
   const rawPath = searchParams.get('path') ?? '/'
   const payment = searchParams.get('payment')
@@ -80,5 +80,41 @@ export default function MobileReturnPage() {
         </Link>
       </div>
     </main>
+  )
+}
+
+export default function MobileReturnPage() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            background: '#f8fafc',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              background: '#ffffff',
+              borderRadius: '20px',
+              padding: '24px',
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.08)',
+              textAlign: 'center',
+              color: '#475569',
+            }}
+          >
+            Returning to Piqle...
+          </div>
+        </main>
+      }
+    >
+      <MobileReturnContent />
+    </Suspense>
   )
 }
