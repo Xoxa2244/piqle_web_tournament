@@ -12,7 +12,6 @@ import { prisma } from '@/lib/prisma'
 
 // AI SDK tool() has strict overload types that struggle with union return types from try/catch.
 // Cast to bypass while keeping runtime behavior correct.
-// eslint-disable-next-line no-explicit-any
 const t = tool as (...args: any[]) => any
 
 export function createChatTools(clubId: string): ToolSet {
