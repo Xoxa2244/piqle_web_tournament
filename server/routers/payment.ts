@@ -10,14 +10,14 @@ const CURRENCY = 'usd'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 const MOBILE_APP_SCHEME = 'piqle'
 
-const buildMobileReturnUrl = (path: string, payment: 'success' | 'cancel') => {
+const buildMobileReturnUrl = (baseUrl: string, path: string, payment: 'success' | 'cancel') => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const params = new URLSearchParams({
     path: normalizedPath,
     payment,
     scheme: MOBILE_APP_SCHEME,
   })
-  return `${APP_URL}/mobile-return?${params.toString()}`
+  return `${baseUrl}/mobile-return?${params.toString()}`
 }
 
 const toCents = (value?: Prisma.Decimal | number | null) => {
@@ -450,13 +450,14 @@ export const paymentRouter = createTRPCRouter({
         })
       }
 
+      const appBaseUrl = ctx.requestOrigin || APP_URL
       const mobileReturnPath = input.returnPath?.trim()
       const successUrl = mobileReturnPath
-        ? buildMobileReturnUrl(mobileReturnPath, 'success')
-        : `${APP_URL}/tournaments/${tournament.id}/register?payment=success`
+        ? buildMobileReturnUrl(appBaseUrl, mobileReturnPath, 'success')
+        : `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success`
       const cancelUrl = mobileReturnPath
-        ? buildMobileReturnUrl(mobileReturnPath, 'cancel')
-        : `${APP_URL}/tournaments/${tournament.id}/register?payment=cancel`
+        ? buildMobileReturnUrl(appBaseUrl, mobileReturnPath, 'cancel')
+        : `${appBaseUrl}/tournaments/${tournament.id}/register?payment=cancel`
 
       const stripe = getStripe()
       const session = await stripe.checkout.sessions.create({

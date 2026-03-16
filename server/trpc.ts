@@ -10,12 +10,34 @@ import { prisma } from '@/lib/prisma'
 
 interface CreateContextOptions {
   session: Session | null
+  requestOrigin: string | null
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     session: opts.session,
     prisma,
+    requestOrigin: opts.requestOrigin,
+  }
+}
+
+const getRequestOrigin = (req: Request) => {
+  const originHeader = req.headers.get('origin')?.trim()
+  if (originHeader) {
+    return originHeader.replace(/\/$/, '')
+  }
+
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  const forwardedProto = req.headers.get('x-forwarded-proto')
+  if (forwardedHost) {
+    const protocol = forwardedProto || (forwardedHost.startsWith('localhost') ? 'http' : 'https')
+    return `${protocol}://${forwardedHost}`
+  }
+
+  try {
+    return new URL(req.url).origin
+  } catch {
+    return null
   }
 }
 
@@ -92,6 +114,7 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
 
   return createInnerTRPCContext({
     session,
+    requestOrigin: getRequestOrigin(opts.req),
   })
 }
 
