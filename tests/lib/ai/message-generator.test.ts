@@ -18,7 +18,7 @@ const mockGenerateWithFallback = generateWithFallback as ReturnType<typeof vi.fn
 
 // ── interpolateVariant ──
 
-describe('interpolateVariant', () => {
+describe('AI-генерация сообщений > Подстановка переменных в шаблоны', () => {
   const baseVariant = {
     id: 'llm_checkin_pattern',
     strategy: 'pattern',
@@ -27,7 +27,7 @@ describe('interpolateVariant', () => {
     smsBody: 'Hey {{name}}! "{{session}}" at {{club}}. {{proof}}',
   }
 
-  it('replaces all template variables', () => {
+  it('замена {{name}}, {{club}}, {{session}} на реальные значения', () => {
     const result = interpolateVariant(baseVariant, {
       name: 'Alex',
       club: 'Padel NYC',
@@ -45,7 +45,7 @@ describe('interpolateVariant', () => {
     expect(result.smsBody).toContain('Hey Alex')
   })
 
-  it('cleans up unresolved placeholders', () => {
+  it('нерезолвленные {{...}} удаляются из текста', () => {
     const result = interpolateVariant(baseVariant, {
       name: 'Alex',
       club: 'Padel NYC',
@@ -56,7 +56,7 @@ describe('interpolateVariant', () => {
     expect(result.smsBody).not.toContain('{{')
   })
 
-  it('handles empty values gracefully', () => {
+  it('пустые значения не ломают шаблон', () => {
     const result = interpolateVariant(baseVariant, {
       name: 'Alex',
       club: 'Padel NYC',
@@ -68,13 +68,13 @@ describe('interpolateVariant', () => {
     expect(result.emailBody).not.toContain('{{')
   })
 
-  it('preserves variant id and strategy', () => {
+  it('метаданные варианта (id, strategy) сохраняются', () => {
     const result = interpolateVariant(baseVariant, { name: 'Test', club: 'Club', session: 'S' })
     expect(result.id).toBe('llm_checkin_pattern')
     expect(result.strategy).toBe('pattern')
   })
 
-  it('handles multiple occurrences of same variable', () => {
+  it('{{name}} дважды в тексте → оба заменяются', () => {
     const variant = {
       id: 'test',
       strategy: 'test',
@@ -89,22 +89,22 @@ describe('interpolateVariant', () => {
 
 // ── hasLLMSupport ──
 
-describe('hasLLMSupport', () => {
-  it('returns true for CHECK_IN', () => {
+describe('AI-генерация сообщений > Поддержка типов сообщений', () => {
+  it('CHECK_IN → поддерживается', () => {
     expect(hasLLMSupport('CHECK_IN')).toBe(true)
   })
 
-  it('returns true for RETENTION_BOOST', () => {
+  it('RETENTION_BOOST → поддерживается', () => {
     expect(hasLLMSupport('RETENTION_BOOST')).toBe(true)
   })
 
-  it('returns true for sequence message types', () => {
+  it('типы для цепочек (social_proof, sms_nudge, winback_offer) → поддерживаются', () => {
     expect(hasLLMSupport('social_proof')).toBe(true)
     expect(hasLLMSupport('sms_nudge')).toBe(true)
     expect(hasLLMSupport('winback_offer')).toBe(true)
   })
 
-  it('returns false for unknown types', () => {
+  it('неизвестный тип → не поддерживается', () => {
     expect(hasLLMSupport('UNKNOWN_TYPE')).toBe(false)
     expect(hasLLMSupport('')).toBe(false)
   })
@@ -112,8 +112,8 @@ describe('hasLLMSupport', () => {
 
 // ── getSupportedMessageTypes ──
 
-describe('getSupportedMessageTypes', () => {
-  it('returns all 11 supported types', () => {
+describe('AI-генерация сообщений > Список поддерживаемых типов', () => {
+  it('всего 11 поддерживаемых типов сообщений', () => {
     const types = getSupportedMessageTypes()
     expect(types).toContain('CHECK_IN')
     expect(types).toContain('RETENTION_BOOST')
@@ -132,7 +132,7 @@ describe('getSupportedMessageTypes', () => {
 
 // ── generateLLMMessageVariants ──
 
-describe('generateLLMMessageVariants', () => {
+describe('AI-генерация сообщений > Генерация вариантов через LLM', () => {
   const baseContext = {
     clubName: 'Padel Club NYC',
     tone: 'friendly' as const,
@@ -144,7 +144,7 @@ describe('generateLLMMessageVariants', () => {
     mockGenerateWithFallback.mockReset()
   })
 
-  it('returns 3 variants with correct IDs for CHECK_IN', async () => {
+  it('CHECK_IN → 3 варианта (pattern / social / urgency)', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: JSON.stringify([
         { strategy: 'pattern', emailSubject: 'Miss your routine?', emailBody: 'Hi {{name}}...', smsBody: 'Hey {{name}}!' },
@@ -168,7 +168,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants[0].emailSubject).toBe('Miss your routine?')
   })
 
-  it('returns 3 variants for RETENTION_BOOST', async () => {
+  it('RETENTION_BOOST → 3 варианта (value / community / urgency)', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: JSON.stringify([
         { strategy: 'value', emailSubject: 'We need you', emailBody: 'Body', smsBody: 'SMS' },
@@ -191,7 +191,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants[2].id).toBe('llm_retention_urgency')
   })
 
-  it('handles markdown code fence in LLM response', async () => {
+  it('парсинг ответа с markdown fence (```json...```)', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: '```json\n[{"strategy":"pattern","emailSubject":"Test","emailBody":"Body","smsBody":"SMS"}]\n```',
       model: 'gpt-4o-mini',
@@ -208,7 +208,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants[0].emailSubject).toBe('Test')
   })
 
-  it('returns empty array on invalid JSON', async () => {
+  it('невалидный JSON от LLM → пустой массив (graceful fallback)', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: 'This is not JSON at all',
       model: 'gpt-4o-mini',
@@ -224,7 +224,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants.length).toBe(0)
   })
 
-  it('returns empty array when LLM throws', async () => {
+  it('ошибка API → пустой массив (не падает)', async () => {
     mockGenerateWithFallback.mockRejectedValueOnce(new Error('API key invalid'))
 
     const variants = await generateLLMMessageVariants({
@@ -236,7 +236,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants.length).toBe(0)
   })
 
-  it('returns empty array for unsupported message type', async () => {
+  it('неподдерживаемый тип → LLM не вызывается (экономия токенов)', async () => {
     const variants = await generateLLMMessageVariants({
       messageType: 'UNKNOWN_TYPE',
       context: baseContext,
@@ -248,7 +248,7 @@ describe('generateLLMMessageVariants', () => {
     expect(mockGenerateWithFallback).not.toHaveBeenCalled()
   })
 
-  it('truncates subject/body/sms to limits', async () => {
+  it('обрезка длинных текстов: subject ≤ 60, body ≤ 600, sms ≤ 160', async () => {
     const longSubject = 'A'.repeat(100)
     const longBody = 'B'.repeat(800)
     const longSms = 'C'.repeat(200)
@@ -273,7 +273,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants[0].smsBody.length).toBeLessThanOrEqual(160)
   })
 
-  it('skips malformed entries in response', async () => {
+  it('битые записи от LLM (без emailBody) → пропускаются', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: JSON.stringify([
         { strategy: 'pattern', emailSubject: 'Good', emailBody: 'Body', smsBody: 'SMS' },
@@ -293,7 +293,7 @@ describe('generateLLMMessageVariants', () => {
     expect(variants.length).toBe(2) // Skipped malformed entry
   })
 
-  it('includes performance data in prompt', async () => {
+  it('лучшие/худшие subject lines передаются в промпт LLM', async () => {
     mockGenerateWithFallback.mockResolvedValueOnce({
       text: '[]',
       model: 'gpt-4o-mini',
@@ -322,8 +322,8 @@ describe('generateLLMMessageVariants', () => {
 
 // ── getPerformanceFeedback ──
 
-describe('getPerformanceFeedback', () => {
-  it('returns empty when not enough data', async () => {
+describe('AI-генерация сообщений > Обратная связь по эффективности', () => {
+  it('мало данных (< 3 отправок) → пустой результат', async () => {
     const mockPrisma = {
       aIRecommendationLog: {
         findMany: vi.fn().mockResolvedValueOnce([
@@ -338,7 +338,7 @@ describe('getPerformanceFeedback', () => {
     expect(result.bottom).toHaveLength(0)
   })
 
-  it('returns top and bottom performers when enough data', async () => {
+  it('достаточно данных → top и bottom performers по engagement', async () => {
     const logs = [
       // v1: 5 sends, 4 opens, 2 clicks → great performer
       ...Array.from({ length: 5 }, (_, i) => ({
@@ -371,7 +371,7 @@ describe('getPerformanceFeedback', () => {
     expect(result.top[0].subjectLine).toBe('Great subject')
   })
 
-  it('uses variantId as subject fallback when no originalSubject', async () => {
+  it('нет originalSubject → fallback на variantId', async () => {
     const logs = Array.from({ length: 5 }, () => ({
       variantId: 'checkin_pattern',
       openedAt: new Date(),

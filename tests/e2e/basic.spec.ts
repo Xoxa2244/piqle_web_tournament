@@ -1,20 +1,20 @@
 import { test, expect } from '@playwright/test'
 
-test('homepage loads correctly', async ({ page }) => {
+test('Главная страница загружается (title = "Piqle Tournament Management")', async ({ page }) => {
   await page.goto('/')
   
   await expect(page).toHaveTitle(/Piqle Tournament Management/)
   await expect(page.locator('h1')).toContainText('Piqle Tournament Management')
 })
 
-test('admin page loads correctly', async ({ page }) => {
+test('Админ-страница загружается (h1 = "Tournaments")', async ({ page }) => {
   await page.goto('/admin')
   
   await expect(page).toHaveTitle(/Piqle Tournament Management/)
   await expect(page.locator('h1')).toContainText('Tournaments')
 })
 
-test('removed public board route returns 404', async ({ page }) => {
+test('Удаленный роут /t/invalid-slug → 404', async ({ page }) => {
   const res = await page.goto('/t/invalid-slug')
   expect(res?.status()).toBe(404)
 })

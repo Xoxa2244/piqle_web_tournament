@@ -1,16 +1,12 @@
 /**
- * AI Response Quality Evaluation Tests
+ * SET 12: Качество ответов AI Advisor
  *
- * Run with: npx vitest run tests/ai-eval/eval.test.ts
- * Or interactively: npx vitest tests/ai-eval/eval.test.ts
+ * Запуск: npx vitest run tests/ai-eval/eval.test.ts
  *
- * Requires OPENAI_API_KEY (or ANTHROPIC_API_KEY) in .env.local
+ * Требуется OPENAI_API_KEY или ANTHROPIC_API_KEY в .env.local
  *
- * These tests:
- * 1. Send questions to the AI advisor (using real LLM calls)
- * 2. Run heuristic checks on responses
- * 3. Use LLM-as-judge to score quality
- * 4. Assert minimum quality thresholds
+ * Реальные LLM-вызовы, эвристические проверки,
+ * LLM-as-judge скоринг по 5 метрикам.
  *
  * @vitest-environment node
  */
@@ -87,7 +83,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
   throw new Error('No API key configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env.local')
 }
 
-describe('AI Advisor Quality Evaluation', () => {
+describe('Качество AI Advisor', () => {
   beforeAll(() => {
     const hasKey = !!(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY)
     if (!hasKey) {
@@ -147,7 +143,7 @@ describe('AI Advisor Quality Evaluation', () => {
   }
 
   // Summary report after all tests
-  it('prints evaluation summary', () => {
+  it('итоговый отчет: средние баллы по всем метрикам', () => {
     if (results.length === 0) {
       console.log('\n📊 No results to summarize (tests skipped)\n')
       return

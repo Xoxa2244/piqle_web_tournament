@@ -48,33 +48,33 @@ function makeInput(overrides?: Partial<SessionMatchInput>): SessionMatchInput {
 
 // ── findBestSessionForMember ──
 
-describe('findBestSessionForMember', () => {
-  it('returns the best matching session', () => {
+describe('Подбор сессий > Поиск лучшей сессии', () => {
+  it('находит сессию с максимальным match score', () => {
     const result = findBestSessionForMember(makeInput())
     expect(result).not.toBeNull()
     expect(result!.session.id).toBe('session-1')
   })
 
-  it('returns null when no sessions', () => {
+  it('нет доступных сессий → null', () => {
     const result = findBestSessionForMember(makeInput({ sessions: [] }))
     expect(result).toBeNull()
   })
 
-  it('returns null when all sessions are full', () => {
+  it('все сессии заполнены → null', () => {
     const result = findBestSessionForMember(makeInput({
       sessions: [makeSession({ maxPlayers: 4, _count: { bookings: 4 } })],
     }))
     expect(result).toBeNull()
   })
 
-  it('includes social proof data', () => {
+  it('возвращает social proof: подтвержденные, свободные места, игроки того же уровня', () => {
     const result = findBestSessionForMember(makeInput())
     expect(result!.confirmedCount).toBe(4)
     expect(result!.spotsLeft).toBe(4)
     expect(result!.sameLevelCount).toBeGreaterThanOrEqual(0)
   })
 
-  it('generates deep link URL', () => {
+  it('генерирует deep link URL для бронирования', () => {
     const result = findBestSessionForMember(makeInput())
     expect(result!.deepLinkUrl).toBe('https://app.piqle.io/clubs/test-club/play?session=session-1')
   })
@@ -82,8 +82,8 @@ describe('findBestSessionForMember', () => {
 
 // ── findTopSessionsForMember ──
 
-describe('findTopSessionsForMember', () => {
-  it('returns sessions sorted by matchScore desc', () => {
+describe('Подбор сессий > Топ-N рекомендаций', () => {
+  it('сортировка по match score (лучшие первыми)', () => {
     const sessions = [
       makeSession({ id: 's1', date: new Date('2026-03-16'), startTime: '08:00', format: 'CLINIC', skillLevel: 'BEGINNER' }), // bad match
       makeSession({ id: 's2', date: new Date('2026-03-16'), startTime: '18:00', format: 'OPEN_PLAY', skillLevel: 'INTERMEDIATE' }), // perfect match
@@ -93,7 +93,7 @@ describe('findTopSessionsForMember', () => {
     expect(results[0].matchScore).toBeGreaterThan(results[1].matchScore)
   })
 
-  it('respects limit parameter', () => {
+  it('limit=2 → ровно 2 результата', () => {
     const sessions = Array.from({ length: 5 }, (_, i) =>
       makeSession({ id: `s${i}`, _count: { bookings: 2 } })
     )
@@ -101,7 +101,7 @@ describe('findTopSessionsForMember', () => {
     expect(results).toHaveLength(2)
   })
 
-  it('filters out full sessions', () => {
+  it('заполненные сессии не попадают в результаты', () => {
     const sessions = [
       makeSession({ id: 'full', maxPlayers: 4, _count: { bookings: 4 } }),
       makeSession({ id: 'available', maxPlayers: 8, _count: { bookings: 3 } }),
@@ -111,7 +111,7 @@ describe('findTopSessionsForMember', () => {
     expect(results.map(r => r.session.id)).toContain('available')
   })
 
-  it('counts same-level players correctly', () => {
+  it('подсчет игроков того же уровня (2 INTERMEDIATE из 4)', () => {
     const session = makeSession({
       bookings: [
         { user: { duprRatingDoubles: 3.5 } }, // INTERMEDIATE
@@ -130,8 +130,8 @@ describe('findTopSessionsForMember', () => {
 
 // ── Scoring Logic ──
 
-describe('scoring logic', () => {
-  it('perfect match scores higher than partial match', () => {
+describe('Подбор сессий > Логика скоринга', () => {
+  it('идеальное совпадение (день+время+формат+уровень) → балл выше частичного', () => {
     const perfect = findTopSessionsForMember(makeInput({
       sessions: [makeSession({
         id: 'perfect',
@@ -155,7 +155,7 @@ describe('scoring logic', () => {
     expect(perfect[0].matchScore).toBeGreaterThan(partial[0].matchScore)
   })
 
-  it('ALL_LEVELS sessions get high skill score', () => {
+  it('сессия ALL_LEVELS → высокий балл для всех уровней', () => {
     const allLevels = findTopSessionsForMember(makeInput({
       sessions: [makeSession({ id: 'all', skillLevel: 'ALL_LEVELS' })],
     }))
@@ -168,7 +168,7 @@ describe('scoring logic', () => {
     expect(allLevels[0].matchScore).toBeGreaterThan(mismatch[0].matchScore)
   })
 
-  it('null preferences result in neutral scoring', () => {
+  it('без предпочтений → нейтральный балл (не ломается)', () => {
     const result = findTopSessionsForMember(makeInput({
       preference: null,
       sessions: [makeSession()],
@@ -177,7 +177,7 @@ describe('scoring logic', () => {
     expect(result[0].matchScore).toBeGreaterThan(0)
   })
 
-  it('match score is always 0-100', () => {
+  it('match score всегда в диапазоне 0-100', () => {
     const results = findTopSessionsForMember(makeInput({
       sessions: [makeSession()],
     }))
@@ -190,21 +190,21 @@ describe('scoring logic', () => {
 
 // ── Formatter Helpers ──
 
-describe('formatSessionDate', () => {
-  it('formats date as weekday, month day', () => {
+describe('Подбор сессий > Форматирование даты', () => {
+  it('дата в формате "Monday, Mar 16"', () => {
     const result = formatSessionDate(new Date('2026-03-16T12:00:00'))
     expect(result).toBe('Monday, Mar 16')
   })
 })
 
-describe('formatSessionTime', () => {
-  it('formats time range with AM/PM', () => {
+describe('Подбор сессий > Форматирование времени', () => {
+  it('время в формате "6 PM–8 PM"', () => {
     expect(formatSessionTime('18:00', '20:00')).toBe('6 PM–8 PM')
     expect(formatSessionTime('08:00', '10:00')).toBe('8 AM–10 AM')
     expect(formatSessionTime('12:00', '14:00')).toBe('12 PM–2 PM')
   })
 
-  it('handles minutes in time', () => {
+  it('время с минутами: "6:30 PM–8 PM"', () => {
     expect(formatSessionTime('18:30', '20:00')).toBe('6:30 PM–8 PM')
   })
 })

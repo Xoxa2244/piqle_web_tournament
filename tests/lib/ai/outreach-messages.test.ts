@@ -30,24 +30,24 @@ function makeInput(overrides?: Partial<OutreachMessageInput>): OutreachMessageIn
 
 // ── CHECK_IN Messages ──
 
-describe('generateOutreachMessages — CHECK_IN', () => {
-  it('returns 3 variants when preferredDays provided', () => {
+describe('Шаблоны кампаний > CHECK_IN (напоминание)', () => {
+  it('3 варианта при наличии любимых дней', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput())
     expect(variants).toHaveLength(3)
   })
 
-  it('returns 2 variants when no preferredDays', () => {
+  it('2 варианта без preferredDays (pattern убирается)', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ preferredDays: undefined }))
     expect(variants).toHaveLength(2)
   })
 
-  it('exactly one variant is recommended', () => {
+  it('ровно 1 вариант помечен как recommended', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput())
     const recommended = variants.filter(v => v.recommended)
     expect(recommended).toHaveLength(1)
   })
 
-  it('all variants have emailSubject and emailBody', () => {
+  it('все варианты содержат subject + body + sms', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput())
     for (const v of variants) {
       expect(v.emailSubject).toBeTruthy()
@@ -56,13 +56,13 @@ describe('generateOutreachMessages — CHECK_IN', () => {
     }
   })
 
-  it('all variants have unique IDs', () => {
+  it('уникальные ID у каждого варианта', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput())
     const ids = variants.map(v => v.id)
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('personalizes with member first name', () => {
+  it('персонализация по имени ("Maria" в subject и body)', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ memberName: 'Maria Santos' }))
     for (const v of variants) {
       expect(v.emailBody).toContain('Maria')
@@ -70,20 +70,20 @@ describe('generateOutreachMessages — CHECK_IN', () => {
     }
   })
 
-  it('includes club name in body', () => {
+  it('название клуба в теле письма', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput())
     for (const v of variants) {
       expect(v.emailBody).toContain('Ace Pickleball Club')
     }
   })
 
-  it('includes social proof when sameLevelCount > 0', () => {
+  it('social proof "at your level" при sameLevelCount > 0', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ sameLevelCount: 3 }))
     const hasProof = variants.some(v => v.emailBody.includes('at your level'))
     expect(hasProof).toBe(true)
   })
 
-  it('recommends pattern variant when patternBreak is primary', () => {
+  it('пропустил привычное расписание → рекомендация pattern', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({
       lowComponents: [{ key: 'patternBreak', label: 'Missed sessions', score: 30 }],
     }))
@@ -91,7 +91,7 @@ describe('generateOutreachMessages — CHECK_IN', () => {
     expect(recommended?.id).toBe('checkin_pattern')
   })
 
-  it('recommends recency variant when recency is primary', () => {
+  it('давно не играл → рекомендация recency', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({
       lowComponents: [{ key: 'recency', label: 'Last played 12 days ago', score: 40 }],
     }))
@@ -99,7 +99,7 @@ describe('generateOutreachMessages — CHECK_IN', () => {
     expect(recommended?.id).toBe('checkin_recency')
   })
 
-  it('recommends frequency variant when frequencyTrend is primary', () => {
+  it('частота снизилась → рекомендация frequency', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({
       lowComponents: [{ key: 'frequencyTrend', label: 'Frequency down', score: 35 }],
     }))
@@ -110,26 +110,26 @@ describe('generateOutreachMessages — CHECK_IN', () => {
 
 // ── RETENTION_BOOST Messages ──
 
-describe('generateOutreachMessages — RETENTION_BOOST', () => {
+describe('Шаблоны кампаний > RETENTION_BOOST (возвращение)', () => {
   const retentionInput = makeInput({ riskLevel: 'at_risk', healthScore: 35 })
 
-  it('returns 3 variants when preferredDays provided', () => {
+  it('3 варианта при наличии preferredDays', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', retentionInput)
     expect(variants).toHaveLength(3)
   })
 
-  it('returns 3 variants even without preferredDays (community variant)', () => {
+  it('3 варианта без preferredDays (community вместо pattern)', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', makeInput({ preferredDays: undefined }))
     expect(variants).toHaveLength(3)
   })
 
-  it('exactly one variant is recommended', () => {
+  it('ровно 1 вариант recommended', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', retentionInput)
     const recommended = variants.filter(v => v.recommended)
     expect(recommended).toHaveLength(1)
   })
 
-  it('all variants have emailSubject and emailBody', () => {
+  it('все варианты заполнены (subject + body + sms)', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', retentionInput)
     for (const v of variants) {
       expect(v.emailSubject).toBeTruthy()
@@ -138,14 +138,14 @@ describe('generateOutreachMessages — RETENTION_BOOST', () => {
     }
   })
 
-  it('uses community variant when no preferredDays', () => {
+  it('без preferredDays → community вариант вместо pattern', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', makeInput({ preferredDays: undefined }))
     const ids = variants.map(v => v.id)
     expect(ids).toContain('retention_community')
     expect(ids).not.toContain('retention_pattern')
   })
 
-  it('uses pattern variant when preferredDays exist', () => {
+  it('с preferredDays → pattern вариант', () => {
     const variants = generateOutreachMessages('RETENTION_BOOST', retentionInput)
     const ids = variants.map(v => v.id)
     expect(ids).toContain('retention_pattern')
@@ -155,14 +155,14 @@ describe('generateOutreachMessages — RETENTION_BOOST', () => {
 
 // ── Edge Cases ──
 
-describe('edge cases', () => {
-  it('handles empty lowComponents gracefully', () => {
+describe('Шаблоны кампаний > Граничные случаи', () => {
+  it('пустые lowComponents → не ломается, есть recommended', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ lowComponents: [] }))
     expect(variants.length).toBeGreaterThan(0)
     expect(variants.some(v => v.recommended)).toBe(true)
   })
 
-  it('handles null daysSinceLastActivity', () => {
+  it('null daysSinceLastActivity → подставляется 0', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ daysSinceLastActivity: null }))
     expect(variants.length).toBeGreaterThan(0)
     // Should use 0 as fallback
@@ -170,14 +170,14 @@ describe('edge cases', () => {
     expect(recency?.emailSubject).toContain('0 days')
   })
 
-  it('handles missing suggestedSessionTitle', () => {
+  it('нет suggestedSessionTitle → fallback "our next session"', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ suggestedSessionTitle: undefined }))
     for (const v of variants) {
       expect(v.emailBody).toContain('our next session')
     }
   })
 
-  it('handles member with single name (no space)', () => {
+  it('имя без пробела (Madonna) → корректная обработка', () => {
     const variants = generateOutreachMessages('CHECK_IN', makeInput({ memberName: 'Madonna' }))
     expect(variants[0].emailBody).toContain('Madonna')
   })

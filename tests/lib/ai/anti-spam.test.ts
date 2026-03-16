@@ -30,21 +30,21 @@ const baseInput = {
 
 // ── Rule 1: Opt-out ──
 
-describe('opt-out check', () => {
-  it('blocks when user opted out', async () => {
+describe('Антиспам > Правило 1: Opt-out (отписка)', () => {
+  it('пользователь отписался → блокировка', async () => {
     mockPrisma.userPlayPreference.findUnique.mockResolvedValue({ notificationsOptOut: true })
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput })
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('opted out')
   })
 
-  it('allows when user not opted out', async () => {
+  it('не отписался → разрешено', async () => {
     mockPrisma.userPlayPreference.findUnique.mockResolvedValue({ notificationsOptOut: false })
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput })
     expect(result.allowed).toBe(true)
   })
 
-  it('allows when no preference record exists', async () => {
+  it('нет записи предпочтений → разрешено (отсутствие ≠ отказ)', async () => {
     mockPrisma.userPlayPreference.findUnique.mockRejectedValue(new Error('not found'))
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput })
     expect(result.allowed).toBe(true)
@@ -53,8 +53,8 @@ describe('opt-out check', () => {
 
 // ── Rule 2: Dedup ──
 
-describe('dedup check', () => {
-  it('blocks when already invited to same session', async () => {
+describe('Антиспам > Правило 2: Дедупликация', () => {
+  it('повторное приглашение на ту же сессию → блокировка', async () => {
     // findFirst is called for dedup check (first call on aIRecommendationLog.findFirst)
     mockPrisma.aIRecommendationLog.findFirst
       .mockResolvedValueOnce({ id: 'existing' }) // dedup match → blocked
@@ -63,13 +63,13 @@ describe('dedup check', () => {
     expect(result.reason).toContain('Already invited')
   })
 
-  it('skips dedup when no sessionId', async () => {
+  it('нет sessionId → дедупликация не применяется', async () => {
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     // Should skip dedup and check frequency instead
     expect(result.allowed).toBe(true)
   })
 
-  it('skips dedup for csv-prefixed sessionIds', async () => {
+  it('CSV-импортированная сессия (csv-123) → дедупликация не применяется', async () => {
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: 'csv-123' })
     // findFirst should not be called for dedup
     expect(result.allowed).toBe(true)
@@ -78,8 +78,8 @@ describe('dedup check', () => {
 
 // ── Rule 3: 24-hour frequency cap ──
 
-describe('24-hour frequency cap', () => {
-  it('blocks when sent 2+ messages in 24h', async () => {
+describe('Антиспам > Правило 3: Лимит 24 часа', () => {
+  it('2+ сообщения за 24ч → блокировка', async () => {
     // First count call = 24h check
     mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(2)
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
@@ -87,7 +87,7 @@ describe('24-hour frequency cap', () => {
     expect(result.reason).toContain('24 hours')
   })
 
-  it('allows when sent < 2 messages in 24h', async () => {
+  it('< 2 сообщений за 24ч → разрешено', async () => {
     mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(1) // 24h
     mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(1) // 7d
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
@@ -97,8 +97,8 @@ describe('24-hour frequency cap', () => {
 
 // ── Rule 4: 7-day frequency cap ──
 
-describe('7-day frequency cap', () => {
-  it('blocks when sent 5+ messages in 7 days', async () => {
+describe('Антиспам > Правило 4: Лимит 7 дней', () => {
+  it('5+ сообщений за 7 дней → блокировка', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h — ok
       .mockResolvedValueOnce(5) // 7d — limit reached (increased to 5 for sequences)
@@ -107,7 +107,7 @@ describe('7-day frequency cap', () => {
     expect(result.reason).toContain('7 days')
   })
 
-  it('allows when sent < 5 messages in 7 days', async () => {
+  it('< 5 сообщений за 7 дней → разрешено', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h
       .mockResolvedValueOnce(4) // 7d — under limit
@@ -118,8 +118,8 @@ describe('7-day frequency cap', () => {
 
 // ── Rule 5: Cross-type cooldown ──
 
-describe('cross-type cooldown', () => {
-  it('blocks when different type sent within 4 hours', async () => {
+describe('Антиспам > Правило 5: Cooldown между типами', () => {
+  it('другой тип кампании за последние 4ч → блокировка', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(0) // 24h
       .mockResolvedValueOnce(0) // 7d
@@ -131,7 +131,7 @@ describe('cross-type cooldown', () => {
     expect(result.reason).toContain('cooldown')
   })
 
-  it('allows when no recent cross-type messages', async () => {
+  it('нет недавних сообщений другого типа → разрешено', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(0) // 24h
       .mockResolvedValueOnce(0) // 7d
@@ -143,15 +143,15 @@ describe('cross-type cooldown', () => {
 
 // ── Full Pipeline ──
 
-describe('full anti-spam pipeline', () => {
-  it('allows message when all checks pass', async () => {
+describe('Антиспам > Полный пайплайн', () => {
+  it('все 5 проверок пройдены → allowed = true', async () => {
     // All default mocks return null/0 = all clear
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(true)
     expect(result.reason).toBeUndefined()
   })
 
-  it('stops at first failing rule (short-circuit)', async () => {
+  it('short-circuit: opt-out сразу блокирует (frequency не проверяется)', async () => {
     // Opt-out blocks immediately — should not check frequency
     mockPrisma.userPlayPreference.findUnique.mockResolvedValue({ notificationsOptOut: true })
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput })

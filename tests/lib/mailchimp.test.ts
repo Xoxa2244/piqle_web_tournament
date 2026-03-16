@@ -1,8 +1,8 @@
 /**
- * Tests for lib/mailchimp.ts
+ * SET 11: Интеграция с Mandrill (email-провайдер)
  *
- * Tests the Mandrill API wrapper and webhook signature verification.
- * Uses mocked fetch for API calls.
+ * Отправка транзакционных email через Mandrill API.
+ * Трекинг открытий и кликов. Верификация webhook-подписей.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -25,13 +25,13 @@ afterEach(() => {
 
 // ── isMandrillConfigured ──
 
-describe('isMandrillConfigured', () => {
-  it('returns true when API key is set', () => {
+describe('Mandrill > Конфигурация', () => {
+  it('API ключ установлен → true', () => {
     process.env.MAILCHIMP_TRANSACTIONAL_API_KEY = 'test-key'
     expect(isMandrillConfigured()).toBe(true)
   })
 
-  it('returns false when API key is not set', () => {
+  it('API ключа нет → false', () => {
     delete process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
     expect(isMandrillConfigured()).toBe(false)
   })
@@ -39,8 +39,8 @@ describe('isMandrillConfigured', () => {
 
 // ── sendViaMandrill ──
 
-describe('sendViaMandrill', () => {
-  it('throws when API key is not set', async () => {
+describe('Mandrill > Отправка email', () => {
+  it('нет API ключа → ошибка "not set"', async () => {
     delete process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
     await expect(sendViaMandrill({
       to: 'user@test.com',
@@ -49,7 +49,7 @@ describe('sendViaMandrill', () => {
     })).rejects.toThrow('MAILCHIMP_TRANSACTIONAL_API_KEY is not set')
   })
 
-  it('sends email successfully via Mandrill API', async () => {
+  it('успешная отправка: messageId, status, корректный API вызов', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [{ _id: 'mandrill-msg-123', status: 'sent', email: 'user@test.com' }],
@@ -88,7 +88,7 @@ describe('sendViaMandrill', () => {
     expect(body.message.tags).toContain('campaign')
   })
 
-  it('throws on rejected email', async () => {
+  it('Mandrill отклонил email → ошибка "rejected"', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [{ _id: 'msg-1', status: 'rejected', reject_reason: 'invalid-sender' }],
@@ -101,7 +101,7 @@ describe('sendViaMandrill', () => {
     })).rejects.toThrow('rejected')
   })
 
-  it('throws on API error response', async () => {
+  it('API error 500 → ошибка', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -115,7 +115,7 @@ describe('sendViaMandrill', () => {
     })).rejects.toThrow('API error 500')
   })
 
-  it('strips HTML for text fallback', async () => {
+  it('HTML → автоматический plain text fallback', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [{ _id: 'msg-1', status: 'sent' }],
@@ -135,8 +135,8 @@ describe('sendViaMandrill', () => {
 
 // ── verifyMandrillWebhook ──
 
-describe('verifyMandrillWebhook', () => {
-  it('returns true when webhook key is not set (development)', async () => {
+describe('Mandrill > Верификация webhook', () => {
+  it('нет webhook key (development) → пропуск проверки', async () => {
     delete process.env.MAILCHIMP_WEBHOOK_KEY
 
     const result = await verifyMandrillWebhook(
@@ -148,7 +148,7 @@ describe('verifyMandrillWebhook', () => {
     expect(result).toBe(true)
   })
 
-  it('verifies correct signature', async () => {
+  it('правильная HMAC-SHA1 подпись → true', async () => {
     process.env.MAILCHIMP_WEBHOOK_KEY = 'test-webhook-key'
 
     // Generate expected signature
@@ -176,7 +176,7 @@ describe('verifyMandrillWebhook', () => {
     expect(result).toBe(true)
   })
 
-  it('rejects incorrect signature', async () => {
+  it('неправильная подпись → false (защита от подделки)', async () => {
     process.env.MAILCHIMP_WEBHOOK_KEY = 'test-webhook-key'
 
     const result = await verifyMandrillWebhook(

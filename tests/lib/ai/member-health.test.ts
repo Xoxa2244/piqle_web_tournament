@@ -1,9 +1,8 @@
 /**
- * Tests for member-health.ts
+ * SET 1: Здоровье участников и прогнозирование оттока
  *
- * The scoring functions are private (not exported), so we test through
- * the public generateMemberHealth() function and verify the output.
- * We also recreate the scorer logic inline for isolated unit tests.
+ * Анализирует активность каждого участника клуба и рассчитывает
+ * "оценку здоровья" (0-100) для предсказания оттока.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -78,8 +77,8 @@ function makeInput(overrides?: any) {
 
 // ── generateMemberHealth ──
 
-describe('generateMemberHealth', () => {
-  it('returns members sorted by healthScore ascending (worst first)', () => {
+describe('Здоровье участников > Расчет общего здоровья клуба', () => {
+  it('участники с худшим здоровьем идут первыми в списке', () => {
     const result = generateMemberHealth([
       makeInput({ member: makeMember({ id: 'a' }), history: makeHistory({ daysSinceLastConfirmedBooking: 1, bookingsLastMonth: 6 }), previousPeriodBookings: 4 }),
       makeInput({ member: makeMember({ id: 'b' }), history: makeHistory({ daysSinceLastConfirmedBooking: 30, bookingsLastMonth: 0 }), previousPeriodBookings: 4 }),
@@ -89,7 +88,7 @@ describe('generateMemberHealth', () => {
     expect(result.members[0].healthScore).toBeLessThan(result.members[1].healthScore)
   })
 
-  it('returns summary with correct counts', () => {
+  it('сумма категорий (healthy + watch + atRisk + critical) равна total', () => {
     const result = generateMemberHealth([
       makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 1, bookingsLastMonth: 6 }), previousPeriodBookings: 4 }),
       makeInput({ member: makeMember({ id: 'b' }), history: makeHistory({ daysSinceLastConfirmedBooking: 30, bookingsLastMonth: 0 }), previousPeriodBookings: 4 }),
@@ -99,7 +98,7 @@ describe('generateMemberHealth', () => {
     expect(result.summary.healthy + result.summary.watch + result.summary.atRisk + result.summary.critical).toBe(2)
   })
 
-  it('calculates revenueAtRisk as (atRisk + critical) * price', () => {
+  it('доход под угрозой = (atRisk + critical) × цена сессии', () => {
     const result = generateMemberHealth([
       makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 30, bookingsLastMonth: 0 }), previousPeriodBookings: 5 }),
     ], 99)
@@ -111,30 +110,30 @@ describe('generateMemberHealth', () => {
 
 // ── Health Score Components via generateMemberHealth ──
 
-describe('health score components', () => {
-  describe('frequency trend', () => {
-    it('scores high when bookings stable', () => {
+describe('Здоровье участников > Компоненты оценки', () => {
+  describe('Частота визитов (Frequency Trend)', () => {
+    it('стабильная частота визитов → 100 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ bookingsLastMonth: 4 }), previousPeriodBookings: 4 }),
       ])
       expect(result.members[0].components.frequencyTrend.score).toBe(100)
     })
 
-    it('scores low when significant decline', () => {
+    it('резкое снижение частоты (6→1) → балл ≤ 40', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ bookingsLastMonth: 1 }), previousPeriodBookings: 6 }),
       ])
       expect(result.members[0].components.frequencyTrend.score).toBeLessThanOrEqual(40)
     })
 
-    it('scores 20 when both periods are zero', () => {
+    it('полное бездействие в обоих периодах → 20 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ bookingsLastMonth: 0 }), previousPeriodBookings: 0 }),
       ])
       expect(result.members[0].components.frequencyTrend.score).toBe(20)
     })
 
-    it('scores 90 when new activity (previous=0, recent>0)', () => {
+    it('новая активность после нуля (0→3) → 90 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ bookingsLastMonth: 3 }), previousPeriodBookings: 0 }),
       ])
@@ -142,43 +141,43 @@ describe('health score components', () => {
     })
   })
 
-  describe('recency', () => {
-    it('scores 100 for recent play (≤3 days)', () => {
+  describe('Давность последнего визита (Recency)', () => {
+    it('играл 1-3 дня назад → 100 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 1 }) }),
       ])
       expect(result.members[0].components.recency.score).toBe(100)
     })
 
-    it('scores 80 for 7 days', () => {
+    it('7 дней без визита → 80 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 7 }) }),
       ])
       expect(result.members[0].components.recency.score).toBe(80)
     })
 
-    it('scores 50 for 14 days', () => {
+    it('14 дней без визита → 50 баллов (тревожный сигнал)', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 14 }) }),
       ])
       expect(result.members[0].components.recency.score).toBe(50)
     })
 
-    it('scores 25 for 21 days', () => {
+    it('21 день без визита → 25 баллов (высокий риск)', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 21 }) }),
       ])
       expect(result.members[0].components.recency.score).toBe(25)
     })
 
-    it('scores 0 for 30+ days', () => {
+    it('30+ дней без визита → 0 баллов (критично)', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: 30 }) }),
       ])
       expect(result.members[0].components.recency.score).toBe(0)
     })
 
-    it('scores 10 when null (never booked)', () => {
+    it('никогда не играл (null) → 10 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ daysSinceLastConfirmedBooking: null as any }) }),
       ])
@@ -186,15 +185,15 @@ describe('health score components', () => {
     })
   })
 
-  describe('consistency', () => {
-    it('scores 50 with fewer than 3 bookings', () => {
+  describe('Регулярность визитов (Consistency)', () => {
+    it('менее 3 бронирований → 50 баллов (мало данных)', () => {
       const result = generateMemberHealth([
         makeInput({ bookingDates: makeBookingDates(2) }),
       ])
       expect(result.members[0].components.consistency.score).toBe(50)
     })
 
-    it('scores high for regular weekly bookings', () => {
+    it('еженедельные визиты (каждые 7 дней) → балл ≥ 70', () => {
       // Regular 7-day intervals → low CV → high score
       const result = generateMemberHealth([
         makeInput({ bookingDates: makeBookingDates(6, 7) }),
@@ -203,29 +202,29 @@ describe('health score components', () => {
     })
   })
 
-  describe('no-show trend', () => {
-    it('scores 100 with zero no-shows', () => {
+  describe('Неявки (No-Show Trend)', () => {
+    it('0 неявок → 100 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ totalBookings: 20, noShowCount: 0 }) }),
       ])
       expect(result.members[0].components.noShowTrend.score).toBe(100)
     })
 
-    it('scores 60 with moderate no-shows (≤15%)', () => {
+    it('≤15% неявок (2 из 20) → 60 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ totalBookings: 20, noShowCount: 2 }) }),
       ])
       expect(result.members[0].components.noShowTrend.score).toBe(60)
     })
 
-    it('scores 20 with high no-shows (>15%)', () => {
+    it('>15% неявок (5 из 20) → 20 баллов', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ totalBookings: 20, noShowCount: 5 }) }),
       ])
       expect(result.members[0].components.noShowTrend.score).toBe(20)
     })
 
-    it('scores 50 with zero bookings total', () => {
+    it('нет бронирований вообще → 50 баллов (базовый)', () => {
       const result = generateMemberHealth([
         makeInput({ history: makeHistory({ totalBookings: 0, noShowCount: 0 }) }),
       ])
@@ -236,8 +235,8 @@ describe('health score components', () => {
 
 // ── Risk Level Classification ──
 
-describe('risk level classification', () => {
-  it('healthy member gets "healthy" risk level', () => {
+describe('Здоровье участников > Уровень риска', () => {
+  it('активный участник (играл вчера, 6 визитов/мес) → "healthy"', () => {
     const result = generateMemberHealth([
       makeInput({
         history: makeHistory({ daysSinceLastConfirmedBooking: 1, bookingsLastMonth: 6 }),
@@ -248,7 +247,7 @@ describe('risk level classification', () => {
     expect(result.members[0].riskLevel).toBe('healthy')
   })
 
-  it('inactive member gets "at_risk" or "critical"', () => {
+  it('неактивный участник (25 дней, 0 бронирований) → "at_risk" или "critical"', () => {
     const result = generateMemberHealth([
       makeInput({
         history: makeHistory({ daysSinceLastConfirmedBooking: 25, bookingsLastMonth: 0 }),
@@ -262,8 +261,8 @@ describe('risk level classification', () => {
 
 // ── Lifecycle Stage ──
 
-describe('lifecycle stage', () => {
-  it('returns "churned" when inactive ≥ 21 days', () => {
+describe('Здоровье участников > Стадия жизненного цикла', () => {
+  it('не играл 25+ дней → "churned" (ушел)', () => {
     const result = generateMemberHealth([
       makeInput({
         history: makeHistory({ daysSinceLastConfirmedBooking: 25 }),
@@ -273,7 +272,7 @@ describe('lifecycle stage', () => {
     expect(result.members[0].lifecycleStage).toBe('churned')
   })
 
-  it('returns "onboarding" for members joined < 14 days ago', () => {
+  it('зарегистрирован менее 14 дней назад → "onboarding" (новичок)', () => {
     const result = generateMemberHealth([
       makeInput({
         joinedAt: new Date(Date.now() - 5 * 86400000), // 5 days ago
@@ -283,7 +282,7 @@ describe('lifecycle stage', () => {
     expect(result.members[0].lifecycleStage).toBe('onboarding')
   })
 
-  it('returns "ramping" for members joined 14-60 days ago', () => {
+  it('зарегистрирован 14-60 дней назад → "ramping" (набирает обороты)', () => {
     const result = generateMemberHealth([
       makeInput({
         joinedAt: new Date(Date.now() - 30 * 86400000), // 30 days ago
@@ -293,7 +292,7 @@ describe('lifecycle stage', () => {
     expect(result.members[0].lifecycleStage).toBe('ramping')
   })
 
-  it('churned overrides onboarding/ramping', () => {
+  it('статус "churned" перекрывает "onboarding" (новичок пропал → ушел)', () => {
     const result = generateMemberHealth([
       makeInput({
         joinedAt: new Date(Date.now() - 10 * 86400000), // 10 days ago (should be onboarding)
@@ -306,22 +305,22 @@ describe('lifecycle stage', () => {
 
 // ── Trend Detection ──
 
-describe('trend detection', () => {
-  it('returns "improving" when recent > previous', () => {
+describe('Здоровье участников > Тренд активности', () => {
+  it('визитов стало больше → "improving" (рост)', () => {
     const result = generateMemberHealth([
       makeInput({ history: makeHistory({ bookingsLastMonth: 6 }), previousPeriodBookings: 3 }),
     ])
     expect(result.members[0].trend).toBe('improving')
   })
 
-  it('returns "declining" when recent < previous', () => {
+  it('визитов стало меньше → "declining" (спад)', () => {
     const result = generateMemberHealth([
       makeInput({ history: makeHistory({ bookingsLastMonth: 2 }), previousPeriodBookings: 5 }),
     ])
     expect(result.members[0].trend).toBe('declining')
   })
 
-  it('returns "stable" when equal', () => {
+  it('визитов столько же → "stable" (стабильно)', () => {
     const result = generateMemberHealth([
       makeInput({ history: makeHistory({ bookingsLastMonth: 4 }), previousPeriodBookings: 4 }),
     ])
@@ -331,8 +330,8 @@ describe('trend detection', () => {
 
 // ── Score Boundaries ──
 
-describe('score boundaries', () => {
-  it('health score is always 0-100', () => {
+describe('Здоровье участников > Валидация границ', () => {
+  it('health score всегда в диапазоне 0-100 при любых входных данных', () => {
     // Very bad health
     const bad = generateMemberHealth([
       makeInput({
@@ -356,7 +355,7 @@ describe('score boundaries', () => {
     expect(good.members[0].healthScore).toBeLessThanOrEqual(100)
   })
 
-  it('component weights sum to 100', () => {
+  it('сумма весов компонентов = 100', () => {
     const result = generateMemberHealth([makeInput()])
     const c = result.members[0].components
     const totalWeight = c.frequencyTrend.weight + c.recency.weight + c.consistency.weight + c.patternBreak.weight + c.noShowTrend.weight

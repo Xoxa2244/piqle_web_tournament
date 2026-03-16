@@ -1,8 +1,8 @@
 /**
- * Tests for variant-optimizer.ts
+ * SET 8: A/B тестирование вариантов сообщений
  *
- * Tests the feedback loop that selects message variants based on
- * historical open/click performance data.
+ * Выбор лучшего варианта на основе исторических данных
+ * (open rate, click rate). С explore/exploit балансом.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -37,8 +37,8 @@ beforeEach(() => {
 
 // ── selectBestVariant ──
 
-describe('selectBestVariant', () => {
-  it('returns default when no historical data', async () => {
+describe('A/B тестирование > Выбор лучшего варианта', () => {
+  it('нет исторических данных → default (рекомендованный по умолчанию)', async () => {
     mockPrisma.aIRecommendationLog.groupBy.mockResolvedValue([])
 
     const result = await selectBestVariant(mockPrisma, 'club-1', 'CHECK_IN', variants)
@@ -48,7 +48,7 @@ describe('selectBestVariant', () => {
     expect(result.performances).toHaveLength(0)
   })
 
-  it('returns cold_start when insufficient samples', async () => {
+  it('мало данных → cold_start (недостаточно статистики)', async () => {
     // Some data exists but not enough per variant
     mockPrisma.aIRecommendationLog.groupBy
       .mockResolvedValueOnce([{ variantId: 'checkin_pattern', _count: { id: 5 } }]) // initial query
@@ -62,7 +62,7 @@ describe('selectBestVariant', () => {
     expect(result.recommendedVariantId).toBe('checkin_pattern') // falls back to default
   })
 
-  it('selects best performer with enough data', async () => {
+  it('достаточно данных → best_performer (лучший по engagement)', async () => {
     // Initial groupBy returns data
     mockPrisma.aIRecommendationLog.groupBy
       .mockResolvedValueOnce([
@@ -100,7 +100,7 @@ describe('selectBestVariant', () => {
     }
   })
 
-  it('sometimes explores non-optimal variants', async () => {
+  it('10% шанс exploration (тестирует не лучший вариант)', async () => {
     // Initial groupBy returns data
     mockPrisma.aIRecommendationLog.groupBy
       .mockResolvedValueOnce([
@@ -135,7 +135,7 @@ describe('selectBestVariant', () => {
     }
   })
 
-  it('throws when no variants provided', async () => {
+  it('пустой список вариантов → ошибка', async () => {
     await expect(selectBestVariant(mockPrisma, 'club-1', 'CHECK_IN', []))
       .rejects.toThrow('No variants provided')
   })
@@ -143,8 +143,8 @@ describe('selectBestVariant', () => {
 
 // ── getVariantAnalytics ──
 
-describe('getVariantAnalytics', () => {
-  it('returns empty analytics when no data', async () => {
+describe('A/B тестирование > Аналитика вариантов', () => {
+  it('нет данных → totalMessages=0, openRate=0, clickRate=0', async () => {
     mockPrisma.aIRecommendationLog.findMany.mockResolvedValue([])
 
     const result = await getVariantAnalytics(mockPrisma, 'club-1')
@@ -155,7 +155,7 @@ describe('getVariantAnalytics', () => {
     expect(result.variants).toHaveLength(0)
   })
 
-  it('calculates correct rates from logs', async () => {
+  it('расчет openRate, clickRate, bounceRate для каждого варианта', async () => {
     mockPrisma.aIRecommendationLog.findMany.mockResolvedValue([
       { variantId: 'checkin_pattern', openedAt: new Date(), clickedAt: new Date(), bouncedAt: null, type: 'CHECK_IN' },
       { variantId: 'checkin_pattern', openedAt: new Date(), clickedAt: null, bouncedAt: null, type: 'CHECK_IN' },
@@ -183,7 +183,7 @@ describe('getVariantAnalytics', () => {
     expect(frequency.bounceRate).toBe(1) // 1/1
   })
 
-  it('sorts variants by engagement score descending', async () => {
+  it('сортировка по engagement score (лучший первый)', async () => {
     mockPrisma.aIRecommendationLog.findMany.mockResolvedValue([
       // checkin_frequency: high engagement
       { variantId: 'checkin_frequency', openedAt: new Date(), clickedAt: new Date(), bouncedAt: null, type: 'CHECK_IN' },

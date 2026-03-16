@@ -62,33 +62,33 @@ function mockSequence(overrides: {
 
 // ── getSequenceType ──
 
-describe('getSequenceType', () => {
-  it('maps watch → WATCH', () => {
+describe('Автоматизация цепочек > Маппинг уровня риска → тип цепочки', () => {
+  it('watch → WATCH', () => {
     expect(getSequenceType('watch')).toBe('WATCH')
   })
 
-  it('maps at_risk → AT_RISK', () => {
+  it('at_risk → AT_RISK', () => {
     expect(getSequenceType('at_risk')).toBe('AT_RISK')
   })
 
-  it('maps critical → CRITICAL', () => {
+  it('critical → CRITICAL', () => {
     expect(getSequenceType('critical')).toBe('CRITICAL')
   })
 
-  it('returns null for healthy', () => {
+  it('healthy → null (цепочка не нужна)', () => {
     expect(getSequenceType('healthy')).toBeNull()
   })
 
-  it('returns null for unknown', () => {
+  it('неизвестный статус → null', () => {
     expect(getSequenceType('whatever')).toBeNull()
   })
 })
 
 // ── WATCH Sequence Branching ──
 
-describe('WATCH sequence', () => {
-  describe('Step 0 → Step 1 (Day 3)', () => {
-    it('sends resend_new_subject when email NOT opened', () => {
+describe('Цепочка WATCH (мягкая, 4 шага за 10 дней)', () => {
+  describe('Шаг 0→1 (день 3)', () => {
+    it('email не открыт → resend_new_subject (новый subject)', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 4, // >3 days ago
@@ -102,7 +102,7 @@ describe('WATCH sequence', () => {
       expect(result.stepNumber).toBe(1)
     })
 
-    it('sends social_proof when opened but NOT clicked', () => {
+    it('открыл, не кликнул → social_proof', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 4,
@@ -116,7 +116,7 @@ describe('WATCH sequence', () => {
       expect(result.stepNumber).toBe(1)
     })
 
-    it('waits when clicked (pending SMS on day 7)', () => {
+    it('кликнул → wait (ждем SMS на день 7)', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 4,
@@ -128,7 +128,7 @@ describe('WATCH sequence', () => {
       expect(result.action).toBe('wait')
     })
 
-    it('waits when too early (< 3 days)', () => {
+    it('прошло < 3 дней → wait (слишком рано)', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 2,
@@ -140,8 +140,8 @@ describe('WATCH sequence', () => {
     })
   })
 
-  describe('Step 1 → Step 2 (Day 7)', () => {
-    it('sends SMS nudge when step 0 was clicked but no booking', () => {
+  describe('Шаг 1→2 (день 7)', () => {
+    it('кликнул шаг 0, но не забронировал → SMS nudge', () => {
       const now = new Date()
       const step0Created = new Date(now.getTime() - 8 * 86400000) // 8 days ago
       const step1Created = new Date(now.getTime() - 5 * 86400000) // 5 days ago
@@ -172,8 +172,8 @@ describe('WATCH sequence', () => {
     })
   })
 
-  describe('Step 2 → Step 3 (Day 10)', () => {
-    it('sends final_offer on last step', () => {
+  describe('Шаг 2→3 (день 10)', () => {
+    it('финальный шаг → final_offer', () => {
       const seq = mockSequence({
         currentStep: 2,
         rootCreatedDaysAgo: 11,
@@ -186,8 +186,8 @@ describe('WATCH sequence', () => {
     })
   })
 
-  describe('After Step 3', () => {
-    it('exits as done', () => {
+  describe('После шага 3', () => {
+    it('цепочка завершена → exit_done', () => {
       const seq = mockSequence({ currentStep: 3, rootCreatedDaysAgo: 12, latestCreatedDaysAgo: 2 })
       const result = determineNextStep(seq, 'WATCH')
       expect(result.action).toBe('exit_done')
@@ -197,9 +197,9 @@ describe('WATCH sequence', () => {
 
 // ── AT_RISK Sequence Branching ──
 
-describe('AT_RISK sequence', () => {
-  describe('Step 0 → Step 1 (Day 2)', () => {
-    it('sends urgency_resend when NOT opened', () => {
+describe('Цепочка AT_RISK (агрессивная, 4 шага за 7 дней)', () => {
+  describe('Шаг 0→1 (день 2)', () => {
+    it('email не открыт → urgency_resend', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 3,
@@ -212,7 +212,7 @@ describe('AT_RISK sequence', () => {
       expect(result.stepNumber).toBe(1)
     })
 
-    it('sends value_reminder when opened', () => {
+    it('открыл → value_reminder', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 3,
@@ -225,8 +225,8 @@ describe('AT_RISK sequence', () => {
     })
   })
 
-  describe('Step 1 → Step 2 (Day 5)', () => {
-    it('sends SMS on day 5', () => {
+  describe('Шаг 1→2 (день 5)', () => {
+    it('SMS nudge на день 5', () => {
       const seq = mockSequence({
         currentStep: 1,
         rootCreatedDaysAgo: 6,
@@ -239,8 +239,8 @@ describe('AT_RISK sequence', () => {
     })
   })
 
-  describe('Step 2 → Step 3 (Day 7)', () => {
-    it('sends final_email', () => {
+  describe('Шаг 2→3 (день 7)', () => {
+    it('финальное письмо → final_email', () => {
       const seq = mockSequence({
         currentStep: 2,
         rootCreatedDaysAgo: 8,
@@ -253,8 +253,8 @@ describe('AT_RISK sequence', () => {
     })
   })
 
-  describe('After Step 3', () => {
-    it('exits to win-back', () => {
+  describe('После шага 3', () => {
+    it('переход в win-back → exit_winback', () => {
       const seq = mockSequence({ currentStep: 3, rootCreatedDaysAgo: 12, latestCreatedDaysAgo: 4 })
       const result = determineNextStep(seq, 'AT_RISK')
       expect(result.action).toBe('exit_winback')
@@ -264,9 +264,9 @@ describe('AT_RISK sequence', () => {
 
 // ── CRITICAL Sequence Branching ──
 
-describe('CRITICAL sequence', () => {
-  describe('Step 0 → Step 1 (Day 1)', () => {
-    it('sends immediate SMS next day', () => {
+describe('Цепочка CRITICAL (максимально агрессивная, 4 шага за 7 дней)', () => {
+  describe('Шаг 0→1 (день 1)', () => {
+    it('немедленный SMS на следующий день', () => {
       const seq = mockSequence({
         currentStep: 0,
         rootCreatedDaysAgo: 2,
@@ -279,8 +279,8 @@ describe('CRITICAL sequence', () => {
     })
   })
 
-  describe('Step 1 → Step 2 (Day 3)', () => {
-    it('sends community email when no engagement', () => {
+  describe('Шаг 1→2 (день 3)', () => {
+    it('нет реакции ни на что → community (эмоциональное письмо)', () => {
       const now = new Date()
       const seq = mockSequence({
         currentStep: 1,
@@ -305,7 +305,7 @@ describe('CRITICAL sequence', () => {
       expect(result.stepNumber).toBe(2)
     })
 
-    it('sends social_proof when some engagement exists', () => {
+    it('была какая-то реакция → social_proof', () => {
       const now = new Date()
       const seq = mockSequence({
         currentStep: 1,
@@ -330,8 +330,8 @@ describe('CRITICAL sequence', () => {
     })
   })
 
-  describe('Step 2 → Step 3 (Day 7)', () => {
-    it('sends winback_offer', () => {
+  describe('Шаг 2→3 (день 7)', () => {
+    it('последний шанс → winback_offer', () => {
       const seq = mockSequence({
         currentStep: 2,
         rootCreatedDaysAgo: 8,
@@ -344,8 +344,8 @@ describe('CRITICAL sequence', () => {
     })
   })
 
-  describe('After Step 3', () => {
-    it('exits as churned', () => {
+  describe('После шага 3', () => {
+    it('участник ушел → exit_churned', () => {
       const seq = mockSequence({ currentStep: 3, rootCreatedDaysAgo: 15, latestCreatedDaysAgo: 8 })
       const result = determineNextStep(seq, 'CRITICAL')
       expect(result.action).toBe('exit_churned')
@@ -355,8 +355,8 @@ describe('CRITICAL sequence', () => {
 
 // ── Timing Guards ──
 
-describe('Timing guards', () => {
-  it('waits if min hours between steps not met (WATCH: 48h)', () => {
+describe('Автоматизация цепочек > Защита от слишком частой отправки', () => {
+  it('WATCH: минимум 48ч между шагами → раньше нельзя', () => {
     const seq = mockSequence({
       currentStep: 0,
       rootCreatedDaysAgo: 4, // Day 3 target is met
@@ -376,7 +376,7 @@ describe('Timing guards', () => {
     expect(result.reason).toContain('Too early')
   })
 
-  it('CRITICAL has 24h minimum gap (more aggressive)', () => {
+  it('CRITICAL: минимум 24ч (более агрессивно) → отправка проходит', () => {
     const seq = mockSequence({
       currentStep: 0,
       rootCreatedDaysAgo: 2, // Day 1 target met

@@ -1,8 +1,8 @@
 /**
- * Tests for weekly-summary.ts
+ * SET 9: Еженедельный дайджест
  *
- * Tests date helpers, data collection, LLM response parsing,
- * and fallback summary generation.
+ * Сбор данных за неделю, генерация AI-саммари,
+ * отправка email-отчета администраторам клуба.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -10,8 +10,8 @@ import { getWeekBounds } from '@/lib/ai/weekly-summary'
 
 // ── Date Helpers ──
 
-describe('getWeekBounds', () => {
-  it('returns previous complete Mon-Sun week', () => {
+describe('Еженедельный дайджест > Расчет границ недели', () => {
+  it('возвращает предыдущую полную неделю (Пн–Вс)', () => {
     // Friday March 14, 2026
     const now = new Date('2026-03-14T12:00:00Z')
     const { weekStart, weekEnd } = getWeekBounds(now)
@@ -23,7 +23,7 @@ describe('getWeekBounds', () => {
     expect(weekEnd.getDate()).toBe(8)
   })
 
-  it('handles Monday correctly — returns *previous* week', () => {
+  it('понедельник → возвращает прошлую неделю (не текущую)', () => {
     const monday = new Date('2026-03-09T10:00:00Z')
     const { weekStart, weekEnd } = getWeekBounds(monday)
 
@@ -32,7 +32,7 @@ describe('getWeekBounds', () => {
     expect(weekEnd.getDate()).toBe(8)
   })
 
-  it('handles Sunday correctly', () => {
+  it('воскресенье → корректный расчет предыдущей недели', () => {
     const sunday = new Date('2026-03-08T18:00:00Z')
     const { weekStart, weekEnd } = getWeekBounds(sunday)
 
@@ -44,7 +44,7 @@ describe('getWeekBounds', () => {
     expect(weekEnd.getMonth()).toBe(2) // March
   })
 
-  it('sets weekEnd to 23:59:59.999', () => {
+  it('weekEnd включает весь день (23:59:59.999)', () => {
     const { weekEnd } = getWeekBounds(new Date('2026-03-14T12:00:00Z'))
     expect(weekEnd.getHours()).toBe(23)
     expect(weekEnd.getMinutes()).toBe(59)
@@ -52,7 +52,7 @@ describe('getWeekBounds', () => {
     expect(weekEnd.getMilliseconds()).toBe(999)
   })
 
-  it('sets weekStart to 00:00:00.000', () => {
+  it('weekStart начинается с 00:00:00.000', () => {
     const { weekStart } = getWeekBounds(new Date('2026-03-14T12:00:00Z'))
     expect(weekStart.getHours()).toBe(0)
     expect(weekStart.getMinutes()).toBe(0)
@@ -62,12 +62,12 @@ describe('getWeekBounds', () => {
 
 // ── LLM response parsing ──
 
-describe('generateWeeklySummaryContent', () => {
+describe('Еженедельный дайджест > Генерация саммари через LLM', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('parses valid JSON response', async () => {
+  it('корректный JSON → executiveSummary, wins, risks, keyNumbers', async () => {
     const mockResponse = {
       text: JSON.stringify({
         executiveSummary: 'Great week.',
@@ -112,7 +112,7 @@ describe('generateWeeklySummaryContent', () => {
     expect(result.model).toBe('gpt-4o-mini')
   })
 
-  it('handles markdown fences in LLM response', async () => {
+  it('markdown fence (```json...```) → корректный парсинг', async () => {
     const jsonContent = JSON.stringify({
       executiveSummary: 'Fenced response.',
       wins: ['Win'],
@@ -152,7 +152,7 @@ describe('generateWeeklySummaryContent', () => {
     expect(result.content.executiveSummary).toBe('Fenced response.')
   })
 
-  it('returns fallback summary on LLM failure', async () => {
+  it('ошибка LLM → fallback саммари ("20 members tracked")', async () => {
     vi.doMock('@/lib/ai/llm/provider', () => ({
       generateWithFallback: vi.fn().mockRejectedValue(new Error('API error')),
     }))
@@ -189,12 +189,12 @@ describe('generateWeeklySummaryContent', () => {
 
 // ── Data Collection ──
 
-describe('collectWeeklySummaryData', () => {
+describe('Еженедельный дайджест > Сбор данных за неделю', () => {
   beforeEach(() => {
     vi.resetModules()
   })
 
-  it('collects data from all sources', async () => {
+  it('данные из всех источников: clubName, health, campaigns, sequences', async () => {
     vi.doMock('@/lib/ai/variant-optimizer', () => ({
       getVariantAnalytics: vi.fn().mockResolvedValue({ variants: [] }),
     }))
@@ -229,7 +229,7 @@ describe('collectWeeklySummaryData', () => {
     expect(result.weekLabel).toMatch(/\w+ \d+ – \w+ \d+, \d{4}/)
   })
 
-  it('handles empty data gracefully', async () => {
+  it('пустые данные → "Unknown Club", health.total=0, нули', async () => {
     vi.doMock('@/lib/ai/variant-optimizer', () => ({
       getVariantAnalytics: vi.fn().mockResolvedValue({ variants: [] }),
     }))
@@ -264,8 +264,12 @@ describe('collectWeeklySummaryData', () => {
 
 // ── Email Template ──
 
-describe('sendWeeklySummaryEmail', () => {
-  it('builds HTML with all sections', async () => {
+describe('Еженедельный дайджест > Email-шаблон', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('HTML содержит summary, wins, risks, actions, "View Dashboard"', async () => {
     vi.doMock('@/lib/sendTransactionEmail', () => ({
       sendHtmlEmail: vi.fn(),
     }))
