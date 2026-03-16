@@ -27,8 +27,11 @@ async function runWeeklySummary(request: Request) {
   const startedAt = new Date()
 
   try {
-    const { generateWeeklySummariesForAllClubs } = await import('@/lib/ai/weekly-summary')
+    const { generateWeeklySummariesForAllClubs, sendWeeklySummaryEmails } = await import('@/lib/ai/weekly-summary')
     const stats = await generateWeeklySummariesForAllClubs(prisma)
+
+    // Send digest emails for all newly generated (and previously unsent) summaries
+    const emailStats = await sendWeeklySummaryEmails(prisma)
 
     return NextResponse.json({
       ok: true,
@@ -36,6 +39,8 @@ async function runWeeklySummary(request: Request) {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
       ...stats,
+      emailsSent: emailStats.sent,
+      emailsFailed: emailStats.failed,
     })
   } catch (error: any) {
     console.error('[WeeklySummary] Cron failed:', error)

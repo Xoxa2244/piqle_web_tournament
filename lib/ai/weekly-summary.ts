@@ -1,5 +1,7 @@
 import { generateWithFallback } from '@/lib/ai/llm/provider'
 import { getVariantAnalytics } from '@/lib/ai/variant-optimizer'
+import { sendWeeklySummaryEmail } from '@/lib/ai/weekly-summary-email'
+import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
 
 // ══════════════════════════════════════════════
 //  Weekly AI Summary — Data Collection + LLM
@@ -558,4 +560,133 @@ export async function generateWeeklySummariesForAllClubs(
   }
 
   return { processed: clubs.length, generated, skipped, errors }
+}
+
+// ── Send digest emails for all unsent summaries ──
+
+export async function sendWeeklySummaryEmails(
+  prisma: any,
+): Promise<{ sent: number; failed: number }> {
+  const { weekStart } = getWeekBounds()
+
+  // Find summaries generated this week that haven't been emailed yet
+  const unsent = await prisma.weeklySummary.findMany({
+    where: {
+      weekStart,
+      emailedAt: null,
+    },
+    include: {
+      club: {
+        select: {
+          id: true,
+          name: true,
+          admins: {
+            select: {
+              user: { select: { email: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  let sent = 0
+  let failed = 0
+
+  for (const summary of unsent) {
+    const content = summary.summary as WeeklySummaryContent
+    const clubName = summary.club.name
+    const clubId = summary.club.id
+
+    // Collect admin emails (deduplicate)
+    const allEmails: string[] = summary.club.admins
+      .map((a: any) => a.user.email as string | null)
+      .filter((e: string | null): e is string => !!e && !e.includes('@imported.'))
+    const adminEmails = Array.from(new Set<string>(allEmails))
+
+    if (adminEmails.length === 0) {
+      console.log(`[WeeklySummary] No admin emails for club: ${clubName}, skipping`)
+      continue
+    }
+
+    // Check if club has uploaded session data (at least 1 PlaySession)
+    const sessionCount = await prisma.playSession.count({
+      where: { clubId },
+    })
+
+    for (const email of adminEmails) {
+      try {
+        if (sessionCount === 0) {
+          // No data uploaded — send nudge email instead of digest
+          await sendNudgeEmail(email, clubName, clubId)
+        } else {
+          await sendWeeklySummaryEmail(email, content, clubName, clubId)
+        }
+        sent++
+        console.log(`[WeeklySummary] Email sent to ${email} for club: ${clubName} (${sessionCount === 0 ? 'nudge' : 'digest'})`)
+      } catch (error: any) {
+        failed++
+        console.error(`[WeeklySummary] Email failed for ${email}:`, error.message)
+      }
+    }
+
+    // Mark as emailed (even if some individual sends failed)
+    await prisma.weeklySummary.update({
+      where: { id: summary.id },
+      data: { emailedAt: new Date() },
+    })
+  }
+
+  return { sent, failed }
+}
+
+// ── Nudge email: no data uploaded yet ──
+
+async function sendNudgeEmail(to: string, clubName: string, clubId: string): Promise<void> {
+  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'https://stest.piqle.io'
+  const base = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
+  const advisorUrl = `${base}/clubs/${clubId}/intelligence/advisor`
+
+  const subject = `${clubName} — Your AI insights are waiting for data`
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
+  <table style="width:100%;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;margin-top:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+    <tr>
+      <td style="background:linear-gradient(135deg,#6b7280,#4b5563);padding:24px 32px;">
+        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">&#128202; Weekly AI Summary</h1>
+        <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">${clubName}</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:32px;">
+        <h2 style="margin:0 0 12px;font-size:18px;color:#111827;">We don't have your data yet</h2>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">
+          Your AI-powered weekly digest is ready to go, but we need your court schedule first.
+          Upload a CSV with your sessions, and we'll start generating personalized insights:
+        </p>
+        <ul style="margin:0 0 24px;padding-left:20px;color:#374151;font-size:14px;line-height:1.8;">
+          <li>Occupancy trends &amp; revenue opportunities</li>
+          <li>Member health scores &amp; churn predictions</li>
+          <li>AI-powered slot filling recommendations</li>
+          <li>Campaign performance analytics</li>
+        </ul>
+        <div style="text-align:center;">
+          <a href="${advisorUrl}" style="display:inline-block;background:#84cc16;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">Upload Your Schedule &rarr;</a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
+          This is an automated reminder from IQSport.ai. Once you upload data, you'll receive weekly AI insights instead.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+
+  await sendHtmlEmail(to, subject, html)
 }
