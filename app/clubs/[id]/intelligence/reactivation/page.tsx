@@ -14,6 +14,7 @@ import {
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
+import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
 import ConfirmModal from '@/components/ConfirmModal'
 import { useToast } from '@/components/ui/use-toast'
 import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-intelligence'
@@ -358,10 +359,8 @@ export default function ReactivationPage() {
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        {candidate.member.id.startsWith('csv-') ? (
-                          <Badge variant="secondary" className="text-[10px] font-medium bg-slate-100 text-slate-600">
-                            CSV Player
-                          </Badge>
+                        {isCsvPlayer(candidate.member) ? (
+                          <CsvPlayerBadge />
                         ) : (
                           <>
                             <Button

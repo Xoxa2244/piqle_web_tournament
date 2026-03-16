@@ -14,6 +14,7 @@ import ConfirmModal from '@/components/ConfirmModal'
 import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
+import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
 import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { generateSlotFillerMessages, classifySlotFillerPlayerType, playerTypeLabels } from '@/lib/ai/slot-filler-messages'
@@ -134,7 +135,7 @@ export default function SlotFillerPage() {
 
   const selectAll = () => {
     if (!filteredRecs.length) return
-    setSelectedUserIds(new Set(filteredRecs.map((r: any) => r.member.id)))
+    setSelectedUserIds(new Set(filteredRecs.filter((r: any) => !isCsvPlayer(r.member)).map((r: any) => r.member.id)))
   }
 
   const deselectAll = () => setSelectedUserIds(new Set())
@@ -426,8 +427,8 @@ export default function SlotFillerPage() {
                   >
                     {/* Main row */}
                     <div
-                      className="flex items-center gap-3 p-3 cursor-pointer"
-                      onClick={() => toggleUser(rec.member.id)}
+                      className={`flex items-center gap-3 p-3 ${isCsvPlayer(rec.member) ? 'cursor-default' : 'cursor-pointer'}`}
+                      onClick={() => !isCsvPlayer(rec.member) && toggleUser(rec.member.id)}
                     >
                       {/* Rank/score circle */}
                       <div className="relative shrink-0">
@@ -511,12 +512,16 @@ export default function SlotFillerPage() {
                         )}
                       </button>
 
-                      {/* Checkbox */}
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
-                      }`}>
-                        {isSelected && <CheckCircle className="h-3.5 w-3.5 text-primary-foreground" />}
-                      </div>
+                      {/* Checkbox or CSV badge */}
+                      {isCsvPlayer(rec.member) ? (
+                        <CsvPlayerBadge variant="compact" />
+                      ) : (
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                        }`}>
+                          {isSelected && <CheckCircle className="h-3.5 w-3.5 text-primary-foreground" />}
+                        </div>
+                      )}
                     </div>
 
                     {/* Expanded details */}

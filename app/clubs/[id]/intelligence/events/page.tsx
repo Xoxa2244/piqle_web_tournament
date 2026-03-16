@@ -18,6 +18,7 @@ import { MessageSelector } from '../_components/message-selector'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
+import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
 import ConfirmModal from '@/components/ConfirmModal'
 import {
   generateEventInviteMessages,
@@ -121,7 +122,7 @@ export default function EventGeneratorPage() {
 
     // Build per-player candidates with personalized messages
     const candidates = targetPlayers
-      .filter(p => !p.id.startsWith('csv-'))
+      .filter(p => !isCsvPlayer(p))
       .map(player => {
         const allDuprs = inviteEvent.matchedPlayers.map(p => p.dupr)
         const role = classifyPlayerRole({
@@ -154,7 +155,7 @@ export default function EventGeneratorPage() {
         }
       })
 
-    const csvCount = targetPlayers.filter(p => p.id.startsWith('csv-')).length
+    const csvCount = targetPlayers.filter(p => isCsvPlayer(p)).length
 
     sendEventInvites.mutate(
       {
@@ -198,7 +199,7 @@ export default function EventGeneratorPage() {
     return 'bg-gray-100 text-gray-800'
   }
 
-  const isCsvPlayer = (player: MatchedPlayer) => player.id.startsWith('csv-')
+  // isCsvPlayer is now imported from shared component
 
   // ── Loading ──
   if (isLoading) return <ListSkeleton rows={4} />
@@ -403,7 +404,7 @@ export default function EventGeneratorPage() {
                             {player.dupr}
                           </Badge>
                           {csv ? (
-                            <Badge variant="secondary" className="text-[10px] flex-shrink-0">CSV</Badge>
+                            <CsvPlayerBadge variant="compact" />
                           ) : (
                             <button
                               onClick={(e) => { e.stopPropagation(); openInviteModal(event, 'single', i) }}
