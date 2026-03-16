@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { httpBatchLink } from '@trpc/client'
+import { httpLink } from '@trpc/client'
 import type { PropsWithChildren } from 'react'
 import { useEffect, useState } from 'react'
 
@@ -26,7 +26,7 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
-        httpBatchLink({
+        httpLink({
           url: buildApiUrl('/api/trpc'),
           async headers() {
             const authToken = getClientAuthToken()

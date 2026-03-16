@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose'
 import type { JWTPayload } from 'jose'
 
 import { normalizeEmail } from './emailOtp'
@@ -8,6 +8,25 @@ import { prisma } from './prisma'
 const GOOGLE_PROVIDER = 'google'
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com']
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'))
+
+const summarizeGoogleClientId = (clientId?: string | null) => {
+  const value = clientId?.trim() ?? ''
+  if (!value) return null
+  return `${value.slice(0, 24)}...${value.slice(-18)}`
+}
+
+const summarizeSubject = (subject?: string | null) => {
+  const value = subject?.trim() ?? ''
+  if (!value) return null
+  return `${value.slice(0, 6)}...${value.slice(-6)}`
+}
+
+const maskEmail = (email?: string | null) => {
+  const value = email?.trim() ?? ''
+  if (!value) return null
+  const [localPart, domain = ''] = value.split('@')
+  return `${localPart.slice(0, 2)}***@${domain}`
+}
 
 export class MobileGoogleAuthError extends Error {
   status: number
@@ -65,14 +84,42 @@ const parseBooleanClaim = (value: unknown) => value === true || value === 'true'
 
 export const exchangeGoogleIdTokenForMobileSession = async (idToken: string) => {
   let payload: JWTPayload
+  const allowedGoogleClientIds = getAllowedGoogleClientIds()
+
+  try {
+    const decoded = decodeJwt(idToken)
+    console.log('[Mobile Auth] Decoded Google idToken summary', {
+      aud: decoded.aud,
+      azp: typeof decoded.azp === 'string' ? summarizeGoogleClientId(decoded.azp) : null,
+      iss: decoded.iss,
+      email: typeof decoded.email === 'string' ? maskEmail(decoded.email) : null,
+      emailVerified: decoded.email_verified,
+      sub: typeof decoded.sub === 'string' ? summarizeSubject(decoded.sub) : null,
+      exp: decoded.exp,
+      allowedClientIds: allowedGoogleClientIds.map((clientId) => summarizeGoogleClientId(clientId)),
+    })
+  } catch (error) {
+    console.error('[Mobile Auth] Failed to decode Google idToken before verification', error)
+  }
 
   try {
     const verified = await jwtVerify(idToken, GOOGLE_JWKS, {
       issuer: GOOGLE_ISSUERS,
-      audience: getAllowedGoogleClientIds(),
+      audience: allowedGoogleClientIds,
     })
     payload = verified.payload
-  } catch {
+    console.log('[Mobile Auth] Google idToken verified', {
+      aud: verified.payload.aud,
+      azp: typeof verified.payload.azp === 'string' ? summarizeGoogleClientId(verified.payload.azp) : null,
+      iss: verified.payload.iss,
+      email: typeof verified.payload.email === 'string' ? maskEmail(verified.payload.email) : null,
+      sub: typeof verified.payload.sub === 'string' ? summarizeSubject(verified.payload.sub) : null,
+    })
+  } catch (error) {
+    console.error('[Mobile Auth] Google idToken verification failed', {
+      message: error instanceof Error ? error.message : String(error),
+      allowedClientIds: allowedGoogleClientIds.map((clientId) => summarizeGoogleClientId(clientId)),
+    })
     throw new MobileGoogleAuthError(
       'GOOGLE_TOKEN_INVALID',
       'Google sign-in could not be verified.',
@@ -115,6 +162,12 @@ export const exchangeGoogleIdTokenForMobileSession = async (idToken: string) => 
   })
 
   let user = existingAccount?.user ?? (await prisma.user.findUnique({ where: { email } }))
+  console.log('[Mobile Auth] Resolved Google account', {
+    providerAccountId: summarizeSubject(providerAccountId),
+    email: maskEmail(email),
+    hasExistingAccount: Boolean(existingAccount),
+    hasExistingUser: Boolean(user),
+  })
 
   if (!user) {
     user = await prisma.user.create({
@@ -174,6 +227,11 @@ export const exchangeGoogleIdTokenForMobileSession = async (idToken: string) => 
   })
 
   await linkPlayersToUserByEmail(user.id, email)
+
+  console.log('[Mobile Auth] Mobile session ready', {
+    userId: user.id,
+    email: maskEmail(user.email),
+  })
 
   return {
     token: createMobileAccessToken(user.id),

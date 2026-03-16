@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Linking, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -21,6 +21,32 @@ const getSlotCount = (teamKind: TeamKind, tournamentFormat?: string | null) => {
   return 2
 }
 
+const getTeamSlots = (team: any, slotCount: number) => {
+  const slots = new Array(slotCount).fill(null)
+  const sortedPlayers = [...(team.teamPlayers ?? [])].sort((left: any, right: any) => {
+    if (
+      left.slotIndex !== null &&
+      left.slotIndex !== undefined &&
+      right.slotIndex !== null &&
+      right.slotIndex !== undefined
+    ) {
+      return left.slotIndex - right.slotIndex
+    }
+    if (left.slotIndex !== null && left.slotIndex !== undefined) return -1
+    if (right.slotIndex !== null && right.slotIndex !== undefined) return 1
+    return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+  })
+
+  sortedPlayers.forEach((teamPlayer: any, index: number) => {
+    const targetIndex = teamPlayer.slotIndex ?? index
+    if (targetIndex < slotCount) {
+      slots[targetIndex] = teamPlayer
+    }
+  })
+
+  return slots
+}
+
 const isRegistrationOpen = (tournament: {
   registrationStartDate?: string | Date | null
   registrationEndDate?: string | Date | null
@@ -33,19 +59,27 @@ const isRegistrationOpen = (tournament: {
 }
 
 export default function TournamentRegistrationScreen() {
-  const params = useLocalSearchParams<{ id: string }>()
+  const params = useLocalSearchParams<{ id: string; payment?: string }>()
   const tournamentId = params.id
+  const paymentState = typeof params.payment === 'string' ? params.payment : null
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
+  const api = trpc as any
   const utils = trpc.useUtils()
 
   const seatMapQuery = trpc.registration.getSeatMap.useQuery(
     { tournamentId },
     { enabled: Boolean(tournamentId) && isAuthenticated }
   )
+  const protectedQueriesEnabled =
+    Boolean(tournamentId) && isAuthenticated && Boolean(seatMapQuery.data)
   const myStatusQuery = trpc.registration.getMyStatus.useQuery(
     { tournamentId },
-    { enabled: Boolean(tournamentId) && isAuthenticated }
+    { enabled: protectedQueriesEnabled }
+  )
+  const accessQuery = api.tournament.get.useQuery(
+    { id: tournamentId },
+    { enabled: protectedQueriesEnabled, retry: false }
   )
 
   const claimSlot = trpc.registration.claimSlot.useMutation({
@@ -82,6 +116,28 @@ export default function TournamentRegistrationScreen() {
   })
   const createCheckout = trpc.payment.createCheckoutSession.useMutation()
 
+  useEffect(() => {
+    if (!tournamentId || !paymentState) return
+
+    router.replace(`/tournaments/${tournamentId}/register`)
+    void utils.registration.getMyStatuses.invalidate()
+    void Promise.all([
+      seatMapQuery.refetch(),
+      myStatusQuery.refetch(),
+    ])
+
+    if (paymentState === 'success') {
+      const timeoutId = setTimeout(() => {
+        void Promise.all([
+          seatMapQuery.refetch(),
+          myStatusQuery.refetch(),
+        ])
+      }, 1500)
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [myStatusQuery, paymentState, router, seatMapQuery, tournamentId, utils.registration.getMyStatuses])
+
   if (!isAuthenticated) {
     return (
       <Screen title="Register" subtitle="Sign in to claim a slot or join a waitlist.">
@@ -101,6 +157,9 @@ export default function TournamentRegistrationScreen() {
 
   const seatMap = seatMapQuery.data
   const myStatus = myStatusQuery.data
+  const accessInfo = accessQuery.data?.userAccessInfo
+  const hasPrivilegedAccess = Boolean(accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
+  const canLeaveTournament = myStatus?.status === 'active'
   const registrationOpen = isRegistrationOpen(seatMap)
   const isPaidTournament = (seatMap.entryFeeCents ?? 0) > 0
 
@@ -113,23 +172,35 @@ export default function TournamentRegistrationScreen() {
           <Pill label={seatMap.paymentTiming === 'PAY_BY_DEADLINE' ? 'Pay by deadline' : 'Pay in 15 minutes'} />
         </View>
 
-        {myStatus?.status === 'active' ? (
+        {canLeaveTournament ? (
           <View style={styles.statusCard}>
-            <Text style={styles.statusTitle}>You are registered</Text>
-            <Text style={styles.statusBody}>{myStatus.divisionName} · {myStatus.teamName}</Text>
+            <Text style={styles.statusTitle}>
+              {hasPrivilegedAccess ? 'You are registered and have admin access' : 'You are registered'}
+            </Text>
+            <Text style={styles.statusBody}>
+              {`${myStatus?.divisionName} · ${myStatus?.teamName}`}
+            </Text>
             {isPaidTournament && !myStatus.isPaid ? (
               <ActionButton
                 label={`Pay now ${formatMoney(seatMap.entryFeeCents)}`}
                 loading={createCheckout.isPending}
                 onPress={async () => {
-                  const result = await createCheckout.mutateAsync({ tournamentId })
+                  const result = await createCheckout.mutateAsync({
+                    tournamentId,
+                    returnPath: `/tournaments/${tournamentId}/register`,
+                  })
                   if (result.url) {
                     await Linking.openURL(result.url)
                   }
                 }}
               />
             ) : null}
-            <ActionButton label="Cancel registration" variant="danger" loading={cancelRegistration.isPending} onPress={() => cancelRegistration.mutate({ tournamentId })} />
+            <ActionButton
+              label="Leave Tournament"
+              variant="danger"
+              loading={cancelRegistration.isPending}
+              onPress={() => cancelRegistration.mutate({ tournamentId })}
+            />
           </View>
         ) : myStatus?.status === 'waitlisted' ? (
           <View style={styles.statusCard}>
@@ -137,20 +208,29 @@ export default function TournamentRegistrationScreen() {
             <Text style={styles.statusBody}>We will keep your spot in line for the selected division.</Text>
             <ActionButton label="Leave waitlist" variant="secondary" loading={leaveWaitlist.isPending} onPress={() => leaveWaitlist.mutate({ divisionId: myStatus.divisionId })} />
           </View>
+        ) : hasPrivilegedAccess ? (
+          <View style={styles.statusCard}>
+            <Text style={styles.statusTitle}>You have admin access</Text>
+            <Text style={styles.statusBody}>
+              You can still join a slot or waitlist from this screen if you want to participate.
+            </Text>
+          </View>
         ) : null}
       </SurfaceCard>
 
       {seatMap.divisions.map((division: any) => {
         const slotCount = getSlotCount(division.teamKind, seatMap.format)
+        const teamsWithSlots = (division.teams ?? []).map((team: any) => ({
+          team,
+          slots: getTeamSlots(team, slotCount),
+        }))
+        const hasAvailableSlots = teamsWithSlots.some(({ slots }: { slots: any[] }) => slots.some((slot) => !slot))
+
         return (
           <SurfaceCard key={division.id} tone="soft">
             <SectionTitle title={division.name} subtitle={`${division.teams.length} teams`} />
             <View style={{ marginTop: spacing.md, gap: 12 }}>
-              {division.teams.map((team: any) => {
-                const slots = Array.from({ length: slotCount }, (_, index) => {
-                  return team.teamPlayers.find((item: any) => item.slotIndex === index) || team.teamPlayers[index] || null
-                })
-
+              {teamsWithSlots.map(({ team, slots }: { team: any; slots: any[] }) => {
                 return (
                   <View key={team.id} style={styles.teamCard}>
                     <Text style={styles.teamName}>{team.name}</Text>
@@ -181,7 +261,7 @@ export default function TournamentRegistrationScreen() {
               })}
             </View>
 
-            {myStatus?.status !== 'waitlisted' && myStatus?.status !== 'active' ? (
+            {!hasAvailableSlots && myStatus?.status !== 'waitlisted' && myStatus?.status !== 'active' ? (
               <View style={{ marginTop: spacing.md }}>
                 <ActionButton
                   label="Join waitlist"

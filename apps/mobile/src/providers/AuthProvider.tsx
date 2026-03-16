@@ -15,6 +15,18 @@ const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim(
 const GOOGLE_REBUILD_MESSAGE =
   'Google sign-in requires a rebuilt native app. Reinstall the dev build and try again.'
 
+const summarizeGoogleClientId = (clientId?: string | null) => {
+  const value = clientId?.trim() ?? ''
+  if (!value) return null
+  return `${value.slice(0, 24)}...${value.slice(-18)}`
+}
+
+const getGoogleErrorCode = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('code' in error)) return null
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : code != null ? String(code) : null
+}
+
 let googleSignInModulePromise: Promise<GoogleSignInModule> | null = null
 let googleSignInConfigPromise: Promise<GoogleSignInRuntimeConfig> | null = null
 let isGoogleSigninConfigured = false
@@ -31,17 +43,29 @@ const loadGoogleSignInModule = () => {
 
 const loadGoogleSignInConfig = () => {
   if (GOOGLE_WEB_CLIENT_ID) {
-    return Promise.resolve({
+    const runtimeConfig = {
       webClientId: GOOGLE_WEB_CLIENT_ID,
       iosClientId: GOOGLE_IOS_CLIENT_ID || null,
+    }
+    console.log('[Google Sign-In] Using env override config', {
+      webClientId: summarizeGoogleClientId(runtimeConfig.webClientId),
+      iosClientId: summarizeGoogleClientId(runtimeConfig.iosClientId),
     })
+    return Promise.resolve(runtimeConfig)
   }
 
   if (!googleSignInConfigPromise) {
-    googleSignInConfigPromise = authApi.getGoogleSignInConfig().then((config) => ({
-      webClientId: config.webClientId,
-      iosClientId: GOOGLE_IOS_CLIENT_ID || config.iosClientId,
-    }))
+    googleSignInConfigPromise = authApi.getGoogleSignInConfig().then((config) => {
+      const runtimeConfig = {
+        webClientId: config.webClientId,
+        iosClientId: GOOGLE_IOS_CLIENT_ID || config.iosClientId,
+      }
+      console.log('[Google Sign-In] Loaded backend runtime config', {
+        webClientId: summarizeGoogleClientId(runtimeConfig.webClientId),
+        iosClientId: summarizeGoogleClientId(runtimeConfig.iosClientId),
+      })
+      return runtimeConfig
+    })
   }
 
   return googleSignInConfigPromise
@@ -57,11 +81,16 @@ const configureGoogleSignin = async (GoogleSignin: GoogleSignInModule['GoogleSig
     )
   }
 
+  console.log('[Google Sign-In] Configuring native SDK', {
+    webClientId: summarizeGoogleClientId(config.webClientId),
+    iosClientId: summarizeGoogleClientId(config.iosClientId),
+  })
   GoogleSignin.configure({
     webClientId: config.webClientId,
     ...(config.iosClientId ? { iosClientId: config.iosClientId } : {}),
   })
 
+  console.log('[Google Sign-In] Native SDK configured')
   isGoogleSigninConfigured = true
 }
 
@@ -163,6 +192,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       setSession(nextSession)
     },
     async signInWithGoogle() {
+      console.log('[Google Sign-In] Starting sign-in flow')
       const googleSignIn = await loadGoogleSignInModule().catch((error) => {
         throw normalizeGoogleSignInError(error)
       })
@@ -170,9 +200,17 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
 
       try {
         await configureGoogleSignin(GoogleSignin)
+        console.log('[Google Sign-In] Checking Play Services availability')
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+        console.log('[Google Sign-In] Play Services available')
 
         const response = await GoogleSignin.signIn()
+        console.log('[Google Sign-In] Native sign-in response received', {
+          success: isSuccessResponse(response),
+          hasData: 'data' in response,
+          hasIdToken: 'data' in response ? Boolean(response.data?.idToken) : false,
+          userEmail: 'data' in response ? response.data?.user?.email ?? null : null,
+        })
         if (!isSuccessResponse(response)) {
           throw new Error('Google sign-in was cancelled.')
         }
@@ -182,10 +220,24 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
           throw new Error('Google sign-in did not return an identity token.')
         }
 
+        console.log('[Google Sign-In] Sending idToken to backend', {
+          idTokenLength: idToken.length,
+          userEmail: response.data.user?.email ?? null,
+        })
         const nextSession = await authApi.signInWithGoogle({ idToken })
+        console.log('[Google Sign-In] Backend session created', {
+          userId: nextSession.user.id,
+          email: nextSession.user.email,
+        })
         await authStorage.save(nextSession)
         setSession(nextSession)
       } catch (error) {
+        console.error('[Google Sign-In] Native sign-in failed', {
+          code: getGoogleErrorCode(error),
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        })
+        console.error('[Google Sign-In] Raw error object', error)
         if (isErrorWithCode(error)) {
           const nextMessage = getGoogleErrorMessage(error.code, statusCodes)
           if (nextMessage) {

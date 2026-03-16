@@ -11,14 +11,67 @@ import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 
-const statusLabel = (status?: string | null) => {
+const statusLabel = (status?: string | null, hasPrivilegedAccess = false) => {
+  if (hasPrivilegedAccess) return 'Admin'
   if (status === 'active') return 'Confirmed'
   if (status === 'waitlisted') return 'Pending'
   return 'Open'
 }
 
+const getEntryFeeCents = (tournament: { entryFee?: string | number | null; entryFeeCents?: number | null }) => {
+  if (typeof tournament.entryFeeCents === 'number') return tournament.entryFeeCents
+  if (tournament.entryFee != null && Number(tournament.entryFee) > 0) {
+    return Math.round(Number(tournament.entryFee) * 100)
+  }
+  return 0
+}
+
+const getTournamentPhase = (tournament: {
+  startDate: string | Date
+  endDate: string | Date
+}) => {
+  const now = new Date()
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+  const endWithGrace = new Date(end)
+  endWithGrace.setHours(endWithGrace.getHours() + 12)
+  const nextDay = new Date(now)
+  nextDay.setDate(nextDay.getDate() + 1)
+  nextDay.setHours(0, 0, 0, 0)
+
+  if (endWithGrace < nextDay) return 'past' as const
+  if (start > now) return 'upcoming' as const
+  return 'in_progress' as const
+}
+
+const isTournamentInCurrentMonth = (tournament: {
+  startDate: string | Date
+  endDate: string | Date
+}) => {
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const start = new Date(tournament.startDate)
+  const end = new Date(tournament.endDate)
+
+  return end >= monthStart && start < nextMonthStart
+}
+
+const getInvolvementMeta = (
+  tournament: any,
+  currentUserId: string | undefined,
+  status: string | null | undefined,
+  accessibleTournamentIds: Set<string>
+) => {
+  const isParticipant = status === 'active' || status === 'waitlisted'
+  const isOwner = Boolean(currentUserId && tournament.user?.id === currentUserId)
+  const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
+
+  return { isParticipant, hasPrivilegedAccess }
+}
+
 export default function HomeTab() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
 
@@ -31,6 +84,14 @@ export default function HomeTab() {
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
   )
+  const accessibleTournamentsQuery = api.tournament.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+  })
+  const accessibleTournamentIds = useMemo(
+    () => new Set((((accessibleTournamentsQuery.data ?? []) as any[]).map((item) => item.id) as string[])),
+    [accessibleTournamentsQuery.data]
+  )
+  const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string; isPaid?: boolean }>
 
   const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
@@ -40,20 +101,72 @@ export default function HomeTab() {
       return []
     }
 
+    return items
+      .filter((item) => {
+        const phase = getTournamentPhase(item)
+        if (phase === 'past') return false
+
+        const status = statuses[item.id]?.status
+        const { isParticipant, hasPrivilegedAccess } = getInvolvementMeta(
+          item,
+          user?.id,
+          status,
+          accessibleTournamentIds
+        )
+
+        return isParticipant || hasPrivilegedAccess
+      })
+      .sort((left, right) => {
+        const leftPhase = getTournamentPhase(left)
+        const rightPhase = getTournamentPhase(right)
+        const phaseRank = { in_progress: 0, upcoming: 1, past: 2 } as const
+        if (phaseRank[leftPhase] !== phaseRank[rightPhase]) {
+          return phaseRank[leftPhase] - phaseRank[rightPhase]
+        }
+        return new Date(left.startDate).getTime() - new Date(right.startDate).getTime()
+      })
+  }, [accessibleTournamentIds, isAuthenticated, statuses, tournamentsQuery.data, user?.id])
+
+  const monthlyEvents = useMemo(() => {
+    const items = (tournamentsQuery.data ?? []) as any[]
+    if (!items.length || !isAuthenticated) return []
+
     return items.filter((item) => {
-      const status = registrationStatusesQuery.data?.[item.id]?.status
-      return status === 'active' || status === 'waitlisted'
+      if (!isTournamentInCurrentMonth(item)) return false
+
+      const status = statuses[item.id]?.status
+      const { isParticipant, hasPrivilegedAccess } = getInvolvementMeta(
+        item,
+        user?.id,
+        status,
+        accessibleTournamentIds
+      )
+
+      return isParticipant || hasPrivilegedAccess
     })
-  }, [isAuthenticated, registrationStatusesQuery.data, tournamentsQuery.data])
+  }, [accessibleTournamentIds, isAuthenticated, statuses, tournamentsQuery.data, user?.id])
 
   const myEvents = useMemo(() => allMyEvents.slice(0, 3), [allMyEvents])
 
   const isMyEventsLoading =
-    tournamentsQuery.isLoading || (isAuthenticated && tournamentIds.length > 0 && registrationStatusesQuery.isLoading)
+    tournamentsQuery.isLoading ||
+    (myEvents.length === 0 &&
+      isAuthenticated &&
+      tournamentIds.length > 0 &&
+      registrationStatusesQuery.isLoading)
 
-  const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string }>
-  const confirmed = Object.values(statuses).filter((value) => value.status === 'active').length
-  const waitlists = Object.values(statuses).filter((value) => value.status === 'waitlisted').length
+  const confirmed = monthlyEvents.filter(
+    (item) => statuses[item.id]?.status === 'active'
+  ).length
+  const adminCount = monthlyEvents.filter((item) => {
+    const status = statuses[item.id]?.status
+    return getInvolvementMeta(item, user?.id, status, accessibleTournamentIds).hasPrivilegedAccess
+  }).length
+
+  const monthlyEventCount = monthlyEvents.length
+
+  const statusData = statuses
+  const myEventStatusFor = (eventId: string) => statusData[eventId]?.status
 
   return (
     <PageLayout>
@@ -93,9 +206,9 @@ export default function HomeTab() {
 
       {!isMyEventsLoading && myEvents.length === 0 ? (
         <SurfaceCard tone="soft">
-          <Text style={styles.emptyEventsTitle}>No events yet</Text>
+          <Text style={styles.emptyEventsTitle}>No upcoming events right now</Text>
           <Text style={styles.emptyEventsBody}>
-            Once you join a tournament, it will show up here.{' '}
+            Tournaments where you are registered or have admin access will show up here.{' '}
             <Text style={styles.emptyEventsLink} onPress={() => router.push('/tournaments')}>
               Find events here.
             </Text>
@@ -104,11 +217,17 @@ export default function HomeTab() {
       ) : null}
 
       {myEvents.map((event) => {
-        const status = registrationStatusesQuery.data?.[event.id]?.status
+        const status = myEventStatusFor(event.id)
+        const isOwner = Boolean(user?.id && event.user?.id === user.id)
+        const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(event.id))
+        const isUnpaid =
+          status === 'active' &&
+          statuses[event.id]?.isPaid === false &&
+          getEntryFeeCents(event) > 0
         return (
           <Pressable
             key={event.id}
-            onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: event.id } })}
+            onPress={() => router.push(`/tournaments/${event.id}`)}
           >
             <SurfaceCard>
               <View style={styles.eventRow}>
@@ -118,7 +237,13 @@ export default function HomeTab() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.eventTopRow}>
                     <Text style={styles.eventTitle}>{event.title}</Text>
-                    <Pill label={statusLabel(status)} tone={status === 'waitlisted' ? 'warning' : 'success'} />
+                    <View style={styles.eventStatusBadges}>
+                      <Pill
+                        label={statusLabel(status, hasPrivilegedAccess)}
+                        tone={hasPrivilegedAccess ? 'primary' : status === 'waitlisted' ? 'warning' : 'success'}
+                      />
+                      {isUnpaid ? <Pill label="Unpaid" tone="warning" /> : null}
+                    </View>
                   </View>
                   <View style={styles.eventMetaRow}>
                     <Feather name="calendar" size={14} color={palette.textMuted} />
@@ -147,7 +272,7 @@ export default function HomeTab() {
         <Text style={styles.monthTitle}>This Month</Text>
         <View style={styles.statsRow}>
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{allMyEvents.length}</Text>
+            <Text style={styles.statValue}>{monthlyEventCount}</Text>
             <Text style={styles.statLabel}>Events</Text>
           </View>
           <View style={styles.statDivider} />
@@ -157,8 +282,8 @@ export default function HomeTab() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statCell}>
-            <Text style={styles.statValue}>{waitlists}</Text>
-            <Text style={styles.statLabel}>Waitlist</Text>
+            <Text style={styles.statValue}>{adminCount}</Text>
+            <Text style={styles.statLabel}>Admin</Text>
           </View>
         </View>
       </SurfaceCard>
@@ -240,6 +365,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  eventStatusBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 8,
   },
   eventTitle: {

@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
+import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
 import { palette, radius, spacing } from '../lib/theme'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 import { Pill, SurfaceCard } from './ui'
@@ -63,8 +64,14 @@ type TournamentSummary = {
   divisions: Array<{
     id: string
     name: string
+    teamKind?: string | null
     maxTeams?: number | null
     _count?: { teams?: number }
+    teams?: Array<{
+      teamPlayers?: Array<{
+        slotIndex?: number | null
+      } | null> | null
+    } | null> | null
   }>
   _count?: { players?: number }
   user?: {
@@ -79,24 +86,36 @@ export const TournamentCard = ({
   onPress,
   statusLabel,
   statusTone = 'success',
+  secondaryStatusLabel,
+  secondaryStatusTone = 'warning',
 }: {
   tournament: TournamentSummary
   onPress: () => void
   statusLabel?: string | null
   statusTone?: 'muted' | 'primary' | 'danger' | 'success' | 'warning'
+  secondaryStatusLabel?: string | null
+  secondaryStatusTone?: 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 }) => {
   const feeLabel = typeof tournament.entryFeeCents === 'number'
     ? formatMoney(tournament.entryFeeCents)
     : tournament.entryFee && Number(tournament.entryFee) > 0
     ? `$${Number(tournament.entryFee).toFixed(2)}`
     : 'Free'
+  const slotMetrics = getTournamentSlotMetrics(tournament)
   const teamCount = tournament.divisions.reduce((sum, division) => sum + Number(division._count?.teams ?? 0), 0)
   const teamCapacity = tournament.divisions.reduce((sum, division) => sum + Number(division.maxTeams ?? 0), 0)
   const playerCount = Number(tournament._count?.players ?? 0)
-  const progress = teamCapacity > 0 ? Math.min(100, (teamCount / teamCapacity) * 100) : 0
-  const spotsLeft = teamCapacity > 0 ? Math.max(0, teamCapacity - teamCount) : null
+  const hasSlotMetrics = slotMetrics.createdSlots !== null && slotMetrics.filledSlots !== null && slotMetrics.createdSlots > 0
+  const progress = hasSlotMetrics
+    ? Math.min(100, (slotMetrics.filledSlots! / slotMetrics.createdSlots!) * 100)
+    : teamCapacity > 0
+    ? Math.min(100, (teamCount / teamCapacity) * 100)
+    : 0
+  const spotsLeft = hasSlotMetrics ? slotMetrics.openSlots : null
   const occupancyLabel =
-    teamCapacity > 0
+    hasSlotMetrics
+      ? `${slotMetrics.filledSlots} / ${slotMetrics.createdSlots} spots`
+      : teamCapacity > 0
       ? `${teamCount} / ${teamCapacity} teams`
       : playerCount > 0
       ? `${playerCount} players registered`
@@ -124,7 +143,12 @@ export const TournamentCard = ({
                 <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
               </View>
             </View>
-            {statusLabel ? <Pill label={statusLabel} tone={statusTone} /> : null}
+            {statusLabel || secondaryStatusLabel ? (
+              <View style={styles.statusBadgeRow}>
+                {statusLabel ? <Pill label={statusLabel} tone={statusTone} /> : null}
+                {secondaryStatusLabel ? <Pill label={secondaryStatusLabel} tone={secondaryStatusTone} /> : null}
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -162,7 +186,7 @@ export const TournamentCard = ({
                 <Text style={styles.priceText}>{feeLabel}</Text>
               </View>
             </View>
-            {teamCapacity > 0 ? (
+            {hasSlotMetrics || teamCapacity > 0 ? (
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: progressWidth }]} />
               </View>
@@ -207,6 +231,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  statusBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
   },
   title: {
     color: palette.text,

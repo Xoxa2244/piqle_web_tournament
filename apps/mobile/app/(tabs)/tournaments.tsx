@@ -13,6 +13,7 @@ import {
   SectionTitle,
   SurfaceCard,
 } from '../../src/components/ui'
+import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -50,20 +51,12 @@ const getFeeValue = (tournament: any) => {
   return 0
 }
 
-const getTeamMetrics = (tournament: any) => {
-  const filledTeams = ((tournament.divisions ?? []) as any[]).reduce(
-    (sum, division) => sum + Number(division?._count?.teams ?? 0),
-    0
-  )
-  const maxTeams = ((tournament.divisions ?? []) as any[]).reduce(
-    (sum, division) => sum + Number(division?.maxTeams ?? 0),
-    0
-  )
-
-  return { filledTeams, maxTeams }
-}
-
-const getCardStatus = (tournament: any, status?: string | null): { label: string; tone: CardTone } => {
+const getCardStatus = (
+  tournament: any,
+  status?: string | null,
+  hasPrivilegedAccess = false
+): { label: string; tone: CardTone } => {
+  if (hasPrivilegedAccess) return { label: 'Admin', tone: 'primary' }
   if (status === 'active') return { label: 'Registered', tone: 'primary' }
   if (status === 'waitlisted') return { label: 'Waitlist', tone: 'warning' }
 
@@ -71,15 +64,57 @@ const getCardStatus = (tournament: any, status?: string | null): { label: string
     return { label: 'Closed', tone: 'muted' }
   }
 
-  const { filledTeams, maxTeams } = getTeamMetrics(tournament)
-  if (maxTeams > 0 && filledTeams >= maxTeams) {
-    return { label: 'Waitlist', tone: 'warning' }
-  }
-  if (maxTeams > 0 && filledTeams / maxTeams >= 0.75) {
-    return { label: 'Filling Fast', tone: 'warning' }
+  const slotMetrics = getTournamentSlotMetrics(tournament)
+  if (slotMetrics.createdSlots !== null && slotMetrics.createdSlots > 0) {
+    if (slotMetrics.openSlots === 0) {
+      return { label: 'Waitlist', tone: 'warning' }
+    }
+    if (slotMetrics.fillRatio !== null && slotMetrics.fillRatio >= 0.75) {
+      return { label: 'Filling Fast', tone: 'warning' }
+    }
   }
 
   return { label: 'Open', tone: 'success' }
+}
+
+const TournamentListCard = ({
+  tournament,
+  myStatus,
+  hasPrivilegedAccess,
+  feeCents,
+  isUnpaid,
+}: {
+  tournament: any
+  myStatus?: string | null
+  hasPrivilegedAccess: boolean
+  feeCents?: number | null
+  isUnpaid?: boolean
+}) => {
+  const api = trpc as any
+  const detailQuery = api.public.getTournamentById.useQuery(
+    { id: tournament.id },
+    { retry: false, staleTime: 60_000 }
+  )
+  const tournamentForCard = useMemo(
+    () => ({
+      ...tournament,
+      ...(detailQuery.data ?? {}),
+      entryFeeCents: feeCents,
+    }),
+    [detailQuery.data, feeCents, tournament]
+  )
+  const cardStatus = getCardStatus(tournamentForCard, myStatus, hasPrivilegedAccess)
+
+  return (
+    <TournamentCard
+      tournament={tournamentForCard}
+      statusLabel={cardStatus.label}
+      statusTone={cardStatus.tone}
+      secondaryStatusLabel={isUnpaid ? 'Unpaid' : null}
+      secondaryStatusTone="warning"
+      onPress={() => router.push(`/tournaments/${tournament.id}`)}
+    />
+  )
 }
 
 const FilterChip = ({
@@ -119,7 +154,7 @@ const FilterChip = ({
 }
 
 export default function TournamentsTab() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const [mode, setMode] = useState<'upcoming' | 'registered' | 'past'>('upcoming')
   const [search, setSearch] = useState('')
@@ -140,6 +175,28 @@ export default function TournamentsTab() {
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
   )
+  const accessibleTournamentsQuery = api.tournament.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+  })
+  const eventChatsQuery = api.tournamentChat.listMyEventChats.useQuery(undefined, {
+    enabled: isAuthenticated,
+  })
+  const accessibleTournamentIds = useMemo(
+    () => new Set((((accessibleTournamentsQuery.data ?? []) as any[]).map((item) => item.id) as string[])),
+    [accessibleTournamentsQuery.data]
+  )
+  const eventPermissions = useMemo(
+    () =>
+      Object.fromEntries(
+        (((eventChatsQuery.data ?? []) as any[]).map((item) => [item.id, item.permission]) as Array<
+          [string, { canModerate?: boolean; isOwner?: boolean; isTournamentAdmin?: boolean; isClubAdmin?: boolean } | undefined]
+        >)
+      ) as Record<
+        string,
+        { canModerate?: boolean; isOwner?: boolean; isTournamentAdmin?: boolean; isClubAdmin?: boolean } | undefined
+      >,
+    [eventChatsQuery.data]
+  )
   const notificationsQuery = api.notification.list.useQuery(
     { limit: 8 },
     { enabled: isAuthenticated }
@@ -151,7 +208,7 @@ export default function TournamentsTab() {
         utils.notification.list.invalidate(),
         utils.registration.getMyStatuses.invalidate({ tournamentIds }),
       ])
-      router.push({ pathname: '/tournaments/[id]/register', params: { id: result.tournamentId } })
+      router.push(`/tournaments/${result.tournamentId}/register`)
     },
   })
   const declineInvitation = api.tournamentInvitation.decline.useMutation({
@@ -201,7 +258,17 @@ export default function TournamentsTab() {
     if (mode === 'registered') {
       searched = searched.filter((item) => {
         const myStatus = registrationStatusesQuery.data?.[item.id]?.status
-        return myStatus === 'active' || myStatus === 'waitlisted'
+        const permission = eventPermissions[item.id]
+        const isOwner = Boolean(user?.id && item.user?.id === user.id)
+        const hasPrivilegedAccess = Boolean(
+          isOwner ||
+            accessibleTournamentIds.has(item.id) ||
+            permission?.canModerate ||
+            permission?.isOwner ||
+            permission?.isTournamentAdmin ||
+            permission?.isClubAdmin
+        )
+        return myStatus === 'active' || myStatus === 'waitlisted' || hasPrivilegedAccess
       })
     }
 
@@ -236,11 +303,28 @@ export default function TournamentsTab() {
     }
 
     return searched
-  }, [maxFee, mode, search, selectedDivisions, selectedFormats, thisMonthOnly, tournamentsQuery.data, registrationStatusesQuery.data])
+  }, [
+    maxFee,
+    mode,
+    search,
+    selectedDivisions,
+    selectedFormats,
+    thisMonthOnly,
+    tournamentsQuery.data,
+    registrationStatusesQuery.data,
+    accessibleTournamentIds,
+    eventPermissions,
+    user?.id,
+  ])
 
   const invitationItems = ((notificationsQuery.data?.items ?? []) as any[]).filter(
     (item) => item.type === 'TOURNAMENT_INVITATION'
   )
+  const isStatusContextLoading =
+    mode === 'registered' &&
+    isAuthenticated &&
+    tournamentIds.length > 0 &&
+    registrationStatusesQuery.isLoading
   const activeFilterCount =
     (thisMonthOnly ? 1 : 0) +
     selectedFormats.length +
@@ -353,39 +437,49 @@ export default function TournamentsTab() {
             </View>
           ) : null}
 
-          {tournamentsQuery.isLoading ? <LoadingBlock label="Loading tournaments..." /> : null}
+          {tournamentsQuery.isLoading || isStatusContextLoading ? <LoadingBlock label="Loading tournaments..." /> : null}
 
-          {!tournamentsQuery.isLoading && filtered.length === 0 ? (
+          {!tournamentsQuery.isLoading && !isStatusContextLoading && filtered.length === 0 ? (
             <EmptyState
-              title={mode === 'registered' ? 'No registered tournaments' : 'Nothing matched this search'}
+              title={mode === 'registered' ? 'No tournaments yet' : 'Nothing matched this search'}
               body={
                 mode === 'registered'
                   ? isAuthenticated
-                    ? 'Register for a public event and it will appear here.'
-                    : 'Sign in to see tournaments where you are registered.'
+                    ? 'Tournaments where you are registered or have admin access will appear here.'
+                    : 'Sign in to see tournaments where you are registered or admin.'
                   : 'Try another search or clear the active filters.'
               }
             />
           ) : null}
 
           {filtered.map((tournament) => {
-            const myStatus = registrationStatusesQuery.data?.[tournament.id]?.status
+            const myStatusInfo = registrationStatusesQuery.data?.[tournament.id]
+            const myStatus = myStatusInfo?.status
+            const permission = eventPermissions[tournament.id]
+            const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
+            const hasPrivilegedAccess = Boolean(
+              isOwner ||
+                accessibleTournamentIds.has(tournament.id) ||
+                permission?.canModerate ||
+                permission?.isOwner ||
+                permission?.isTournamentAdmin ||
+                permission?.isClubAdmin
+            )
             const feeCents =
               typeof tournament.entryFee === 'string' ? Math.round(Number(tournament.entryFee) * 100) : tournament.entryFeeCents
-            const cardStatus = getCardStatus(tournament, myStatus)
+            const isUnpaid =
+              myStatus === 'active' &&
+              myStatusInfo?.isPaid === false &&
+              Number(feeCents ?? 0) > 0
 
             return (
-              <TournamentCard
+              <TournamentListCard
                 key={tournament.id}
-                tournament={{
-                  ...tournament,
-                  entryFeeCents: feeCents,
-                }}
-                statusLabel={cardStatus.label}
-                statusTone={cardStatus.tone}
-                onPress={() =>
-                  router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })
-                }
+                tournament={tournament}
+                myStatus={myStatus}
+                hasPrivilegedAccess={hasPrivilegedAccess}
+                feeCents={feeCents}
+                isUnpaid={isUnpaid}
               />
             )
           })}

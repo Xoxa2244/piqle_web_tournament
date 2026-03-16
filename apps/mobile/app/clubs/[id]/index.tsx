@@ -98,7 +98,7 @@ export default function ClubDetailScreen() {
           <SectionTitle title="Upcoming tournaments" subtitle="Club events can still be private on web; the mobile app reuses the same list." />
           {club.tournaments.map((tournament) => (
             <SurfaceCard key={tournament.id} tone="soft">
-              <Pressable onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })}>
+              <Pressable onPress={() => router.push(`/tournaments/${tournament.id}`)}>
                 <Text style={styles.eventTitle}>{tournament.title}</Text>
                 <Text style={styles.smallMeta}>{formatDateTime(tournament.startDate)} · {tournament.format}</Text>
               </Pressable>

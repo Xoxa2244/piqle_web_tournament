@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useState } from 'react'
-import { Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import {
@@ -14,8 +15,9 @@ import {
 } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
-import { buildWebUrl } from '../../../src/lib/config'
+import { buildApiUrl, buildWebUrl } from '../../../src/lib/config'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
+import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
@@ -72,28 +74,50 @@ const formatTournamentFormat = (format?: string | null) => {
   }
 }
 
-const getPlayersPerTeam = (teamKind?: string | null, tournamentFormat?: string | null) => {
-  if (tournamentFormat === 'INDY_LEAGUE' && teamKind === 'SQUAD_4v4') {
-    return 32
-  }
-
-  switch (teamKind) {
-    case 'SINGLES_1v1':
-      return 1
-    case 'SQUAD_4v4':
-      return 4
-    case 'DOUBLES_2v2':
-    default:
-      return 2
-  }
-}
-
 type DetailTab = 'info' | 'divisions'
 
 type StatusMeta = {
   label: string
   backgroundColor: string
 }
+
+const fetchTournamentBoardById = async (id: string) => {
+  const response = await fetch(
+    buildApiUrl(`/api/trpc/public.getBoardById?input=${encodeURIComponent(JSON.stringify({ id }))}`)
+  )
+  const payload = await response.json()
+
+  if (!response.ok || payload?.error) {
+    throw new Error(payload?.error?.message || `Failed to load tournament ${id}`)
+  }
+
+  return payload?.result?.data ?? null
+}
+
+const fetchFullTournamentById = async (id: string) => {
+  const response = await fetch(
+    buildApiUrl(`/api/trpc/public.getTournamentById?input=${encodeURIComponent(JSON.stringify({ id }))}`)
+  )
+  const payload = await response.json()
+
+  if (!response.ok || payload?.error) {
+    throw new Error(payload?.error?.message || `Failed to load full tournament ${id}`)
+  }
+
+  return payload?.result?.data ?? null
+}
+
+const normalizeTournamentForDetail = (tournament: any) => ({
+  ...tournament,
+  prizes: Array.isArray(tournament?.prizes) ? tournament.prizes : [],
+  divisions: Array.isArray(tournament?.divisions)
+    ? tournament.divisions.map((division: any) => ({
+        ...division,
+        teamKind: division?.teamKind ?? null,
+        teams: Array.isArray(division?.teams) ? division.teams : undefined,
+      }))
+    : [],
+})
 
 const isRegistrationOpen = (tournament: {
   registrationStartDate?: string | Date | null
@@ -110,7 +134,15 @@ const isRegistrationOpen = (tournament: {
   return now >= start && now <= end
 }
 
-const getStatusMeta = (tournament: any, myStatus?: string | null): StatusMeta => {
+const getStatusMeta = (
+  tournament: any,
+  myStatus?: string | null,
+  hasPrivilegedAccess = false
+): StatusMeta => {
+  if (hasPrivilegedAccess) {
+    return { label: 'Admin', backgroundColor: 'rgba(40, 205, 65, 0.92)' }
+  }
+
   if (myStatus === 'active') {
     return { label: 'Registered', backgroundColor: 'rgba(40, 205, 65, 0.92)' }
   }
@@ -121,19 +153,11 @@ const getStatusMeta = (tournament: any, myStatus?: string | null): StatusMeta =>
     return { label: 'Closed', backgroundColor: 'rgba(10, 10, 10, 0.58)' }
   }
 
-  const filledTeams = ((tournament.divisions ?? []) as any[]).reduce(
-    (sum, division) => sum + Number(division?._count?.teams ?? 0),
-    0
-  )
-  const maxTeams = ((tournament.divisions ?? []) as any[]).reduce(
-    (sum, division) => sum + Number(division?.maxTeams ?? 0),
-    0
-  )
-
-  if (maxTeams > 0 && filledTeams >= maxTeams) {
+  const slotMetrics = getTournamentSlotMetrics(tournament)
+  if (slotMetrics.createdSlots !== null && slotMetrics.createdSlots > 0 && slotMetrics.openSlots === 0) {
     return { label: 'Waitlist', backgroundColor: 'rgba(255, 214, 10, 0.88)' }
   }
-  if (maxTeams > 0 && filledTeams / maxTeams >= 0.75) {
+  if (slotMetrics.fillRatio !== null && slotMetrics.fillRatio >= 0.75) {
     return { label: 'Filling Fast', backgroundColor: 'rgba(255, 214, 10, 0.88)' }
   }
 
@@ -141,9 +165,10 @@ const getStatusMeta = (tournament: any, myStatus?: string | null): StatusMeta =>
 }
 
 export default function TournamentDetailScreen() {
-  const params = useLocalSearchParams<{ id: string }>()
+  const params = useLocalSearchParams<{ id: string; payment?: string }>()
   const tournamentId = String(params.id ?? '')
-  const { token } = useAuth()
+  const paymentState = typeof params.payment === 'string' ? params.payment : null
+  const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
@@ -151,17 +176,44 @@ export default function TournamentDetailScreen() {
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
   const [isFavorite, setIsFavorite] = useState(false)
 
-  const tournamentQuery = api.public.getBoardById.useQuery(
-    { id: tournamentId },
-    { enabled: Boolean(tournamentId) }
+  const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
+  const cachedTournament = useMemo(
+    () =>
+      (((cachedBoardsQuery.data ?? []) as any[]).find((item) => item.id === tournamentId) as any | undefined) ??
+      null,
+    [cachedBoardsQuery.data, tournamentId]
   )
+  const initialTournamentData = useMemo(
+    () => (cachedTournament ? normalizeTournamentForDetail(cachedTournament) : undefined),
+    [cachedTournament]
+  )
+
+  const tournamentQuery = useQuery({
+    queryKey: ['mobile-public-getBoardById', tournamentId],
+    enabled: Boolean(tournamentId),
+    retry: false,
+    initialData: initialTournamentData,
+    queryFn: () => fetchTournamentBoardById(tournamentId),
+  })
+  const fullTournamentQuery = useQuery({
+    queryKey: ['mobile-public-getTournamentById', tournamentId],
+    enabled: Boolean(tournamentId),
+    retry: false,
+    queryFn: () => fetchFullTournamentById(tournamentId),
+  })
+  const protectedQueriesEnabled =
+    Boolean(tournamentId) && isAuthenticated && Boolean(tournamentQuery.data)
   const myStatusQuery = api.registration.getMyStatus.useQuery(
     { tournamentId },
-    { enabled: Boolean(tournamentId) && isAuthenticated }
+    { enabled: protectedQueriesEnabled }
+  )
+  const accessQuery = api.tournament.get.useQuery(
+    { id: tournamentId },
+    { enabled: protectedQueriesEnabled, retry: false }
   )
   const myInvitationQuery = api.tournamentInvitation.getMineByTournament.useQuery(
     { tournamentId },
-    { enabled: Boolean(tournamentId) && isAuthenticated }
+    { enabled: protectedQueriesEnabled }
   )
 
   const acceptInvitation = api.tournamentInvitation.accept.useMutation({
@@ -171,7 +223,7 @@ export default function TournamentDetailScreen() {
         myInvitationQuery.refetch(),
         myStatusQuery.refetch(),
       ])
-      router.push({ pathname: '/tournaments/[id]/register', params: { id: result.tournamentId } })
+      router.push(`/tournaments/${result.tournamentId}/register`)
     },
   })
   const declineInvitation = api.tournamentInvitation.decline.useMutation({
@@ -182,6 +234,49 @@ export default function TournamentDetailScreen() {
       ])
     },
   })
+  const createCheckout = api.payment.createCheckoutSession.useMutation()
+  const cancelRegistration = api.registration.cancelRegistration.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.registration.getMyStatus.invalidate({ tournamentId }),
+        utils.registration.getMyStatuses.invalidate(),
+        myStatusQuery.refetch(),
+        tournamentQuery.refetch(),
+        fullTournamentQuery.refetch(),
+      ])
+    },
+  })
+
+  useEffect(() => {
+    if (!tournamentId || !paymentState) return
+
+    router.replace(`/tournaments/${tournamentId}`)
+    void utils.registration.getMyStatuses.invalidate()
+    void Promise.all([
+      myStatusQuery.refetch(),
+      tournamentQuery.refetch(),
+      fullTournamentQuery.refetch(),
+    ])
+
+    if (paymentState === 'success') {
+      const timeoutId = setTimeout(() => {
+        void Promise.all([
+          myStatusQuery.refetch(),
+          tournamentQuery.refetch(),
+          fullTournamentQuery.refetch(),
+        ])
+      }, 1500)
+
+      return () => clearTimeout(timeoutId)
+    }
+  }, [
+    fullTournamentQuery,
+    myStatusQuery,
+    paymentState,
+    tournamentId,
+    tournamentQuery,
+    utils.registration.getMyStatuses,
+  ])
 
   if (tournamentQuery.isLoading) {
     return (
@@ -209,6 +304,9 @@ export default function TournamentDetailScreen() {
 
   const tournament = tournamentQuery.data as any
   const myStatus = myStatusQuery.data?.status
+  const accessInfo = accessQuery.data?.userAccessInfo
+  const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
+  const hasPrivilegedAccess = Boolean(isOwner || accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
   const pendingInvitation = myInvitationQuery.data?.status === 'PENDING' ? myInvitationQuery.data : null
   const entryFeeCents =
     typeof tournament.entryFeeCents === 'number'
@@ -224,17 +322,30 @@ export default function TournamentDetailScreen() {
     (sum, division) => sum + Number(division?._count?.teams ?? 0),
     0
   )
-  const registrationOpen = isRegistrationOpen(tournament)
-  const statusMeta = getStatusMeta(tournament, myStatus)
+  const tournamentAvailabilityData = ((fullTournamentQuery.data as any | null) ?? tournament) as any
+  const registrationOpen = isRegistrationOpen(tournamentAvailabilityData)
   const organizerLabel = tournament.user?.name || tournament.user?.email || 'Piqle'
+  const canLeaveTournament = myStatus === 'active'
+  const canPayNow = myStatus === 'active' && entryFeeCents > 0 && myStatusQuery.data?.isPaid === false
+  const shouldShowRegisterCta =
+    registrationOpen &&
+    !pendingInvitation &&
+    myStatus !== 'active' &&
+    myStatus !== 'waitlisted'
   const ctaLabel = pendingInvitation
     ? acceptInvitation.isPending
       ? 'Accepting...'
       : 'Accept Invitation'
-    : myStatus === 'active'
-    ? 'Manage Registration'
+    : canLeaveTournament
+    ? cancelRegistration.isPending
+      ? 'Leaving...'
+      : 'Leave Tournament'
     : myStatus === 'waitlisted'
     ? 'View Waitlist Spot'
+    : shouldShowRegisterCta
+    ? 'Register for Tournament'
+    : hasPrivilegedAccess
+    ? 'Admin Access'
     : `Register Now • ${feeLabel}`
   const amenityLabels = [
     locationLabel !== 'Location not set' ? 'Venue Details' : null,
@@ -248,9 +359,46 @@ export default function TournamentDetailScreen() {
   }`
   const showPrimaryCta =
     Boolean(pendingInvitation) ||
-    myStatus === 'active' ||
+    shouldShowRegisterCta ||
+    canLeaveTournament ||
     myStatus === 'waitlisted' ||
-    registrationOpen
+    hasPrivilegedAccess
+  const statusMeta = getStatusMeta(tournamentAvailabilityData, myStatus, hasPrivilegedAccess)
+  const divisionsForDisplay = Array.isArray((fullTournamentQuery.data as any)?.divisions)
+    ? (((fullTournamentQuery.data as any)?.divisions ?? []) as any[])
+    : ((tournament.divisions ?? []) as any[])
+
+  const handleLeaveTournament = () => {
+    Alert.alert(
+      'Leave tournament?',
+      'Your registration will be cancelled and your slot will be released.',
+      [
+        {
+          text: 'Keep spot',
+          style: 'cancel',
+        },
+        {
+          text: 'Leave Tournament',
+          style: 'destructive',
+          onPress: () => cancelRegistration.mutate({ tournamentId }),
+        },
+      ]
+    )
+  }
+
+  const handlePayNow = async () => {
+    try {
+      const result = await createCheckout.mutateAsync({
+        tournamentId,
+        returnPath: `/tournaments/${tournamentId}`,
+      })
+      if (result.url) {
+        await Linking.openURL(result.url)
+      }
+    } catch (error: any) {
+      Alert.alert('Payment unavailable', error?.message || 'Unable to open checkout right now.')
+    }
+  }
 
   const handlePrimaryAction = () => {
     if (pendingInvitation) {
@@ -263,7 +411,12 @@ export default function TournamentDetailScreen() {
       return
     }
 
-    router.push({ pathname: '/tournaments/[id]/register', params: { id: tournament.id } })
+    if (canLeaveTournament) {
+      handleLeaveTournament()
+      return
+    }
+
+    router.push(`/tournaments/${tournament.id}/register`)
   }
 
   const handleShare = async () => {
@@ -508,13 +661,17 @@ export default function TournamentDetailScreen() {
 
           {activeTab === 'divisions' ? (
             <View style={styles.sectionStack}>
-              {tournament.divisions.length ? (
-                tournament.divisions.map((division: any) => {
+              {divisionsForDisplay.length ? (
+                divisionsForDisplay.map((division: any) => {
+                  const divisionSlotMetrics = getDivisionSlotMetrics(division, tournament.format)
+                  const playersPerTeam = getPlayersPerTeam(division.teamKind, tournament.format, division.name)
                   const maxTeams = Number(division.maxTeams ?? 0)
-                  const filledTeams = Number(division._count?.teams ?? 0)
-                  const playersPerTeam = getPlayersPerTeam(division.teamKind, tournament.format)
-                  const maxPlayers = maxTeams > 0 ? maxTeams * playersPerTeam : 0
-                  const spotsLeft = maxTeams > 0 ? Math.max(0, maxTeams - filledTeams) * playersPerTeam : null
+                  const maxPlayers =
+                    maxTeams > 0 && playersPerTeam !== null ? maxTeams * playersPerTeam : 0
+                  const createdTeams = divisionSlotMetrics.createdTeams
+                  const createdSlots = divisionSlotMetrics.createdSlots
+                  const filledSlots = divisionSlotMetrics.filledSlots
+                  const spotsLeft = divisionSlotMetrics.openSlots
 
                   return (
                     <SurfaceCard key={division.id} style={styles.detailCard}>
@@ -533,7 +690,15 @@ export default function TournamentDetailScreen() {
                           <View style={styles.metaRow}>
                             <Feather name="users" size={16} color={palette.textMuted} />
                             <Text style={styles.mutedBodyText}>
-                              {maxPlayers > 0 ? `${maxPlayers} max players` : `${filledTeams} teams joined`}
+                              {createdSlots !== null && filledSlots !== null && createdSlots > 0
+                                ? `${filledSlots} / ${createdSlots} spots filled`
+                                : createdSlots !== null && createdSlots > 0
+                                ? `${createdSlots} created spots`
+                                : createdTeams > 0
+                                ? `${createdTeams} teams created`
+                                : maxPlayers > 0
+                                ? `${maxPlayers} max players`
+                                : 'No teams created yet'}
                             </Text>
                           </View>
                         </View>
@@ -544,11 +709,27 @@ export default function TournamentDetailScreen() {
                           </View>
                         </View>
                       </View>
-                      {registrationOpen ? (
+                      {canLeaveTournament ? (
+                        <Pressable
+                          onPress={handleLeaveTournament}
+                          style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
+                        >
+                          <OptionalLinearGradient
+                            colors={[palette.primary, palette.purple]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.smallCtaGradient}
+                          >
+                            <Text style={styles.smallCtaText}>
+                              {cancelRegistration.isPending ? 'Leaving...' : 'Leave Tournament'}
+                            </Text>
+                          </OptionalLinearGradient>
+                        </Pressable>
+                      ) : registrationOpen ? (
                         <Pressable
                           onPress={() =>
                             isAuthenticated
-                              ? router.push({ pathname: '/tournaments/[id]/register', params: { id: tournament.id } })
+                              ? router.push(`/tournaments/${tournament.id}/register`)
                               : router.push('/sign-in')
                           }
                           style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
@@ -578,7 +759,7 @@ export default function TournamentDetailScreen() {
         </View>
       </ScrollView>
 
-      {showPrimaryCta ? (
+      {showPrimaryCta && activeTab !== 'divisions' ? (
         <View style={styles.ctaShell}>
           <OptionalLinearGradient
             colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', palette.background]}
@@ -587,23 +768,51 @@ export default function TournamentDetailScreen() {
             style={styles.ctaFade}
           />
           <SafeAreaView edges={['bottom']} style={styles.ctaSafeArea}>
-            <Pressable
-              onPress={handlePrimaryAction}
-              disabled={acceptInvitation.isPending}
-              style={({ pressed }) => [
-                styles.ctaButton,
-                pressed && !acceptInvitation.isPending && styles.ctaButtonPressed,
-              ]}
-            >
-              <OptionalLinearGradient
-                colors={[palette.primary, palette.purple]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.ctaGradient, acceptInvitation.isPending && styles.ctaGradientDisabled]}
+            <View style={styles.ctaStack}>
+              {canPayNow ? (
+                <Pressable
+                  onPress={handlePayNow}
+                  disabled={createCheckout.isPending}
+                  style={({ pressed }) => [
+                    styles.ctaButton,
+                    pressed && !createCheckout.isPending && styles.ctaButtonPressed,
+                  ]}
+                >
+                  <OptionalLinearGradient
+                    colors={[palette.primary, palette.purple]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.ctaGradient, createCheckout.isPending && styles.ctaGradientDisabled]}
+                  >
+                    <Text style={styles.ctaText}>
+                      {createCheckout.isPending ? 'Opening payment...' : `Pay now ${feeLabel}`}
+                    </Text>
+                  </OptionalLinearGradient>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={handlePrimaryAction}
+                disabled={acceptInvitation.isPending || cancelRegistration.isPending}
+                style={({ pressed }) => [
+                  styles.ctaButton,
+                  pressed &&
+                    !(acceptInvitation.isPending || cancelRegistration.isPending) &&
+                    styles.ctaButtonPressed,
+                ]}
               >
-                <Text style={styles.ctaText}>{ctaLabel}</Text>
-              </OptionalLinearGradient>
-            </Pressable>
+                <OptionalLinearGradient
+                  colors={[palette.primary, palette.purple]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.ctaGradient,
+                    (acceptInvitation.isPending || cancelRegistration.isPending) && styles.ctaGradientDisabled,
+                  ]}
+                >
+                  <Text style={styles.ctaText}>{ctaLabel}</Text>
+                </OptionalLinearGradient>
+              </Pressable>
+            </View>
           </SafeAreaView>
         </View>
       ) : null}
@@ -989,6 +1198,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     backgroundColor: palette.background,
+  },
+  ctaStack: {
+    gap: 10,
   },
   ctaButton: {
     borderRadius: radius.pill,

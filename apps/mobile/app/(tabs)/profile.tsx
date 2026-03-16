@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -10,8 +10,6 @@ import { formatDate, formatLocation } from '../../src/lib/formatters'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
-
-type ProfileSection = 'activity' | 'achievements'
 
 const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -39,12 +37,11 @@ const parseNumberish = (value: unknown) => {
   return null
 }
 
-const formatRating = (value: unknown) => {
-  const parsed = parseNumberish(value)
-  return parsed === null ? '—' : parsed.toFixed(2)
-}
+const statusMeta = (status?: string | null, hasPrivilegedAccess = false) => {
+  if (hasPrivilegedAccess) {
+    return { label: 'Admin', backgroundColor: 'rgba(40, 205, 65, 0.12)', textColor: palette.primary }
+  }
 
-const statusMeta = (status?: string | null) => {
   if (status === 'waitlisted') {
     return { label: 'Waitlist', backgroundColor: 'rgba(255, 214, 10, 0.14)', textColor: '#8a6b00' }
   }
@@ -114,29 +111,10 @@ const ProfileActionButton = ({
   </Pressable>
 )
 
-const StatCard = ({
-  icon,
-  value,
-  label,
-  accent,
-}: {
-  icon: keyof typeof Feather.glyphMap
-  value: string
-  label: string
-  accent: string
-}) => (
-  <SurfaceCard style={styles.statCard}>
-    <Feather name={icon} size={20} color={accent} />
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </SurfaceCard>
-)
-
 export default function ProfileTab() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
-  const [activeSection, setActiveSection] = useState<ProfileSection>('activity')
 
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
   const tournamentsQuery = api.public.listBoards.useQuery(undefined, { enabled: isAuthenticated })
@@ -149,6 +127,13 @@ export default function ProfileTab() {
   const registrationStatusesQuery = api.registration.getMyStatuses.useQuery(
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
+  )
+  const accessibleTournamentsQuery = api.tournament.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+  })
+  const accessibleTournamentIds = useMemo(
+    () => new Set((((accessibleTournamentsQuery.data ?? []) as any[]).map((item) => item.id) as string[])),
+    [accessibleTournamentsQuery.data]
   )
 
   const profile = profileQuery.data as any
@@ -165,50 +150,6 @@ export default function ProfileTab() {
       .slice(0, 3)
       .map((item) => ({ ...item, myStatus: statuses[item.id]?.status }))
   }, [statuses, tournamentsQuery.data])
-
-  const achievements = useMemo(() => {
-    if (!profile) return []
-
-    const items = []
-
-    if (Number(profile.tournamentsPlayedCount ?? 0) > 0) {
-      items.push({
-        key: 'first-tournament',
-        icon: 'award' as const,
-        title: Number(profile.tournamentsPlayedCount) > 1 ? 'Tournament Regular' : 'First Tournament',
-        subtitle: `${profile.tournamentsPlayedCount} event${Number(profile.tournamentsPlayedCount) === 1 ? '' : 's'} played`,
-      })
-    }
-
-    if (Number(profile.clubsJoinedCount ?? 0) > 0) {
-      items.push({
-        key: 'club-member',
-        icon: 'users' as const,
-        title: Number(profile.clubsJoinedCount) > 1 ? 'Community Player' : 'Club Member',
-        subtitle: `${profile.clubsJoinedCount} club${Number(profile.clubsJoinedCount) === 1 ? '' : 's'} joined`,
-      })
-    }
-
-    if (Number(profile.tournamentsCreatedCount ?? 0) > 0) {
-      items.push({
-        key: 'organizer',
-        icon: 'target' as const,
-        title: 'Tournament Organizer',
-        subtitle: `${profile.tournamentsCreatedCount} event${Number(profile.tournamentsCreatedCount) === 1 ? '' : 's'} created`,
-      })
-    }
-
-    if (profile.duprLinked || profile.duprLink) {
-      items.push({
-        key: 'dupr',
-        icon: 'trending-up' as const,
-        title: profile.duprLinked ? 'DUPR Connected' : 'DUPR Ready',
-        subtitle: profile.duprLinked ? 'Ratings synced to your profile' : 'Profile link saved for sync',
-      })
-    }
-
-    return items.slice(0, 4)
-  }, [profile])
 
   if (!isAuthenticated) {
     return (
@@ -232,7 +173,8 @@ export default function ProfileTab() {
   }
 
   const isActivityLoading =
-    tournamentsQuery.isLoading || (isAuthenticated && tournamentIds.length > 0 && registrationStatusesQuery.isLoading)
+    tournamentsQuery.isLoading ||
+    (isAuthenticated && tournamentIds.length > 0 && registrationStatusesQuery.isLoading)
 
   if (profileQuery.isLoading) {
     return (
@@ -258,8 +200,6 @@ export default function ProfileTab() {
     )
   }
 
-  const singlesRating = formatRating(profile.duprRatingSingles)
-  const doublesRating = formatRating(profile.duprRatingDoubles)
   const bestRating = [parseNumberish(profile.duprRatingSingles), parseNumberish(profile.duprRatingDoubles)]
     .filter((value): value is number => value !== null)
     .sort((left, right) => right - left)[0]
@@ -337,106 +277,57 @@ export default function ProfileTab() {
                 onPress={() => void openDupr()}
               />
             </SurfaceCard>
-
-            <View style={styles.statsGrid}>
-              <StatCard icon="award" value={`${profile.tournamentsPlayedCount}`} label="Events" accent={palette.brandAccent} />
-              <StatCard icon="trending-up" value={bestRatingLabel} label="DUPR" accent={palette.primary} />
-              <StatCard icon="target" value={`${profile.tournamentsCreatedCount}`} label="Created" accent={palette.purple} />
-              <StatCard icon="users" value={`${profile.clubsJoinedCount}`} label="Clubs" accent={palette.accent} />
-            </View>
           </View>
 
-          <View style={styles.tabSwitch}>
-            {(['activity', 'achievements'] as const).map((section) => {
-              const active = activeSection === section
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionTitle}>Recent Tournaments</Text>
+
+            {isActivityLoading ? <LoadingBlock label="Loading activity…" /> : null}
+
+            {!isActivityLoading && recentTournaments.length === 0 ? (
+              <SurfaceCard style={styles.emptyCard}>
+                <Text style={styles.emptyCardTitle}>No tournaments yet</Text>
+                <Text style={styles.emptyCardBody}>
+                  Once you register for an event, it will show up here with status and date.
+                </Text>
+              </SurfaceCard>
+            ) : null}
+
+            {recentTournaments.map((tournament) => {
+              const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
+              const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
+              const status = statusMeta(tournament.myStatus, hasPrivilegedAccess)
+              const divisionLabel =
+                tournament.divisions?.[0]?.name ||
+                `${Math.max(Number(tournament.divisions?.length ?? 0), 1)} division${Number(tournament.divisions?.length ?? 0) === 1 ? '' : 's'}`
+
               return (
                 <Pressable
-                  key={section}
-                  onPress={() => setActiveSection(section)}
-                  style={[styles.tabButton, active && styles.tabButtonActive]}
+                  key={tournament.id}
+                  onPress={() => router.push(`/tournaments/${tournament.id}`)}
+                  style={({ pressed }) => [pressed && styles.cardPressed]}
                 >
-                  <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
-                    {section === 'activity' ? 'Activity' : 'Achievements'}
-                  </Text>
+                  <SurfaceCard style={styles.activityCard}>
+                    <View style={styles.activityTopRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activityTitle}>{tournament.title}</Text>
+                        <Text style={styles.activitySubtitle}>{divisionLabel}</Text>
+                      </View>
+
+                      <View style={[styles.activityStatusBadge, { backgroundColor: status.backgroundColor }]}>
+                        <Text style={[styles.activityStatusText, { color: status.textColor }]}>{status.label}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.activityMetaRow}>
+                      <Feather name="calendar" size={14} color={palette.textMuted} />
+                      <Text style={styles.activityMetaText}>{formatDate(tournament.startDate)}</Text>
+                    </View>
+                  </SurfaceCard>
                 </Pressable>
               )
             })}
           </View>
-
-          {activeSection === 'activity' ? (
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionTitle}>Recent Tournaments</Text>
-
-              {isActivityLoading ? <LoadingBlock label="Loading activity…" /> : null}
-
-              {!isActivityLoading && recentTournaments.length === 0 ? (
-                <SurfaceCard style={styles.emptyCard}>
-                  <Text style={styles.emptyCardTitle}>No tournaments yet</Text>
-                  <Text style={styles.emptyCardBody}>
-                    Once you register for an event, it will show up here with status and date.
-                  </Text>
-                </SurfaceCard>
-              ) : null}
-
-              {recentTournaments.map((tournament) => {
-                const status = statusMeta(tournament.myStatus)
-                const divisionLabel =
-                  tournament.divisions?.[0]?.name ||
-                  `${Math.max(Number(tournament.divisions?.length ?? 0), 1)} division${Number(tournament.divisions?.length ?? 0) === 1 ? '' : 's'}`
-
-                return (
-                  <Pressable
-                    key={tournament.id}
-                    onPress={() => router.push({ pathname: '/tournaments/[id]', params: { id: tournament.id } })}
-                    style={({ pressed }) => [pressed && styles.cardPressed]}
-                  >
-                    <SurfaceCard style={styles.activityCard}>
-                      <View style={styles.activityTopRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.activityTitle}>{tournament.title}</Text>
-                          <Text style={styles.activitySubtitle}>{divisionLabel}</Text>
-                        </View>
-
-                        <View style={[styles.activityStatusBadge, { backgroundColor: status.backgroundColor }]}>
-                          <Text style={[styles.activityStatusText, { color: status.textColor }]}>{status.label}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.activityMetaRow}>
-                        <Feather name="calendar" size={14} color={palette.textMuted} />
-                        <Text style={styles.activityMetaText}>{formatDate(tournament.startDate)}</Text>
-                      </View>
-                    </SurfaceCard>
-                  </Pressable>
-                )
-              })}
-            </View>
-          ) : (
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionTitle}>Unlocked Achievements</Text>
-
-              {achievements.length === 0 ? (
-                <SurfaceCard style={styles.emptyCard}>
-                  <Text style={styles.emptyCardTitle}>No achievements yet</Text>
-                  <Text style={styles.emptyCardBody}>
-                    Play events, join clubs, or connect DUPR to start building your profile milestones.
-                  </Text>
-                </SurfaceCard>
-              ) : null}
-
-              {achievements.map((achievement) => (
-                <SurfaceCard key={achievement.key} style={styles.achievementCard}>
-                  <View style={styles.achievementIconWrap}>
-                    <Feather name={achievement.icon} size={20} color={palette.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                    <Text style={styles.achievementSubtitle}>{achievement.subtitle}</Text>
-                  </View>
-                </SurfaceCard>
-              ))}
-            </View>
-          )}
 
           <View style={styles.footerSpace} />
         </ScrollView>
@@ -629,54 +520,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  statCard: {
-    width: '48.5%',
-    minHeight: 106,
-    justifyContent: 'center',
-  },
-  statValue: {
-    marginTop: 8,
-    color: palette.text,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  statLabel: {
-    marginTop: 4,
-    color: palette.textMuted,
-    fontSize: 12,
-  },
-  tabSwitch: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 4,
-    borderRadius: radius.pill,
-    backgroundColor: palette.surfaceElevated,
-  },
-  tabButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabButtonActive: {
-    backgroundColor: palette.surface,
-    borderWidth: 1,
-    borderColor: palette.border,
-  },
-  tabButtonText: {
-    color: palette.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tabButtonTextActive: {
-    color: palette.text,
-  },
   sectionBlock: {
     gap: spacing.md,
   },
@@ -731,29 +574,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   activityMetaText: {
-    color: palette.textMuted,
-    fontSize: 13,
-  },
-  achievementCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  achievementIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
-  },
-  achievementTitle: {
-    color: palette.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  achievementSubtitle: {
-    marginTop: 4,
     color: palette.textMuted,
     fontSize: 13,
   },

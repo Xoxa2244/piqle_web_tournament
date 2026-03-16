@@ -8,6 +8,17 @@ import { getTeamSlotCount } from '../utils/teamSlots'
 
 const CURRENCY = 'usd'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const MOBILE_APP_SCHEME = 'piqle'
+
+const buildMobileReturnUrl = (path: string, payment: 'success' | 'cancel') => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const params = new URLSearchParams({
+    path: normalizedPath,
+    payment,
+    scheme: MOBILE_APP_SCHEME,
+  })
+  return `${APP_URL}/mobile-return?${params.toString()}`
+}
 
 const toCents = (value?: Prisma.Decimal | number | null) => {
   if (value === null || value === undefined) return 0
@@ -338,7 +349,12 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   createCheckoutSession: protectedProcedure
-    .input(z.object({ tournamentId: z.string() }))
+    .input(
+      z.object({
+        tournamentId: z.string(),
+        returnPath: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.tournamentId },
@@ -434,6 +450,14 @@ export const paymentRouter = createTRPCRouter({
         })
       }
 
+      const mobileReturnPath = input.returnPath?.trim()
+      const successUrl = mobileReturnPath
+        ? buildMobileReturnUrl(mobileReturnPath, 'success')
+        : `${APP_URL}/tournaments/${tournament.id}/register?payment=success`
+      const cancelUrl = mobileReturnPath
+        ? buildMobileReturnUrl(mobileReturnPath, 'cancel')
+        : `${APP_URL}/tournaments/${tournament.id}/register?payment=cancel`
+
       const stripe = getStripe()
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
@@ -464,8 +488,8 @@ export const paymentRouter = createTRPCRouter({
             quantity: 1,
           },
         ],
-        success_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=success`,
-        cancel_url: `${APP_URL}/tournaments/${tournament.id}/register?payment=cancel`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       })
 
       await ctx.prisma.payment.update({

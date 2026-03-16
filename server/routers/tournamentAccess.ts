@@ -78,6 +78,79 @@ export const tournamentAccessRouter = createTRPCRouter({
       return accesses
     }),
 
+  getMyTournamentRoles: protectedProcedure
+    .input(z.object({
+      tournamentIds: z.array(z.string()),
+    }))
+    .query(async ({ ctx, input }) => {
+      const tournamentIds = Array.from(new Set(input.tournamentIds.filter(Boolean)))
+
+      if (tournamentIds.length === 0) {
+        return {}
+      }
+
+      const [ownedTournaments, accesses] = await Promise.all([
+        ctx.prisma.tournament.findMany({
+          where: {
+            id: { in: tournamentIds },
+            userId: ctx.session.user.id,
+          },
+          select: { id: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: {
+            userId: ctx.session.user.id,
+            tournamentId: { in: tournamentIds },
+          },
+          select: {
+            tournamentId: true,
+            accessLevel: true,
+          },
+        }),
+      ])
+
+      const result: Record<string, {
+        isOwner: boolean
+        isAdmin: boolean
+        accessLevel: 'ADMIN' | 'SCORE_ONLY' | null
+      }> = {}
+
+      tournamentIds.forEach((tournamentId) => {
+        result[tournamentId] = {
+          isOwner: false,
+          isAdmin: false,
+          accessLevel: null,
+        }
+      })
+
+      ownedTournaments.forEach((tournament) => {
+        result[tournament.id] = {
+          isOwner: true,
+          isAdmin: false,
+          accessLevel: 'ADMIN',
+        }
+      })
+
+      accesses.forEach((access) => {
+        const current = result[access.tournamentId] ?? {
+          isOwner: false,
+          isAdmin: false,
+          accessLevel: null,
+        }
+
+        result[access.tournamentId] = {
+          ...current,
+          isAdmin: current.isAdmin || access.accessLevel === 'ADMIN',
+          accessLevel:
+            current.accessLevel === 'ADMIN' || access.accessLevel === 'ADMIN'
+              ? 'ADMIN'
+              : 'SCORE_ONLY',
+        }
+      })
+
+      return result
+    }),
+
   // Выдача доступа
   grant: tdProcedure
     .input(z.object({
