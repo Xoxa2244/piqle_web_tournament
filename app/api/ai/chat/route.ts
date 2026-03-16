@@ -8,6 +8,7 @@ import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
 import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '@/lib/ai/llm/language';
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
+import { createChatTools } from '@/lib/ai/chat-tools';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -323,26 +324,31 @@ Use the data above to answer the user's question. If the data doesn't contain re
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
+    // Build tools for this club
+    const chatTools = createChatTools(clubId);
+
     let result;
     try {
       result = streamText({
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
-      console.log(`[AI Chat] Stream started with model=${primaryModel}`);
+      console.log(`[AI Chat] Stream started with model=${primaryModel}, tools enabled`);
     } catch (error) {
       console.warn('[AI Chat] Primary model failed, trying fallback:', error instanceof Error ? error.message : error);
       result = streamText({
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
-      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}`);
+      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}, tools enabled`);
     }
 
     // 11. Return streaming response
@@ -358,7 +364,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
       responseHeaders['X-Conversation-Id'] = convId;
     }
 
-    return result.toTextStreamResponse({
+    return result.toUIMessageStreamResponse({
       headers: responseHeaders,
     });
   } catch (error) {

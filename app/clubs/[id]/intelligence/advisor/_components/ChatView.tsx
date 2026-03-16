@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
-import { TextStreamChatTransport } from 'ai'
+import { DefaultChatTransport } from 'ai'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import {
@@ -113,7 +113,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   })
 
   const transport = useMemo(() => {
-    return new TextStreamChatTransport({
+    return new DefaultChatTransport({
       api: '/api/ai/chat',
       body: { clubId },
       fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
