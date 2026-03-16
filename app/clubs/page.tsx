@@ -15,6 +15,7 @@ import { fromCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import TournamentModal from '@/components/TournamentModal'
 import CreateClubModal from '@/components/CreateClubModal'
+import { useBrand } from '@/components/BrandProvider'
 import { toast } from '@/components/ui/use-toast'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,7 @@ export const dynamic = 'force-dynamic'
 function ClubsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const brand = useBrand()
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated'
 
@@ -348,7 +350,7 @@ function ClubsPageContent() {
         onClose={() => setCreateClubModalOpen(false)}
         onSuccess={(club) => {
           utils.club.list.invalidate()
-          router.push(`/clubs/${club.id}`)
+          router.push(brand.postClubCreateRoute(club.id))
         }}
       />
 

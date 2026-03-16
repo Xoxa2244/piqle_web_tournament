@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getBrandFromHostname, BRANDS } from "@/lib/brand"
 
 export async function middleware(req: NextRequest) {
   // Basic Auth for dev is disabled for now.
@@ -8,12 +9,34 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // ── Brand detection ──
+  const host = req.headers.get('host') || ''
+  const brandKey = getBrandFromHostname(host)
+  const brand = BRANDS[brandKey]
+
+  // Block tournament-related routes on IQSport domain
+  if (brandKey === 'iqsport') {
+    const pathname = req.nextUrl.pathname
+
+    // Redirect root to /clubs
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL('/clubs', req.url))
+    }
+
+    // Block hidden routes → redirect to /clubs
+    for (const pattern of brand.hiddenRoutePatterns) {
+      if (pattern.test(pathname)) {
+        return NextResponse.redirect(new URL('/clubs', req.url))
+      }
+    }
+  }
+
   // Проверяем наличие cookie с сессией только для админских маршрутов
   // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
   const correctCookieName = process.env.NODE_ENV === 'production'
     ? '__Secure-next-auth.session-token'
     : 'next-auth.session-token'
-  
+
   const oldCookieName = process.env.NODE_ENV === 'production'
     ? '_Secure-next-auth.session-token' // Старая cookie с одним подчеркиванием
     : null
@@ -30,8 +53,15 @@ export async function middleware(req: NextRequest) {
     console.log('[Middleware] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
   }
 
+  // Set x-brand header for server components
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-brand', brandKey)
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  })
+
   // Если есть старая cookie, удаляем её
-  const response = NextResponse.next()
   if (oldCookie && oldCookieName) {
     response.cookies.delete(oldCookieName)
   }
@@ -50,10 +80,9 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admin/:path*', 
-    '/api/protected/:path*', 
+    '/admin/:path*',
+    '/api/protected/:path*',
     '/api/auth/:path*',
     '/((?!api|_next/static|_next/image|favicon.ico).*)' // Match all routes except API, static files, and Next.js internals
   ]
 }
-
