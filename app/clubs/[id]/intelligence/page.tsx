@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +20,7 @@ import { EmptyState } from './_components/empty-state'
 import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary } from './_hooks/use-intelligence'
 import { WeeklySummaryCard } from './_components/weekly-summary-card'
 import { cn } from '@/lib/utils'
+import { useSetPageContext } from './_hooks/usePageContext'
 
 const formatLabels: Record<string, string> = {
   OPEN_PLAY: 'Open Play',
@@ -69,6 +70,28 @@ export default function IntelligenceDashboardPage() {
   const generateSummary = useGenerateWeeklySummary()
   const hasOnboarded = !!settingsData?.settings?.onboardingCompletedAt
   const isDemo = searchParams.get('demo') === 'true'
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!data) return
+    const { metrics, occupancy, sessions, players } = data
+    const ctx = [
+      'Page: Dashboard Overview',
+      `Members: ${metrics.members.value} (${metrics.members.subtitle})`,
+      `Occupancy: ${metrics.occupancy.value} (${metrics.occupancy.subtitle})`,
+      `Lost Revenue: ${metrics.lostRevenue.value} (${metrics.lostRevenue.subtitle})`,
+      `Bookings: ${metrics.bookings.value} (${metrics.bookings.subtitle})`,
+      `Active players: ${players.activeCount}, Inactive: ${players.inactiveCount}, New this month: ${players.newThisMonth}`,
+      `Top sessions: ${sessions.topSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ')}`,
+      `Problematic sessions: ${sessions.problematicSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ') || 'none'}`,
+      `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
+    ]
+    if (healthData) {
+      ctx.push(`Member health: ${healthData.summary.healthy} healthy, ${healthData.summary.watch} watch, ${healthData.summary.atRisk} at-risk, ${healthData.summary.critical} critical`)
+    }
+    setPageContext(ctx.join('\n'))
+  }, [data, healthData, setPageContext])
+
 
   if (isLoading) return <DashboardSkeleton />
 

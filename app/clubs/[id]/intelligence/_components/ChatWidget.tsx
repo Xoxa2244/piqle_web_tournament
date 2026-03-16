@@ -11,6 +11,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { usePageContextData } from '../_hooks/usePageContext'
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -52,16 +53,16 @@ function getMessageText(message: { parts?: Array<{ type: string; text?: string }
 
 type ChatWidgetProps = {
   clubId: string
-  pageContext?: string
 }
 
-export function ChatWidget({ clubId, pageContext }: ChatWidgetProps) {
+export function ChatWidget({ clubId }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [inputValue, setInputValue] = useState('')
   const convIdRef = useRef<string | null>(null)
   const pendingConvIdRef = useRef<string | null>(null)
+  const pageContext = usePageContextData()
   const pageContextRef = useRef(pageContext)
   pageContextRef.current = pageContext
 

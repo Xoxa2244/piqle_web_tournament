@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +20,7 @@ import { useReactivationCandidates, useSendReactivation } from '../_hooks/use-in
 import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactivation-messages'
 import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
+import { useSetPageContext } from '../_hooks/usePageContext'
 
 function formatRelativeDate(isoDate: string): string {
   const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86400000)
@@ -52,6 +53,30 @@ export default function ReactivationPage() {
   const { data, isLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const sendReactivation = useSendReactivation()
   const { toast } = useToast()
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!data) return
+    const churnPct = data.totalClubMembers > 0
+      ? Math.round((data.totalInactiveMembers / data.totalClubMembers) * 100)
+      : 0
+    const avgDaysInactive = data.candidates.length > 0
+      ? Math.round(data.candidates.reduce((s: number, c: any) => s + c.daysSinceLastActivity, 0) / data.candidates.length)
+      : 0
+    const parts = [
+      'Page: Member Reactivation',
+      `Inactivity threshold: ${inactivityDays} days`,
+      `Total members: ${data.totalClubMembers}, Inactive: ${data.totalInactiveMembers} (${churnPct}% churn risk)`,
+      `Avg days inactive: ${avgDaysInactive}`,
+      `Candidates: ${data.candidates.length}`,
+    ]
+    const top5 = data.candidates.slice(0, 5).map((c: any) =>
+      `${c.member.name || c.member.email} (${c.daysSinceLastActivity}d inactive, score: ${c.score}, ${c.totalHistoricalBookings} bookings)`
+    )
+    if (top5.length > 0) parts.push(`Top candidates: ${top5.join(', ')}`)
+    setPageContext(parts.join('\n'))
+  }, [data, inactivityDays, setPageContext])
+
 
   // Message variants for selected candidate
   const selectedCandidate = useMemo(() => {

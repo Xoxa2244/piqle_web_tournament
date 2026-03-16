@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useSearchParams } from 'next/navigation'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,7 @@ import { EmptyState } from '../_components/empty-state'
 import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { generateSlotFillerMessages, classifySlotFillerPlayerType, playerTypeLabels } from '@/lib/ai/slot-filler-messages'
+import { useSetPageContext } from '../_hooks/usePageContext'
 
 export default function SlotFillerPage() {
   const params = useParams()
@@ -73,6 +74,26 @@ export default function SlotFillerPage() {
   }, [recommendations, searchQuery])
 
   const selectedSession = recommendations?.session
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    const parts = ['Page: Slot Filler']
+    if (selectedSession) {
+      parts.push(`Selected session: ${selectedSession.title} on ${selectedSession.date} ${selectedSession.startTime}-${selectedSession.endTime}, ${selectedSession.spotsRemaining} spots open, format: ${selectedSession.format}`)
+    }
+    if (recommendations?.recommendations) {
+      parts.push(`${recommendations.totalCandidatesScored} candidates scored, showing top ${recommendations.recommendations.length}`)
+      const top5 = recommendations.recommendations.slice(0, 5).map((r: any) =>
+        `${r.member.name || r.member.email} (score: ${r.score}, likelihood: ${r.estimatedLikelihood})`
+      )
+      parts.push(`Top recommendations: ${top5.join(', ')}`)
+    }
+    if (!selectedSessionId && sessionsToShow.length > 0) {
+      parts.push(`${sessionsToShow.length} sessions available to fill`)
+      parts.push(`Underfilled sessions: ${sessionsToShow.map((s: any) => s.title + ' ' + (s.occupancyPercent ?? Math.round((s.confirmedCount / s.maxPlayers) * 100)) + '%').join(', ')}`)
+    }
+    setPageContext(parts.join('\n'))
+  }, [selectedSession, recommendations, selectedSessionId, sessionsToShow, setPageContext])
 
   // Generate preview message variants based on first selected player
   const previewVariants = useMemo(() => {

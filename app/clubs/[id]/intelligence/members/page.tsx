@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
+import { useSetPageContext } from '../_hooks/usePageContext'
 import type { MemberHealthResult, RiskLevel, LifecycleStage } from '@/types/intelligence'
 
 // ── Constants ──
@@ -81,6 +82,24 @@ export default function MembersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const { data, isLoading, error } = useMemberHealth(clubId)
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!data) return
+    const parts = [
+      'Page: Member Health',
+      `Total members: ${data.summary.total}`,
+      `Healthy: ${data.summary.healthy}, Watch: ${data.summary.watch}, At Risk: ${data.summary.atRisk}, Critical: ${data.summary.critical}`,
+      `Avg health score: ${data.summary.avgHealthScore}`,
+      `Revenue at risk: $${data.summary.revenueAtRisk.toLocaleString()}`,
+    ]
+    const atRiskMembers = data.members.filter(m => m.riskLevel === 'critical' || m.riskLevel === 'at_risk').slice(0, 5)
+    if (atRiskMembers.length > 0) {
+      parts.push(`Top at-risk members: ${atRiskMembers.map(m => (m.member.name || m.member.email) + ' (health: ' + m.healthScore + ', ' + m.riskLevel + ')').join(', ')}`)
+    }
+    setPageContext(parts.join('\n'))
+  }, [data, setPageContext])
+
 
   const filtered = useMemo(() => {
     if (!data?.members) return []

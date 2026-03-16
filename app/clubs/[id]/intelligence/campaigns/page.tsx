@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import {
   Heart, Ban, MessageSquare, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSetPageContext } from '../_hooks/usePageContext'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
@@ -204,6 +205,29 @@ export default function CampaignsPage() {
   const { data, isLoading, error } = useCampaignAnalytics(clubId, days)
   const { data: variantData } = useVariantAnalytics(clubId, days)
   const { data: sequenceData } = useSequenceAnalytics(clubId)
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!data) return
+    const { summary, byType } = data
+    const parts = [
+      'Page: Campaign Analytics',
+      `Period: last ${days} days`,
+      `Total sent: ${summary.totalSent}, This week: ${summary.thisWeek}, Failed: ${summary.totalFailed}`,
+      `Active triggers: ${summary.activeTriggers}/4`,
+    ]
+    if (byType.length > 0) {
+      parts.push(`By type: ${byType.map((t: any) => t.type + ': ' + t.count).join(', ')}`)
+    }
+    if (variantData) {
+      parts.push(`Overall open rate: ${(variantData.overallOpenRate * 100).toFixed(0)}%, click rate: ${(variantData.overallClickRate * 100).toFixed(0)}%`)
+    }
+    if (sequenceData) {
+      parts.push(`Sequences: ${sequenceData.summary.activeSequences} active, ${sequenceData.summary.completedSequences} completed`)
+    }
+    setPageContext(parts.join('\n'))
+  }, [data, days, variantData, sequenceData, setPageContext])
+
 
   if (isLoading) return <ListSkeleton />
 

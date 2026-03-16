@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -15,6 +15,7 @@ import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useSessionsCalendar } from '../_hooks/use-intelligence'
 import type { SessionCalendarItem, SessionRecommendation } from '@/types/intelligence'
+import { useSetPageContext } from '../_hooks/usePageContext'
 
 type ViewMode = 'list' | 'week' | 'month'
 
@@ -440,6 +441,30 @@ export default function SessionsCalendarPage() {
   const clubId = params.id as string
 
   const { data: calendarData, isLoading } = useSessionsCalendar(clubId)
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!calendarData) return
+    const { sessions, summary } = calendarData
+    const upcoming = sessions.filter(s => s.status !== 'past')
+    const lowOcc = sessions.filter(s => s.occupancy < 50)
+    const parts = [
+      'Page: Sessions Calendar',
+      `Total sessions: ${summary.totalSessions}`,
+      `Avg occupancy: ${summary.avgOccupancy}%`,
+      `Upcoming sessions: ${upcoming.length}`,
+      `Low occupancy (<50%): ${lowOcc.length}`,
+    ]
+    if (lowOcc.length > 0) {
+      parts.push(`Low sessions: ${lowOcc.slice(0, 5).map(s => s.format + ' ' + s.date + ' ' + s.startTime + ' (' + s.occupancy + '%)').join(', ')}`)
+    }
+    const nextUp = upcoming.slice(0, 3)
+    if (nextUp.length > 0) {
+      parts.push(`Next sessions: ${nextUp.map(s => s.format + ' ' + s.date + ' ' + s.startTime + ' ' + s.registered + '/' + s.capacity).join(', ')}`)
+    }
+    setPageContext(parts.join('\n'))
+  }, [calendarData, setPageContext])
+
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [navDate, setNavDate] = useState(new Date())

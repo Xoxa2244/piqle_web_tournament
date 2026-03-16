@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -12,6 +13,7 @@ import { HorizontalBarChart, VerticalBarChart } from '../_components/charts'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useDashboardV2 } from '../_hooks/use-intelligence'
+import { useSetPageContext } from '../_hooks/usePageContext'
 
 const timeSlotLabels: Record<string, string> = {
   morning: 'Morning (6–12)',
@@ -32,6 +34,23 @@ export default function RevenueIntelligencePage() {
   const clubId = params.id as string
 
   const { data: dashboard, isLoading } = useDashboardV2(clubId)
+
+  const setPageContext = useSetPageContext()
+  useEffect(() => {
+    if (!dashboard) return
+    const { metrics, occupancy } = dashboard
+    const parts = [
+      'Page: Revenue Intelligence',
+      `Lost Revenue: ${metrics.lostRevenue.value} (${metrics.lostRevenue.subtitle})`,
+      `Occupancy: ${metrics.occupancy.value} (${metrics.occupancy.subtitle})`,
+      `Bookings: ${metrics.bookings.value} (${metrics.bookings.subtitle})`,
+      `Occupancy by time: ${occupancy.byTimeSlot.map((s: any) => s.slot + ' ' + s.avgOccupancy + '% (' + s.sessionCount + ' sessions)').join(', ')}`,
+      `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
+      `Occupancy by format: ${occupancy.byFormat.map((f: any) => f.format + ' ' + f.avgOccupancy + '% (' + f.sessionCount + ' sessions)').join(', ')}`,
+    ]
+    setPageContext(parts.join('\n'))
+  }, [dashboard, setPageContext])
+
 
   if (isLoading) return <DashboardSkeleton />
 
