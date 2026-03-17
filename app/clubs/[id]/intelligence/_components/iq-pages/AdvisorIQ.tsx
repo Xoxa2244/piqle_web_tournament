@@ -5,7 +5,7 @@ import {
   Brain, Send, Sparkles, TrendingUp, Users, CalendarDays,
   DollarSign, Target, Lightbulb, BarChart3, Clock, Zap,
   MessageSquare, ChevronRight, Mic, Paperclip, RotateCcw,
-  ThumbsUp, ThumbsDown, Copy, BookOpen,
+  ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 
@@ -17,6 +17,17 @@ const suggestedPrompts = [
   { icon: CalendarDays, text: "What's the best time to schedule a beginner clinic?", category: "Sessions" },
   { icon: Target, text: "Compare this month's performance to last month", category: "Analytics" },
   { icon: Lightbulb, text: "Give me 3 quick wins to improve this week", category: "Strategy" },
+];
+
+/* --- Mock Chat History --- */
+const mockChatHistory = [
+  { id: "conv-1", title: "Tuesday occupancy analysis", messages: 4, date: "Today" },
+  { id: "conv-2", title: "Churn risk members", messages: 6, date: "Today" },
+  { id: "conv-3", title: "Revenue growth strategy", messages: 8, date: "Yesterday" },
+  { id: "conv-4", title: "Weekend slot optimization", messages: 3, date: "Yesterday" },
+  { id: "conv-5", title: "New member onboarding ideas", messages: 5, date: "Mar 15" },
+  { id: "conv-6", title: "Campaign performance review", messages: 7, date: "Mar 14" },
+  { id: "conv-7", title: "Court utilization report", messages: 4, date: "Mar 13" },
 ];
 
 /* --- Pre-built Conversation --- */
@@ -141,6 +152,7 @@ export function AdvisorIQ() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -191,6 +203,71 @@ export function AdvisorIQ() {
 
   return (
     <div className="flex gap-6 max-w-[1400px] mx-auto" style={{ height: "calc(100vh - 112px)" }}>
+      {/* Left Sidebar — Chat History */}
+      <div className="hidden lg:flex flex-col w-64 shrink-0 rounded-2xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)" }}>
+        <div className="flex items-center justify-between px-4 py-4 shrink-0" style={{ borderBottom: "1px solid var(--divider)" }}>
+          <h3 style={{ fontSize: "13px", fontWeight: 700, color: "var(--heading)" }}>Conversations</h3>
+          <button
+            onClick={() => { setActiveChat(null); setMessages(initialMessages); }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-colors"
+            style={{ background: "var(--subtle)", color: "var(--t3)", fontWeight: 500 }}
+          >
+            <Plus className="w-3 h-3" /> New
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {mockChatHistory.map((conv, i) => {
+            const isActive = activeChat === conv.id;
+            let prevDate: string | null = null;
+            if (i > 0) prevDate = mockChatHistory[i - 1].date;
+            const showDateLabel = conv.date !== prevDate;
+            return (
+              <div key={conv.id}>
+                {showDateLabel && (
+                  <div className="text-[10px] uppercase tracking-wider px-3 pt-3 pb-1" style={{ color: "var(--t4)", fontWeight: 600 }}>{conv.date}</div>
+                )}
+                <button
+                  onClick={() => setActiveChat(conv.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl transition-all group"
+                  style={{
+                    background: isActive ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "transparent",
+                    border: isActive ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--hover)"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs truncate flex-1" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
+                      {conv.title}
+                    </span>
+                    <Trash2 className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" style={{ color: "var(--t4)" }} />
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{conv.messages} messages</div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Connected Data */}
+        <div className="p-4 shrink-0" style={{ borderTop: "1px solid var(--divider)" }}>
+          <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--t4)", fontWeight: 600 }}>Connected Data</div>
+          <div className="space-y-1.5">
+            {[
+              { label: "Member Database", count: "127 records" },
+              { label: "Booking History", count: "2,847 sessions" },
+              { label: "Revenue Data", count: "12 months" },
+              { label: "Campaign Results", count: "18 campaigns" },
+            ].map((d) => (
+              <div key={d.label} className="flex items-center justify-between text-[11px]">
+                <span style={{ color: "var(--t3)" }}>{d.label}</span>
+                <span style={{ color: "var(--t4)", fontWeight: 500 }}>{d.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Main Chat */}
       <div className="flex-1 flex flex-col rounded-2xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)" }}>
         {/* Chat Header */}
@@ -208,7 +285,7 @@ export function AdvisorIQ() {
             </div>
           </div>
           <button
-            onClick={() => setMessages(initialMessages)}
+            onClick={() => { setActiveChat(null); setMessages(initialMessages); }}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors"
             style={{ background: "var(--subtle)", color: "var(--t3)", fontWeight: 500 }}
           >
@@ -394,55 +471,6 @@ export function AdvisorIQ() {
         </div>
       </div>
 
-      {/* Sidebar — Suggested Topics */}
-      <div className="hidden xl:flex flex-col w-72 shrink-0 rounded-2xl overflow-hidden" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)" }}>
-        <div className="px-4 py-4 shrink-0" style={{ borderBottom: "1px solid var(--divider)" }}>
-          <h3 style={{ fontSize: "13px", fontWeight: 700, color: "var(--heading)" }}>Suggested Topics</h3>
-          <p className="text-[11px] mt-0.5" style={{ color: "var(--t4)" }}>Click to ask your AI advisor</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {suggestedPrompts.map((p) => {
-            const Icon = p.icon;
-            return (
-              <button
-                key={p.text}
-                onClick={() => sendMessage(p.text)}
-                className="w-full text-left flex items-start gap-3 p-3 rounded-xl transition-all group"
-                style={{ background: "transparent" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--subtle)" }}>
-                  <Icon className="w-4 h-4" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs" style={{ color: "var(--t2)", fontWeight: 500, lineHeight: 1.5 }}>{p.text}</p>
-                  <span className="text-[10px]" style={{ color: "var(--t4)" }}>{p.category}</span>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity mt-1" style={{ color: "var(--t4)" }} />
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Data Sources */}
-        <div className="p-4 shrink-0" style={{ borderTop: "1px solid var(--divider)" }}>
-          <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--t4)", fontWeight: 600 }}>Connected Data</div>
-          <div className="space-y-1.5">
-            {[
-              { label: "Member Database", count: "127 records" },
-              { label: "Booking History", count: "2,847 sessions" },
-              { label: "Revenue Data", count: "12 months" },
-              { label: "Campaign Results", count: "18 campaigns" },
-            ].map((d) => (
-              <div key={d.label} className="flex items-center justify-between text-[11px]">
-                <span style={{ color: "var(--t3)" }}>{d.label}</span>
-                <span style={{ color: "var(--t4)", fontWeight: 500 }}>{d.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
