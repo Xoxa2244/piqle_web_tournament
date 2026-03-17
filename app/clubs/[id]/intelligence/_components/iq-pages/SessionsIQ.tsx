@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   CalendarDays, Clock, Users, TrendingUp, Filter, Search,
@@ -424,145 +424,141 @@ export function SessionsIQ() {
                     const insights = sessionInsights[s.id];
                     const fillPct = Math.round((s.players / s.maxPlayers) * 100);
                     return (
-                      <motion.tr
-                        key={s.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: i * 0.04 }}
-                        className="cursor-pointer transition-colors align-top"
-                        style={{ borderBottom: isExpanded ? "none" : "1px solid var(--divider)" }}
-                        onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                        onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "var(--row-hover)"; }}
-                        onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = "transparent"; }}
-                      >
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>
-                          <div className="flex items-center gap-1.5">
-                            <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-                              <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--t4)" }} />
-                            </motion.div>
-                            {s.id}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.court}</td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.format}</td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.date}</td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>
-                          <div className="flex items-center gap-2">
-                            <span>{s.players}/{s.maxPlayers}</span>
-                            <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${fillPct}%`,
-                                  background: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444",
-                                }}
-                              />
+                      <React.Fragment key={s.id}>
+                        <motion.tr
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: i * 0.04 }}
+                          className="cursor-pointer transition-colors align-top"
+                          style={{
+                            borderBottom: isExpanded ? "none" : "1px solid var(--divider)",
+                            background: isExpanded ? "var(--subtle)" : undefined,
+                          }}
+                          onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                          onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "var(--row-hover)"; }}
+                          onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = isExpanded ? "var(--subtle)" : "transparent"; }}
+                        >
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>
+                            <div className="flex items-center gap-1.5">
+                              <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                                <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--t4)" }} />
+                              </motion.div>
+                              {s.id}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
-                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
-                        <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                      </motion.tr>
+                          </td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.court}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.format}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.date}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>
+                            <div className="flex items-center gap-2">
+                              <span>{s.players}/{s.maxPlayers}</span>
+                              <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${fillPct}%`,
+                                    background: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444",
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
+                          <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                        </motion.tr>
+                        {isExpanded && insights && (
+                          <tr style={{ borderBottom: "1px solid var(--divider)" }}>
+                            <td colSpan={8} className="p-0" style={{ background: "var(--subtle)" }}>
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                transition={{ duration: 0.25 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="px-6 py-4 space-y-4">
+                                  {/* Fill Rate Bar */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>Fill Rate</span>
+                                      <span className="text-xs" style={{ color: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444", fontWeight: 700 }}>{fillPct}%</span>
+                                    </div>
+                                    <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--card-bg)" }}>
+                                      <motion.div
+                                        className="h-full rounded-full"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${fillPct}%` }}
+                                        transition={{ duration: 0.6, ease: "easeOut" }}
+                                        style={{
+                                          background: fillPct === 100
+                                            ? "linear-gradient(90deg, #10B981, #34D399)"
+                                            : fillPct >= 75
+                                              ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
+                                              : "linear-gradient(90deg, #EF4444, #F87171)",
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between mt-1.5">
+                                      <span className="text-[11px]" style={{ color: "var(--t4)" }}>{s.players} of {s.maxPlayers} players</span>
+                                      <span className="text-[11px]" style={{ color: "var(--t4)" }}>${insights.revenuePerPlayer}/player</span>
+                                    </div>
+                                  </div>
+
+                                  {/* AI Insights */}
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)" }}>
+                                          <Lightbulb className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
+                                        </div>
+                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>AI Insight</span>
+                                      </div>
+                                      <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.insight}</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(6,182,212,0.15)" }}>
+                                          <Zap className="w-3.5 h-3.5" style={{ color: "#22D3EE" }} />
+                                        </div>
+                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Recommendation</span>
+                                      </div>
+                                      <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.tip}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Suggested Players */}
+                                  {insights.suggestedPlayers.length > 0 && (
+                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
+                                          <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
+                                        </div>
+                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Suggested Players to Invite</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 mt-1">
+                                        {insights.suggestedPlayers.map((name) => (
+                                          <span
+                                            key={name}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                                            style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 500 }}
+                                          >
+                                            <Users className="w-3 h-3" />
+                                            {name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
-
-              {/* Expanded insight panels rendered outside table for valid HTML */}
-              {filteredSessions.map((s) => {
-                const isExpanded = expandedId === s.id;
-                const insights = sessionInsights[s.id];
-                const fillPct = Math.round((s.players / s.maxPlayers) * 100);
-                if (!isExpanded || !insights) return null;
-                return (
-                  <AnimatePresence key={s.id}>
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="overflow-hidden"
-                      style={{ borderBottom: "1px solid var(--divider)", background: "var(--subtle)" }}
-                    >
-                      <div className="px-6 py-4 space-y-4">
-                        {/* Fill Rate Bar */}
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>Fill Rate</span>
-                            <span className="text-xs" style={{ color: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444", fontWeight: 700 }}>{fillPct}%</span>
-                          </div>
-                          <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--card-bg)" }}>
-                            <motion.div
-                              className="h-full rounded-full"
-                              initial={{ width: 0 }}
-                              animate={{ width: `${fillPct}%` }}
-                              transition={{ duration: 0.6, ease: "easeOut" }}
-                              style={{
-                                background: fillPct === 100
-                                  ? "linear-gradient(90deg, #10B981, #34D399)"
-                                  : fillPct >= 75
-                                    ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
-                                    : "linear-gradient(90deg, #EF4444, #F87171)",
-                              }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-1.5">
-                            <span className="text-[11px]" style={{ color: "var(--t4)" }}>{s.players} of {s.maxPlayers} players</span>
-                            <span className="text-[11px]" style={{ color: "var(--t4)" }}>${insights.revenuePerPlayer}/player</span>
-                          </div>
-                        </div>
-
-                        {/* AI Insights */}
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)" }}>
-                                <Lightbulb className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
-                              </div>
-                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>AI Insight</span>
-                            </div>
-                            <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.insight}</p>
-                          </div>
-                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(6,182,212,0.15)" }}>
-                                <Zap className="w-3.5 h-3.5" style={{ color: "#22D3EE" }} />
-                              </div>
-                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Recommendation</span>
-                            </div>
-                            <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.tip}</p>
-                          </div>
-                        </div>
-
-                        {/* Suggested Players */}
-                        {insights.suggestedPlayers.length > 0 && (
-                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
-                                <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
-                              </div>
-                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Suggested Players to Invite</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {insights.suggestedPlayers.map((name) => (
-                                <span
-                                  key={name}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                                  style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 500 }}
-                                >
-                                  <Users className="w-3 h-3" />
-                                  {name}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  </AnimatePresence>
-                );
-              })}
             </div>
           </Card>
         </>
