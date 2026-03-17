@@ -324,8 +324,8 @@ Use the data above to answer the user's question. If the data doesn't contain re
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
-    // Build tools for this club
-    const chatTools = createChatTools(clubId);
+    // Tools disabled — Zod/AI SDK schema serialization breaks on Vercel with OpenAI.
+    // Club data is already available via RAG context in the system prompt.
 
     let result;
     try {
@@ -333,22 +333,20 @@ Use the data above to answer the user's question. If the data doesn't contain re
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
-      console.log(`[AI Chat] Stream started with model=${primaryModel}, tools enabled`);
+      console.log(`[AI Chat] Stream started with model=${primaryModel}`);
     } catch (error) {
       console.warn('[AI Chat] Primary model failed, trying fallback:', error instanceof Error ? error.message : error);
       result = streamText({
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
-      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}, tools enabled`);
+      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}`);
     }
 
     // 11. Return streaming response
