@@ -280,7 +280,7 @@ export function SlotFillerIQ() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.06 }}
                   className="flex items-center justify-between p-3 rounded-xl"
-                  style={{ background: "var(--subtle)" }}
+                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
                 >
                   <div className="flex items-center gap-3">
                     {/* Avatar */}

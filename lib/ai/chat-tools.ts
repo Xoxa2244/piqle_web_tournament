@@ -22,14 +22,14 @@ export function createChatTools(clubId: string): ToolSet {
       parameters: z.object({
         filter: z
           .enum(['all', 'at_risk', 'critical', 'watch', 'healthy'])
-          .default('all')
+          .optional()
           .describe('Filter by risk level. Default: all'),
         limit: z
           .number()
-          .default(10)
+          .optional()
           .describe('Max members to return. Default: 10'),
       }),
-      execute: async ({ filter, limit }: { filter: string; limit: number }) => {
+      execute: async ({ filter = 'all', limit = 10 }: { filter?: string; limit?: number }) => {
         try {
           const followers = await prisma.clubFollower.findMany({
             where: { clubId },
@@ -137,14 +137,14 @@ export function createChatTools(clubId: string): ToolSet {
       parameters: z.object({
         onlyUnderfilled: z
           .boolean()
-          .default(false)
+          .optional()
           .describe('Only return sessions below 50% capacity. Default: false'),
         limit: z
           .number()
-          .default(10)
+          .optional()
           .describe('Max sessions to return. Default: 10'),
       }),
-      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled: boolean; limit: number }) => {
+      execute: async ({ onlyUnderfilled = false, limit = 10 }: { onlyUnderfilled?: boolean; limit?: number }) => {
         try {
           const sessions = await prisma.playSession.findMany({
             where: {
@@ -275,10 +275,10 @@ export function createChatTools(clubId: string): ToolSet {
       parameters: z.object({
         limit: z
           .number()
-          .default(10)
+          .optional()
           .describe('Max candidates to return. Default: 10'),
       }),
-      execute: async ({ limit }: { limit: number }) => {
+      execute: async ({ limit = 10 }: { limit?: number }) => {
         try {
           const now = new Date()
           const d14 = new Date(now.getTime() - 14 * 86400000)

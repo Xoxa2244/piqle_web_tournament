@@ -12,7 +12,7 @@
   --tooltip-color: #E2E8F0;
   --chat-bg: rgba(11, 13, 23, 0.95);
   --divider: rgba(255, 255, 255, 0.06);
-  --subtle: rgba(255, 255, 255, 0.04);
+  --subtle: rgba(255, 255, 255, 0.08);
   --faint: rgba(255, 255, 255, 0.03);
   --hover: rgba(255, 255, 255, 0.04);
   --badge-bg: rgba(255, 255, 255, 0.05);
@@ -61,7 +61,7 @@
   --tooltip-color: #0F172A;
   --chat-bg: rgba(255, 255, 255, 0.97);
   --divider: rgba(0, 0, 0, 0.06);
-  --subtle: rgba(0, 0, 0, 0.03);
+  --subtle: rgba(0, 0, 0, 0.06);
   --faint: rgba(0, 0, 0, 0.02);
   --hover: rgba(0, 0, 0, 0.04);
   --badge-bg: rgba(0, 0, 0, 0.04);
