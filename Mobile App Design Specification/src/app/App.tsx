@@ -3,7 +3,7 @@ import { router } from './routes';
 import { Toaster } from './components/ui/sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
 
-function App() {
+export default function App() {
   return (
     <ThemeProvider>
       <RouterProvider router={router} />
@@ -11,5 +11,3 @@ function App() {
     </ThemeProvider>
   );
 }
-
-export default App;

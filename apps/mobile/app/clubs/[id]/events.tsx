@@ -5,9 +5,30 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { EmptyState, LoadingBlock, SurfaceCard } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
-import { formatDateTime } from '../../../src/lib/formatters'
+import { formatDateRange, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, spacing } from '../../../src/lib/theme'
+import { palette, radius, spacing } from '../../../src/lib/theme'
+
+const formatTournamentFormat = (format: string) => {
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return 'Single Elimination'
+    case 'ROUND_ROBIN':
+      return 'Round Robin'
+    case 'MLP':
+      return 'MLP'
+    case 'INDY_LEAGUE':
+      return 'Indy League'
+    case 'LEAGUE_ROUND_ROBIN':
+      return 'League Round Robin'
+    case 'ONE_DAY_LADDER':
+      return 'One Day Ladder'
+    case 'LADDER_LEAGUE':
+      return 'Ladder League'
+    default:
+      return format.replace(/_/g, ' ')
+  }
+}
 
 export default function ClubEventsScreen() {
   const params = useLocalSearchParams<{ id: string }>()
@@ -62,22 +83,52 @@ export default function ClubEventsScreen() {
         ) : (
           <View style={{ gap: 12 }}>
             {tournaments.map((tournament: any) => (
-              <SurfaceCard key={tournament.id} tone="soft" style={styles.card}>
-                <Pressable
-                  onPress={() => router.push(`/tournaments/${tournament.id}`)}
-                  style={({ pressed }) => [styles.eventRow, pressed && styles.eventRowPressed]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.eventTitle} numberOfLines={2}>
-                      {tournament.title}
-                    </Text>
-                    <Text style={styles.meta} numberOfLines={1}>
-                      {formatDateTime(tournament.startDate)} · {tournament.format}
-                    </Text>
+              <Pressable
+                key={tournament.id}
+                onPress={() => router.push(`/tournaments/${tournament.id}`)}
+                style={({ pressed }) => [pressed && { opacity: 0.9 }]}
+              >
+                <SurfaceCard style={styles.card}>
+                  <View style={styles.eventRow}>
+                    <View style={styles.eventIcon}>
+                      <Feather name="award" size={20} color={palette.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.eventTopRow}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>
+                          {tournament.title}
+                        </Text>
+                        <View style={styles.eventStatusBadges}>
+                          <SurfaceCard tone="soft" style={styles.statusPill}>
+                            <Text style={styles.statusPillText}>Open</Text>
+                          </SurfaceCard>
+                        </View>
+                      </View>
+                      <View style={styles.eventMetaRow}>
+                        <Feather name="calendar" size={14} color={palette.textMuted} />
+                        <Text style={styles.eventMeta}>
+                          {formatDateRange(tournament.startDate, tournament.endDate)}
+                        </Text>
+                      </View>
+                      <View style={styles.eventMetaRow}>
+                        <Feather name="map-pin" size={14} color={palette.textMuted} />
+                        <Text numberOfLines={1} style={styles.eventMeta}>
+                          {formatLocation([club.city, club.state]) || 'Location not set'}
+                        </Text>
+                      </View>
+                      {tournament.format ? (
+                        <View style={styles.badgeRow}>
+                          <SurfaceCard tone="soft" style={styles.formatPill}>
+                            <Text style={styles.formatPillText}>
+                              {formatTournamentFormat(tournament.format)}
+                            </Text>
+                          </SurfaceCard>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
-                  <Feather name="chevron-right" size={18} color={palette.textMuted} />
-                </Pressable>
-              </SurfaceCard>
+                </SurfaceCard>
+              </Pressable>
             ))}
           </View>
         )}
@@ -131,29 +182,84 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   card: {
-    borderRadius: 16,
-    shadowOpacity: 0,
-    elevation: 0,
+    borderRadius: radius.lg,
   },
   eventRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
+    alignItems: 'flex-start',
+    gap: spacing.md,
   },
-  eventRowPressed: {
-    opacity: 0.86,
+  eventIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.brandPrimaryTint,
+    borderWidth: 1,
+    borderColor: palette.brandPrimaryBorder,
+  },
+  eventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   eventTitle: {
     color: palette.text,
     fontSize: 16,
     fontWeight: '800',
+    flex: 1,
   },
-  meta: {
-    marginTop: 6,
-    color: palette.textMuted,
+  eventStatusBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  statusPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: palette.brandPrimaryTint,
+  },
+  statusPillText: {
+    color: palette.primary,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '800',
+  },
+  eventMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    color: palette.textMuted,
+    marginTop: 6,
+  },
+  eventMeta: {
+    color: palette.textMuted,
+    fontSize: 13,
+    flex: 1,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: spacing.sm,
+  },
+  formatPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceElevated,
+  },
+  formatPillText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
 })
 

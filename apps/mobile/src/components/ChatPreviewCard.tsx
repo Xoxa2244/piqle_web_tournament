@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatDateTime } from '../lib/formatters'
 import { palette, radius, spacing } from '../lib/theme'
-import { AvatarBadge, Pill, SurfaceCard } from './ui'
+import { AvatarBadge, Pill } from './ui'
 
 export const ChatPreviewCard = ({
   title,
@@ -18,21 +18,34 @@ export const ChatPreviewCard = ({
 }) => {
   return (
     <Pressable onPress={onPress}>
-      <SurfaceCard tone="soft" style={styles.previewCard}>
+      <View style={styles.item}>
         <View style={styles.row}>
-          <AvatarBadge label={title} />
-          <View style={{ flex: 1 }}>
+          <AvatarBadge label={title} size={48} />
+          <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>{title}</Text>
-              <Feather name="chevron-right" size={16} color={palette.textMuted} />
+              <View style={styles.titleWithIcon}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Feather name="message-circle" size={14} color={palette.textMuted} />
+              </View>
+              <Text style={styles.time} numberOfLines={1}>
+                {''}
+              </Text>
             </View>
-            <Text numberOfLines={1} style={styles.subtitle}>
-              {subtitle}
-            </Text>
+            <View style={styles.subtitleRow}>
+              <Text numberOfLines={1} style={styles.subtitle}>
+                {subtitle}
+              </Text>
+              {unreadCount && unreadCount > 0 ? (
+                <View style={styles.unread}>
+                  <Text style={styles.unreadText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-          {unreadCount ? <Pill label={`${unreadCount}`} tone="primary" /> : null}
         </View>
-      </SurfaceCard>
+      </View>
     </Pressable>
   )
 }
@@ -60,30 +73,65 @@ export const ChatMessageBubble = ({
 }
 
 const styles = StyleSheet.create({
-  previewCard: {
-    shadowColor: 'transparent',
-    elevation: 0,
+  item: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
+    backgroundColor: palette.background,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    alignItems: 'flex-start',
+    gap: 12,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  titleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   title: {
     color: palette.text,
     fontSize: 16,
     fontWeight: '700',
-    flex: 1,
+  },
+  time: {
+    color: palette.textMuted,
+    fontSize: 12,
+  },
+  subtitleRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   subtitle: {
-    marginTop: 4,
     color: palette.textMuted,
     fontSize: 13,
+    flex: 1,
+  },
+  unread: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.primary,
+  },
+  unreadText: {
+    color: palette.white,
+    fontWeight: '800',
+    fontSize: 12,
   },
   messageWrap: {
     alignItems: 'flex-start',

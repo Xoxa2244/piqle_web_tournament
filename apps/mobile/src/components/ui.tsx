@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import type { PropsWithChildren, ReactNode } from 'react'
+import React, { type PropsWithChildren, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -72,6 +72,7 @@ export const SurfaceCard = ({
       ? styles.cardHero
       : styles.cardDefault
 
+  const safeChildren = React.Children.toArray(children).filter(React.isValidElement)
   return (
     <View style={[styles.card, toneStyle, padded && styles.cardPadded, style]}>
       {tone === 'hero' ? (
@@ -83,7 +84,7 @@ export const SurfaceCard = ({
           style={styles.cardHeroGradient}
         />
       ) : null}
-      {children}
+      {safeChildren}
     </View>
   )
 }
@@ -101,9 +102,11 @@ export const SectionTitle = ({
     <View style={styles.sectionRow}>
       <View style={{ flex: 1 }}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        {subtitle != null && subtitle !== '' ? (
+          <Text style={styles.sectionSubtitle}>{String(subtitle)}</Text>
+        ) : null}
       </View>
-      {action}
+      {React.isValidElement(action) ? action : null}
     </View>
   )
 }
@@ -309,9 +312,30 @@ export const AvatarBadge = ({ label, size = 48 }: { label: string; size?: number
     .map((part) => part[0]?.toUpperCase())
     .join('')
 
+  const hashString = (value: string) => {
+    let hash = 0
+    for (let i = 0; i < value.length; i++) {
+      hash = (hash * 31 + value.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash)
+  }
+
+  const hash = hashString(String(label ?? ''))
+  // Vary hue within green spectrum (mint → grass → lime), but keep it "Piqle-green" adjacent.
+  const hue = 118 + (hash % 38) // 118..155
+  const sat = 62 + (Math.floor(hash / 37) % 18) // 62..79
+  const light = 40 + (Math.floor(hash / 997) % 14) // 40..53
+  const inner = `hsl(${hue} ${sat}% ${light}%)`
+  const outer = `hsla(${hue} ${sat}% ${Math.min(92, light + 35)}% / 0.40)`
+
   return (
-    <View style={[styles.avatarBadge, { width: size, height: size, borderRadius: size / 2 }]}>
-      <View style={[styles.avatarBadgeInner, { borderRadius: size / 2 }]}>
+    <View
+      style={[
+        styles.avatarBadge,
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: outer },
+      ]}
+    >
+      <View style={[styles.avatarBadgeInner, { borderRadius: size / 2, backgroundColor: inner }]}>
         <Text style={[styles.avatarBadgeText, { fontSize: Math.max(14, size * 0.3) }]}>{initials || 'P'}</Text>
       </View>
     </View>
@@ -458,7 +482,7 @@ const styles = StyleSheet.create({
   },
   inputShell: {
     minHeight: 52,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.04)',
     backgroundColor: palette.surfaceElevated,
@@ -470,6 +494,7 @@ const styles = StyleSheet.create({
   inputShellMultiline: {
     alignItems: 'flex-start',
     paddingVertical: 14,
+    minHeight: 100,
   },
   inputAdornment: {
     alignItems: 'center',
@@ -523,7 +548,6 @@ const styles = StyleSheet.create({
   avatarBadge: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
     padding: 2,
     shadowColor: palette.shadowStrong,
     shadowOpacity: 0.25,
@@ -534,7 +558,6 @@ const styles = StyleSheet.create({
   avatarBadgeInner: {
     flex: 1,
     width: '100%',
-    backgroundColor: '#39d252',
     alignItems: 'center',
     justifyContent: 'center',
   },

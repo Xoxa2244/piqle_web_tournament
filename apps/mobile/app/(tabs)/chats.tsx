@@ -9,7 +9,6 @@ import {
   EmptyState,
   LoadingBlock,
   SearchField,
-  SurfaceCard,
 } from '../../src/components/ui'
 import { formatDateTime } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
@@ -58,10 +57,10 @@ export default function ChatsTab() {
   }
 
   return (
-    <PageLayout>
-      <SurfaceCard tone="soft">
-        <SearchField value={search} onChangeText={setSearch} placeholder="Search messages or rooms" />
-      </SurfaceCard>
+    <PageLayout contentStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0 }}>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md }}>
+        <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
+      </View>
 
       {clubChatsQuery.isLoading || eventChatsQuery.isLoading ? <LoadingBlock label="Loading chats…" /> : null}
 
@@ -70,11 +69,11 @@ export default function ChatsTab() {
       ) : null}
 
       {filteredClubChats.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Club chats</Text>
+        <View>
+          <Text style={styles.sectionLabel}>Club chats</Text>
           {filteredClubChats.map((club) => (
             <ChatPreviewCard
-              key={club.id}
+              key={`club-${club.id}`}
               title={club.name}
               subtitle={club.city || club.state || 'Club chat'}
               unreadCount={club.unreadCount}
@@ -90,48 +89,21 @@ export default function ChatsTab() {
       ) : null}
 
       {filteredEventChats.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Event chats</Text>
+        <View style={{ marginTop: spacing.sm }}>
+          <Text style={styles.sectionLabel}>Event chats</Text>
           {filteredEventChats.map((event) => (
-            <SurfaceCard key={event.id} tone="soft">
-              <ChatPreviewCard
-                title={event.title}
-                subtitle={`${formatDateTime(event.startDate)} · ${event.club?.name || 'Event chat'}`}
-                unreadCount={event.unreadCount}
-                onPress={() =>
-                  router.push({
-                    pathname: '/chats/event/tournament/[tournamentId]',
-                    params: { tournamentId: event.id, title: event.title },
-                  })
-                }
-              />
-              {event.divisions.length > 0 ? (
-                <View style={{ marginTop: spacing.md, gap: 8 }}>
-                  <Text style={{ color: palette.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                    Division threads
-                  </Text>
-                  {event.divisions.map((division) => (
-                    <ChatPreviewCard
-                      key={division.id}
-                      title={division.name}
-                      subtitle={division.permission.isParticipant ? 'Participant access' : 'Admin access'}
-                      unreadCount={division.unreadCount}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/chats/event/division/[divisionId]',
-                          params: {
-                            divisionId: division.id,
-                            tournamentId: event.id,
-                            title: division.name,
-                            eventTitle: event.title,
-                          },
-                        })
-                      }
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </SurfaceCard>
+            <ChatPreviewCard
+              key={`event-${event.id}`}
+              title={event.title}
+              subtitle={`${formatDateTime(event.startDate)} · ${event.club?.name || 'Event chat'}`}
+              unreadCount={event.unreadCount}
+              onPress={() =>
+                router.push({
+                  pathname: '/chats/event/tournament/[tournamentId]',
+                  params: { tournamentId: event.id, title: event.title },
+                })
+              }
+            />
           ))}
         </View>
       ) : null}
@@ -139,11 +111,16 @@ export default function ChatsTab() {
   )
 }
 
-const styles = {
-  sectionTitle: {
-    color: palette.text,
-    fontWeight: '700' as const,
-    fontSize: 18,
-  },
+const styles = {}
+
+styles.sectionLabel = {
+  paddingHorizontal: spacing.lg,
+  paddingTop: spacing.xs,
+  paddingBottom: spacing.xs,
+  color: palette.textMuted,
+  fontSize: 12,
+  fontWeight: '700' as const,
+  textTransform: 'uppercase' as const,
+  letterSpacing: 0.8,
 }
 
