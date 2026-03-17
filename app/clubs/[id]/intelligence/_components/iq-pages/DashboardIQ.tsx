@@ -13,6 +13,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
+import { useParams, useRouter } from "next/navigation";
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
@@ -24,18 +25,20 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   return { current: "Selected range", previous: "Previous range" };
 }
 
+type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; href: string };
+
 const periodData: Record<Period, {
-  kpis: { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[] }[];
+  kpis: KpiItem[];
   health: { level: string; count: number; pct: number; color: string }[];
   healthMetrics: { improved: number; improvedPct: number; declined: number; declinedPct: number; avgScore: number; avgScorePrev: number; churnedThisPeriod: number; churnChange: number };
   comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
 }> = {
   week: {
     kpis: [
-      { label: "Active Members", value: "89", change: "+4.7%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", sparkData: [60, 62, 58, 65, 70, 72, 75, 78, 80, 82, 85, 89] },
-      { label: "Court Occupancy", value: "58%", change: "+1.8%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", sparkData: [48, 50, 52, 55, 53, 56, 54, 57, 55, 56, 57, 58] },
-      { label: "Weekly Revenue", value: "$4.6K", change: "+9.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", sparkData: [3.2, 3.4, 3.1, 3.6, 3.8, 4.0, 4.2, 4.1, 4.3, 4.4, 4.5, 4.6] },
-      { label: "Lost Revenue", value: "$980", change: "-5.1%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", sparkData: [1.4, 1.3, 1.2, 1.1, 1.15, 1.1, 1.05, 1.02, 1.0, 0.98, 0.99, 0.98] },
+      { label: "Active Members", value: "89", change: "+4.7%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [60, 62, 58, 65, 70, 72, 75, 78, 80, 82, 85, 89] },
+      { label: "Court Occupancy", value: "58%", change: "+1.8%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [48, 50, 52, 55, 53, 56, 54, 57, 55, 56, 57, 58] },
+      { label: "Weekly Revenue", value: "$4.6K", change: "+9.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [3.2, 3.4, 3.1, 3.6, 3.8, 4.0, 4.2, 4.1, 4.3, 4.4, 4.5, 4.6] },
+      { label: "Lost Revenue", value: "$980", change: "-5.1%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [1.4, 1.3, 1.2, 1.1, 1.15, 1.1, 1.05, 1.02, 1.0, 0.98, 0.99, 0.98] },
     ],
     health: [
       { level: "Healthy", count: 52, pct: 58, color: "#10B981" },
@@ -55,10 +58,10 @@ const periodData: Record<Period, {
   },
   month: {
     kpis: [
-      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
-      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
-      { label: "Monthly Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
-      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
+      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
+      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
+      { label: "Monthly Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
+      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
     ],
     health: [
       { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
@@ -78,10 +81,10 @@ const periodData: Record<Period, {
   },
   quarter: {
     kpis: [
-      { label: "Active Members", value: "142", change: "+14.5%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", sparkData: [90, 95, 100, 105, 108, 112, 118, 122, 128, 132, 138, 142] },
-      { label: "Court Occupancy", value: "65%", change: "+5.2%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", sparkData: [55, 56, 58, 59, 60, 61, 62, 63, 62, 64, 64, 65] },
-      { label: "Quarterly Revenue", value: "$54.8K", change: "+18.3%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", sparkData: [38, 40, 42, 44, 45, 46, 48, 50, 51, 52, 53, 54.8] },
-      { label: "Lost Revenue", value: "$11.6K", change: "-8.4%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", sparkData: [15, 14.5, 14, 13.8, 13.5, 13, 12.8, 12.5, 12.2, 12, 11.8, 11.6] },
+      { label: "Active Members", value: "142", change: "+14.5%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [90, 95, 100, 105, 108, 112, 118, 122, 128, 132, 138, 142] },
+      { label: "Court Occupancy", value: "65%", change: "+5.2%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [55, 56, 58, 59, 60, 61, 62, 63, 62, 64, 64, 65] },
+      { label: "Quarterly Revenue", value: "$54.8K", change: "+18.3%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [38, 40, 42, 44, 45, 46, 48, 50, 51, 52, 53, 54.8] },
+      { label: "Lost Revenue", value: "$11.6K", change: "-8.4%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [15, 14.5, 14, 13.8, 13.5, 13, 12.8, 12.5, 12.2, 12, 11.8, 11.6] },
     ],
     health: [
       { level: "Healthy", count: 82, pct: 58, color: "#10B981" },
@@ -101,10 +104,10 @@ const periodData: Record<Period, {
   },
   custom: {
     kpis: [
-      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
-      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
-      { label: "Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
-      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
+      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
+      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
+      { label: "Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
+      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
     ],
     health: [
       { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
@@ -235,6 +238,9 @@ function formatValue(v: number, fmt: "currency" | "number" | "percent") {
 /* ============================================= */
 export function DashboardIQ() {
   const { isDark } = useTheme();
+  const params = useParams();
+  const router = useRouter();
+  const clubId = params.id as string;
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -316,8 +322,12 @@ export function DashboardIQ() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => router.push(`/clubs/${clubId}/intelligence${kpi.href}`)}
+              className="cursor-pointer"
             >
-              <Card className="relative overflow-hidden">
+              <Card className="relative overflow-hidden transition-shadow hover:shadow-lg hover:shadow-black/10">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />
