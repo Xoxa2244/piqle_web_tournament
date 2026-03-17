@@ -69,12 +69,12 @@ const members: Member[] = [
   { id: "m12", name: "Chris Taylor", avatar: "CT", email: "chris.t@email.com", phone: "+1 (555) 100-2012", rating: 2.9, sport: "Padel", segment: "regular", healthScore: 68, sessionsThisMonth: 4, totalSessions: 48, memberSince: "Feb 2024", lastPlayed: "4 days ago", revenue: 860, trend: "stable", favoriteTime: "Evening", favoriteFormat: "Doubles" },
 ];
 
-const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string }> = {
-  power: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Power Player" },
-  regular: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Regular" },
-  casual: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Casual" },
-  "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At-Risk" },
-  dormant: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Dormant" },
+const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string; tooltip: string }> = {
+  power: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Power Player", tooltip: "4+ sessions/week, health score 80+" },
+  regular: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Regular", tooltip: "2-3 sessions/week, consistent attendance" },
+  casual: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Casual", tooltip: "1 session/week or less, still active" },
+  "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At-Risk", tooltip: "Declining frequency, health score 25-49" },
+  dormant: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Dormant", tooltip: "No activity for 21+ days, health score below 25" },
 };
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -116,7 +116,7 @@ function HealthBar({ score }: { score: number }) {
 function SegmentBadge({ segment }: { segment: Exclude<Segment, "all"> }) {
   const cfg = segmentConfig[segment];
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px]" style={{ background: cfg.bg, color: cfg.color, fontWeight: 600 }}>
+    <span title={cfg.tooltip} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] cursor-help" style={{ background: cfg.bg, color: cfg.color, fontWeight: 600 }}>
       <div className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.color }} />
       {cfg.label}
     </span>
