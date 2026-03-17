@@ -208,7 +208,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
         {/* Content */}
         <main className="flex-1 overflow-y-auto relative">
           {/* Orbs */}
-          <div className="fixed pointer-events-none" style={{ top: 0, left: 260, right: 0, bottom: 0, zIndex: 0 }}>
+          <div className="hidden md:block fixed pointer-events-none" style={{ top: 0, left: 260, right: 0, bottom: 0, zIndex: 0 }}>
             <div className="absolute top-[-15%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px]" style={{ background: "var(--orb-violet)" }} />
             <div className="absolute bottom-[-10%] left-[10%] w-[400px] h-[400px] rounded-full blur-[120px]" style={{ background: "var(--orb-cyan)" }} />
           </div>
