@@ -174,7 +174,7 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
         <div
           className="fixed bottom-6 right-6 z-50 w-[400px] h-[520px] rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
           style={{
-            background: "var(--card-bg, #1a1a2e)",
+            background: "var(--chat-bg, #1a1a2e)", backdropFilter: "blur(20px)",
             border: "1px solid var(--card-border, rgba(139,92,246,0.15))",
             boxShadow: "0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(139,92,246,0.1)",
           }}
