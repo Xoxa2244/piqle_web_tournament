@@ -645,8 +645,7 @@ function ChannelIcon({ channel }: { channel: string }) {
             </div>{' '}
           </div>{' '}
         </div>{' '}
-        <div className="space-y-3">
-          {' '}
+        <Card className="!p-0 overflow-hidden">
           {filtered.map((campaign, i) => {
             const isExpanded = expandedCampaign === campaign.id;
             const openRate =
@@ -656,240 +655,158 @@ function ChannelIcon({ channel }: { channel: string }) {
             const convRate =
               campaign.sent > 0 ? Math.round((campaign.converted / campaign.sent) * 100) : 0;
             return (
-              <motion.div
-                key={campaign.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
-              >
-                {' '}
-                <Card className="!p-0 overflow-hidden">
-                  {' '}
+              <div key={campaign.id} style={{ borderBottom: '1px solid var(--divider)' }}>
+                <div
+                  className="grid items-center px-5 py-4 cursor-pointer transition-colors"
+                  style={{
+                    gridTemplateColumns: '40px 1fr repeat(3, 52px) 72px 100px 20px',
+                    gap: '0 16px',
+                  }}
+                  onClick={() => setExpandedCampaign(isExpanded ? null : campaign.id)}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
                   <div
-                    className="grid items-center px-5 py-4 cursor-pointer transition-colors"
-                    style={{
-                      gridTemplateColumns: '40px 1fr repeat(3, 52px) 72px auto 20px',
-                      gap: '0 16px',
-                    }}
-                    onClick={() => setExpandedCampaign(isExpanded ? null : campaign.id)}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: 'var(--pill-active)' }}
                   >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{ background: 'var(--pill-active)' }}
-                    >
-                      <ChannelIcon channel={campaign.channel} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                    <ChannelIcon channel={campaign.channel} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-sm truncate"
+                        style={{ fontWeight: 600, color: 'var(--heading)' }}
+                      >
+                        {campaign.name}
+                      </span>
+                      {campaign.aiGenerated && (
                         <span
-                          className="text-sm truncate"
-                          style={{ fontWeight: 600, color: 'var(--heading)' }}
+                          className="text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
+                          style={{
+                            background: 'rgba(139,92,246,0.12)',
+                            color: '#A78BFA',
+                            fontWeight: 700,
+                          }}
                         >
-                          {campaign.name}
+                          AI
                         </span>
-                        {campaign.aiGenerated && (
-                          <span
-                            className="text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
-                            style={{
-                              background: 'rgba(139,92,246,0.12)',
-                              color: '#A78BFA',
-                              fontWeight: 700,
-                            }}
-                          >
-                            AI
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className="flex items-center gap-3 mt-0.5 text-[11px]"
-                        style={{ color: 'var(--t3)' }}
-                      >
-                        <span>{campaign.type}</span>
-                        <span>{campaign.createdAt}</span>
-                        <span>{campaign.audience} recipients</span>
-                      </div>
+                      )}
                     </div>
-                    <div className="text-center text-xs hidden md:block">
-                      {campaign.sent > 0 ? (
-                        <>
-                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{openRate}%</div>
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Opens</div>
-                        </>
-                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
-                    </div>
-                    <div className="text-center text-xs hidden md:block">
-                      {campaign.sent > 0 ? (
-                        <>
-                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{clickRate}%</div>
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Clicks</div>
-                        </>
-                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
-                    </div>
-                    <div className="text-center text-xs hidden md:block">
-                      {campaign.sent > 0 ? (
-                        <>
-                          <div className="text-emerald-400" style={{ fontWeight: 700 }}>{convRate}%</div>
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Conv</div>
-                        </>
-                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
-                    </div>
-                    <div className="text-right text-xs hidden sm:block">
-                      {campaign.revenue > 0 ? (
-                        <span className="text-emerald-400" style={{ fontWeight: 700 }}>
-                          ${campaign.revenue.toLocaleString()}
-                        </span>
-                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
-                    </div>
-                    <StatusBadge status={campaign.status} />
-                    <motion.div
-                      animate={{ rotate: isExpanded ? 90 : 0 }}
-                      transition={{ duration: 0.2 }}
+                    <div
+                      className="flex items-center gap-3 mt-0.5 text-[11px]"
+                      style={{ color: 'var(--t3)' }}
                     >
-                      <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
-                    </motion.div>
-                  </div>{' '}
-                  <AnimatePresence>
-                    {' '}
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="overflow-hidden"
+                      <span>{campaign.type}</span>
+                      <span>{campaign.createdAt}</span>
+                      <span>{campaign.audience} recipients</span>
+                    </div>
+                  </div>
+                  <div className="text-center text-xs hidden md:block">
+                    {campaign.sent > 0 ? (
+                      <>
+                        <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{openRate}%</div>
+                        <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Opens</div>
+                      </>
+                    ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                  </div>
+                  <div className="text-center text-xs hidden md:block">
+                    {campaign.sent > 0 ? (
+                      <>
+                        <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{clickRate}%</div>
+                        <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Clicks</div>
+                      </>
+                    ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                  </div>
+                  <div className="text-center text-xs hidden md:block">
+                    {campaign.sent > 0 ? (
+                      <>
+                        <div className="text-emerald-400" style={{ fontWeight: 700 }}>{convRate}%</div>
+                        <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Conv</div>
+                      </>
+                    ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                  </div>
+                  <div className="text-right text-xs hidden sm:block">
+                    {campaign.revenue > 0 ? (
+                      <span className="text-emerald-400" style={{ fontWeight: 700 }}>
+                        ${campaign.revenue.toLocaleString()}
+                      </span>
+                    ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                  </div>
+                  <StatusBadge status={campaign.status} />
+                  <motion.div
+                    animate={{ rotate: isExpanded ? 90 : 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
+                  </motion.div>
+                </div>
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div
+                        className="px-5 pb-5 pt-2 space-y-4"
+                        style={{ borderTop: '1px solid var(--divider)' }}
                       >
-                        {' '}
-                        <div
-                          className="px-5 pb-5 pt-2 space-y-4"
-                          style={{ borderTop: '1px solid var(--divider)' }}
-                        >
-                          {' '}
-                          <p className="text-sm" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
-                            {campaign.description}
-                          </p>{' '}
-                          {campaign.sent > 0 && (
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                              {' '}
-                              {[
-                                { label: 'Sent', value: campaign.sent, color: 'var(--t1)' },
-                                {
-                                  label: 'Opened',
-                                  value: `${campaign.opened} (${openRate}%)`,
-                                  color: '#06B6D4',
-                                },
-                                {
-                                  label: 'Clicked',
-                                  value: `${campaign.clicked} (${clickRate}%)`,
-                                  color: '#8B5CF6',
-                                },
-                                {
-                                  label: 'Converted',
-                                  value: `${campaign.converted} (${convRate}%)`,
-                                  color: '#10B981',
-                                },
-                                {
-                                  label: 'Revenue',
-                                  value: `$${campaign.revenue.toLocaleString()}`,
-                                  color: '#F59E0B',
-                                },
-                              ].map((stat) => (
-                                <div
-                                  key={stat.label}
-                                  className="p-3 rounded-lg text-center"
-                                  style={{ background: 'var(--subtle)' }}
-                                >
-                                  {' '}
-                                  <div className="text-[10px] mb-1" style={{ color: 'var(--t4)' }}>
-                                    {stat.label}
-                                  </div>{' '}
-                                  <div
-                                    className="text-xs"
-                                    style={{ color: stat.color, fontWeight: 700 }}
-                                  >
-                                    {stat.value}
-                                  </div>{' '}
+                        <p className="text-sm" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                          {campaign.description}
+                        </p>
+                        {campaign.sent > 0 && (
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                            {[
+                              { label: 'Sent', value: campaign.sent, color: 'var(--t1)' },
+                              { label: 'Opened', value: `${campaign.opened} (${openRate}%)`, color: '#06B6D4' },
+                              { label: 'Clicked', value: `${campaign.clicked} (${clickRate}%)`, color: '#8B5CF6' },
+                              { label: 'Converted', value: `${campaign.converted} (${convRate}%)`, color: '#10B981' },
+                              { label: 'Revenue', value: `$${campaign.revenue.toLocaleString()}`, color: '#F59E0B' },
+                            ].map((stat) => (
+                              <div key={stat.label} className="p-3 rounded-lg text-center" style={{ background: 'var(--subtle)' }}>
+                                <div className="text-[10px] mb-1" style={{ color: 'var(--t4)' }}>{stat.label}</div>
+                                <div className="text-xs" style={{ color: stat.color, fontWeight: 700 }}>{stat.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {campaign.sent > 0 && (
+                          <div className="flex items-center gap-1">
+                            {[
+                              { label: 'Sent', val: campaign.sent, color: '#8B5CF6' },
+                              { label: 'Opened', val: campaign.opened, color: '#06B6D4' },
+                              { label: 'Clicked', val: campaign.clicked, color: '#10B981' },
+                              { label: 'Converted', val: campaign.converted, color: '#F59E0B' },
+                            ].map((step, si) => (
+                              <div key={step.label} className="flex items-center gap-1 flex-1">
+                                <div className="flex-1">
+                                  <div className="h-2 rounded-full" style={{ background: step.color, width: `${(step.val / campaign.sent) * 100}%`, opacity: 0.7 }} />
+                                  <div className="text-[9px] mt-1" style={{ color: 'var(--t4)' }}>{step.label}: {step.val}</div>
                                 </div>
-                              ))}{' '}
-                            </div>
-                          )}{' '}
-                          {/* Funnel visualization */}{' '}
-                          {campaign.sent > 0 && (
-                            <div className="flex items-center gap-1">
-                              {' '}
-                              {[
-                                { label: 'Sent', val: campaign.sent, color: '#8B5CF6' },
-                                { label: 'Opened', val: campaign.opened, color: '#06B6D4' },
-                                { label: 'Clicked', val: campaign.clicked, color: '#10B981' },
-                                { label: 'Converted', val: campaign.converted, color: '#F59E0B' },
-                              ].map((step, si) => (
-                                <div key={step.label} className="flex items-center gap-1 flex-1">
-                                  {' '}
-                                  <div className="flex-1">
-                                    {' '}
-                                    <div
-                                      className="h-2 rounded-full"
-                                      style={{
-                                        background: step.color,
-                                        width: `${(step.val / campaign.sent) * 100}%`,
-                                        opacity: 0.7,
-                                      }}
-                                    />{' '}
-                                    <div className="text-[9px] mt-1" style={{ color: 'var(--t4)' }}>
-                                      {step.label}: {step.val}
-                                    </div>{' '}
-                                  </div>{' '}
-                                  {si < 3 && (
-                                    <ChevronRight
-                                      className="w-3 h-3 shrink-0"
-                                      style={{ color: 'var(--t5)' }}
-                                    />
-                                  )}{' '}
-                                </div>
-                              ))}{' '}
-                            </div>
-                          )}{' '}
-                          <div className="flex items-center gap-2 justify-end">
-                            {' '}
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]"
-                              style={{
-                                background: 'var(--subtle)',
-                                border: '1px solid var(--card-border)',
-                                color: 'var(--t2)',
-                                fontWeight: 500,
-                              }}
-                            >
-                              {' '}
-                              <Copy className="w-3.5 h-3.5" /> Duplicate{' '}
-                            </motion.button>{' '}
-                            <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]"
-                              style={{
-                                background: 'var(--subtle)',
-                                border: '1px solid var(--card-border)',
-                                color: 'var(--t2)',
-                                fontWeight: 500,
-                              }}
-                            >
-                              {' '}
-                              <BarChart3 className="w-3.5 h-3.5" /> Full Report{' '}
-                            </motion.button>{' '}
-                          </div>{' '}
-                        </div>{' '}
-                      </motion.div>
-                    )}{' '}
-                  </AnimatePresence>{' '}
-                </Card>{' '}
-              </motion.div>
+                                {si < 3 && <ChevronRight className="w-3 h-3 shrink-0" style={{ color: 'var(--t5)' }} />}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 justify-end">
+                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 500 }}>
+                            <Copy className="w-3.5 h-3.5" /> Duplicate
+                          </motion.button>
+                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 500 }}>
+                            <BarChart3 className="w-3.5 h-3.5" /> Full Report
+                          </motion.button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
-          })}{' '}
-        </div>{' '}
+          })}
+        </Card>{' '}
       </div>{' '}
     </motion.div>
   );
