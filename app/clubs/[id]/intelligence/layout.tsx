@@ -53,11 +53,13 @@ export default function IntelligenceLayout({
 
   // IQSport brand → dark sidebar layout with IQ theme
   if (brand.key === 'iqsport') {
+    const isAdvisorPage = pathname.endsWith('/advisor')
     return (
       <PageContextCtx.Provider value={pageContextStore}>
         <IQThemeProvider>
           <IQSidebar clubId={clubId}>
             {children}
+            {!isAdvisorPage && <ChatWidget clubId={clubId} />}
           </IQSidebar>
         </IQThemeProvider>
       </PageContextCtx.Provider>
