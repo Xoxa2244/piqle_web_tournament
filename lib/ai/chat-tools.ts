@@ -23,7 +23,7 @@ export function createChatTools(clubId: string): ToolSet {
         filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).describe('Filter by risk level. Default: all'),
         limit: z.number().describe('Max members to return. Default: 10'),
       }).partial(),
-      execute: async ({ filter, limit }) => {
+      execute: async ({ filter, limit }: { filter?: string; limit?: number }) => {
         const f = filter ?? 'all'
         const l = limit ?? 10
         try {
@@ -134,7 +134,7 @@ export function createChatTools(clubId: string): ToolSet {
         onlyUnderfilled: z.boolean().describe('Only return sessions below 50% capacity. Default: false'),
         limit: z.number().describe('Max sessions to return. Default: 10'),
       }).partial(),
-      execute: async ({ onlyUnderfilled, limit }) => {
+      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
         const l = limit ?? 10
         try {
@@ -267,7 +267,7 @@ export function createChatTools(clubId: string): ToolSet {
       parameters: z.object({
         limit: z.number().describe('Max candidates to return. Default: 10'),
       }).partial(),
-      execute: async ({ limit }) => {
+      execute: async ({ limit }: { limit?: number }) => {
         const l = limit ?? 10
         try {
           const now = new Date()
