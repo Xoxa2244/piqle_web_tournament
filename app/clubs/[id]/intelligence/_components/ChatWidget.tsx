@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
-import { TextStreamChatTransport } from 'ai'
+import { DefaultChatTransport } from 'ai'
 import {
   Send, Loader2,
   Sparkles, MessageSquare, ChevronRight, Minus, Plus,
@@ -137,7 +137,7 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
 
   // ── Real transport (always used first, same as before redesign) ──
   const transport = useMemo(() => {
-    return new TextStreamChatTransport({
+    return new DefaultChatTransport({
       api: '/api/ai/chat',
       body: { clubId },
       fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
