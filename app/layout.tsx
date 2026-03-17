@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: brand.metaTitle,
     description: brand.metaDescription,
     icons: {
-      icon: brand.favicon,
+      icon: { url: brand.favicon, type: 'image/svg+xml' },
     },
   }
 }
