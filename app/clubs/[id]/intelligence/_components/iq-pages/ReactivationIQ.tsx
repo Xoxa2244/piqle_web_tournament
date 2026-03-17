@@ -6,6 +6,7 @@ import {
   ChevronRight, Heart, Shield, Zap, Target, Mail, Phone,
   MessageSquare, CheckCircle2, XCircle, Star, ArrowUpRight,
   Filter, Search, Sparkles, DollarSign, BarChart3,
+  Smartphone, Bell, Check,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -190,6 +191,7 @@ export function ReactivationIQ() {
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -451,36 +453,61 @@ export function ReactivationIQ() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <div className="flex items-center gap-4 text-[11px]" style={{ color: "var(--t3)" }}>
-                              <span>Member since: <strong style={{ color: "var(--t1)" }}>{member.memberSince}</strong></span>
-                              <span>Email: <strong style={{ color: "var(--t1)" }}>{member.email}</strong></span>
+                          {/* Outreach Actions */}
+                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)" }}>
+                                  <Send className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
+                                </div>
+                                <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Win-Back Outreach</span>
+                              </div>
+                              {!sentOutreach[member.id] && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "email" })); }}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
+                                  style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
+                                >
+                                  <Send className="w-3 h-3" />
+                                  Send via Email
+                                </button>
+                              )}
+                              {sentOutreach[member.id] && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                                  <Check className="w-3 h-3" />
+                                  Sent via {sentOutreach[member.id]}
+                                </span>
+                              )}
                             </div>
-                            <div className="ml-auto flex items-center gap-2">
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]"
-                                style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", fontWeight: 500 }}
-                              >
-                                <Phone className="w-3.5 h-3.5" /> Call
-                              </motion.button>
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]"
-                                style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", fontWeight: 500 }}
-                              >
-                                <Mail className="w-3.5 h-3.5" /> Email
-                              </motion.button>
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[11px] text-white"
-                                style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600 }}
-                              >
-                                <Send className="w-3.5 h-3.5" /> Launch AI Campaign
-                              </motion.button>
+                            <div className="flex items-center justify-between p-2.5 rounded-xl" style={{ background: "var(--subtle)" }}>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-4 text-[11px]" style={{ color: "var(--t3)" }}>
+                                  <span>Member since: <strong style={{ color: "var(--t1)" }}>{member.memberSince}</strong></span>
+                                  <span>Email: <strong style={{ color: "var(--t1)" }}>{member.email}</strong></span>
+                                </div>
+                              </div>
+                              {!sentOutreach[member.id] && (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "email" })); }}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                    style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
+                                  >
+                                    <Mail className="w-3 h-3" /> Email
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "sms" })); }}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
+                                  >
+                                    <Smartphone className="w-3 h-3" /> SMS
+                                  </button>
+                                  <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]" style={{ color: "var(--t4)", fontWeight: 500 }}>
+                                    <Bell className="w-3 h-3" /> Push
+                                    <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
