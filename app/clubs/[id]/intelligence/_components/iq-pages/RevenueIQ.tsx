@@ -45,11 +45,13 @@ const periodComparison = [
   { metric: "Churn Rate", current: 3.9, previous: 5.2, format: "percent" as const },
 ];
 
-const revenueBySource = [
-  { name: "Court Bookings", value: 11800, pct: 61, color: "#8B5CF6" },
-  { name: "Events", value: 2800, pct: 14, color: "#06B6D4" },
-  { name: "Lessons & Clinics", value: 3900, pct: 20, color: "#10B981" },
-  { name: "Merchandise", value: 950, pct: 5, color: "#F59E0B" },
+const revenueByFormat = [
+  { name: "Open Play", value: 5800, pct: 30, color: "#8B5CF6" },
+  { name: "League Match", value: 4200, pct: 22, color: "#06B6D4" },
+  { name: "Private Lesson", value: 3600, pct: 18, color: "#10B981" },
+  { name: "Clinic", value: 2900, pct: 15, color: "#F59E0B" },
+  { name: "Tournament", value: 1950, pct: 10, color: "#EC4899" },
+  { name: "Round Robin", value: 1000, pct: 5, color: "#F97316" },
 ];
 
 const dailyRevenue = [
@@ -292,21 +294,21 @@ export function RevenueIQ() {
           </div>
         </Card>
 
-        {/* Breakdown Pie */}
+        {/* Revenue by Format */}
         <Card>
-          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Revenue by Source</h3>
+          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Revenue by Format</h3>
           <div className="flex items-center justify-center" style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={revenueBySource} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                  {revenueBySource.map((e) => <Cell key={e.name} fill={e.color} />)}
+                <Pie data={revenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                  {revenueByFormat.map((e) => <Cell key={e.name} fill={e.color} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="space-y-2.5 mt-2">
-            {revenueBySource.map((s) => (
+            {revenueByFormat.map((s) => (
               <div key={s.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
