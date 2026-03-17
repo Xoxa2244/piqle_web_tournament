@@ -29,6 +29,8 @@ export interface BrandConfig {
   fallbackText: string
   /** Tailwind color class for fallback text */
   fallbackColorClass: string
+  /** Path to favicon in /public */
+  favicon: string
   metaTitle: string
   metaDescription: string
   /** Where to redirect after club creation */
@@ -50,6 +52,7 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
     name: 'Piqle',
     tagline: 'Tournament Management',
     logo: '/Logo.svg',
+    favicon: '/Logo.svg',
     fallbackText: 'PIQLE',
     fallbackColorClass: 'text-lime-600',
     metaTitle: 'Piqle Tournament Management',
@@ -71,6 +74,7 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
     name: 'IQSport.ai',
     tagline: 'AI Intelligence for Clubs',
     logo: '/iqsport-logo.svg',
+    favicon: '/iqsport-logo.svg',
     fallbackText: 'IQSport.ai',
     fallbackColorClass: 'text-blue-600',
     metaTitle: 'IQSport.ai — AI Intelligence for Clubs',

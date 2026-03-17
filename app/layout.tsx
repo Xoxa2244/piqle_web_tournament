@@ -17,6 +17,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: brand.metaTitle,
     description: brand.metaDescription,
+    icons: {
+      icon: brand.favicon,
+    },
   }
 }
 
