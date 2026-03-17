@@ -6,11 +6,12 @@
  * formats into a human-readable response.
  */
 
-import { tool, jsonSchema, type ToolSet } from 'ai'
+import { tool, type ToolSet } from 'ai'
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
-// AI SDK tool() has strict overload types that struggle with union return types from try/catch.
-// Cast to bypass while keeping runtime behavior correct.
+// AI SDK tool() has strict overload types that reject union return types from try/catch.
+// Cast to bypass TS while keeping runtime behavior correct.
 const t = tool as (...args: any[]) => any
 
 export function createChatTools(clubId: string): ToolSet {
@@ -18,14 +19,13 @@ export function createChatTools(clubId: string): ToolSet {
     getMemberHealth: t({
       description:
         'Get member health scores and churn risk for all club members. Returns summary (total, healthy, watch, at_risk, critical counts) and top at-risk members with their scores. Use when the user asks about member health, churn risk, at-risk members, engagement, or who hasn\'t been coming.',
-      parameters: jsonSchema({
-        type: 'object',
-        properties: {
-          filter: { type: 'string', enum: ['all', 'at_risk', 'critical', 'watch', 'healthy'], description: 'Filter by risk level. Default: all' },
-          limit: { type: 'number', description: 'Max members to return. Default: 10' },
-        },
-      }),
-      execute: async ({ filter = 'all', limit = 10 }: { filter?: string; limit?: number }) => {
+      parameters: z.object({
+        filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).describe('Filter by risk level. Default: all'),
+        limit: z.number().describe('Max members to return. Default: 10'),
+      }).partial(),
+      execute: async ({ filter, limit }) => {
+        const f = filter ?? 'all'
+        const l = limit ?? 10
         try {
           const followers = await prisma.clubFollower.findMany({
             where: { clubId },
@@ -101,12 +101,12 @@ export function createChatTools(clubId: string): ToolSet {
           const result = generateMemberHealth(memberInputs)
 
           let members = result.members
-          if (filter !== 'all') {
-            members = members.filter((m: any) => m.riskLevel === filter)
+          if (f !== 'all') {
+            members = members.filter((m: any) => m.riskLevel === f)
           }
           members = members
             .sort((a: any, b: any) => a.healthScore - b.healthScore)
-            .slice(0, limit)
+            .slice(0, l)
 
           return {
             summary: result.summary,
@@ -130,14 +130,13 @@ export function createChatTools(clubId: string): ToolSet {
     getUpcomingSessions: t({
       description:
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
-      parameters: jsonSchema({
-        type: 'object',
-        properties: {
-          onlyUnderfilled: { type: 'boolean', description: 'Only return sessions below 50% capacity. Default: false' },
-          limit: { type: 'number', description: 'Max sessions to return. Default: 10' },
-        },
-      }),
-      execute: async ({ onlyUnderfilled = false, limit = 10 }: { onlyUnderfilled?: boolean; limit?: number }) => {
+      parameters: z.object({
+        onlyUnderfilled: z.boolean().describe('Only return sessions below 50% capacity. Default: false'),
+        limit: z.number().describe('Max sessions to return. Default: 10'),
+      }).partial(),
+      execute: async ({ onlyUnderfilled, limit }) => {
+        const uf = onlyUnderfilled ?? false
+        const l = limit ?? 10
         try {
           const sessions = await prisma.playSession.findMany({
             where: {
@@ -175,11 +174,11 @@ export function createChatTools(clubId: string): ToolSet {
             }
           })
 
-          if (onlyUnderfilled) {
+          if (uf) {
             result = result.filter(s => parseInt(s.occupancy) < 50)
           }
 
-          return { sessions: result.slice(0, limit), total: result.length }
+          return { sessions: result.slice(0, l), total: result.length }
         } catch (err) {
           console.error('[ChatTool] getUpcomingSessions failed:', err)
           return { error: 'Failed to load sessions.' }
@@ -190,7 +189,7 @@ export function createChatTools(clubId: string): ToolSet {
     getClubMetrics: t({
       description:
         'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
-      parameters: jsonSchema({ type: 'object', properties: {} }),
+      parameters: z.object({}),
       execute: async () => {
         try {
           const now = new Date()
@@ -265,13 +264,11 @@ export function createChatTools(clubId: string): ToolSet {
     getReactivationCandidates: t({
       description:
         'Get members who have been inactive and are candidates for re-engagement outreach. Use when the user asks about inactive members, who to re-engage, reactivation, or members who stopped coming.',
-      parameters: jsonSchema({
-        type: 'object',
-        properties: {
-          limit: { type: 'number', description: 'Max candidates to return. Default: 10' },
-        },
-      }),
-      execute: async ({ limit = 10 }: { limit?: number }) => {
+      parameters: z.object({
+        limit: z.number().describe('Max candidates to return. Default: 10'),
+      }).partial(),
+      execute: async ({ limit }) => {
+        const l = limit ?? 10
         try {
           const now = new Date()
           const d14 = new Date(now.getTime() - 14 * 86400000)
@@ -312,7 +309,7 @@ export function createChatTools(clubId: string): ToolSet {
             })
             .filter((x): x is NonNullable<typeof x> => x !== null)
             .sort((a, b) => b.daysSinceLastVisit - a.daysSinceLastVisit)
-            .slice(0, limit)
+            .slice(0, l)
 
           return {
             totalInactive: inactive.length,
