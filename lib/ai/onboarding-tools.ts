@@ -46,8 +46,71 @@ async function mergeIntelligenceSettings(clubId: string, partial: Record<string,
 
 // ── Tool definitions ──
 
-export function createOnboardingTools(clubId: string): ToolSet {
-  return {
+export type OnboardingToolsContext = {
+  getClubId: () => string | null
+}
+
+export function createOnboardingTools(clubId: string | null, userId: string): { tools: ToolSet; ctx: OnboardingToolsContext } {
+  // Mutable clubId — set by createClub tool if club doesn't exist yet
+  const ctx = { clubId }
+
+  function requireClubId(): string {
+    if (!ctx.clubId) throw new Error('Club has not been created yet. Call createClub first.')
+    return ctx.clubId
+  }
+
+  const tools: ToolSet = {
+    createClub: t({
+      description:
+        'Create a new club. Call this FIRST when the user tells you their club name. This must be called before any other save tool if no club exists yet.',
+      parameters: z.object({
+        name: z.string().min(2).max(120).describe('Club name'),
+        city: z.string().optional().describe('City name'),
+        state: z.string().optional().describe('State or province'),
+        country: z.string().optional().describe('Country'),
+      }),
+      execute: async ({ name, city, state, country }: { name: string; city?: string; state?: string; country?: string }) => {
+        try {
+          // If club already exists, just update name/location
+          if (ctx.clubId) {
+            const updateData: Record<string, string> = { name }
+            if (city) updateData.city = city
+            if (state) updateData.state = state
+            if (country) updateData.country = country
+            await (prisma.club as any).update({
+              where: { id: ctx.clubId },
+              data: updateData,
+            })
+            return { created: true, clubId: ctx.clubId, name, updated: true }
+          }
+
+          const club = await prisma.club.create({
+            data: {
+              name: name.trim(),
+              kind: 'VENUE',
+              description: null,
+              city: city?.trim() || null,
+              state: state?.trim() || null,
+              country: country?.trim() || null,
+              isVerified: false,
+              admins: {
+                create: {
+                  userId,
+                  role: 'ADMIN',
+                },
+              },
+            },
+            select: { id: true },
+          })
+
+          ctx.clubId = club.id
+          return { created: true, clubId: club.id, name }
+        } catch (err: any) {
+          return { created: false, error: err.message }
+        }
+      },
+    }),
+
     saveTimezoneAndSports: t({
       description:
         'Save the club timezone and sport types. Call this as soon as the user mentions their timezone or sports they offer (pickleball, tennis, padel, squash, badminton).',
@@ -58,7 +121,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
       execute: async ({ timezone, sportTypes }: z.infer<typeof step1Schema>) => {
         try {
           step1Schema.parse({ timezone, sportTypes })
-          await mergeIntelligenceSettings(clubId, { timezone, sportTypes })
+          await mergeIntelligenceSettings(requireClubId(), { timezone, sportTypes })
           return { saved: true, fields: { timezone, sportTypes } }
         } catch (err: any) {
           return { saved: false, error: err.message }
@@ -77,7 +140,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
       execute: async ({ courtCount, hasIndoorCourts, hasOutdoorCourts }: z.infer<typeof step2Schema>) => {
         try {
           step2Schema.parse({ courtCount, hasIndoorCourts, hasOutdoorCourts })
-          await mergeIntelligenceSettings(clubId, { courtCount, hasIndoorCourts, hasOutdoorCourts })
+          await mergeIntelligenceSettings(requireClubId(), { courtCount, hasIndoorCourts, hasOutdoorCourts })
           return { saved: true, fields: { courtCount, hasIndoorCourts, hasOutdoorCourts } }
         } catch (err: any) {
           return { saved: false, error: err.message }
@@ -103,7 +166,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
       execute: async (data: z.infer<typeof step3Schema>) => {
         try {
           step3Schema.parse(data)
-          await mergeIntelligenceSettings(clubId, data)
+          await mergeIntelligenceSettings(requireClubId(), data)
           return { saved: true, fields: data }
         } catch (err: any) {
           return { saved: false, error: err.message }
@@ -126,7 +189,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
       execute: async (data: z.infer<typeof step4Schema>) => {
         try {
           step4Schema.parse(data)
-          await mergeIntelligenceSettings(clubId, data)
+          await mergeIntelligenceSettings(requireClubId(), data)
           return { saved: true, fields: data }
         } catch (err: any) {
           return { saved: false, error: err.message }
@@ -143,7 +206,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
       execute: async ({ goals }: z.infer<typeof step5Schema>) => {
         try {
           step5Schema.parse({ goals })
-          await mergeIntelligenceSettings(clubId, { goals })
+          await mergeIntelligenceSettings(requireClubId(), { goals })
           return { saved: true, fields: { goals } }
         } catch (err: any) {
           return { saved: false, error: err.message }
@@ -168,7 +231,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
 
           if (Object.keys(updateData).length > 0) {
             await (prisma.club as any).update({
-              where: { id: clubId },
+              where: { id: requireClubId() },
               data: updateData,
             })
           }
@@ -194,9 +257,12 @@ export function createOnboardingTools(clubId: string): ToolSet {
       parameters: z.object({}),
       execute: async () => {
         try {
-          const { intelligence } = await readIntelligenceSettings(clubId)
+          if (!ctx.clubId) {
+            return { error: 'No club created yet. Ask for the club name first.' }
+          }
+          const { intelligence } = await readIntelligenceSettings(ctx.clubId)
           const club: any = await prisma.club.findUnique({
-            where: { id: clubId },
+            where: { id: ctx.clubId },
             select: { city: true, state: true, country: true },
           })
 
@@ -231,7 +297,8 @@ export function createOnboardingTools(clubId: string): ToolSet {
       parameters: z.object({}),
       execute: async () => {
         try {
-          const { intelligence } = await readIntelligenceSettings(clubId)
+          const cid = requireClubId()
+          const { intelligence } = await readIntelligenceSettings(cid)
 
           // Check required fields
           const missing: string[] = []
@@ -259,7 +326,7 @@ export function createOnboardingTools(clubId: string): ToolSet {
             onboardingVersion: 1,
           }
 
-          await mergeIntelligenceSettings(clubId, finalSettings)
+          await mergeIntelligenceSettings(cid, finalSettings)
 
           return {
             completed: true,
@@ -270,5 +337,10 @@ export function createOnboardingTools(clubId: string): ToolSet {
         }
       },
     }),
+  }
+
+  return {
+    tools,
+    ctx: { getClubId: () => ctx.clubId },
   }
 }

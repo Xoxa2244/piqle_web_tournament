@@ -86,8 +86,8 @@ function extractProgressFromMessages(messages: any[]): OnboardingFields {
 type OnboardingState = 'welcome' | 'chat' | 'done'
 
 type OnboardingChatIQProps = {
-  clubId: string
-  onComplete?: () => void
+  clubId?: string
+  onComplete?: (clubId?: string) => void
 }
 
 // ── Component ──
@@ -106,17 +106,20 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const convIdRef = useRef<string | null>(null)
+  const clubIdRef = useRef<string | null>(clubId ?? null)
 
   // ── Chat setup ──
   const transport = useMemo(() => {
     return new DefaultChatTransport({
       api: '/api/ai/onboarding',
-      body: { clubId },
+      body: { clubId: clubId ?? null },
       fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
         if (init?.body) {
           try {
             const bodyObj = JSON.parse(init.body as string)
             bodyObj.conversationId = convIdRef.current
+            // Use dynamic clubId (may be set by createClub tool)
+            if (clubIdRef.current) bodyObj.clubId = clubIdRef.current
             init = { ...init, body: JSON.stringify(bodyObj) }
           } catch { /* keep original body */ }
         }
@@ -124,6 +127,11 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
         const newConvId = response.headers.get('X-Conversation-Id')
         if (newConvId && !convIdRef.current) {
           convIdRef.current = newConvId
+        }
+        // Track clubId from createClub tool
+        const newClubId = response.headers.get('X-Club-Id')
+        if (newClubId) {
+          clubIdRef.current = newClubId
         }
         return response
       },
@@ -151,8 +159,16 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
   // ── Track progress from messages ──
   const progressFields = extractProgressFromMessages(messages)
 
-  // ── Detect file upload requests and completion ──
+  // ── Detect file upload requests, club creation, and completion ──
   useEffect(() => {
+    for (const msg of messages) {
+      if (!msg.parts) continue
+      for (const part of (msg as any).parts) {
+        if (part.type === 'tool-invocation' && part.toolInvocation?.toolName === 'createClub' && part.toolInvocation?.result?.clubId) {
+          clubIdRef.current = part.toolInvocation.result.clubId
+        }
+      }
+    }
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
     if (lastAssistant) {
       if (hasToolAction(lastAssistant, 'show_file_upload')) {
@@ -361,7 +377,7 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
           </div>
           <button
             onClick={() => {
-              if (onComplete) onComplete()
+              if (onComplete) onComplete(clubIdRef.current ?? undefined)
               else window.location.reload()
             }}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all"

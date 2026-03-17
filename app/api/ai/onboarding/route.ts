@@ -75,20 +75,25 @@ export async function POST(req: Request) {
       return new Response('Unauthorized', { status: 401 })
     }
 
-    // 2. Parse request
+    // 2. Parse request — clubId is now OPTIONAL (null for new clubs)
     step = 'parse'
     const body = await req.json()
-    const { messages, clubId, conversationId } = body
+    const { messages, clubId: rawClubId, conversationId } = body
 
-    if (!clubId || !messages || !Array.isArray(messages)) {
-      return new Response('Bad request: clubId and messages are required', { status: 400 })
+    if (!messages || !Array.isArray(messages)) {
+      return new Response('Bad request: messages are required', { status: 400 })
     }
 
-    // 3. Verify club access
+    // clubId can be null (new club, will be created via createClub tool)
+    let clubId: string | null = rawClubId || null
+
+    // 3. Verify club access (only if club already exists)
     step = 'access'
-    const hasAccess = await verifyClubAccess(clubId, session.userId)
-    if (!hasAccess) {
-      return new Response('Forbidden: not a member of this club', { status: 403 })
+    if (clubId) {
+      const hasAccess = await verifyClubAccess(clubId, session.userId)
+      if (!hasAccess) {
+        return new Response('Forbidden: not a member of this club', { status: 403 })
+      }
     }
 
     // 4. Get or create onboarding conversation
@@ -101,7 +106,7 @@ export async function POST(req: Request) {
       if (!convId) {
         const newConv = await prisma.aIConversation.create({
           data: {
-            clubId,
+            clubId: clubId || 'pending', // placeholder if no club yet
             userId: session.userId,
             title: '[onboarding] Club setup',
             language: conversationLanguage,
@@ -109,23 +114,25 @@ export async function POST(req: Request) {
         })
         convId = newConv.id
 
-        // Store conversation ID in settings for recovery
-        const club: any = await prisma.club.findUnique({ where: { id: clubId } })
-        const existing = club?.automationSettings || {}
-        await (prisma.club as any).update({
-          where: { id: clubId },
-          data: {
-            automationSettings: {
-              ...existing,
-              intelligence: {
-                ...(existing.intelligence || {}),
-                onboardingConversationId: convId,
+        // Store conversation ID in club settings (if club exists)
+        if (clubId) {
+          const club: any = await prisma.club.findUnique({ where: { id: clubId } })
+          const existing = club?.automationSettings || {}
+          await (prisma.club as any).update({
+            where: { id: clubId },
+            data: {
+              automationSettings: {
+                ...existing,
+                intelligence: {
+                  ...(existing.intelligence || {}),
+                  onboardingConversationId: convId,
+                },
               },
             },
-          },
-        })
+          })
+        }
 
-        console.log(`[AI Onboarding] New conversation ${convId}, lang=${conversationLanguage}`)
+        console.log(`[AI Onboarding] New conversation ${convId}, clubId=${clubId || 'pending'}, lang=${conversationLanguage}`)
       } else {
         await prisma.aIConversation.update({
           where: { id: convId },
@@ -184,10 +191,39 @@ export async function POST(req: Request) {
     step = 'convert'
     const modelMessages = await convertToModelMessages(fullMessages)
 
-    // 9. Persistence
+    // 9. Create tools — pass userId for createClub tool
+    step = 'tools'
+    const { tools: onboardingTools, ctx: toolsCtx } = createOnboardingTools(clubId, session.userId)
+
+    // 10. Persistence
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
       if (!convId) return
       try {
+        // Update conversation clubId if it was created during this request
+        const currentClubId = toolsCtx.getClubId()
+        if (currentClubId && currentClubId !== clubId) {
+          await prisma.aIConversation.update({
+            where: { id: convId },
+            data: { clubId: currentClubId },
+          }).catch(() => {})
+
+          // Store conversation ID in the new club's settings
+          const club: any = await prisma.club.findUnique({ where: { id: currentClubId } })
+          const existing = club?.automationSettings || {}
+          await (prisma.club as any).update({
+            where: { id: currentClubId },
+            data: {
+              automationSettings: {
+                ...existing,
+                intelligence: {
+                  ...(existing.intelligence || {}),
+                  onboardingConversationId: convId,
+                },
+              },
+            },
+          }).catch(() => {})
+        }
+
         await prisma.aIMessage.createMany({
           data: [
             { conversationId: convId, role: 'user', content: lastUserText, metadata: {} },
@@ -213,11 +249,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 10. Stream
+    // 11. Stream
     step = 'stream'
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o'
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022'
-    const onboardingTools = createOnboardingTools(clubId)
 
     let result
     try {
@@ -242,13 +277,18 @@ export async function POST(req: Request) {
       })
     }
 
-    // 11. Return
+    // 12. Return — include clubId in headers so client can track it
     step = 'response'
     const responseHeaders: Record<string, string> = {
       'X-Conversation-Language': conversationLanguage,
     }
     if (convId) {
       responseHeaders['X-Conversation-Id'] = convId
+    }
+    // Return clubId (may be set by createClub tool during streaming)
+    const currentClubId = toolsCtx.getClubId()
+    if (currentClubId) {
+      responseHeaders['X-Club-Id'] = currentClubId
     }
 
     return result.toUIMessageStreamResponse({ headers: responseHeaders })

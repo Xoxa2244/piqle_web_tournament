@@ -25,9 +25,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    // Redirect root to /clubs
+    // Redirect root to /onboarding
     if (pathname === '/') {
-      return NextResponse.redirect(new URL('/clubs', req.url))
+      return NextResponse.redirect(new URL('/onboarding', req.url))
     }
 
     // Block hidden routes → redirect to /clubs
