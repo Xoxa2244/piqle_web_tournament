@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
     const pathname = req.nextUrl.pathname
 
     // demo.iqsport.ai → auto-append ?demo=true for intelligence routes
-    if (host.startsWith('demo.') && pathname.includes('/intelligence') && !req.nextUrl.searchParams.has('demo')) {
+    if (host.startsWith('demo.') && (pathname.includes('/intelligence') || pathname === '/onboarding') && !req.nextUrl.searchParams.has('demo')) {
       const url = req.nextUrl.clone()
       url.searchParams.set('demo', 'true')
       return NextResponse.redirect(url)

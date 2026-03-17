@@ -499,30 +499,253 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
   )
 }
 
-// ── Demo mode placeholder ──
+// ── Demo mode ──
+
+const DEMO_MESSAGES: Array<{ role: 'assistant' | 'user'; text: string; delay: number }> = [
+  { role: 'assistant', text: "Welcome to IQSport! I'll help you set up your club in just a couple of minutes. What's the name of your club and where are you located?", delay: 800 },
+  { role: 'user', text: 'Sunset Pickleball Club, Miami FL', delay: 1500 },
+  { role: 'assistant', text: "Got it! I've created **Sunset Pickleball Club** in Miami, FL. What sports do you offer and how many courts do you have?", delay: 1200 },
+  { role: 'user', text: 'Pickleball, we have 6 courts — 4 outdoor, 2 indoor', delay: 1800 },
+  { role: 'assistant', text: "Perfect! 6 courts saved (4 outdoor, 2 indoor). Now let's talk schedule — what are your operating hours and which days are you open?", delay: 1200 },
+  { role: 'user', text: 'Mon-Sun, 7am to 9pm, peak is 5-8pm. Sessions are 90 min', delay: 2000 },
+  { role: 'assistant', text: "Saved! Open 7 days, 07:00-21:00, peak 17:00-20:00, 90-min sessions. How do you price your sessions? And how would you like to communicate with members?", delay: 1200 },
+  { role: 'user', text: 'Per session, $15 average. Email works best, maybe 3 times a week, friendly tone', delay: 2000 },
+  { role: 'assistant', text: "Got it — $15/session, email up to 3x/week, friendly tone. Almost done! What are your main goals for the club?", delay: 1200 },
+  { role: 'user', text: 'Fill empty sessions and grow our membership', delay: 1500 },
+  { role: 'assistant', text: "You're all set! Sunset Pickleball Club is fully configured. Your AI intelligence dashboard is ready to help you fill sessions and grow membership. Let's take a look!", delay: 1000 },
+]
+
+// Map message index to which progress fields should be checked
+const DEMO_PROGRESS_MAP: Record<number, Partial<OnboardingFields>> = {
+  2: { timezoneAndSports: true, address: true },
+  4: { courts: true },
+  6: { schedule: true },
+  8: { pricingAndComms: true },
+  10: { goals: true },
+}
 
 function DemoOnboarding({ isDark }: { isDark: boolean }) {
+  const [demoState, setDemoState] = useState<'welcome' | 'chat' | 'done'>('welcome')
+  const [visibleMessages, setVisibleMessages] = useState<typeof DEMO_MESSAGES>([])
+  const [demoProgress, setDemoProgress] = useState<OnboardingFields>({
+    timezoneAndSports: false, courts: false, schedule: false,
+    pricingAndComms: false, goals: false, address: false,
+  })
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [visibleMessages])
+
+  // Animate messages one by one
+  useEffect(() => {
+    if (demoState !== 'chat') return
+    if (visibleMessages.length >= DEMO_MESSAGES.length) {
+      // All messages shown → wait, then go to done
+      const timer = setTimeout(() => setDemoState('done'), 1500)
+      return () => clearTimeout(timer)
+    }
+
+    const nextIdx = visibleMessages.length
+    const nextMsg = DEMO_MESSAGES[nextIdx]
+    const timer = setTimeout(() => {
+      setVisibleMessages(prev => [...prev, nextMsg])
+      // Update progress
+      const progressUpdate = DEMO_PROGRESS_MAP[nextIdx]
+      if (progressUpdate) {
+        setDemoProgress(prev => ({ ...prev, ...progressUpdate }))
+      }
+    }, nextMsg.delay)
+
+    return () => clearTimeout(timer)
+  }, [demoState, visibleMessages])
+
+  // Welcome screen
+  if (demoState === 'welcome') {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex items-center justify-center min-h-[70vh]"
+      >
+        <div className="max-w-lg w-full space-y-8 text-center">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+              style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.1))' }}
+            >
+              <Sparkles className="w-8 h-8" style={{ color: '#A78BFA' }} />
+            </div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--heading)' }}>
+              Let&apos;s set up your club
+            </h1>
+            <p className="text-sm mt-2" style={{ color: 'var(--t3)' }}>
+              Choose how you&apos;d like to get started. Takes about 2 minutes.
+            </p>
+          </motion.div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <motion.button
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+              onClick={() => setDemoState('chat')}
+              className="group rounded-2xl p-6 text-left transition-all"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)' }}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: isDark ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.08)' }}
+              >
+                <Upload className="w-5 h-5" style={{ color: '#A78BFA' }} />
+              </div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Upload Schedule</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                Import CSV/XLSX — we&apos;ll extract everything automatically
+              </p>
+              <div className="flex items-center gap-1 mt-3 text-xs font-medium" style={{ color: '#A78BFA' }}>
+                Fastest way
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </motion.button>
+
+            <motion.button
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+              onClick={() => setDemoState('chat')}
+              className="group rounded-2xl p-6 text-left transition-all"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)' }}
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+                style={{ background: isDark ? 'rgba(6, 182, 212, 0.12)' : 'rgba(6, 182, 212, 0.08)' }}
+              >
+                <MessageSquare className="w-5 h-5" style={{ color: '#67E8F9' }} />
+              </div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Set Up Manually</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                Chat with AI — it&apos;ll guide you through everything
+              </p>
+              <div className="flex items-center gap-1 mt-3 text-xs font-medium" style={{ color: '#67E8F9' }}>
+                Step by step
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Done screen
+  if (demoState === 'done') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex items-center justify-center min-h-[70vh]"
+      >
+        <div className="max-w-md w-full text-center space-y-6">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
+          >
+            <div className="mx-auto w-20 h-20 rounded-full flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
+            >
+              <PartyPopper className="w-10 h-10 text-white" />
+            </div>
+          </motion.div>
+          <div>
+            <h2 className="text-2xl font-bold" style={{ color: 'var(--heading)' }}>You&apos;re all set!</h2>
+            <p className="text-sm mt-2" style={{ color: 'var(--t3)' }}>
+              Your club is configured and ready. Let&apos;s see your dashboard.
+            </p>
+          </div>
+          <button
+            onClick={() => window.location.href = '/clubs/demo-club/intelligence?demo=true'}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white transition-all"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
+          >
+            Go to Dashboard
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Chat screen with animated messages
   return (
-    <div className="flex items-center justify-center min-h-[70vh]">
-      <div className="max-w-md text-center space-y-4">
-        <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(6, 182, 212, 0.1))' }}
-        >
-          <Sparkles className="w-8 h-8" style={{ color: '#A78BFA' }} />
+    <div className="flex gap-6 h-[calc(100vh-8rem)]">
+      <div className="flex-1 flex flex-col rounded-2xl overflow-hidden" style={{
+        background: 'var(--card-bg)',
+        border: '1px solid var(--card-border)',
+        backdropFilter: 'var(--glass-blur)',
+      }}>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
+          {visibleMessages.map((msg, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className="max-w-[80%] rounded-2xl px-4 py-3 text-sm"
+                style={
+                  msg.role === 'user'
+                    ? { background: 'linear-gradient(135deg, #8B5CF6, #7C3AED)', color: '#fff' }
+                    : {
+                        background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                        color: 'var(--t1)',
+                        border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                      }
+                }
+              >
+                {msg.role === 'assistant' ? (
+                  <div className="prose prose-sm max-w-none" style={{ color: 'inherit' }}>
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                )}
+              </div>
+            </motion.div>
+          ))}
+
+          {/* Typing indicator */}
+          {visibleMessages.length < DEMO_MESSAGES.length && visibleMessages.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#A78BFA' }} />
+              <span className="text-xs" style={{ color: 'var(--t4)' }}>
+                {DEMO_MESSAGES[visibleMessages.length]?.role === 'assistant' ? 'Thinking...' : ''}
+              </span>
+            </div>
+          )}
         </div>
-        <h2 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>AI Onboarding</h2>
-        <p className="text-sm" style={{ color: 'var(--t3)' }}>
-          In the live version, an AI assistant will guide you through setting up your club
-          via a natural conversation. Upload your schedule CSV and the AI will extract
-          everything automatically.
-        </p>
-        <div className="rounded-xl p-4 text-xs" style={{
-          background: isDark ? 'rgba(139, 92, 246, 0.08)' : 'rgba(139, 92, 246, 0.04)',
-          color: 'var(--t3)',
-          border: '1px solid rgba(139, 92, 246, 0.15)',
-        }}>
-          Demo mode — onboarding is already complete
+
+        {/* Input (disabled in demo) */}
+        <div className="shrink-0 p-4" style={{ borderTop: '1px solid var(--divider)' }}>
+          <div className="flex items-center gap-3">
+            <input
+              placeholder="Type your answer..."
+              disabled
+              className="flex-1 bg-transparent border-none outline-none text-sm opacity-50"
+              style={{ color: 'var(--t1)' }}
+            />
+            <button
+              disabled
+              className="p-2 rounded-xl transition-all opacity-30"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
+            >
+              <Send className="w-4 h-4 text-white" />
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Progress sidebar */}
+      <div className="hidden lg:block w-64 shrink-0">
+        <OnboardingProgress fields={demoProgress} />
       </div>
     </div>
   )

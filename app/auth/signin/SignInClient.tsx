@@ -4,8 +4,10 @@ import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import { useBrand } from "@/components/BrandProvider"
 
 export default function SignInClient() {
+  const brand = useBrand()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/'
   const [email, setEmail] = useState('')
@@ -166,10 +168,10 @@ export default function SignInClient() {
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
         <div>
           <h2 className="text-3xl font-bold text-center text-gray-900">
-            Sign in to Piqle
+            Sign in to {brand.name}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Tournament Management System
+            {brand.tagline}
           </p>
         </div>
 
