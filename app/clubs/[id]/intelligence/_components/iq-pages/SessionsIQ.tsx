@@ -42,6 +42,8 @@ const formatBreakdown = [
 ];
 
 const recentSessions = [
+  { id: "S-1849", court: "Court 2", format: "Open Play", date: "Tomorrow, 9:00 AM", players: 4, maxPlayers: 8, duration: "90 min", revenue: 60, status: "upcoming" },
+  { id: "S-1848", court: "Court 1", format: "Clinic", date: "Tomorrow, 11:00 AM", players: 6, maxPlayers: 12, duration: "120 min", revenue: 150, status: "upcoming" },
   { id: "S-1847", court: "Court 1", format: "Open Play", date: "Today, 2:00 PM", players: 8, maxPlayers: 8, duration: "90 min", revenue: 120, status: "active" },
   { id: "S-1846", court: "Court 2", format: "League Match", date: "Today, 1:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "active" },
   { id: "S-1845", court: "Court 3", format: "Private Lesson", date: "Today, 12:00 PM", players: 2, maxPlayers: 2, duration: "60 min", revenue: 85, status: "completed" },
@@ -54,6 +56,8 @@ const recentSessions = [
 
 /* AI insights per session */
 const sessionInsights: Record<string, { fillRate: number; insight: string; suggestedPlayers: string[]; revenuePerPlayer: number; tip: string }> = {
+  "S-1849": { fillRate: 50, insight: "4 spots open. 6 members with morning preferences haven't booked yet.", suggestedPlayers: ["Emma W.", "Jake R.", "Lisa K.", "Tom B."], revenuePerPlayer: 15, tip: "Morning open play fills 85% on average — send invites now to hit that target." },
+  "S-1848": { fillRate: 50, insight: "6 spots open. Popular clinic format — usually fills to 90%.", suggestedPlayers: ["Sarah D.", "Mike C.", "Anna M.", "Chris L.", "Diana P."], revenuePerPlayer: 25, tip: "Clinic attendees convert to regulars at 3x rate. Worth a targeted push." },
   "S-1847": { fillRate: 100, insight: "Fully booked — consider adding a second Open Play slot at this time.", suggestedPlayers: [], revenuePerPlayer: 15, tip: "High demand detected. 3 waitlisted players last week at this time." },
   "S-1846": { fillRate: 100, insight: "League match always fills. Revenue per player is 2x open play.", suggestedPlayers: [], revenuePerPlayer: 50, tip: "Consider premium pricing for league slots." },
   "S-1845": { fillRate: 100, insight: "Private lesson completed with full attendance.", suggestedPlayers: [], revenuePerPlayer: 42.5, tip: "Student has booked 8 lessons this month — offer a package deal." },
@@ -66,7 +70,7 @@ const sessionInsights: Record<string, { fillRate: number; insight: string; sugge
 
 const allFormats = ["Open Play", "League Match", "Private Lesson", "Round Robin", "Clinic", "Tournament"];
 const allCourts = ["Court 1", "Court 2", "Court 3", "Court 4"];
-const allStatuses = ["active", "completed", "cancelled"];
+const allStatuses = ["upcoming", "active", "completed", "cancelled"];
 
 const courtStats = [
   { name: "Court 1", occupancy: 72, sessions: 42, revenue: 3800, sport: "Pickleball" },
@@ -109,6 +113,7 @@ function CustomTooltip({ active, payload, label }: any) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; text: string; dot: string }> = {
+    upcoming: { bg: "rgba(6,182,212,0.1)", text: "#22D3EE", dot: "#06B6D4" },
     active: { bg: "rgba(16,185,129,0.1)", text: "#10B981", dot: "#10B981" },
     completed: { bg: "rgba(139,92,246,0.1)", text: "#A78BFA", dot: "#8B5CF6" },
     cancelled: { bg: "rgba(239,68,68,0.1)", text: "#F87171", dot: "#EF4444" },
@@ -527,8 +532,8 @@ export function SessionsIQ() {
                                     </div>
                                   </div>
 
-                                  {/* Suggested Players with Invite Actions */}
-                                  {insights.suggestedPlayers.length > 0 && (
+                                  {/* Suggested Players with Invite Actions — only for non-completed sessions */}
+                                  {insights.suggestedPlayers.length > 0 && s.status !== "completed" && (
                                     <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
                                       <div className="flex items-center justify-between mb-3">
                                         <div className="flex items-center gap-2">

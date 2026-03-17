@@ -112,3 +112,11 @@
 .iq-intelligence ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-hover-c);
 }
+
+/* Prevent white flash on page load — hide body bg behind the IQ theme */
+body:has(.iq-intelligence) {
+  background: #0B0D17;
+}
+body:has(.iq-intelligence[data-theme="light"]) {
+  background: #F7F8FC;
+}
