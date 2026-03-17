@@ -4,7 +4,7 @@ import { motion, useInView } from "motion/react";
 import {
   DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   CreditCard, PieChart as PieIcon, BarChart3, Zap, Target,
-  CalendarDays, Users, Sparkles, AlertTriangle, Clock,
+  CalendarDays, Users, Sparkles, AlertTriangle, Clock, Upload, Activity, Heart,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -14,19 +14,35 @@ import {
 import { useTheme } from "../IQThemeProvider";
 
 /* --- Mock Data --- */
-const monthlyRevenue = [
-  { month: "Apr", bookings: 8200, events: 1400, lessons: 2800, merchandise: 600, total: 13000 },
-  { month: "May", bookings: 8800, events: 1800, lessons: 3000, merchandise: 700, total: 14300 },
-  { month: "Jun", bookings: 9400, events: 2200, lessons: 3200, merchandise: 650, total: 15450 },
-  { month: "Jul", bookings: 8600, events: 1600, lessons: 2900, merchandise: 500, total: 13600 },
-  { month: "Aug", bookings: 9200, events: 2000, lessons: 3100, merchandise: 800, total: 15100 },
-  { month: "Sep", bookings: 8400, events: 1500, lessons: 2700, merchandise: 550, total: 13150 },
-  { month: "Oct", bookings: 10200, events: 2400, lessons: 3400, merchandise: 900, total: 16900 },
-  { month: "Nov", bookings: 10800, events: 2200, lessons: 3600, merchandise: 850, total: 17450 },
-  { month: "Dec", bookings: 9800, events: 1900, lessons: 3300, merchandise: 750, total: 15750 },
-  { month: "Jan", bookings: 11400, events: 2600, lessons: 3800, merchandise: 1000, total: 18800 },
-  { month: "Feb", bookings: 11000, events: 2400, lessons: 3500, merchandise: 900, total: 17800 },
-  { month: "Mar", bookings: 11800, events: 2800, lessons: 3900, merchandise: 950, total: 19450 },
+const playerHealthDistribution = [
+  { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
+  { level: "Watch", count: 25, pct: 20, color: "#F59E0B" },
+  { level: "At-Risk", count: 18, pct: 14, color: "#F97316" },
+  { level: "Critical", count: 12, pct: 9, color: "#EF4444" },
+];
+
+const healthMetrics = {
+  improved: 23, improvedPct: 18.1,
+  declined: 9, declinedPct: 7.1,
+  avgScore: 68, avgScorePrev: 64,
+  churnedThisPeriod: 5, churnedPrevPeriod: 8, churnChange: -37.5,
+};
+
+const dataUploadHistory = [
+  { id: "u1", date: "Mar 15, 2026", records: 1247, quality: 98, status: "success" as const, source: "CourtReserve CSV", duration: "2.4s" },
+  { id: "u2", date: "Mar 8, 2026", records: 1183, quality: 95, status: "success" as const, source: "CourtReserve CSV", duration: "2.1s" },
+  { id: "u3", date: "Mar 1, 2026", records: 1156, quality: 92, status: "warning" as const, source: "Manual Upload", duration: "3.8s" },
+  { id: "u4", date: "Feb 22, 2026", records: 1098, quality: 97, status: "success" as const, source: "CourtReserve CSV", duration: "1.9s" },
+  { id: "u5", date: "Feb 15, 2026", records: 1042, quality: 88, status: "warning" as const, source: "Manual Upload", duration: "4.2s" },
+];
+
+const periodComparison = [
+  { metric: "Total Revenue", current: 19450, previous: 17300, format: "currency" as const },
+  { metric: "Active Members", current: 127, previous: 118, format: "number" as const },
+  { metric: "Rev per Member", current: 153, previous: 147, format: "currency" as const },
+  { metric: "Court Utilization", current: 74, previous: 68, format: "percent" as const },
+  { metric: "Avg Health Score", current: 68, previous: 64, format: "number" as const },
+  { metric: "Churn Rate", current: 3.9, previous: 5.2, format: "percent" as const },
 ];
 
 const revenueBySource = [
@@ -67,7 +83,9 @@ const forecastData = [
 ];
 
 const fullForecast = [
-  ...monthlyRevenue.slice(-3).map((m) => ({ month: m.month, actual: m.total, forecast: null, low: null, high: null })),
+  { month: "Jan", actual: 18800, forecast: null, low: null, high: null },
+  { month: "Feb", actual: 17800, forecast: null, low: null, high: null },
+  { month: "Mar", actual: 19450, forecast: null, low: null, high: null },
   ...forecastData,
 ];
 
@@ -100,7 +118,9 @@ function CustomTooltip({ active, payload, label }: any) {
 /* ============================================= */
 export function RevenueIQ() {
   const { isDark } = useTheme();
-  const [period, setPeriod] = useState<"month" | "quarter" | "year">("year");
+  const [period, setPeriod] = useState<"month" | "quarter" | "year" | "custom">("year");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -122,8 +142,8 @@ export function RevenueIQ() {
           <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Revenue Intelligence</h1>
           <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Track every dollar. AI-powered pricing & forecasting.</p>
         </div>
-        <div className="flex items-center gap-2">
-          {(["month", "quarter", "year"] as const).map((p) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {(["month", "quarter", "year", "custom"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
@@ -138,6 +158,35 @@ export function RevenueIQ() {
               {p}
             </button>
           ))}
+          {period === "custom" && (
+            <div className="flex items-center gap-2 ml-2">
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="px-3 py-1.5 rounded-xl text-xs outline-none"
+                style={{
+                  background: "var(--card-bg)",
+                  border: "1px solid var(--card-border)",
+                  color: "var(--t2)",
+                  colorScheme: isDark ? "dark" : "light",
+                }}
+              />
+              <span className="text-[11px]" style={{ color: "var(--t4)" }}>to</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="px-3 py-1.5 rounded-xl text-xs outline-none"
+                style={{
+                  background: "var(--card-bg)",
+                  border: "1px solid var(--card-border)",
+                  color: "var(--t2)",
+                  colorScheme: isDark ? "dark" : "light",
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -173,49 +222,65 @@ export function RevenueIQ() {
         })}
       </div>
 
-      {/* Revenue Trend + Breakdown */}
+      {/* Player Health + Breakdown */}
       <div className="grid lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
-            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Revenue Trend (12 months)</h3>
-            <div className="flex items-center gap-4 text-[10px]">
-              {[
-                { label: "Bookings", color: "#8B5CF6" },
-                { label: "Events", color: "#06B6D4" },
-                { label: "Lessons", color: "#10B981" },
-              ].map((l) => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full" style={{ background: l.color }} />
-                  <span style={{ color: "var(--t3)" }}>{l.label}</span>
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-emerald-400" />
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Player Health Overview</h3>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.15)" }}>
+              <span className="text-[11px]" style={{ color: "var(--t3)" }}>Avg:</span>
+              <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{healthMetrics.avgScore}</span>
+              <span className="text-[10px] text-emerald-400" style={{ fontWeight: 600 }}>(+{healthMetrics.avgScore - healthMetrics.avgScorePrev})</span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={monthlyRevenue}>
-              <defs>
-                <linearGradient id="bookGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.25} />
-                  <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="eventGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="lessonGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} tickFormatter={(v) => `$${v / 1000}k`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="bookings" name="Bookings" stroke="#8B5CF6" fill="url(#bookGrad)" strokeWidth={2} stackId="1" />
-              <Area type="monotone" dataKey="events" name="Events" stroke="#06B6D4" fill="url(#eventGrad)" strokeWidth={2} stackId="1" />
-              <Area type="monotone" dataKey="lessons" name="Lessons" stroke="#10B981" fill="url(#lessonGrad)" strokeWidth={2} stackId="1" />
-            </AreaChart>
-          </ResponsiveContainer>
+
+          {/* Mini metrics row */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            {[
+              { label: "Improved", value: healthMetrics.improved, sub: `+${healthMetrics.improvedPct}%`, color: "#10B981" },
+              { label: "Declined", value: healthMetrics.declined, sub: `${healthMetrics.declinedPct}%`, color: "#EF4444" },
+              { label: "Churned", value: healthMetrics.churnedThisPeriod, sub: `${healthMetrics.churnChange}% vs prev`, color: "#F59E0B" },
+            ].map((m) => (
+              <div key={m.label} className="p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                <div className="text-[10px] mb-1" style={{ color: "var(--t4)" }}>{m.label}</div>
+                <div className="flex items-baseline gap-1.5">
+                  <span style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>{m.value}</span>
+                  <span className="text-[10px]" style={{ color: m.color, fontWeight: 600 }}>{m.sub}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Health distribution bars */}
+          <div className="space-y-3">
+            {playerHealthDistribution.map((level) => (
+              <div key={level.level}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: level.color }} />
+                    <span className="text-xs" style={{ color: "var(--t2)", fontWeight: 500 }}>{level.level}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>{level.count}</span>
+                    <span className="text-[10px]" style={{ color: "var(--t4)" }}>{level.pct}%</span>
+                  </div>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: level.color }}
+                    initial={{ width: 0 }}
+                    whileInView={{ width: `${level.pct}%` }}
+                    transition={{ duration: 0.8 }}
+                    viewport={{ once: true }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </Card>
 
         {/* Breakdown Pie */}
@@ -415,6 +480,72 @@ export function RevenueIQ() {
                 <strong style={{ color: "var(--heading)" }}>AI Forecast:</strong> Based on current trends, you&apos;re projected to hit <strong className="text-emerald-400">$22.8K</strong> by June. Implementing pricing suggestions could push this to <strong className="text-cyan-400">$25.6K</strong>.
               </span>
             </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Data Upload History + Period Comparison */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Data Upload History */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Upload className="w-4 h-4" style={{ color: "var(--t3)" }} />
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Data Upload History</h3>
+          </div>
+          <div className="space-y-2">
+            {dataUploadHistory.map((upload) => (
+              <div
+                key={upload.id}
+                className="flex items-center justify-between p-3 rounded-xl"
+                style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
+              >
+                <div>
+                  <div className="text-xs" style={{ color: "var(--heading)", fontWeight: 600 }}>{upload.source}</div>
+                  <div className="text-[10px]" style={{ color: "var(--t4)" }}>{upload.date} · {upload.duration}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>{upload.records.toLocaleString()} records</div>
+                    <div className="text-[10px]" style={{ color: "var(--t4)" }}>Quality: {upload.quality}%</div>
+                  </div>
+                  <div className="w-2 h-2 rounded-full" style={{ background: upload.status === "success" ? "#10B981" : "#F59E0B" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Period Comparison */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4" style={{ color: "var(--t3)" }} />
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
+            </div>
+            <span className="text-[10px]" style={{ color: "var(--t4)" }}>Current vs Previous</span>
+          </div>
+          <div className="space-y-3">
+            {periodComparison.map((item) => {
+              const delta = ((item.current - item.previous) / item.previous) * 100;
+              const isPositive = item.metric === "Churn Rate" ? delta < 0 : delta > 0;
+              return (
+                <div key={item.metric} className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "var(--t2)" }}>{item.metric}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>
+                      {item.format === "currency" ? `$${item.current.toLocaleString()}` : item.format === "percent" ? `${item.current}%` : item.current.toLocaleString()}
+                    </span>
+                    <span className="text-[10px]" style={{ color: "var(--t4)" }}>
+                      was {item.format === "currency" ? `$${item.previous.toLocaleString()}` : item.format === "percent" ? `${item.previous}%` : item.previous.toLocaleString()}
+                    </span>
+                    <span className={`text-[10px] flex items-center gap-0.5 ${isPositive ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
+                      {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                      {Math.abs(delta).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       </div>
