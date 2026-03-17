@@ -104,15 +104,17 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
           <LogoIcon size={32} />
           <AnimatePresence>
             {expanded && (
-              <motion.span
+              <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: "auto" }}
                 exit={{ opacity: 0, width: 0 }}
-                className="whitespace-nowrap overflow-hidden"
-                style={{ fontSize: "15px", fontWeight: 700, color: "var(--heading)" }}
+                className="whitespace-nowrap overflow-hidden flex flex-col"
               >
-                IQ<span style={{ color: "#8B5CF6" }}>Sport</span>
-              </motion.span>
+                <span style={{ fontSize: "15px", fontWeight: 700, color: "var(--heading)", lineHeight: 1.2 }}>
+                  IQ<span style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Sport</span>
+                </span>
+                <span style={{ fontSize: "9px", fontWeight: 600, color: "#06B6D4", letterSpacing: "0.15em", lineHeight: 1 }}>INTELLIGENCE</span>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
