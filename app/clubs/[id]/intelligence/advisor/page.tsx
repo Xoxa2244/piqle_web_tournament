@@ -14,6 +14,8 @@ import { FilePreviewView } from './_components/FilePreviewView'
 import { ImportDoneView } from './_components/ImportDoneView'
 import { MemberImportView } from './_components/MemberImportView'
 import type { ParsedSession } from './_hooks/useFileParser'
+import { useBrand } from '@/components/BrandProvider'
+import { AdvisorIQ } from '../_components/iq-pages/AdvisorIQ'
 
 export default function AIAdvisorPage() {
   const params = useParams()
@@ -194,6 +196,9 @@ export default function AIAdvisorPage() {
   const handleMemberImportCancel = () => {
     setState(dataStatus?.hasData ? 'chat_ready' : 'onboarding')
   }
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <AdvisorIQ />
 
   // ── Render ──
 

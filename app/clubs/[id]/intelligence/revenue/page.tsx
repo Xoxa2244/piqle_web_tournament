@@ -14,6 +14,8 @@ import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useDashboardV2 } from '../_hooks/use-intelligence'
 import { useSetPageContext } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { RevenueIQ } from '../_components/iq-pages/RevenueIQ'
 
 const timeSlotLabels: Record<string, string> = {
   morning: 'Morning (6–12)',
@@ -51,6 +53,8 @@ export default function RevenueIntelligencePage() {
     setPageContext(parts.join('\n'))
   }, [dashboard, setPageContext])
 
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <RevenueIQ />
 
   if (isLoading) return <DashboardSkeleton />
 

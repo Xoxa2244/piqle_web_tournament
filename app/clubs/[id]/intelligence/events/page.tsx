@@ -26,6 +26,8 @@ import {
   type EventMessageVariant,
 } from '@/lib/ai/event-messages'
 import type { MatchedPlayer, EventRecommendation } from '@/types/intelligence'
+import { useBrand } from '@/components/BrandProvider'
+import { EventsIQ } from '../_components/iq-pages/EventsIQ'
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -200,6 +202,9 @@ export default function EventGeneratorPage() {
   }
 
   // isCsvPlayer is now imported from shared component
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <EventsIQ />
 
   // ── Loading ──
   if (isLoading) return <ListSkeleton rows={4} />

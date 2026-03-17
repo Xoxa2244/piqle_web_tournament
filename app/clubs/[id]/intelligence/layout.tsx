@@ -13,6 +13,10 @@ import { cn } from '@/lib/utils'
 import { useIntelligenceSettings } from './_hooks/use-intelligence'
 import { ChatWidget } from './_components/ChatWidget'
 import { PageContextCtx, createPageContext } from './_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { IQSidebar } from './_components/iq-layout/IQSidebar'
+import { IQThemeProvider } from './_components/IQThemeProvider'
+import './iqsport-theme.css'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
@@ -38,6 +42,7 @@ export default function IntelligenceLayout({
   const basePath = `/clubs/${clubId}/intelligence`
   const isDemo = searchParams.get('demo') === 'true'
   const demoSuffix = isDemo ? '?demo=true' : ''
+  const brand = useBrand()
 
   const settingsQuery = useIntelligenceSettings(clubId)
   const onboardingCompleted = isDemo
@@ -46,6 +51,20 @@ export default function IntelligenceLayout({
 
   const pageContextStore = useMemo(() => createPageContext(), [])
 
+  // IQSport brand → dark sidebar layout with IQ theme
+  if (brand.key === 'iqsport') {
+    return (
+      <PageContextCtx.Provider value={pageContextStore}>
+        <IQThemeProvider>
+          <IQSidebar clubId={clubId}>
+            {children}
+          </IQSidebar>
+        </IQThemeProvider>
+      </PageContextCtx.Provider>
+    )
+  }
+
+  // Piqle brand → existing tab layout
   return (
     <PageContextCtx.Provider value={pageContextStore}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">

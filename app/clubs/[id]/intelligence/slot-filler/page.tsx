@@ -19,6 +19,8 @@ import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '..
 import { MessageSelector } from '../_components/message-selector'
 import { generateSlotFillerMessages, classifySlotFillerPlayerType, playerTypeLabels } from '@/lib/ai/slot-filler-messages'
 import { useSetPageContext } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { SlotFillerIQ } from '../_components/iq-pages/SlotFillerIQ'
 
 export default function SlotFillerPage() {
   const params = useParams()
@@ -187,6 +189,9 @@ export default function SlotFillerPage() {
       }),
     })
   }
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <SlotFillerIQ />
 
   // ── Session selector state ──
   if (!selectedSessionId) {

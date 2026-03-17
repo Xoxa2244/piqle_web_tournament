@@ -17,6 +17,8 @@ import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { useCampaignAnalytics, useVariantAnalytics, useSequenceAnalytics, useIsDemo } from '../_hooks/use-intelligence'
+import { useBrand } from '@/components/BrandProvider'
+import { CampaignsIQ } from '../_components/iq-pages/CampaignsIQ'
 
 // ── Type / Status badge styles ──
 
@@ -228,6 +230,8 @@ export default function CampaignsPage() {
     setPageContext(parts.join('\n'))
   }, [data, days, variantData, sequenceData, setPageContext])
 
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <CampaignsIQ />
 
   if (isLoading) return <ListSkeleton />
 

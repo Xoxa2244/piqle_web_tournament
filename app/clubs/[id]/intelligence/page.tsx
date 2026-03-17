@@ -21,6 +21,8 @@ import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySumm
 import { WeeklySummaryCard } from './_components/weekly-summary-card'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from './_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { DashboardIQ } from './_components/iq-pages/DashboardIQ'
 
 const formatLabels: Record<string, string> = {
   OPEN_PLAY: 'Open Play',
@@ -92,6 +94,8 @@ export default function IntelligenceDashboardPage() {
     setPageContext(ctx.join('\n'))
   }, [data, healthData, setPageContext])
 
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <DashboardIQ />
 
   if (isLoading) return <DashboardSkeleton />
 

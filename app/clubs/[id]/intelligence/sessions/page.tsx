@@ -16,6 +16,8 @@ import { EmptyState } from '../_components/empty-state'
 import { useSessionsCalendar } from '../_hooks/use-intelligence'
 import type { SessionCalendarItem, SessionRecommendation } from '@/types/intelligence'
 import { useSetPageContext } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { SessionsIQ } from '../_components/iq-pages/SessionsIQ'
 
 type ViewMode = 'list' | 'week' | 'month'
 
@@ -471,6 +473,9 @@ export default function SessionsCalendarPage() {
 
   const weekStart = getWeekStart(navDate)
   const monthStart = getMonthStart(navDate)
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <SessionsIQ />
 
   if (isLoading) return <DashboardSkeleton />
 

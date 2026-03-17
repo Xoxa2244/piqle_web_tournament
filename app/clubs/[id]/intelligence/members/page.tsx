@@ -17,6 +17,8 @@ import { EmptyState } from '../_components/empty-state'
 import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { MembersIQ } from '../_components/iq-pages/MembersIQ'
 import type { MemberHealthResult, RiskLevel, LifecycleStage } from '@/types/intelligence'
 
 // ── Constants ──
@@ -139,6 +141,9 @@ export default function MembersPage() {
       setSortAsc(false)
     }
   }
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <MembersIQ />
 
   return (
     <div className="space-y-6">

@@ -18,6 +18,13 @@ export async function middleware(req: NextRequest) {
   if (brandKey === 'iqsport') {
     const pathname = req.nextUrl.pathname
 
+    // demo.iqsport.ai → auto-append ?demo=true for intelligence routes
+    if (host.startsWith('demo.') && pathname.includes('/intelligence') && !req.nextUrl.searchParams.has('demo')) {
+      const url = req.nextUrl.clone()
+      url.searchParams.set('demo', 'true')
+      return NextResponse.redirect(url)
+    }
+
     // Redirect root to /clubs
     if (pathname === '/') {
       return NextResponse.redirect(new URL('/clubs', req.url))

@@ -22,6 +22,8 @@ import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactiva
 import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { useSetPageContext } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
+import { ReactivationIQ } from '../_components/iq-pages/ReactivationIQ'
 
 function formatRelativeDate(isoDate: string): string {
   const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86400000)
@@ -126,6 +128,9 @@ export default function ReactivationPage() {
     data && data.totalClubMembers > 0
       ? Math.round((data.totalInactiveMembers / data.totalClubMembers) * 100)
       : 0
+
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <ReactivationIQ />
 
   return (
     <div className="space-y-6">

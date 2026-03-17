@@ -1,0 +1,367 @@
+'use client'
+import { useState, useRef } from "react";
+import { motion, useInView } from "motion/react";
+import {
+  CalendarDays, Clock, Users, TrendingUp, Filter, Search,
+  ChevronDown, MapPin, Star, Zap, ArrowUpRight, ArrowDownRight,
+  BarChart3, Eye,
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, AreaChart, Area,
+} from "recharts";
+import { useTheme } from "../IQThemeProvider";
+
+/* --- Mock Data --- */
+const weeklyData = [
+  { day: "Mon", sessions: 18, occupancy: 52, revenue: 1240 },
+  { day: "Tue", sessions: 14, occupancy: 38, revenue: 980 },
+  { day: "Wed", sessions: 22, occupancy: 65, revenue: 1580 },
+  { day: "Thu", sessions: 20, occupancy: 58, revenue: 1420 },
+  { day: "Fri", sessions: 26, occupancy: 78, revenue: 1860 },
+  { day: "Sat", sessions: 32, occupancy: 92, revenue: 2440 },
+  { day: "Sun", sessions: 28, occupancy: 85, revenue: 2100 },
+];
+
+const hourlyPattern = [
+  { time: "6AM", avg: 15 }, { time: "7AM", avg: 28 }, { time: "8AM", avg: 45 },
+  { time: "9AM", avg: 62 }, { time: "10AM", avg: 78 }, { time: "11AM", avg: 72 },
+  { time: "12PM", avg: 65 }, { time: "1PM", avg: 58 }, { time: "2PM", avg: 52 },
+  { time: "3PM", avg: 70 }, { time: "4PM", avg: 85 }, { time: "5PM", avg: 92 },
+  { time: "6PM", avg: 88 }, { time: "7PM", avg: 75 }, { time: "8PM", avg: 60 },
+  { time: "9PM", avg: 42 }, { time: "10PM", avg: 25 },
+];
+
+const formatBreakdown = [
+  { format: "Open Play", sessions: 45, pct: 32, revenue: 3200, trend: "+5%", up: true },
+  { format: "League Match", sessions: 28, pct: 20, revenue: 4800, trend: "+12%", up: true },
+  { format: "Private Lesson", sessions: 22, pct: 16, revenue: 5500, trend: "+8%", up: true },
+  { format: "Round Robin", sessions: 18, pct: 13, revenue: 2100, trend: "-3%", up: false },
+  { format: "Clinic", sessions: 15, pct: 11, revenue: 1800, trend: "+15%", up: true },
+  { format: "Tournament", sessions: 12, pct: 8, revenue: 3600, trend: "+22%", up: true },
+];
+
+const recentSessions = [
+  { id: "S-1847", court: "Court 1", format: "Open Play", date: "Today, 2:00 PM", players: 8, maxPlayers: 8, duration: "90 min", revenue: 120, status: "active" },
+  { id: "S-1846", court: "Court 2", format: "League Match", date: "Today, 1:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "active" },
+  { id: "S-1845", court: "Court 3", format: "Private Lesson", date: "Today, 12:00 PM", players: 2, maxPlayers: 2, duration: "60 min", revenue: 85, status: "completed" },
+  { id: "S-1844", court: "Court 1", format: "Clinic", date: "Today, 10:00 AM", players: 10, maxPlayers: 12, duration: "120 min", revenue: 300, status: "completed" },
+  { id: "S-1843", court: "Court 4", format: "Round Robin", date: "Today, 9:00 AM", players: 12, maxPlayers: 16, duration: "120 min", revenue: 180, status: "completed" },
+  { id: "S-1842", court: "Court 2", format: "Open Play", date: "Yesterday, 6:00 PM", players: 6, maxPlayers: 8, duration: "90 min", revenue: 90, status: "completed" },
+  { id: "S-1841", court: "Court 3", format: "Tournament", date: "Yesterday, 2:00 PM", players: 16, maxPlayers: 16, duration: "180 min", revenue: 640, status: "completed" },
+  { id: "S-1840", court: "Court 1", format: "League Match", date: "Yesterday, 12:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "completed" },
+];
+
+const courtStats = [
+  { name: "Court 1", occupancy: 72, sessions: 42, revenue: 3800, sport: "Pickleball" },
+  { name: "Court 2", occupancy: 65, sessions: 38, revenue: 3200, sport: "Pickleball" },
+  { name: "Court 3", occupancy: 58, sessions: 34, revenue: 2900, sport: "Padel" },
+  { name: "Court 4", occupancy: 48, sessions: 28, revenue: 2100, sport: "Tennis" },
+];
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl p-5 ${className}`}
+      style={{
+        background: "var(--card-bg)",
+        border: "1px solid var(--card-border)",
+        backdropFilter: "var(--glass-blur)",
+        boxShadow: "var(--card-shadow)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", color: "var(--tooltip-color)", backdropFilter: "blur(12px)" }}>
+      <div className="mb-2" style={{ fontWeight: 600 }}>{label}</div>
+      {payload.map((p: any) => (
+        <div key={p.name} className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+          <span style={{ color: "var(--t3)" }}>{p.name}:</span>
+          <span style={{ fontWeight: 600 }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const colors: Record<string, { bg: string; text: string; dot: string }> = {
+    active: { bg: "rgba(16,185,129,0.1)", text: "#10B981", dot: "#10B981" },
+    completed: { bg: "rgba(139,92,246,0.1)", text: "#A78BFA", dot: "#8B5CF6" },
+    cancelled: { bg: "rgba(239,68,68,0.1)", text: "#F87171", dot: "#EF4444" },
+  };
+  const c = colors[status] || colors.completed;
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] capitalize" style={{ background: c.bg, color: c.text, fontWeight: 600 }}>
+      <div className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />
+      {status}
+    </span>
+  );
+}
+
+/* ============================================= */
+/*              SESSIONS PAGE                     */
+/* ============================================= */
+export function SessionsIQ() {
+  const { isDark } = useTheme();
+  const [view, setView] = useState<"list" | "analytics">("analytics");
+  const [searchQuery, setSearchQuery] = useState("");
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+
+  const filteredSessions = recentSessions.filter(
+    (s) =>
+      s.court.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.format.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5 }}
+      className="space-y-6 max-w-[1400px] mx-auto"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Sessions</h1>
+          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Track and analyze all court sessions</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+            {(["analytics", "list"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="px-4 py-2 text-xs capitalize transition-all"
+                style={{
+                  background: view === v ? "var(--pill-active)" : "transparent",
+                  color: view === v ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                  fontWeight: view === v ? 600 : 500,
+                }}
+              >
+                {v === "analytics" ? "Analytics" : "All Sessions"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {view === "analytics" ? (
+        <>
+          {/* KPI Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: "Total Sessions", value: "160", change: "+11%", up: true, icon: CalendarDays, gradient: "from-violet-500 to-purple-600" },
+              { label: "Avg Occupancy", value: "62%", change: "+3.1%", up: true, icon: BarChart3, gradient: "from-cyan-500 to-teal-500" },
+              { label: "Session Revenue", value: "$12.6K", change: "+8.4%", up: true, icon: TrendingUp, gradient: "from-emerald-500 to-green-500" },
+              { label: "Peak Utilization", value: "92%", change: "+5%", up: true, icon: Zap, gradient: "from-amber-500 to-orange-500" },
+            ].map((kpi, i) => {
+              const Icon = kpi.icon;
+              return (
+                <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+                  <Card>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
+                        <Icon className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-xs" style={{ color: "var(--t3)" }}>{kpi.label}</div>
+                        <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                      </div>
+                    </div>
+                    <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
+                      {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                      {kpi.change} vs last period
+                    </div>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid lg:grid-cols-2 gap-4">
+            {/* Weekly Sessions Bar */}
+            <Card>
+              <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Weekly Sessions</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={weeklyData}>
+                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+                  <XAxis dataKey="day" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                  <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="sessions" name="Sessions" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+
+            {/* Hourly Pattern */}
+            <Card>
+              <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Hourly Occupancy Pattern</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={hourlyPattern}>
+                  <defs>
+                    <linearGradient id="hourGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+                  <XAxis dataKey="time" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 10 }} interval={2} />
+                  <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="avg" name="Avg Occupancy" stroke="#06B6D4" fill="url(#hourGrad)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
+
+          {/* Format Breakdown + Court Stats */}
+          <div className="grid lg:grid-cols-2 gap-4">
+            {/* Format Breakdown */}
+            <Card>
+              <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Format Breakdown</h3>
+              <div className="space-y-3">
+                {formatBreakdown.map((f) => (
+                  <div key={f.format} className="flex items-center gap-4">
+                    <div className="w-28 text-xs truncate" style={{ color: "var(--t2)", fontWeight: 500 }}>{f.format}</div>
+                    <div className="flex-1">
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", width: `${f.pct}%` }}
+                          initial={{ width: 0 }}
+                          whileInView={{ width: `${f.pct}%` }}
+                          transition={{ duration: 0.8, delay: 0.1 }}
+                          viewport={{ once: true }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs text-right w-12" style={{ color: "var(--t1)", fontWeight: 600 }}>{f.sessions}</div>
+                    <div className="text-xs text-right w-14" style={{ color: "var(--t3)" }}>${f.revenue.toLocaleString()}</div>
+                    <div className={`text-xs w-10 text-right ${f.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>{f.trend}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Court Stats */}
+            <Card>
+              <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Court Performance</h3>
+              <div className="space-y-3">
+                {courtStats.map((court) => (
+                  <div
+                    key={court.name}
+                    className="flex items-center gap-4 p-3 rounded-xl transition-colors"
+                    style={{ background: "var(--subtle)" }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "var(--pill-active)" }}>
+                      <MapPin className="w-5 h-5" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm" style={{ fontWeight: 600, color: "var(--heading)" }}>{court.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--badge-bg)", color: "var(--t3)" }}>{court.sport}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-[11px]" style={{ color: "var(--t3)" }}>
+                        <span>{court.sessions} sessions</span>
+                        <span>${court.revenue.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div style={{ fontSize: "18px", fontWeight: 700, color: court.occupancy >= 70 ? "#10B981" : court.occupancy >= 50 ? "#F59E0B" : "#EF4444" }}>
+                        {court.occupancy}%
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--t4)" }}>occupancy</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </>
+      ) : (
+        /* Session List View */
+        <>
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 max-w-sm"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
+            >
+              <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
+              <input
+                placeholder="Search sessions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm w-full"
+                style={{ color: "var(--t1)" }}
+              />
+            </div>
+            <button
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t3)", fontWeight: 500 }}
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+            </button>
+          </div>
+
+          <Card className="overflow-hidden !p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--divider)" }}>
+                    {["Session ID", "Court", "Format", "Date / Time", "Players", "Duration", "Revenue", "Status"].map((h) => (
+                      <th key={h} className="text-left px-4 py-3 text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSessions.map((s, i) => (
+                    <motion.tr
+                      key={s.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: i * 0.04 }}
+                      className="cursor-pointer transition-colors"
+                      style={{ borderBottom: "1px solid var(--divider)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>{s.id}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.court}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.format}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.date}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>
+                        {s.players}/{s.maxPlayers}
+                        <span className="ml-1 text-[10px]" style={{ color: s.players === s.maxPlayers ? "#10B981" : "var(--t4)" }}>
+                          {s.players === s.maxPlayers ? "Full" : ""}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
+                      <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+    </motion.div>
+  );
+}
