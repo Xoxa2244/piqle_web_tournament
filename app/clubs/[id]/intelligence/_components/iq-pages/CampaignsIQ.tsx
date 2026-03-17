@@ -666,32 +666,32 @@ function ChannelIcon({ channel }: { channel: string }) {
                 <Card className="!p-0 overflow-hidden">
                   {' '}
                   <div
-                    className="flex items-center gap-4 px-5 py-4 cursor-pointer transition-colors"
+                    className="grid items-center px-5 py-4 cursor-pointer transition-colors"
+                    style={{
+                      gridTemplateColumns: '40px 1fr repeat(3, 52px) 72px auto 20px',
+                      gap: '0 16px',
+                    }}
                     onClick={() => setExpandedCampaign(isExpanded ? null : campaign.id)}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    {' '}
                     <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
                       style={{ background: 'var(--pill-active)' }}
                     >
-                      {' '}
-                      <ChannelIcon channel={campaign.channel} />{' '}
-                    </div>{' '}
-                    <div className="flex-1 min-w-0">
-                      {' '}
+                      <ChannelIcon channel={campaign.channel} />
+                    </div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        {' '}
                         <span
                           className="text-sm truncate"
                           style={{ fontWeight: 600, color: 'var(--heading)' }}
                         >
                           {campaign.name}
-                        </span>{' '}
+                        </span>
                         {campaign.aiGenerated && (
                           <span
-                            className="text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
+                            className="text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded shrink-0"
                             style={{
                               background: 'rgba(139,92,246,0.12)',
                               color: '#A78BFA',
@@ -700,65 +700,55 @@ function ChannelIcon({ channel }: { channel: string }) {
                           >
                             AI
                           </span>
-                        )}{' '}
-                      </div>{' '}
+                        )}
+                      </div>
                       <div
                         className="flex items-center gap-3 mt-0.5 text-[11px]"
                         style={{ color: 'var(--t3)' }}
                       >
-                        {' '}
-                        <span>{campaign.type}</span> <span>{campaign.createdAt}</span>{' '}
-                        <span>{campaign.audience} recipients</span>{' '}
-                      </div>{' '}
-                    </div>{' '}
-                    {campaign.sent > 0 && (
-                      <div className="hidden md:flex items-center gap-6 text-xs">
-                        {' '}
-                        <div className="text-center">
-                          {' '}
-                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>
-                            {openRate}%
-                          </div>{' '}
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>
-                            Opens
-                          </div>{' '}
-                        </div>{' '}
-                        <div className="text-center">
-                          {' '}
-                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>
-                            {clickRate}%
-                          </div>{' '}
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>
-                            Clicks
-                          </div>{' '}
-                        </div>{' '}
-                        <div className="text-center">
-                          {' '}
-                          <div className="text-emerald-400" style={{ fontWeight: 700 }}>
-                            {convRate}%
-                          </div>{' '}
-                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>
-                            Conv
-                          </div>{' '}
-                        </div>{' '}
+                        <span>{campaign.type}</span>
+                        <span>{campaign.createdAt}</span>
+                        <span>{campaign.audience} recipients</span>
                       </div>
-                    )}{' '}
-                    <div className="text-right hidden sm:block">
-                      {' '}
-                      {campaign.revenue > 0 && (
-                        <div className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>
+                    </div>
+                    <div className="text-center text-xs hidden md:block">
+                      {campaign.sent > 0 ? (
+                        <>
+                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{openRate}%</div>
+                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Opens</div>
+                        </>
+                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                    </div>
+                    <div className="text-center text-xs hidden md:block">
+                      {campaign.sent > 0 ? (
+                        <>
+                          <div style={{ color: 'var(--t1)', fontWeight: 700 }}>{clickRate}%</div>
+                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Clicks</div>
+                        </>
+                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                    </div>
+                    <div className="text-center text-xs hidden md:block">
+                      {campaign.sent > 0 ? (
+                        <>
+                          <div className="text-emerald-400" style={{ fontWeight: 700 }}>{convRate}%</div>
+                          <div className="text-[9px]" style={{ color: 'var(--t4)' }}>Conv</div>
+                        </>
+                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                    </div>
+                    <div className="text-right text-xs hidden sm:block">
+                      {campaign.revenue > 0 ? (
+                        <span className="text-emerald-400" style={{ fontWeight: 700 }}>
                           ${campaign.revenue.toLocaleString()}
-                        </div>
-                      )}{' '}
-                    </div>{' '}
-                    <StatusBadge status={campaign.status} />{' '}
+                        </span>
+                      ) : <span style={{ color: 'var(--t4)' }}>—</span>}
+                    </div>
+                    <StatusBadge status={campaign.status} />
                     <motion.div
                       animate={{ rotate: isExpanded ? 90 : 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      {' '}
-                      <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />{' '}
-                    </motion.div>{' '}
+                      <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
+                    </motion.div>
                   </div>{' '}
                   <AnimatePresence>
                     {' '}
