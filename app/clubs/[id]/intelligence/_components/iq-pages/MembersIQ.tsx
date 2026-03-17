@@ -32,7 +32,7 @@ const activityDistribution = [
   { range: "9+", count: 14 },
 ];
 
-type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "dormant";
+type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "critical";
 
 interface Member {
   id: string;
@@ -64,7 +64,7 @@ const members: Member[] = [
   { id: "m7", name: "Anna Garcia", avatar: "AG", email: "anna.g@email.com", phone: "+1 (555) 100-2007", rating: 2.2, sport: "Padel", segment: "casual", healthScore: 48, sessionsThisMonth: 1, totalSessions: 15, memberSince: "Aug 2024", lastPlayed: "12 days ago", revenue: 240, trend: "down", favoriteTime: "Morning", favoriteFormat: "Clinic" },
   { id: "m8", name: "Tom Rivera", avatar: "TR", email: "tom.r@email.com", phone: "+1 (555) 100-2008", rating: 3.4, sport: "Pickleball", segment: "at-risk", healthScore: 28, sessionsThisMonth: 1, totalSessions: 92, memberSince: "Sep 2023", lastPlayed: "18 days ago", revenue: 1780, trend: "down", favoriteTime: "Evening", favoriteFormat: "Round Robin" },
   { id: "m9", name: "Maria Santos", avatar: "MS", email: "maria.s@email.com", phone: "+1 (555) 100-2009", rating: 3.2, sport: "Pickleball", segment: "at-risk", healthScore: 18, sessionsThisMonth: 0, totalSessions: 86, memberSince: "Jan 2024", lastPlayed: "42 days ago", revenue: 1240, trend: "down", favoriteTime: "Morning", favoriteFormat: "League" },
-  { id: "m10", name: "Kevin Lee", avatar: "KL", email: "kevin.l@email.com", phone: "+1 (555) 100-2010", rating: 2.6, sport: "Tennis", segment: "dormant", healthScore: 8, sessionsThisMonth: 0, totalSessions: 34, memberSince: "Mar 2024", lastPlayed: "65 days ago", revenue: 560, trend: "down", favoriteTime: "Afternoon", favoriteFormat: "Singles" },
+  { id: "m10", name: "Kevin Lee", avatar: "KL", email: "kevin.l@email.com", phone: "+1 (555) 100-2010", rating: 2.6, sport: "Tennis", segment: "critical", healthScore: 8, sessionsThisMonth: 0, totalSessions: 34, memberSince: "Mar 2024", lastPlayed: "65 days ago", revenue: 560, trend: "down", favoriteTime: "Afternoon", favoriteFormat: "Singles" },
   { id: "m11", name: "Rachel Kim", avatar: "RK", email: "rachel.k@email.com", phone: "+1 (555) 100-2011", rating: 3.6, sport: "Pickleball", segment: "power", healthScore: 88, sessionsThisMonth: 9, totalSessions: 112, memberSince: "Jul 2023", lastPlayed: "Today", revenue: 2200, trend: "up", favoriteTime: "Morning", favoriteFormat: "Tournament" },
   { id: "m12", name: "Chris Taylor", avatar: "CT", email: "chris.t@email.com", phone: "+1 (555) 100-2012", rating: 2.9, sport: "Padel", segment: "regular", healthScore: 68, sessionsThisMonth: 4, totalSessions: 48, memberSince: "Feb 2024", lastPlayed: "4 days ago", revenue: 860, trend: "stable", favoriteTime: "Evening", favoriteFormat: "Doubles" },
 ];
@@ -74,7 +74,7 @@ const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string
   regular: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Regular", tooltip: "2-3 sessions/week, consistent attendance" },
   casual: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Casual", tooltip: "1 session/week or less, still active" },
   "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At-Risk", tooltip: "Declining frequency, health score 25-49" },
-  dormant: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Dormant", tooltip: "No activity for 21+ days, health score below 25" },
+  critical: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Critical", tooltip: "Health score below 25, immediate attention needed" },
 };
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -251,7 +251,7 @@ export function MembersIQ() {
             />
           </div>
           <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-            {(["all", "power", "regular", "casual", "at-risk", "dormant"] as Segment[]).map((s) => (
+            {(["all", "power", "regular", "casual", "at-risk", "critical"] as Segment[]).map((s) => (
               <button
                 key={s}
                 onClick={() => setSegmentFilter(s)}
@@ -262,7 +262,7 @@ export function MembersIQ() {
                   fontWeight: segmentFilter === s ? 600 : 500,
                 }}
               >
-                {s === "at-risk" ? "At-Risk" : s}
+                {s === "at-risk" ? "At-Risk" : s === "critical" ? "Critical" : s}
               </button>
             ))}
           </div>
