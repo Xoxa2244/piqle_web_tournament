@@ -2,8 +2,20 @@ import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { WebView } from 'react-native-webview'
 
 import {
   ActionButton,
@@ -74,7 +86,7 @@ const formatTournamentFormat = (format?: string | null) => {
   }
 }
 
-type DetailTab = 'info' | 'divisions'
+type DetailTab = 'info' | 'divisions' | 'dashboard'
 
 type StatusMeta = {
   label: string
@@ -169,6 +181,7 @@ export default function TournamentDetailScreen() {
   const tournamentId = String(params.id ?? '')
   const paymentState = typeof params.payment === 'string' ? params.payment : null
   const { token, user } = useAuth()
+  const { height: windowHeight } = useWindowDimensions()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
@@ -246,6 +259,27 @@ export default function TournamentDetailScreen() {
       ])
     },
   })
+
+  const dashboardEmbedUrl = useMemo(() => {
+    if (!tournamentId) return null
+
+    const params = new URLSearchParams()
+    const divisionId =
+      typeof myStatusQuery.data?.divisionId === 'string' ? myStatusQuery.data.divisionId : null
+    const teamId = typeof myStatusQuery.data?.teamId === 'string' ? myStatusQuery.data.teamId : null
+
+    if (divisionId) params.set('divisionId', divisionId)
+    if (teamId) params.set('teamId', teamId)
+
+    const query = params.toString()
+    return buildWebUrl(`/scoreboard/${tournamentId}/embed${query ? `?${query}` : ''}`)
+  }, [myStatusQuery.data?.divisionId, myStatusQuery.data?.teamId, tournamentId])
+
+  const dashboardPublicUrl = useMemo(
+    () => (tournamentId ? buildWebUrl(`/scoreboard/${tournamentId}`) : null),
+    [tournamentId]
+  )
+  const dashboardHeight = Math.max(Math.round(windowHeight * 0.95), 640)
 
   useEffect(() => {
     if (!tournamentId || !paymentState) return
@@ -363,6 +397,13 @@ export default function TournamentDetailScreen() {
     canLeaveTournament ||
     myStatus === 'waitlisted' ||
     hasPrivilegedAccess
+  const shouldShowStickyCta = showPrimaryCta && activeTab === 'info'
+  const dashboardRegistrationSummary =
+    myStatusQuery.data?.status === 'active' &&
+    myStatusQuery.data?.divisionName &&
+    myStatusQuery.data?.teamName
+      ? `${myStatusQuery.data.divisionName} · ${myStatusQuery.data.teamName}`
+      : null
   const statusMeta = getStatusMeta(tournamentAvailabilityData, myStatus, hasPrivilegedAccess)
   const divisionsForDisplay = Array.isArray((fullTournamentQuery.data as any)?.divisions)
     ? (((fullTournamentQuery.data as any)?.divisions ?? []) as any[])
@@ -429,6 +470,11 @@ export default function TournamentDetailScreen() {
     } catch {}
   }
 
+  const handleOpenDashboard = () => {
+    if (!dashboardPublicUrl) return
+    void Linking.openURL(dashboardPublicUrl)
+  }
+
   const handleOpenMaps = () => {
     if (!locationLabel || locationLabel === 'Location not set') return
     void Linking.openURL(
@@ -445,7 +491,7 @@ export default function TournamentDetailScreen() {
     <SafeAreaView style={styles.screen} edges={['top']}>
       <TopBar />
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, !showPrimaryCta && styles.scrollContentNoCta]}
+        contentContainerStyle={[styles.scrollContent, !shouldShowStickyCta && styles.scrollContentNoCta]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
@@ -535,16 +581,20 @@ export default function TournamentDetailScreen() {
 
         <View style={styles.contentSection}>
           <View style={styles.tabSwitch}>
-            {(['info', 'divisions'] as const).map((tab) => {
-              const active = activeTab === tab
+            {([
+              { key: 'info', label: 'Info' },
+              { key: 'divisions', label: 'Divisions' },
+              { key: 'dashboard', label: 'Dashboard' },
+            ] as const).map((tab) => {
+              const active = activeTab === tab.key
               return (
                 <Pressable
-                  key={tab}
-                  onPress={() => setActiveTab(tab)}
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
                   style={[styles.tabButton, active && styles.tabButtonActive]}
                 >
                   <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                    {tab === 'info' ? 'Info' : 'Divisions'}
+                    {tab.label}
                   </Text>
                 </Pressable>
               )
@@ -756,10 +806,66 @@ export default function TournamentDetailScreen() {
             </View>
           ) : null}
 
+          {activeTab === 'dashboard' ? (
+            <View style={styles.sectionStack}>
+              {dashboardRegistrationSummary ? (
+                <View style={styles.dashboardBanner}>
+                  <Text style={styles.dashboardBannerText}>
+                    <Text style={styles.dashboardBannerStrong}>You&apos;re registered:</Text>{' '}
+                    {dashboardRegistrationSummary}
+                  </Text>
+                </View>
+              ) : null}
+
+              <SurfaceCard padded={false} style={[styles.detailCard, styles.dashboardCard]}>
+                <View style={styles.dashboardHeader}>
+                  <View style={styles.dashboardHeaderCopy}>
+                    <Text style={styles.cardTitle}>Dashboard</Text>
+                    <Text style={styles.mutedBodyText}>
+                      Standings, brackets and live match results from the tournament scoreboard.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={handleOpenDashboard}
+                    style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
+                  >
+                    <Text style={styles.outlineButtonText}>Open full</Text>
+                  </Pressable>
+                </View>
+
+                {dashboardEmbedUrl ? (
+                  <View style={[styles.dashboardFrame, { height: dashboardHeight }]}>
+                    <WebView
+                      key={dashboardEmbedUrl}
+                      source={{ uri: dashboardEmbedUrl }}
+                      style={styles.dashboardWebView}
+                      originWhitelist={['*']}
+                      nestedScrollEnabled
+                      setSupportMultipleWindows={false}
+                      startInLoadingState
+                      renderLoading={() => (
+                        <View style={styles.dashboardLoadingState}>
+                          <LoadingBlock label="Loading dashboard..." />
+                        </View>
+                      )}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.dashboardEmptyWrap}>
+                    <EmptyState
+                      title="Dashboard unavailable"
+                      body="The public scoreboard could not be prepared for this tournament yet."
+                    />
+                  </View>
+                )}
+              </SurfaceCard>
+            </View>
+          ) : null}
+
         </View>
       </ScrollView>
 
-      {showPrimaryCta && activeTab !== 'divisions' ? (
+      {shouldShowStickyCta ? (
         <View style={styles.ctaShell}>
           <OptionalLinearGradient
             colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', palette.background]}
@@ -1163,6 +1269,55 @@ const styles = StyleSheet.create({
   },
   organizerButtonRow: {
     marginTop: spacing.md,
+  },
+  dashboardBanner: {
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: palette.successSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  dashboardBannerText: {
+    color: palette.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  dashboardBannerStrong: {
+    fontWeight: '700',
+  },
+  dashboardCard: {
+    overflow: 'hidden',
+  },
+  dashboardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  dashboardHeaderCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  dashboardFrame: {
+    overflow: 'hidden',
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    backgroundColor: palette.background,
+  },
+  dashboardWebView: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
+  dashboardLoadingState: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.md,
+    backgroundColor: palette.background,
+  },
+  dashboardEmptyWrap: {
+    padding: spacing.md,
   },
   outlineButton: {
     minHeight: 36,

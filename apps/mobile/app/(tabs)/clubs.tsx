@@ -1,15 +1,13 @@
 import { useMemo, useState } from 'react'
-import { Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ClubCard } from '../../src/components/ClubCard'
 import {
-  ActionButton,
   EmptyState,
   LoadingBlock,
   SearchField,
-  SurfaceCard,
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { palette, spacing } from '../../src/lib/theme'
@@ -19,6 +17,7 @@ export default function ClubsTab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
+  const [mode, setMode] = useState<'discover' | 'my-clubs' | 'nearby'>('discover')
   const api = trpc as any
   const utils = trpc.useUtils() as any
 
@@ -45,28 +44,44 @@ export default function ClubsTab() {
     [clubsQuery.data]
   )
 
+  const visibleMyClubs = useMemo(() => {
+    if (!isAuthenticated) return []
+    if (mode !== 'my-clubs') return myClubs
+    return myClubs
+  }, [isAuthenticated, mode, myClubs])
+
+  const visibleDiscoverClubs = useMemo(() => {
+    if (mode === 'my-clubs') return []
+    // Nearby mode is visual-only until we have geolocation + backend distance support.
+    return discoverClubs
+  }, [discoverClubs, mode])
+
   return (
     <PageLayout>
-      <SurfaceCard tone="soft">
-        <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs" />
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.md }}>
-          <ActionButton label="Near Me" variant="secondary" />
-          <View style={{ flex: 1 }} />
-          <ActionButton label="Create Club" onPress={() => router.push('/sign-in')} />
-        </View>
-        <View style={styles.modeSwitch}>
-          {(['discover', 'my-clubs', 'nearby'] as const).map((value) => {
-            const active = value === 'discover'
+      <View style={styles.headerCard}>
+        <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
+
+        <View style={styles.segment}>
+          {([
+            { key: 'discover', label: 'Discover' },
+            { key: 'my-clubs', label: 'My Clubs' },
+            { key: 'nearby', label: 'Nearby' },
+          ] as const).map((item) => {
+            const active = mode === item.key
             return (
-              <View key={value} style={[styles.modeButton, active && styles.modeButtonActive]}>
-                <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
-                  {value === 'discover' ? 'Discover' : value === 'my-clubs' ? 'My Clubs' : 'Nearby'}
+              <Pressable
+                key={item.key}
+                onPress={() => setMode(item.key)}
+                style={[styles.segmentItem, active && styles.segmentItemActive]}
+              >
+                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+                  {item.label}
                 </Text>
-              </View>
+              </Pressable>
             )
           })}
         </View>
-      </SurfaceCard>
+      </View>
 
       {clubsQuery.isLoading ? <LoadingBlock label="Loading clubs…" /> : null}
 
@@ -74,96 +89,78 @@ export default function ClubsTab() {
         <EmptyState title="No clubs found" body="Try another search term or check back later." />
       ) : null}
 
-      {isAuthenticated && myClubs.length > 0 ? (
+      {isAuthenticated && visibleMyClubs.length > 0 ? (
         <View style={{ gap: 12 }}>
           <Text style={styles.sectionTitle}>My clubs</Text>
-          {myClubs.map((club) => (
+          {visibleMyClubs.map((club) => (
             <View key={club.id} style={{ gap: 10 }}>
               <ClubCard club={club} onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })} />
-              {club.isAdmin ? null : club.isFollowing ? (
-                <ActionButton
-                  label="Leave club"
-                  variant="secondary"
-                  loading={toggleFollow.isPending}
-                  onPress={() => toggleFollow.mutate({ clubId: club.id })}
-                />
-              ) : club.isJoinPending ? (
-                <ActionButton
-                  label="Cancel request"
-                  variant="secondary"
-                  loading={cancelRequest.isPending}
-                  onPress={() => cancelRequest.mutate({ clubId: club.id })}
-                />
-              ) : null}
             </View>
           ))}
         </View>
       ) : null}
 
-      <View style={{ gap: 12 }}>
-        <Text style={styles.sectionTitle}>{isAuthenticated ? 'Discover clubs' : 'All clubs'}</Text>
-        {discoverClubs.map((club) => (
-          <View key={club.id} style={{ gap: 10 }}>
-            <ClubCard club={club} onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })} />
-            {club.isAdmin ? null : club.isJoinPending ? (
-              <ActionButton
-                label="Cancel request"
-                variant="secondary"
-                loading={cancelRequest.isPending}
-                onPress={() => cancelRequest.mutate({ clubId: club.id })}
+      {visibleDiscoverClubs.length > 0 ? (
+        <View style={{ gap: 12 }}>
+          <Text style={styles.sectionTitle}>{isAuthenticated ? 'Discover clubs' : 'All clubs'}</Text>
+          {visibleDiscoverClubs.map((club) => (
+            <View key={club.id} style={{ gap: 10 }}>
+              <ClubCard
+                club={club}
+                onPress={() => router.push(`/clubs/${club.id}`)}
+                onJoin={
+                  isAuthenticated
+                    ? () => toggleFollow.mutate({ clubId: club.id })
+                    : () => router.push('/sign-in')
+                }
+                joinLoading={toggleFollow.isPending}
               />
-            ) : (
-              <ActionButton
-                label={club.joinPolicy === 'APPROVAL' ? 'Request to join' : 'Join club'}
-                loading={toggleFollow.isPending}
-                onPress={() => (isAuthenticated ? toggleFollow.mutate({ clubId: club.id }) : router.push('/sign-in'))}
-              />
-            )}
-          </View>
-        ))}
-      </View>
-
-      <SurfaceCard tone="hero">
-        <Text style={{ color: palette.text, fontWeight: '700', fontSize: 16 }}>Why clubs matter</Text>
-        <Text style={{ marginTop: 8, color: palette.textMuted, lineHeight: 20 }}>
-          Club membership powers the same chat, announcements, and join policies you already have on web. The app simply exposes the user side in a mobile flow.
-        </Text>
-      </SurfaceCard>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </PageLayout>
   )
 }
 
-const styles = {
-  modeSwitch: {
-    marginTop: spacing.md,
-    flexDirection: 'row' as const,
-    gap: 8,
-    backgroundColor: palette.surface,
-    padding: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: palette.border,
+const styles = StyleSheet.create({
+  headerCard: {
+    gap: spacing.md,
   },
-  modeButton: {
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: palette.surfaceMuted,
+    borderRadius: 999,
+    padding: 4,
+    gap: 4,
+  },
+  segmentItem: {
     flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    paddingVertical: 12,
+    minHeight: 36,
     borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
-  modeButtonActive: {
-    backgroundColor: palette.primary,
+  segmentItemActive: {
+    backgroundColor: palette.surface,
+    shadowColor: palette.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
-  modeLabel: {
+  segmentLabel: {
+    fontSize: 14,
+    fontWeight: '600',
     color: palette.textMuted,
-    fontWeight: '700' as const,
   },
-  modeLabelActive: {
-    color: palette.white,
+  segmentLabelActive: {
+    color: palette.text,
   },
   sectionTitle: {
     color: palette.text,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     fontSize: 18,
   },
-}
+})

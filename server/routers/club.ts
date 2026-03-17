@@ -345,24 +345,51 @@ export const clubRouter = createTRPCRouter({
       const visibleClubs =
         bannedClubIds.size > 0 ? clubs.filter((club) => !bannedClubIds.has(club.id)) : clubs
 
-      return visibleClubs.map((club) => ({
-        id: club.id,
-        name: club.name,
-        kind: club.kind,
-        joinPolicy: club.joinPolicy ?? 'OPEN',
-        logoUrl: club.logoUrl,
-        address: club.address,
-        city: club.city,
-        state: club.state,
-        isVerified: club.isVerified,
-        hasBooking: Boolean(club.courtReserveUrl),
-        followersCount: club._count.followers,
-        tournamentsCount: club._count.tournaments,
-        isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
-        isAdmin: club.admins.length > 0 && userId !== DUMMY_USER_ID,
-        isJoinPending: (club.joinRequests?.length ?? 0) > 0 && userId !== DUMMY_USER_ID,
-        nextTournament: club.tournaments[0] ?? null,
-      }))
+      const clubIds = visibleClubs.map((c) => c.id)
+      const creatorsByClubId = new Map<string, string>()
+      if (clubIds.length > 0) {
+        const admins = await ctx.prisma.clubAdmin.findMany({
+          where: { clubId: { in: clubIds } },
+          orderBy: { createdAt: 'asc' },
+          select: { clubId: true, userId: true },
+        })
+        for (const a of admins) {
+          if (!creatorsByClubId.has(a.clubId)) creatorsByClubId.set(a.clubId, a.userId)
+        }
+      }
+      const creatorInFollowers = new Set<string>()
+      if (creatorsByClubId.size > 0) {
+        const pairs = Array.from(creatorsByClubId.entries()).map(([clubId, userId]) => ({ clubId, userId }))
+        const rows = await ctx.prisma.clubFollower.findMany({
+          where: { OR: pairs.map(({ clubId, userId }) => ({ clubId, userId })) },
+          select: { clubId: true },
+        })
+        for (const r of rows) creatorInFollowers.add(r.clubId)
+      }
+
+      return visibleClubs.map((club) => {
+        const creatorId = creatorsByClubId.get(club.id)
+        const includeCreator = creatorId != null && !creatorInFollowers.has(club.id)
+        const membersCount = club._count.followers + (includeCreator ? 1 : 0)
+        return {
+          id: club.id,
+          name: club.name,
+          kind: club.kind,
+          joinPolicy: club.joinPolicy ?? 'OPEN',
+          logoUrl: club.logoUrl,
+          address: club.address,
+          city: club.city,
+          state: club.state,
+          isVerified: club.isVerified,
+          hasBooking: Boolean(club.courtReserveUrl),
+          followersCount: membersCount,
+          tournamentsCount: club._count.tournaments,
+          isFollowing: club.followers.length > 0 && userId !== DUMMY_USER_ID,
+          isAdmin: club.admins.length > 0 && userId !== DUMMY_USER_ID,
+          isJoinPending: (club.joinRequests?.length ?? 0) > 0 && userId !== DUMMY_USER_ID,
+          nextTournament: club.tournaments[0] ?? null,
+        }
+      })
     }),
 
   listMyChatClubs: protectedProcedure.query(async ({ ctx }) => {
@@ -667,7 +694,7 @@ export const clubRouter = createTRPCRouter({
         }
       })
 
-      const [bookingRequests, pendingJoinRequestCount] = await Promise.all([
+      const [bookingRequests, pendingJoinRequestCount, creatorInFollowers] = await Promise.all([
         isAdmin
           ? ctx.prisma.clubBookingRequest.findMany({
               where: { clubId: input.id },
@@ -690,12 +717,27 @@ export const clubRouter = createTRPCRouter({
         isAdmin
           ? ctx.prisma.clubJoinRequest.count({ where: { clubId: input.id } }).catch(() => 0)
           : 0,
+        (async () => {
+          const firstAdmin = await ctx.prisma.clubAdmin.findFirst({
+            where: { clubId: input.id },
+            orderBy: { createdAt: 'asc' },
+            select: { userId: true },
+          })
+          if (!firstAdmin) return true
+          const follow = await ctx.prisma.clubFollower.findUnique({
+            where: { clubId_userId: { clubId: input.id, userId: firstAdmin.userId } },
+            select: { id: true },
+          })
+          return Boolean(follow)
+        })(),
       ])
+
+      const membersCount = club._count.followers + (creatorInFollowers ? 0 : 1)
 
       return {
         ...club,
         tournaments,
-        followersCount: club._count.followers,
+        followersCount: membersCount,
         isFollowing: !isBanned && club.followers.length > 0 && userId !== DUMMY_USER_ID,
         isJoinPending:
           !isBanned && club.followers.length === 0 && userId !== DUMMY_USER_ID ? isJoinPending : false,
