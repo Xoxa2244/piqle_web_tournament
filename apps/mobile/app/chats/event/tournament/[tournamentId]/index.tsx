@@ -6,7 +6,7 @@ import { router } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChatMessageBubble } from '../../../../../src/components/ChatPreviewCard'
-import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
+import { ActionButton, EmptyState, IconButton, LoadingBlock, Screen } from '../../../../../src/components/ui'
 import { trpc } from '../../../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../../../src/lib/theme'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
@@ -194,6 +194,7 @@ export default function TournamentChatScreen() {
 
   return (
     <Screen
+      left={<IconButton icon={<Feather name="arrow-left" size={20} color={palette.text} />} onPress={() => router.back()} />}
       title={title}
       subtitle="Tournament Chat"
       scroll={false}
@@ -219,35 +220,43 @@ export default function TournamentChatScreen() {
 
         {messages.map((message) => (
           <View key={message.id} style={{ gap: 8 }}>
-            <ChatMessageBubble
-              author={message.user?.name || 'Player'}
-              text={message.isDeleted ? 'Message removed' : message.text || ''}
-              createdAt={message.createdAt}
-              isMine={message.userId === user?.id}
-            />
-            {(message.userId === user?.id || canModerate) && !message.isDeleted ? (
-              <View style={{ alignSelf: message.userId === user?.id ? 'flex-end' : 'flex-start' }}>
-                <ActionButton
-                  label="Delete"
-                  variant="secondary"
-                  loading={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: message.userId === user?.id ? 'flex-end' : 'flex-start',
+                gap: 10,
+              }}
+            >
+              {message.userId === user?.id && !message.isDeleted ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete message"
+                  disabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
                   onPress={() =>
                     activeDivisionId
                       ? deleteDivisionMessage.mutate({ messageId: message.id })
                       : deleteMessage.mutate({ messageId: message.id })
                   }
-                />
-              </View>
-            ) : null}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Feather name="trash-2" size={16} color={palette.textMuted} />
+                </Pressable>
+              ) : null}
+
+              <ChatMessageBubble
+                author={message.user?.name || 'Player'}
+                text={message.isDeleted ? 'Message removed' : message.text || ''}
+                createdAt={message.createdAt}
+                isMine={message.userId === user?.id}
+              />
+            </View>
           </View>
         ))}
       </ScrollView>
 
       {canPost ? (
         <View style={[styles.composer, { paddingBottom: 16 + insets.bottom }]}>
-          <Pressable style={styles.composerIconBtn}>
-            <Feather name="smile" size={20} color={palette.textMuted} />
-          </Pressable>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -382,14 +391,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: palette.border,
     backgroundColor: palette.background,
-  },
-  composerIconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
   },
   composerInput: {
     flex: 1,

@@ -19,22 +19,24 @@ import { OptionalLinearGradient } from './OptionalLinearGradient'
 
 type ScreenProps = PropsWithChildren<{
   scroll?: boolean
+  left?: ReactNode
   right?: ReactNode
   title?: string
   subtitle?: string
   contentStyle?: StyleProp<ViewStyle>
 }>
 
-export const Screen = ({ children, scroll = true, right, title, subtitle, contentStyle }: ScreenProps) => {
+export const Screen = ({ children, scroll = true, left, right, title, subtitle, contentStyle }: ScreenProps) => {
   const content = (
     <>
       {title ? (
         <View style={styles.header}>
+          {left ? <View style={styles.headerSide}>{left}</View> : null}
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{title}</Text>
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
-          {right}
+          {right ? <View style={styles.headerSide}>{right}</View> : null}
         </View>
       ) : null}
       {children}
@@ -388,6 +390,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.md,
     marginBottom: spacing.xs,
+  },
+  headerSide: {
+    paddingTop: 4,
   },
   title: {
     fontSize: 31,
