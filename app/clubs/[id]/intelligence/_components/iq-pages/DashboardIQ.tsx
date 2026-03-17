@@ -351,26 +351,15 @@ export function DashboardIQ() {
       {/* Player Health Overview + AI Summary */}
       <div className="grid lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}>
-                <Heart className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Player Health Overview</h3>
-                <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>Member engagement &amp; retention health</p>
-              </div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-emerald-400" />
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Player Health Overview</h3>
             </div>
-            <div
-              className="px-3 py-1.5 rounded-lg text-xs"
-              style={{
-                background: "rgba(16,185,129,0.1)",
-                border: "1px solid rgba(16,185,129,0.15)",
-                color: "#10B981",
-                fontWeight: 600,
-              }}
-            >
-              Avg: {data.healthMetrics.avgScore} <span style={{ fontSize: "10px" }}>(+{data.healthMetrics.avgScore - data.healthMetrics.avgScorePrev})</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.15)" }}>
+              <span className="text-[11px]" style={{ color: "var(--t3)" }}>Avg:</span>
+              <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{data.healthMetrics.avgScore}</span>
+              <span className="text-[10px] text-emerald-400" style={{ fontWeight: 600 }}>(+{data.healthMetrics.avgScore - data.healthMetrics.avgScorePrev})</span>
             </div>
           </div>
 
@@ -379,37 +368,41 @@ export function DashboardIQ() {
             {[
               { label: "Improved", value: data.healthMetrics.improved, sub: `+${data.healthMetrics.improvedPct}%`, color: "#10B981" },
               { label: "Declined", value: data.healthMetrics.declined, sub: `${data.healthMetrics.declinedPct}%`, color: "#F97316" },
-              { label: "Churned", value: data.healthMetrics.churnedThisPeriod, sub: `${data.healthMetrics.churnChange}%`, color: "#EF4444" },
+              { label: "Churned", value: data.healthMetrics.churnedThisPeriod, sub: `${data.healthMetrics.churnChange}% vs prev`, color: "#EF4444" },
             ].map((m) => (
-              <div
-                key={m.label}
-                className="rounded-xl p-3 text-center"
-                style={{ background: "var(--subtle)" }}
-              >
-                <div className="text-lg" style={{ fontWeight: 700, color: "var(--heading)" }}>{m.value}</div>
-                <div className="text-[10px]" style={{ color: "var(--t3)" }}>{m.label}</div>
-                <div className="text-[10px] mt-0.5" style={{ color: m.color, fontWeight: 600 }}>{m.sub}</div>
+              <div key={m.label} className="p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                <div className="text-[10px] mb-1" style={{ color: "var(--t4)" }}>{m.label}</div>
+                <div className="flex items-baseline gap-1.5">
+                  <span style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>{m.value}</span>
+                  <span className="text-[10px]" style={{ color: m.color, fontWeight: 600 }}>{m.sub}</span>
+                </div>
               </div>
             ))}
           </div>
 
           {/* Health distribution bars */}
           <div className="space-y-3">
-            {data.health.map((h, i) => (
-              <div key={h.level} className="flex items-center gap-3">
-                <div className="w-14 text-xs text-right shrink-0" style={{ color: "var(--t3)", fontWeight: 500 }}>{h.level}</div>
-                <div className="flex-1 h-7 rounded-lg overflow-hidden" style={{ background: "var(--subtle)" }}>
+            {data.health.map((h) => (
+              <div key={h.level}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: h.color }} />
+                    <span className="text-xs" style={{ color: "var(--t2)", fontWeight: 500 }}>{h.level}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>{h.count}</span>
+                    <span className="text-[10px]" style={{ color: "var(--t4)" }}>{h.pct}%</span>
+                  </div>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
                   <motion.div
-                    className="h-full rounded-lg flex items-center px-2.5"
+                    className="h-full rounded-full"
                     style={{ background: h.color }}
                     initial={{ width: 0 }}
                     animate={{ width: `${h.pct}%` }}
-                    transition={{ duration: 0.8, delay: i * 0.1, ease: "easeOut" }}
-                  >
-                    <span className="text-[10px] text-white" style={{ fontWeight: 600 }}>{h.count}</span>
-                  </motion.div>
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                  />
                 </div>
-                <div className="w-10 text-right text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>{h.pct}%</div>
               </div>
             ))}
           </div>

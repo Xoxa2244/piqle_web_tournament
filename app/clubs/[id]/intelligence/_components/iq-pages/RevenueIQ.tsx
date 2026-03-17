@@ -113,12 +113,21 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+type RevPeriod = "month" | "quarter" | "year" | "custom";
+
+function getRevPeriodLabel(p: RevPeriod): { current: string; previous: string } {
+  if (p === "month") return { current: "March 2026", previous: "February 2026" };
+  if (p === "quarter") return { current: "Q1 2026", previous: "Q4 2025" };
+  if (p === "year") return { current: "2025", previous: "2024" };
+  return { current: "Selected range", previous: "Previous range" };
+}
+
 /* ============================================= */
 /*              REVENUE PAGE                      */
 /* ============================================= */
 export function RevenueIQ() {
   const { isDark } = useTheme();
-  const [period, setPeriod] = useState<"month" | "quarter" | "year" | "custom">("year");
+  const [period, setPeriod] = useState<RevPeriod>("year");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const ref = useRef(null);
@@ -520,9 +529,15 @@ export function RevenueIQ() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4" style={{ color: "var(--t3)" }} />
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
+              <div>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
+                <p className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
+                  <span style={{ color: "var(--t2)", fontWeight: 500 }}>{getRevPeriodLabel(period).current}</span>
+                  {" vs "}
+                  <span>{getRevPeriodLabel(period).previous}</span>
+                </p>
+              </div>
             </div>
-            <span className="text-[10px]" style={{ color: "var(--t4)" }}>Current vs Previous</span>
           </div>
           <div className="space-y-3">
             {periodComparison.map((item) => {
