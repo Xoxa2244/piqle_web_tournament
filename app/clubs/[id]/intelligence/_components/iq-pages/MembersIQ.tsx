@@ -223,7 +223,8 @@ export function MembersIQ() {
         </Card>
 
         <Card>
-          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Weekly Activity Distribution</h3>
+          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>How Often Members Play</h3>
+          <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>Members grouped by sessions per week (last 30 days)</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={activityDistribution}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
