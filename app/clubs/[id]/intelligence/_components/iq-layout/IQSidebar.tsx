@@ -6,26 +6,63 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, CalendarDays, Brain, Puzzle, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
-  Search, Bell, Settings,
+  ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
 import { useTheme } from "../IQThemeProvider";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "" },
-  { icon: CalendarDays, label: "Sessions", path: "/sessions" },
-  { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-  { icon: Puzzle, label: "Slot Filler", path: "/slot-filler", isAI: true },
-  { icon: UserPlus, label: "Reactivation", path: "/reactivation", isAI: true },
-  { icon: DollarSign, label: "Revenue", path: "/revenue" },
-  { icon: Users, label: "Members", path: "/members" },
-  { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
-  { icon: PartyPopper, label: "Events", path: "/events" },
+interface NavItem {
+  icon: LucideIcon;
+  label: string;
+  path: string;
+  isAI?: boolean;
+}
+
+interface NavSection {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  items: NavItem[];
+}
+
+const navSections: NavSection[] = [
+  {
+    id: "analytics",
+    title: "ANALYTICS",
+    icon: BarChart3,
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "" },
+      { icon: CalendarDays, label: "Sessions", path: "/sessions" },
+      { icon: DollarSign, label: "Revenue", path: "/revenue" },
+    ],
+  },
+  {
+    id: "ai-tools",
+    title: "AI TOOLS",
+    icon: Cpu,
+    items: [
+      { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
+      { icon: Puzzle, label: "Slot Filler", path: "/slot-filler", isAI: true },
+      { icon: UserPlus, label: "Reactivation", path: "/reactivation", isAI: true },
+    ],
+  },
+  {
+    id: "management",
+    title: "MANAGEMENT",
+    icon: Building2,
+    items: [
+      { icon: Users, label: "Members", path: "/members" },
+      { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
+      { icon: PartyPopper, label: "Events", path: "/events" },
+    ],
+  },
 ];
 
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpand, setHoverExpand] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const { theme, toggleTheme, isDark } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
@@ -81,58 +118,103 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const fullPath = `${basePath}${item.path}`;
-            const active = pathname === fullPath || (item.path !== "" && pathname.startsWith(fullPath));
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+          {navSections.map((section) => {
+            const SectionIcon = section.icon;
+            const isSectionCollapsed = collapsedSections[section.id] ?? false;
             return (
-              <button
-                key={item.path}
-                onClick={() => router.push(`${fullPath}${demoParam}`)}
-                className="w-full flex items-center gap-3 rounded-xl transition-all relative group"
-                style={{
-                  padding: expanded ? "10px 12px" : "10px 0",
-                  justifyContent: expanded ? "flex-start" : "center",
-                  background: active ? "var(--pill-active)" : "transparent",
-                  color: active ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-                }}
-              >
-                {active && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
-                    style={{ height: 24, background: "linear-gradient(180deg, #8B5CF6, #06B6D4)" }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  />
-                )}
-                <Icon className="w-5 h-5 shrink-0" />
-                <AnimatePresence>
-                  {expanded && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: "auto" }}
-                      exit={{ opacity: 0, width: 0 }}
-                      className="text-sm whitespace-nowrap overflow-hidden"
-                      style={{ fontWeight: active ? 600 : 500 }}
+              <div key={section.id}>
+                {/* Section header */}
+                {expanded ? (
+                  <button
+                    onClick={() => setCollapsedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 group"
+                  >
+                    <SectionIcon className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--t4)" }} />
+                    <span className="text-[10px] tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>
+                      {section.title}
+                    </span>
+                    <motion.div
+                      animate={{ rotate: isSectionCollapsed ? -90 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="ml-auto"
                     >
-                      {item.label}
-                    </motion.span>
+                      <ChevronDown className="w-3 h-3" style={{ color: "var(--t4)" }} />
+                    </motion.div>
+                  </button>
+                ) : (
+                  <div className="flex justify-center py-1.5 mb-1">
+                    <div className="w-5 h-px" style={{ background: "var(--divider)" }} />
+                  </div>
+                )}
+
+                {/* Section items */}
+                <AnimatePresence initial={false}>
+                  {!isSectionCollapsed && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden space-y-1"
+                    >
+                      {section.items.map((item) => {
+                        const Icon = item.icon;
+                        const fullPath = `${basePath}${item.path}`;
+                        const active = pathname === fullPath || (item.path !== "" && pathname.startsWith(fullPath));
+                        return (
+                          <button
+                            key={item.path}
+                            onClick={() => router.push(`${fullPath}${demoParam}`)}
+                            className="w-full flex items-center gap-3 rounded-xl transition-all relative group"
+                            style={{
+                              padding: expanded ? "10px 12px" : "10px 0",
+                              justifyContent: expanded ? "flex-start" : "center",
+                              background: active ? "var(--pill-active)" : "transparent",
+                              color: active ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                            }}
+                          >
+                            {active && (
+                              <motion.div
+                                layoutId="sidebar-active"
+                                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
+                                style={{ height: 24, background: "linear-gradient(180deg, #8B5CF6, #06B6D4)" }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                              />
+                            )}
+                            <Icon className="w-5 h-5 shrink-0" />
+                            <AnimatePresence>
+                              {expanded && (
+                                <motion.span
+                                  initial={{ opacity: 0, width: 0 }}
+                                  animate={{ opacity: 1, width: "auto" }}
+                                  exit={{ opacity: 0, width: 0 }}
+                                  className="text-sm whitespace-nowrap overflow-hidden"
+                                  style={{ fontWeight: active ? 600 : 500 }}
+                                >
+                                  {item.label}
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+                            {expanded && item.isAI && (
+                              <span
+                                className="ml-auto text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.08)",
+                                  color: "#A78BFA",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                AI
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </motion.div>
                   )}
                 </AnimatePresence>
-                {expanded && item.isAI && (
-                  <span
-                    className="ml-auto text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
-                    style={{
-                      background: isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.08)",
-                      color: "#A78BFA",
-                      fontWeight: 700,
-                    }}
-                  >
-                    AI
-                  </span>
-                )}
-              </button>
+              </div>
             );
           })}
         </nav>
