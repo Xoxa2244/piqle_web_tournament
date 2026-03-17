@@ -1,10 +1,10 @@
 'use client'
-import { useState, useRef } from "react";
-import { motion, useInView } from "motion/react";
+import { useState, useRef, useMemo } from "react";
+import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   CalendarDays, Clock, Users, TrendingUp, Filter, Search,
-  ChevronDown, MapPin, Star, Zap, ArrowUpRight, ArrowDownRight,
-  BarChart3, Eye,
+  ChevronDown, ChevronUp, MapPin, Star, Zap, ArrowUpRight, ArrowDownRight,
+  BarChart3, Eye, Lightbulb, UserPlus, X,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -51,6 +51,22 @@ const recentSessions = [
   { id: "S-1841", court: "Court 3", format: "Tournament", date: "Yesterday, 2:00 PM", players: 16, maxPlayers: 16, duration: "180 min", revenue: 640, status: "completed" },
   { id: "S-1840", court: "Court 1", format: "League Match", date: "Yesterday, 12:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "completed" },
 ];
+
+/* AI insights per session */
+const sessionInsights: Record<string, { fillRate: number; insight: string; suggestedPlayers: string[]; revenuePerPlayer: number; tip: string }> = {
+  "S-1847": { fillRate: 100, insight: "Fully booked — consider adding a second Open Play slot at this time.", suggestedPlayers: [], revenuePerPlayer: 15, tip: "High demand detected. 3 waitlisted players last week at this time." },
+  "S-1846": { fillRate: 100, insight: "League match always fills. Revenue per player is 2x open play.", suggestedPlayers: [], revenuePerPlayer: 50, tip: "Consider premium pricing for league slots." },
+  "S-1845": { fillRate: 100, insight: "Private lesson completed with full attendance.", suggestedPlayers: [], revenuePerPlayer: 42.5, tip: "Student has booked 8 lessons this month — offer a package deal." },
+  "S-1844": { fillRate: 83, insight: "2 empty spots. 5 members with matching preferences were available.", suggestedPlayers: ["Maria K.", "Alex T.", "Jordan P."], revenuePerPlayer: 25, tip: "Auto-invite could have filled this session and added $50 revenue." },
+  "S-1843": { fillRate: 75, insight: "4 spots unfilled. Format is losing popularity on mornings.", suggestedPlayers: ["Sam R.", "Nina L.", "Chris B.", "Tanya M."], revenuePerPlayer: 11.25, tip: "Try moving Round Robin to afternoon — 82% fill rate at 3PM." },
+  "S-1842": { fillRate: 75, insight: "2 spots unfilled. 3 members canceled within 2 hours of start.", suggestedPlayers: ["Liam N.", "Priya S."], revenuePerPlayer: 15, tip: "Late cancellations cost $30. Consider a cancellation fee policy." },
+  "S-1841": { fillRate: 100, insight: "Tournament fully booked. Highest revenue session this week.", suggestedPlayers: [], revenuePerPlayer: 40, tip: "Waitlist of 4 — consider expanding to 20 players next time." },
+  "S-1840": { fillRate: 100, insight: "League match consistent at 100% fill rate.", suggestedPlayers: [], revenuePerPlayer: 50, tip: "3rd consecutive full league match. Add another weekly league slot." },
+};
+
+const allFormats = ["Open Play", "League Match", "Private Lesson", "Round Robin", "Clinic", "Tournament"];
+const allCourts = ["Court 1", "Court 2", "Court 3", "Court 4"];
+const allStatuses = ["active", "completed", "cancelled"];
 
 const courtStats = [
   { name: "Court 1", occupancy: 72, sessions: 42, revenue: 3800, sport: "Pickleball" },
@@ -113,15 +129,28 @@ export function SessionsIQ() {
   const { isDark } = useTheme();
   const [view, setView] = useState<"list" | "analytics">("analytics");
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterFormat, setFilterFormat] = useState<string>("");
+  const [filterCourt, setFilterCourt] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const filteredSessions = recentSessions.filter(
-    (s) =>
-      s.court.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.format.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const activeFilterCount = [filterFormat, filterCourt, filterStatus].filter(Boolean).length;
+
+  const filteredSessions = useMemo(() => {
+    return recentSessions.filter((s) => {
+      const matchesSearch =
+        s.court.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.format.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.id.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFormat = !filterFormat || s.format === filterFormat;
+      const matchesCourt = !filterCourt || s.court === filterCourt;
+      const matchesStatus = !filterStatus || s.status === filterStatus;
+      return matchesSearch && matchesFormat && matchesCourt && matchesStatus;
+    });
+  }, [searchQuery, filterFormat, filterCourt, filterStatus]);
 
   return (
     <motion.div
@@ -294,7 +323,7 @@ export function SessionsIQ() {
       ) : (
         /* Session List View */
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <div
               className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 max-w-sm"
               style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
@@ -309,13 +338,73 @@ export function SessionsIQ() {
               />
             </div>
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs"
-              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t3)", fontWeight: 500 }}
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-colors"
+              style={{
+                background: showFilters || activeFilterCount > 0 ? "var(--pill-active)" : "var(--subtle)",
+                border: "1px solid var(--card-border)",
+                color: showFilters || activeFilterCount > 0 ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                fontWeight: 500,
+              }}
             >
               <Filter className="w-4 h-4" />
-              Filters
+              Filters{activeFilterCount > 0 && ` (${activeFilterCount})`}
             </button>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => { setFilterFormat(""); setFilterCourt(""); setFilterStatus(""); }}
+                className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs transition-colors"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#F87171", fontWeight: 500 }}
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
           </div>
+
+          {/* Filter Panel */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <Card>
+                  <div className="flex flex-wrap gap-4">
+                    {[
+                      { label: "Format", value: filterFormat, setter: setFilterFormat, options: allFormats },
+                      { label: "Court", value: filterCourt, setter: setFilterCourt, options: allCourts },
+                      { label: "Status", value: filterStatus, setter: setFilterStatus, options: allStatuses },
+                    ].map((f) => (
+                      <div key={f.label} className="flex flex-col gap-1.5">
+                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>{f.label}</span>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {f.options.map((opt) => (
+                            <button
+                              key={opt}
+                              onClick={() => f.setter(f.value === opt ? "" : opt)}
+                              className="px-3 py-1.5 rounded-lg text-xs capitalize transition-all"
+                              style={{
+                                background: f.value === opt ? "var(--pill-active)" : "var(--subtle)",
+                                color: f.value === opt ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                                fontWeight: f.value === opt ? 600 : 400,
+                                border: f.value === opt ? "1px solid rgba(139,92,246,0.3)" : "1px solid transparent",
+                              }}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <Card className="overflow-hidden !p-0">
             <div className="overflow-x-auto">
@@ -330,34 +419,150 @@ export function SessionsIQ() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSessions.map((s, i) => (
-                    <motion.tr
-                      key={s.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="cursor-pointer transition-colors"
-                      style={{ borderBottom: "1px solid var(--divider)" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--row-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>{s.id}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.court}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.format}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.date}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>
-                        {s.players}/{s.maxPlayers}
-                        <span className="ml-1 text-[10px]" style={{ color: s.players === s.maxPlayers ? "#10B981" : "var(--t4)" }}>
-                          {s.players === s.maxPlayers ? "Full" : ""}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
-                      <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
-                    </motion.tr>
-                  ))}
+                  {filteredSessions.map((s, i) => {
+                    const isExpanded = expandedId === s.id;
+                    const insights = sessionInsights[s.id];
+                    const fillPct = Math.round((s.players / s.maxPlayers) * 100);
+                    return (
+                      <motion.tr
+                        key={s.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.04 }}
+                        className="cursor-pointer transition-colors align-top"
+                        style={{ borderBottom: isExpanded ? "none" : "1px solid var(--divider)" }}
+                        onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                        onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "var(--row-hover)"; }}
+                        onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)", fontWeight: 600 }}>
+                          <div className="flex items-center gap-1.5">
+                            <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                              <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--t4)" }} />
+                            </motion.div>
+                            {s.id}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.court}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>{s.format}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.date}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t2)" }}>
+                          <div className="flex items-center gap-2">
+                            <span>{s.players}/{s.maxPlayers}</span>
+                            <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${fillPct}%`,
+                                  background: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
+                        <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                      </motion.tr>
+                    );
+                  })}
                 </tbody>
               </table>
+
+              {/* Expanded insight panels rendered outside table for valid HTML */}
+              {filteredSessions.map((s) => {
+                const isExpanded = expandedId === s.id;
+                const insights = sessionInsights[s.id];
+                const fillPct = Math.round((s.players / s.maxPlayers) * 100);
+                if (!isExpanded || !insights) return null;
+                return (
+                  <AnimatePresence key={s.id}>
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="overflow-hidden"
+                      style={{ borderBottom: "1px solid var(--divider)", background: "var(--subtle)" }}
+                    >
+                      <div className="px-6 py-4 space-y-4">
+                        {/* Fill Rate Bar */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>Fill Rate</span>
+                            <span className="text-xs" style={{ color: fillPct === 100 ? "#10B981" : fillPct >= 75 ? "#F59E0B" : "#EF4444", fontWeight: 700 }}>{fillPct}%</span>
+                          </div>
+                          <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--card-bg)" }}>
+                            <motion.div
+                              className="h-full rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${fillPct}%` }}
+                              transition={{ duration: 0.6, ease: "easeOut" }}
+                              style={{
+                                background: fillPct === 100
+                                  ? "linear-gradient(90deg, #10B981, #34D399)"
+                                  : fillPct >= 75
+                                    ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
+                                    : "linear-gradient(90deg, #EF4444, #F87171)",
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <span className="text-[11px]" style={{ color: "var(--t4)" }}>{s.players} of {s.maxPlayers} players</span>
+                            <span className="text-[11px]" style={{ color: "var(--t4)" }}>${insights.revenuePerPlayer}/player</span>
+                          </div>
+                        </div>
+
+                        {/* AI Insights */}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)" }}>
+                                <Lightbulb className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
+                              </div>
+                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>AI Insight</span>
+                            </div>
+                            <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.insight}</p>
+                          </div>
+                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(6,182,212,0.15)" }}>
+                                <Zap className="w-3.5 h-3.5" style={{ color: "#22D3EE" }} />
+                              </div>
+                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Recommendation</span>
+                            </div>
+                            <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.tip}</p>
+                          </div>
+                        </div>
+
+                        {/* Suggested Players */}
+                        {insights.suggestedPlayers.length > 0 && (
+                          <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
+                                <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
+                              </div>
+                              <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Suggested Players to Invite</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {insights.suggestedPlayers.map((name) => (
+                                <span
+                                  key={name}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                                  style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 500 }}
+                                >
+                                  <Users className="w-3 h-3" />
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                );
+              })}
             </div>
           </Card>
         </>
