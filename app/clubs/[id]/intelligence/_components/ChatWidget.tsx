@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePageContextData } from '../_hooks/usePageContext'
+import { useBrand } from '@/components/BrandProvider'
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -50,6 +51,32 @@ function getMessageText(message: { parts?: Array<{ type: string; text?: string }
   return ''
 }
 
+// ── Mock AI responses for IQ demo ──
+const mockResponses: Array<{ keywords: string[]; response: string }> = [
+  { keywords: ['привет', 'hello', 'hi', 'hey', 'дела', 'как'], response: `Hey! 👋 Your club is looking strong this week:\n\n- **127 active members** (up 8% MoM)\n- **82% avg occupancy** across all courts\n- **$12.4K revenue** this month so far\n- **5 members reactivated** in the last 30 days\n\nWhat would you like to dive into?\n\n<suggested>\nWhich members are at risk of churning?\nHow can I increase Tuesday morning occupancy?\nWhat were my best sessions this week?\n</suggested>` },
+  { keywords: ['risk', 'churn', 'at risk', 'риск', 'уход', 'churning'], response: `Currently tracking **12 at-risk members** (down from 14 last month):\n\n🔴 **3 High Risk** — inactive 28+ days\n- Maria Santos (42d inactive, health 18)\n- Tom Chen (35d inactive, health 22)\n- David Park (28d inactive, health 25)\n\n🟡 **3 Medium Risk** — declining frequency\n- Jennifer Liu, Alex Rivera, Priya Sharma\n\n🟢 **2 Low Risk** — seasonal dip\n\n**Recommended:** Launch a personalized win-back campaign for the 3 high-risk members.\n\n<suggested>\nWhat's the best approach for Maria Santos?\nShow me the reactivation campaign results\nHow is our retention trending?\n</suggested>` },
+  { keywords: ['session', 'best', 'top', 'сессии', 'лучш'], response: `**Top performing sessions** this week:\n\n1. 🏆 **Thursday Open Play 6PM** — 8/8 players, $320 revenue\n2. 🥈 **Saturday Morning Clinic** — 11/12 players, $550 revenue\n3. 🥉 **Wednesday Competitive** — 7/8 players, $280 revenue\n\n**Worst:** Tuesday 7AM Open Play — only 2/8 spots filled\n\n💡 **AI Suggestion:** Move the Tuesday 7AM session to 8AM — 3x more member availability at that time.\n\n<suggested>\nHow can I fill the Tuesday morning session?\nWhat formats are most popular?\nShow me court utilization\n</suggested>` },
+  { keywords: ['occupancy', 'tuesday', 'morning', 'fill', 'заполн', 'вторник', 'утр'], response: `**Tuesday Morning Analysis:**\n\nCurrent occupancy: **25%** (2/8 avg)\nPeak Tuesday slot: **6-8 PM at 94%**\n\n**AI Recommendations:**\n1. 📧 Target 8 members with Tuesday AM availability\n2. ⏰ Shift to 8:30 AM — 23 members available vs. 9 at 7 AM\n3. 🎯 Offer "Morning Warrior" 3-session package discount\n4. 👥 Create beginner-friendly format — 5 members requested this\n\nEstimated impact: **+45% occupancy** within 2 weeks\n\n<suggested>\nLaunch the Morning Warrior campaign\nWho are the 8 target members?\nShow me revenue by time slot\n</suggested>` },
+  { keywords: ['revenue', 'money', 'доход', 'выручк', 'деньг'], response: `**Revenue — March 2025:**\n\n💰 **Total: $12,400** (target: $15,000)\n- Open Play: $5,200 (42%)\n- Clinics: $3,800 (31%)\n- Leagues: $2,100 (17%)\n- Events: $1,300 (10%)\n\n📈 **Trends:**\n- MoM growth: +18%\n- Per-member avg: $97.60\n- Best day: Saturday ($2,800/week)\n- Revenue at risk: $1,840 (from at-risk members)\n\n**AI Insight:** Reactivating top 3 high-risk members could recover ~$420/month.\n\n<suggested>\nHow can I hit the $15K target?\nWhat's my most profitable format?\nShow member lifetime value\n</suggested>` },
+  { keywords: ['member', 'player', 'участник', 'игрок', 'членов'], response: `**Member Overview:**\n\n👥 **127 total members**\n- 🟢 72 Healthy (57%)\n- 🟡 25 Watch (20%)\n- 🟠 18 At Risk (14%)\n- 🔴 12 Critical (9%)\n\n📊 **Segments:**\n- Power Players (4+/week): 15 members\n- Regular (2-3/week): 42 members\n- Casual (1/week): 38 members\n- Occasional (<1/week): 32 members\n\n**New this month:** 8 members joined\n\n<suggested>\nWho are my power players?\nShow me the newest members\nWhat's the retention rate?\n</suggested>` },
+]
+
+function getMockResponse(query: string): string {
+  const q = query.toLowerCase()
+  for (const mock of mockResponses) {
+    if (mock.keywords.some(k => q.includes(k))) {
+      return mock.response
+    }
+  }
+  return `Great question! Here's what I can help with:\n\n- 📊 **Club metrics** — revenue, occupancy, member health\n- 👥 **Member insights** — at-risk detection, segments, engagement\n- 📅 **Session analysis** — best/worst performing, optimization\n- 🎯 **AI recommendations** — slot filling, reactivation campaigns\n\nTry asking something specific!\n\n<suggested>\nHow is my club doing this week?\nWhich members are at risk?\nShow me revenue breakdown\n</suggested>`
+}
+
+type MockMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  parts: Array<{ type: 'text'; text: string }>
+}
+
 type ChatWidgetProps = {
   clubId: string
 }
@@ -64,8 +91,27 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
   const pageContext = usePageContextData()
   const pageContextRef = useRef(pageContext)
   pageContextRef.current = pageContext
+  const brand = useBrand()
+  const isIQ = brand.key === 'iqsport'
 
+  // ── Mock chat state for IQ brand ──
+  const [mockMessages, setMockMessages] = useState<MockMessage[]>([])
+  const [mockLoading, setMockLoading] = useState(false)
+
+  const mockSendMessage = useCallback(async (text: string) => {
+    const userMsg: MockMessage = { id: `u-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] }
+    setMockMessages(prev => [...prev, userMsg])
+    setMockLoading(true)
+    await new Promise(r => setTimeout(r, 600 + Math.random() * 800))
+    const response = getMockResponse(text)
+    const aiMsg: MockMessage = { id: `a-${Date.now()}`, role: 'assistant', parts: [{ type: 'text', text: response }] }
+    setMockMessages(prev => [...prev, aiMsg])
+    setMockLoading(false)
+  }, [])
+
+  // ── Real transport for Piqle brand ──
   const transport = useMemo(() => {
+    if (isIQ) return null
     return new TextStreamChatTransport({
       api: '/api/ai/chat',
       body: { clubId },
@@ -86,17 +132,44 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
         return response
       },
     })
-  }, [clubId])
+  }, [clubId, isIQ])
 
-  const {
-    messages,
-    sendMessage,
-    status,
-    error,
-    setMessages,
-  } = useChat({ transport })
+  // useChat only for piqle — pass a dummy transport for IQ (won't be used)
+  const dummyTransport = useMemo(() => {
+    if (!isIQ) return null
+    return new TextStreamChatTransport({ api: '/api/ai/chat', body: { clubId } })
+  }, [isIQ, clubId])
+
+  const realChat = useChat({ transport: (transport || dummyTransport)! })
+
+  // ── Unified interface ──
+  const messages = isIQ ? mockMessages : realChat.messages
+  const status = isIQ ? (mockLoading ? 'streaming' : 'ready') : realChat.status
+  const error = isIQ ? null : realChat.error
 
   const isBusy = status === 'submitted' || status === 'streaming'
+
+  const handleSend = useCallback((text?: string) => {
+    const msg = text || inputValue.trim()
+    if (!msg || isBusy) return
+    if (isIQ) {
+      mockSendMessage(msg)
+    } else {
+      realChat.sendMessage({ text: msg })
+    }
+    setInputValue('')
+  }, [inputValue, isBusy, isIQ, mockSendMessage, realChat])
+
+  const handleNewChat = () => {
+    if (isIQ) {
+      setMockMessages([])
+    } else {
+      convIdRef.current = null
+      realChat.setMessages([])
+    }
+    setInputValue('')
+    inputRef.current?.focus()
+  }
 
   // Apply pending conversation ID after streaming ends
   useEffect(() => {
@@ -129,25 +202,11 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
     return () => document.removeEventListener('keydown', handleEscape)
   }, [isOpen])
 
-  const handleSend = useCallback((text?: string) => {
-    const msg = text || inputValue.trim()
-    if (!msg || isBusy) return
-    sendMessage({ text: msg })
-    setInputValue('')
-  }, [inputValue, isBusy, sendMessage])
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
-  }
-
-  const handleNewChat = () => {
-    convIdRef.current = null
-    setMessages([])
-    setInputValue('')
-    inputRef.current?.focus()
   }
 
   return (
