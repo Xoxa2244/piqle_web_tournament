@@ -4,7 +4,7 @@ import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   CalendarDays, Clock, Users, TrendingUp, Filter, Search,
   ChevronDown, ChevronUp, MapPin, Star, Zap, ArrowUpRight, ArrowDownRight,
-  BarChart3, Eye, Lightbulb, UserPlus, X,
+  BarChart3, Eye, Lightbulb, UserPlus, X, Mail, Smartphone, Bell, Send, Check,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -134,6 +134,7 @@ export function SessionsIQ() {
   const [filterFormat, setFilterFormat] = useState<string>("");
   const [filterCourt, setFilterCourt] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerName" -> "email"|"sms"
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -526,26 +527,87 @@ export function SessionsIQ() {
                                     </div>
                                   </div>
 
-                                  {/* Suggested Players */}
+                                  {/* Suggested Players with Invite Actions */}
                                   {insights.suggestedPlayers.length > 0 && (
                                     <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
-                                          <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
+                                      <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
+                                            <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
+                                          </div>
+                                          <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Invite Players to Fill</span>
                                         </div>
-                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Suggested Players to Invite</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const newInvites = { ...sentInvites };
+                                            insights.suggestedPlayers.forEach((name) => { if (!newInvites[name]) newInvites[name] = "email"; });
+                                            setSentInvites(newInvites);
+                                          }}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
+                                          style={{
+                                            background: "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                                            color: "#fff",
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          <Send className="w-3 h-3" />
+                                          Invite All via Email
+                                        </button>
                                       </div>
-                                      <div className="flex flex-wrap gap-2 mt-1">
-                                        {insights.suggestedPlayers.map((name) => (
-                                          <span
-                                            key={name}
-                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                                            style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 500 }}
-                                          >
-                                            <Users className="w-3 h-3" />
-                                            {name}
-                                          </span>
-                                        ))}
+                                      <div className="space-y-2">
+                                        {insights.suggestedPlayers.map((name) => {
+                                          const inviteKey = name;
+                                          const isSent = !!sentInvites[inviteKey];
+                                          return (
+                                            <div
+                                              key={name}
+                                              className="flex items-center justify-between p-2.5 rounded-xl"
+                                              style={{ background: "var(--subtle)" }}
+                                            >
+                                              <div className="flex items-center gap-2.5">
+                                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px]" style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 700 }}>
+                                                  {name.split(" ").map((n) => n[0]).join("")}
+                                                </div>
+                                                <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 500 }}>{name}</span>
+                                                {isSent && (
+                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                                                    <Check className="w-3 h-3" />
+                                                    Sent via {sentInvites[inviteKey]}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {!isSent && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <button
+                                                    onClick={(e) => { e.stopPropagation(); setSentInvites((prev) => ({ ...prev, [inviteKey]: "email" })); }}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                                    style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
+                                                  >
+                                                    <Mail className="w-3 h-3" />
+                                                    Email
+                                                  </button>
+                                                  <button
+                                                    onClick={(e) => { e.stopPropagation(); setSentInvites((prev) => ({ ...prev, [inviteKey]: "sms" })); }}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
+                                                  >
+                                                    <Smartphone className="w-3 h-3" />
+                                                    SMS
+                                                  </button>
+                                                  <span
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
+                                                    style={{ color: "var(--t4)", fontWeight: 500 }}
+                                                  >
+                                                    <Bell className="w-3 h-3" />
+                                                    Push
+                                                    <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   )}
