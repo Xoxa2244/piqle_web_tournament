@@ -11,7 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePageContextData } from '../_hooks/usePageContext'
-import { useBrand } from '@/components/BrandProvider'
+// Mock responses kept as fallback for unauthenticated demo sessions
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -118,10 +118,9 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
   const pageContext = usePageContextData()
   const pageContextRef = useRef(pageContext)
   pageContextRef.current = pageContext
-  const brand = useBrand()
-  const isIQ = brand.key === 'iqsport'
 
-  // ── Mock chat state for IQ brand ──
+  // ── Mock fallback state (activates if real API fails with auth error) ──
+  const [useMock, setUseMock] = useState(false)
   const [mockMessages, setMockMessages] = useState<MockMessage[]>([])
   const [mockLoading, setMockLoading] = useState(false)
 
@@ -136,9 +135,8 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
     setMockLoading(false)
   }, [])
 
-  // ── Real transport for Piqle brand ──
+  // ── Real transport (always used first, same as before redesign) ──
   const transport = useMemo(() => {
-    if (isIQ) return null
     return new TextStreamChatTransport({
       api: '/api/ai/chat',
       body: { clubId },
@@ -152,6 +150,10 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
           } catch { /* keep original body */ }
         }
         const response = await globalThis.fetch(url, init)
+        // If auth fails, switch to mock mode silently
+        if (response.status === 401 || response.status === 403) {
+          setUseMock(true)
+        }
         const newConvId = response.headers.get('X-Conversation-Id')
         if (newConvId && !convIdRef.current) {
           pendingConvIdRef.current = newConvId
@@ -159,40 +161,56 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
         return response
       },
     })
-  }, [clubId, isIQ])
+  }, [clubId])
 
-  // useChat only for piqle — pass a dummy transport for IQ (won't be used)
-  const dummyTransport = useMemo(() => {
-    if (!isIQ) return null
-    return new TextStreamChatTransport({ api: '/api/ai/chat', body: { clubId } })
-  }, [isIQ, clubId])
+  const {
+    messages: realMessages,
+    sendMessage: realSendMessage,
+    status: realStatus,
+    error: realError,
+    setMessages: realSetMessages,
+  } = useChat({ transport })
 
-  const realChat = useChat({ transport: (transport || dummyTransport)! })
+  // If real API returns auth error on first message, switch to mock
+  useEffect(() => {
+    if (realError && !useMock) {
+      const msg = realError.message || ''
+      if (msg.includes('Unauthorized') || msg.includes('401') || msg.includes('403')) {
+        setUseMock(true)
+        // Replay the last user message in mock mode
+        const lastUser = realMessages.filter(m => m.role === 'user').pop()
+        if (lastUser) {
+          const text = getMessageText(lastUser)
+          if (text) mockSendMessage(text)
+        }
+      }
+    }
+  }, [realError, useMock, realMessages, mockSendMessage])
 
   // ── Unified interface ──
-  const messages = isIQ ? mockMessages : realChat.messages
-  const status = isIQ ? (mockLoading ? 'streaming' : 'ready') : realChat.status
-  const error = isIQ ? null : realChat.error
+  const messages = useMock ? mockMessages : realMessages
+  const status = useMock ? (mockLoading ? 'streaming' : 'ready') : realStatus
+  const error = useMock ? null : realError
 
   const isBusy = status === 'submitted' || status === 'streaming'
 
   const handleSend = useCallback((text?: string) => {
     const msg = text || inputValue.trim()
     if (!msg || isBusy) return
-    if (isIQ) {
+    if (useMock) {
       mockSendMessage(msg)
     } else {
-      realChat.sendMessage({ text: msg })
+      realSendMessage({ text: msg })
     }
     setInputValue('')
-  }, [inputValue, isBusy, isIQ, mockSendMessage, realChat])
+  }, [inputValue, isBusy, useMock, mockSendMessage, realSendMessage])
 
   const handleNewChat = () => {
-    if (isIQ) {
+    if (useMock) {
       setMockMessages([])
     } else {
       convIdRef.current = null
-      realChat.setMessages([])
+      realSetMessages([])
     }
     setInputValue('')
     inputRef.current?.focus()
