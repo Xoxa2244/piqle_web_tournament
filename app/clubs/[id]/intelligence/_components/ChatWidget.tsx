@@ -3,10 +3,9 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { TextStreamChatTransport } from 'ai'
-import { Button } from '@/components/ui/button'
 import {
-  Send, X, Loader2,
-  Sparkles, MessageSquare, ChevronRight, Minus,
+  Send, Loader2,
+  Sparkles, MessageSquare, ChevronRight, Minus, Plus,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
@@ -157,10 +156,14 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-lime-500 to-green-600 text-white shadow-lg shadow-lime-500/30 hover:shadow-xl hover:shadow-lime-500/40 hover:scale-105 transition-all flex items-center justify-center group"
+          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group"
+          style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 8px 24px rgba(139,92,246,0.35)" }}
         >
-          <MessageSquare className="w-6 h-6 group-hover:scale-110 transition-transform" />
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-[10px] font-bold rounded-full flex items-center justify-center text-primary-foreground">
+          <MessageSquare className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
+          <span
+            className="absolute -top-1.5 -right-1.5 w-5 h-5 text-[9px] font-bold rounded-full flex items-center justify-center text-white"
+            style={{ background: "linear-gradient(135deg, #06B6D4, #10B981)" }}
+          >
             AI
           </span>
         </button>
@@ -168,51 +171,92 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
 
       {/* Chat panel */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[400px] h-[520px] bg-background border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200">
+        <div
+          className="fixed bottom-6 right-6 z-50 w-[400px] h-[520px] rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
+          style={{
+            background: "var(--card-bg, #1a1a2e)",
+            border: "1px solid var(--card-border, rgba(139,92,246,0.15))",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(139,92,246,0.1)",
+          }}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-white" />
+          <div
+            className="flex items-center justify-between px-4 py-3 shrink-0"
+            style={{ borderBottom: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
+          >
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}
+              >
+                <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold leading-none">AI Advisor</h3>
-                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">Ask anything about your club</p>
+                <h3 style={{ fontSize: "13px", fontWeight: 700, color: "var(--heading, #fff)" }}>AI Advisor</h3>
+                <p style={{ fontSize: "10px", color: "var(--t3, #888)", marginTop: "1px" }}>Ask anything about your club</p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               {messages.length > 0 && (
-                <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-7 px-2 text-xs text-muted-foreground">
-                  New chat
-                </Button>
+                <button
+                  onClick={handleNewChat}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                  style={{ color: "var(--t3, #888)" }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--subtle, rgba(255,255,255,0.05))")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="h-7 w-7 p-0">
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                style={{ color: "var(--t3, #888)" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--subtle, rgba(255,255,255,0.05))")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
                 <Minus className="w-4 h-4" />
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && !isBusy ? (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-lime-500 to-green-600 flex items-center justify-center mb-4 shadow-md">
-                  <Sparkles className="w-6 h-6 text-white" />
+              <div className="flex flex-col h-full">
+                {/* Welcome message */}
+                <div
+                  className="rounded-2xl rounded-tl-sm px-4 py-3 mb-4"
+                  style={{ background: "var(--subtle, rgba(255,255,255,0.04))", border: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
+                >
+                  <p style={{ fontSize: "13px", color: "var(--heading, #fff)", fontWeight: 500 }}>How can I help you today?</p>
                 </div>
-                <p className="text-sm font-medium mb-1">How can I help?</p>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Ask about sessions, members, occupancy, or strategies
-                </p>
-                <div className="space-y-1.5 w-full">
+
+                <p style={{ fontSize: "11px", color: "var(--t4, #666)", marginBottom: "8px", fontWeight: 500 }}>Try asking:</p>
+
+                <div className="space-y-2">
                   {[
-                    'What are my underfilled sessions?',
-                    'How can I improve occupancy?',
-                    'Who are my most active players?',
+                    'What were my best performing sessions this week?',
+                    'Which members are at risk of churning?',
+                    'How can I increase occupancy on Tuesday mornings?',
                   ].map((q, i) => (
                     <button
                       key={i}
                       onClick={() => handleSend(q)}
-                      className="w-full text-left text-xs px-3 py-2 rounded-lg border hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-muted-foreground hover:text-foreground"
+                      className="w-full text-left text-xs px-4 py-3 rounded-xl transition-all"
+                      style={{
+                        background: "var(--subtle, rgba(255,255,255,0.04))",
+                        border: "1px solid var(--card-border, rgba(255,255,255,0.06))",
+                        color: "var(--t2, #ccc)",
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)"
+                        e.currentTarget.style.background = "rgba(139,92,246,0.05)"
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = "var(--card-border, rgba(255,255,255,0.06))"
+                        e.currentTarget.style.background = "var(--subtle, rgba(255,255,255,0.04))"
+                      }}
                     >
                       {q}
                     </button>
@@ -231,25 +275,31 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
                   return (
                     <div key={message.id} className={cn('mb-1', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
-                        <div className="bg-primary text-primary-foreground px-3 py-2 rounded-xl rounded-tr-sm max-w-[85%] text-xs">
+                        <div
+                          className="px-3 py-2 rounded-xl rounded-tr-sm max-w-[85%] text-xs"
+                          style={{ background: "linear-gradient(135deg, #8B5CF6, #7C3AED)", color: "#fff" }}
+                        >
                           {text}
                         </div>
                       ) : (
                         <div className="max-w-[95%]">
-                          <div className="bg-muted/50 border rounded-xl rounded-tl-sm px-3 py-3">
-                            <div className="text-xs leading-relaxed prose prose-xs max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 prose-headings:mb-1 prose-headings:mt-2 first:prose-headings:mt-0">
+                          <div
+                            className="rounded-xl rounded-tl-sm px-3 py-3"
+                            style={{ background: "var(--subtle, rgba(255,255,255,0.04))", border: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
+                          >
+                            <div className="text-xs leading-relaxed prose prose-xs max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 prose-headings:mb-1 prose-headings:mt-2 first:prose-headings:mt-0" style={{ color: "var(--t2, #ccc)" }}>
                               <ReactMarkdown
                                 components={{
                                   a: ({ href, children }) => {
                                     if (href?.startsWith('/')) {
                                       return (
-                                        <Link href={href} className="text-lime-600 hover:underline font-medium" onClick={() => setIsOpen(false)}>
+                                        <Link href={href} className="hover:underline font-medium" style={{ color: "#06B6D4" }} onClick={() => setIsOpen(false)}>
                                           {children}
                                         </Link>
                                       )
                                     }
                                     return (
-                                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
+                                      <a href={href} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#06B6D4" }}>
                                         {children}
                                       </a>
                                     )
@@ -266,7 +316,20 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
                                 <button
                                   key={i}
                                   onClick={() => handleSend(q)}
-                                  className="text-[10px] px-2 py-1 rounded-full border bg-background hover:bg-accent hover:border-lime-300 dark:hover:border-lime-700 transition-colors text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                                  className="text-[10px] px-2 py-1 rounded-full flex items-center gap-0.5 transition-colors"
+                                  style={{
+                                    background: "var(--subtle, rgba(255,255,255,0.04))",
+                                    border: "1px solid var(--card-border, rgba(255,255,255,0.06))",
+                                    color: "var(--t3, #888)",
+                                  }}
+                                  onMouseEnter={e => {
+                                    e.currentTarget.style.borderColor = "rgba(139,92,246,0.3)"
+                                    e.currentTarget.style.color = "var(--heading, #fff)"
+                                  }}
+                                  onMouseLeave={e => {
+                                    e.currentTarget.style.borderColor = "var(--card-border, rgba(255,255,255,0.06))"
+                                    e.currentTarget.style.color = "var(--t3, #888)"
+                                  }}
                                 >
                                   {q}
                                   <ChevronRight className="w-2.5 h-2.5" />
@@ -281,15 +344,18 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
                 })}
 
                 {error && (
-                  <div className="bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2">
-                    <p className="text-xs text-destructive">{error.message || 'Failed to get a response.'}</p>
+                  <div className="rounded-xl px-3 py-2" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <p className="text-xs" style={{ color: "#F87171" }}>{error.message || 'Failed to get a response.'}</p>
                   </div>
                 )}
 
                 {isBusy && messages[messages.length - 1]?.role === 'user' && (
-                  <div className="bg-muted/50 border rounded-xl rounded-tl-sm px-3 py-3 inline-block">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-lime-600" />
+                  <div
+                    className="rounded-xl rounded-tl-sm px-3 py-3 inline-block"
+                    style={{ background: "var(--subtle, rgba(255,255,255,0.04))", border: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
+                  >
+                    <div className="flex items-center gap-2 text-xs" style={{ color: "var(--t3, #888)" }}>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "#8B5CF6" }} />
                       Analyzing...
                     </div>
                   </div>
@@ -299,32 +365,39 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
           </div>
 
           {/* Input */}
-          <div className="border-t bg-background/80 backdrop-blur-sm p-3">
-            <div className="flex items-center gap-2 bg-card border rounded-lg px-3 py-1.5 focus-within:border-lime-400 focus-within:ring-1 focus-within:ring-lime-400/20 transition-all">
+          <div className="shrink-0 p-3" style={{ borderTop: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}>
+            <div
+              className="flex items-center gap-2 rounded-xl px-3 py-2"
+              style={{
+                background: "var(--subtle, rgba(255,255,255,0.04))",
+                border: "1px solid var(--card-border, rgba(255,255,255,0.06))",
+              }}
+            >
               <input
                 ref={inputRef}
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask anything..."
-                className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                placeholder="Ask a question..."
+                className="flex-1 bg-transparent text-xs outline-none"
+                style={{ color: "var(--t1, #eee)" }}
                 disabled={isBusy}
               />
-              <Button
-                size="sm"
-                variant="ghost"
+              <button
                 onClick={() => handleSend()}
                 disabled={!inputValue.trim() || isBusy}
-                className={cn(
-                  'h-7 w-7 p-0 rounded-md transition-colors',
-                  inputValue.trim() && !isBusy
-                    ? 'bg-lime-600 text-white hover:bg-lime-700'
-                    : 'text-muted-foreground'
-                )}
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all"
+                style={{
+                  background: inputValue.trim() && !isBusy
+                    ? "linear-gradient(135deg, #06B6D4, #8B5CF6)"
+                    : "var(--subtle, rgba(255,255,255,0.04))",
+                  opacity: inputValue.trim() && !isBusy ? 1 : 0.4,
+                  cursor: inputValue.trim() && !isBusy ? "pointer" : "default",
+                }}
               >
-                <Send className="w-3.5 h-3.5" />
-              </Button>
+                <Send className="w-3.5 h-3.5 text-white" />
+              </button>
             </div>
           </div>
         </div>
