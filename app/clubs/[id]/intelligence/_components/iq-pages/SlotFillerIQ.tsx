@@ -4,7 +4,7 @@ import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   Puzzle, Users, Clock, MapPin, Star, Zap, Send, Check,
   ChevronDown, Filter, ArrowUpRight, CalendarDays, Target,
-  Sparkles, AlertCircle, CheckCircle2, X, Phone, Mail,
+  Sparkles, AlertCircle, CheckCircle2, X, Mail, Smartphone, Bell,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 
@@ -91,27 +91,12 @@ function MatchScoreBadge({ score }: { score: number }) {
 export function SlotFillerIQ() {
   const { isDark } = useTheme();
   const [selectedSlot, setSelectedSlot] = useState(emptySlots[0].id);
-  const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
-  const [invitedPlayers, setInvitedPlayers] = useState<Set<string>>(new Set());
+  const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
   const activeSlot = emptySlots.find((s) => s.id === selectedSlot)!;
-
-  const togglePlayer = (id: string) => {
-    const next = new Set(selectedPlayers);
-    if (next.has(id)) next.delete(id);
-    else if (next.size < activeSlot.spotsNeeded) next.add(id);
-    setSelectedPlayers(next);
-  };
-
-  const sendInvites = () => {
-    setInvitedPlayers(new Set([...Array.from(invitedPlayers), ...Array.from(selectedPlayers)]));
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
-    setSelectedPlayers(new Set());
-  };
 
   const potentialRevenue = activeSlot.spotsNeeded * activeSlot.pricePerPlayer;
 
@@ -199,7 +184,7 @@ export function SlotFillerIQ() {
               <motion.div
                 key={slot.id}
                 whileHover={{ scale: 1.01 }}
-                onClick={() => { setSelectedSlot(slot.id); setSelectedPlayers(new Set()); }}
+                onClick={() => { setSelectedSlot(slot.id); }}
                 className="cursor-pointer rounded-2xl p-4 transition-all"
                 style={{
                   background: active ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "var(--card-bg)",
@@ -269,106 +254,106 @@ export function SlotFillerIQ() {
                 Ranked by compatibility score • {activeSlot.time}, {activeSlot.date}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {selectedPlayers.size > 0 && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={sendInvites}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs text-white"
-                  style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
-                >
-                  <Send className="w-4 h-4" />
-                  Invite {selectedPlayers.size} Player{selectedPlayers.size > 1 ? "s" : ""}
-                </motion.button>
-              )}
-            </div>
+            <button
+              onClick={() => {
+                const newInvites = { ...sentInvites };
+                activeSlot.matches.forEach((p) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
+                setSentInvites(newInvites);
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 3000);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-all"
+              style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+            >
+              <Send className="w-3.5 h-3.5" />
+              Invite All via Email
+            </button>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {activeSlot.matches.map((player, i) => {
-              const isSelected = selectedPlayers.has(player.id);
-              const isInvited = invitedPlayers.has(player.id);
+              const isSent = !!sentInvites[player.id];
               return (
                 <motion.div
                   key={player.id}
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.06 }}
+                  className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: "var(--subtle)" }}
                 >
-                  <Card
-                    className={`!p-4 cursor-pointer transition-all ${isSelected ? "!border-violet-500/30" : ""}`}
-                  >
-                    <div className="flex items-center gap-4" onClick={() => !isInvited && togglePlayer(player.id)}>
-                      {/* Checkbox */}
-                      <div
-                        className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-all"
-                        style={{
-                          background: isInvited ? "rgba(16,185,129,0.2)" : isSelected ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
-                          border: isInvited ? "1px solid rgba(16,185,129,0.3)" : isSelected ? "none" : "1px solid var(--card-border)",
-                        }}
-                      >
-                        {(isSelected || isInvited) && <Check className="w-3 h-3 text-white" />}
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-[11px] text-white shrink-0"
+                      style={{
+                        background: isSent
+                          ? "linear-gradient(135deg, #10B981, #059669)"
+                          : "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {player.avatar}
+                    </div>
+
+                    {/* Info */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ fontWeight: 600, color: "var(--heading)" }}>{player.name}</span>
+                        {player.status === "tentative" && !isSent && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400" style={{ fontWeight: 600 }}>Tentative</span>
+                        )}
                       </div>
-
-                      {/* Avatar */}
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-xs text-white shrink-0"
-                        style={{
-                          background: isInvited
-                            ? "linear-gradient(135deg, #10B981, #059669)"
-                            : `linear-gradient(135deg, #8B5CF6, #06B6D4)`,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {player.avatar}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm" style={{ fontWeight: 600, color: "var(--heading)" }}>{player.name}</span>
-                          {isInvited && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400" style={{ fontWeight: 600 }}>Invited</span>
-                          )}
-                          {player.status === "tentative" && !isInvited && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400" style={{ fontWeight: 600 }}>Tentative</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-[11px]" style={{ color: "var(--t3)" }}>
-                          <span className="flex items-center gap-1">
-                            <Star className="w-3 h-3" style={{ color: "#F59E0B" }} />
-                            {player.rating} rating
-                          </span>
-                          <span>Last played: {player.lastPlayed}</span>
-                          <span>Prefers: {player.preferredTime}</span>
-                        </div>
-                      </div>
-
-                      {/* Match Score */}
-                      <MatchScoreBadge score={player.matchScore} />
-
-                      {/* Contact */}
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          className="p-2 rounded-lg transition-colors"
-                          style={{ background: "var(--subtle)" }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Phone className="w-3.5 h-3.5" style={{ color: "var(--t3)" }} />
-                        </button>
-                        <button
-                          className="p-2 rounded-lg transition-colors"
-                          style={{ background: "var(--subtle)" }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Mail className="w-3.5 h-3.5" style={{ color: "var(--t3)" }} />
-                        </button>
+                      <div className="flex items-center gap-2 mt-0.5 text-[10px]" style={{ color: "var(--t3)" }}>
+                        <span className="flex items-center gap-1">
+                          <Star className="w-3 h-3" style={{ color: "#F59E0B" }} />
+                          {player.rating}
+                        </span>
+                        <span>Last: {player.lastPlayed}</span>
+                        <span>{player.preferredTime}</span>
                       </div>
                     </div>
-                  </Card>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Match Score */}
+                    <MatchScoreBadge score={player.matchScore} />
+
+                    {/* Invite Buttons or Sent Badge */}
+                    {isSent ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                        <Check className="w-3 h-3" />
+                        Sent via {sentInvites[player.id]}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSentInvites((prev) => ({ ...prev, [player.id]: "email" }))}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                          style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
+                        >
+                          <Mail className="w-3 h-3" />
+                          Email
+                        </button>
+                        <button
+                          onClick={() => setSentInvites((prev) => ({ ...prev, [player.id]: "sms" }))}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                          style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
+                        >
+                          <Smartphone className="w-3 h-3" />
+                          SMS
+                        </button>
+                        <span
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
+                          style={{ color: "var(--t4)", fontWeight: 500 }}
+                        >
+                          <Bell className="w-3 h-3" />
+                          Push
+                          <span className="text-[9px] ml-0.5" style={{ opacity: 0.6 }}>soon</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               );
             })}
