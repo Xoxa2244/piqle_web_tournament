@@ -39,7 +39,7 @@ export type FileParserResult = {
 
 // ── CSV Parser ──
 
-function parseCSV(text: string): ParsedSession[] {
+export function parseCSV(text: string): ParsedSession[] {
   const lines = text
     .split('\n')
     .map(l => l.trim())
@@ -188,7 +188,7 @@ function addHours(time: string, hours: number): string {
 
 // ── XLSX Support ──
 
-async function parseXLSX(buffer: ArrayBuffer, sheetIndex: number): Promise<{ csvText: string; sheets: SheetInfo[] }> {
+export async function parseXLSX(buffer: ArrayBuffer, sheetIndex: number): Promise<{ csvText: string; sheets: SheetInfo[] }> {
   const XLSX = await import('xlsx')
   const workbook = XLSX.read(buffer, { type: 'array' })
 

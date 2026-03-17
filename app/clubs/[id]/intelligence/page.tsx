@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils'
 import { useSetPageContext } from './_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { DashboardIQ } from './_components/iq-pages/DashboardIQ'
+import { OnboardingChatIQ } from './_components/iq-pages/OnboardingChatIQ'
 
 const formatLabels: Record<string, string> = {
   OPEN_PLAY: 'Open Play',
@@ -95,7 +96,10 @@ export default function IntelligenceDashboardPage() {
   }, [data, healthData, setPageContext])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <DashboardIQ />
+  if (brand.key === 'iqsport') {
+    if (!isDemo && !hasOnboarded) return <OnboardingChatIQ clubId={clubId} />
+    return <DashboardIQ />
+  }
 
   if (isLoading) return <DashboardSkeleton />
 
