@@ -102,27 +102,27 @@ export default function TournamentChatScreen() {
     )
   }
 
-  if (
-    permissionsQuery.isLoading ||
-    eventChatsQuery.isLoading ||
-    tournamentMessagesQuery.isLoading ||
-    divisionMessagesQuery.isLoading
-  ) {
+  const messagesLoading = activeDivisionId
+    ? divisionMessagesQuery.isLoading
+    : tournamentMessagesQuery.isLoading
+
+  const isInitialLoad = permissionsQuery.isLoading && !activeDivisionId
+  if (isInitialLoad) {
     return <Screen title={title}><LoadingBlock label="Loading chat…" /></Screen>
   }
 
-  if (!permission?.canView) {
+  const hasAccess = permission?.canView && (!activeDivisionId || activeDivisionPermission?.canView)
+  if (!permissionsQuery.isLoading && !hasAccess) {
+    if (activeDivisionId) {
+      return (
+        <Screen title={title} subtitle="Division thread.">
+          <EmptyState title="Chat unavailable" body={activeDivisionPermission?.reason || 'You do not have access to this division thread.'} />
+        </Screen>
+      )
+    }
     return (
       <Screen title={title} subtitle="Tournament-wide event thread.">
         <EmptyState title="Chat unavailable" body={permission?.reason || 'You do not have access to this thread.'} />
-      </Screen>
-    )
-  }
-
-  if (activeDivisionId && !activeDivisionPermission?.canView) {
-    return (
-      <Screen title={title} subtitle="Division thread.">
-        <EmptyState title="Chat unavailable" body={activeDivisionPermission?.reason || 'You do not have access to this division thread.'} />
       </Screen>
     )
   }
@@ -213,12 +213,16 @@ export default function TournamentChatScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.messages, isEmpty && styles.messagesEmpty]}
+        contentContainerStyle={[styles.messages, (isEmpty || messagesLoading) && styles.messagesEmpty]}
         showsVerticalScrollIndicator={false}
       >
-        {isEmpty ? <Text style={styles.emptyTitle}>No messages yet</Text> : null}
+        {messagesLoading ? (
+          <Text style={styles.emptyTitle}>Loading…</Text>
+        ) : isEmpty ? (
+          <Text style={styles.emptyTitle}>No messages yet</Text>
+        ) : null}
 
-        {messages.map((message) => (
+        {!messagesLoading && messages.map((message) => (
           <View key={message.id} style={{ gap: 8 }}>
             <View
               style={{
@@ -293,7 +297,7 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     gap: 12,
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   topicBarItem: {
     flexDirection: 'row',

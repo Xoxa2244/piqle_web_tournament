@@ -93,9 +93,19 @@ export default function ChatsTab() {
         <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
       </View>
 
-      {clubChatsQuery.isLoading || eventChatsQuery.isLoading ? <LoadingBlock label="Loading chats…" /> : null}
+      {clubChatsQuery.isLoading && filteredClubChats.length === 0 ? (
+        <LoadingBlock label="Loading club chats…" />
+      ) : null}
 
-      {filteredClubChats.length === 0 && filteredEventChats.length === 0 ? (
+      {eventChatsQuery.isError ? (
+        <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }}>
+          <Text style={{ fontSize: 13, color: palette.textMuted }}>
+            Event chats could not be loaded. Pull to retry.
+          </Text>
+        </View>
+      ) : null}
+
+      {filteredClubChats.length === 0 && filteredEventChats.length === 0 && !eventChatsQuery.isLoading && !eventChatsQuery.isError ? (
         <EmptyState title="No chats yet" body="Join clubs or register for tournaments to unlock chat access." />
       ) : null}
 
@@ -119,9 +129,14 @@ export default function ChatsTab() {
         </View>
       ) : null}
 
-      {filteredEventChats.length > 0 ? (
+      {(filteredEventChats.length > 0 || eventChatsQuery.isLoading) ? (
         <View style={{ marginTop: spacing.sm }}>
           <Text style={styles.sectionLabel}>Event chats</Text>
+          {eventChatsQuery.isLoading ? (
+            <View style={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.md }}>
+              <Text style={{ fontSize: 13, color: palette.textMuted }}>Loading event chats…</Text>
+            </View>
+          ) : null}
           {activeEventChats.map((event: any) => (
             <ChatPreviewCard
               key={`event-${event.id}`}

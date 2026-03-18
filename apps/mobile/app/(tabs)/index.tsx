@@ -91,7 +91,10 @@ export default function HomeTab() {
     () => new Set((((accessibleTournamentsQuery.data ?? []) as any[]).map((item) => item.id) as string[])),
     [accessibleTournamentsQuery.data]
   )
-  const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string; isPaid?: boolean }>
+  const statuses = (registrationStatusesQuery.data ?? {}) as Record<
+    string,
+    { status?: string; isPaid?: boolean; playerId?: string }
+  >
 
   const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
@@ -222,6 +225,7 @@ export default function HomeTab() {
         const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(event.id))
         const isUnpaid =
           status === 'active' &&
+          Boolean(statuses[event.id]?.playerId) &&
           statuses[event.id]?.isPaid === false &&
           getEntryFeeCents(event) > 0
         return (
@@ -242,7 +246,7 @@ export default function HomeTab() {
                         label={statusLabel(status, hasPrivilegedAccess)}
                         tone={hasPrivilegedAccess ? 'primary' : status === 'waitlisted' ? 'warning' : 'success'}
                       />
-                      {isUnpaid ? <Pill label="Unpaid" tone="warning" /> : null}
+                      {isUnpaid ? <Pill label="Unpaid" tone="danger" /> : null}
                     </View>
                   </View>
                   <View style={styles.eventMetaRow}>

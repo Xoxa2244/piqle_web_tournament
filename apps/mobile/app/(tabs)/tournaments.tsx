@@ -111,7 +111,7 @@ const TournamentListCard = ({
       statusLabel={cardStatus.label}
       statusTone={cardStatus.tone}
       secondaryStatusLabel={isUnpaid ? 'Unpaid' : null}
-      secondaryStatusTone="warning"
+      secondaryStatusTone="danger"
       onPress={() => router.push(`/tournaments/${tournament.id}`)}
     />
   )
@@ -469,6 +469,7 @@ export default function TournamentsTab() {
               typeof tournament.entryFee === 'string' ? Math.round(Number(tournament.entryFee) * 100) : tournament.entryFeeCents
             const isUnpaid =
               myStatus === 'active' &&
+              Boolean(myStatusInfo?.playerId) &&
               myStatusInfo?.isPaid === false &&
               Number(feeCents ?? 0) > 0
 
