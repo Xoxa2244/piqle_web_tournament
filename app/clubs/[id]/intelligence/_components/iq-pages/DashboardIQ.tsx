@@ -742,9 +742,29 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <div className="p-6">
                 {importModal === "upload" && (
                   <IQFileDropZone
-                    onFile={(file) => {
+                    onFile={async (file) => {
                       setImportFileName(file.name);
                       setImportModal("processing");
+
+                      // Actually upload the file to the import API
+                      if (clubId) {
+                        try {
+                          const text = await file.text();
+                          const response = await fetch('/api/ai/import-sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ clubId, csvContent: text, fileName: file.name }),
+                          });
+                          if (!response.ok) {
+                            console.error('[Import] API error:', response.status);
+                          } else {
+                            const result = await response.json();
+                            console.log('[Import] Success:', result);
+                          }
+                        } catch (err) {
+                          console.error('[Import] Failed:', err);
+                        }
+                      }
                     }}
                   />
                 )}

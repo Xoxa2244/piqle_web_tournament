@@ -302,7 +302,7 @@ function ChannelIcon({ channel }: { channel: string }) {
   if (channel === 'sms') return <MessageSquare className="w-3.5 h-3.5" />;
   return <Bell className="w-3.5 h-3.5" />;
 }
-/* ============================================= */ /*            CAMPAIGNS PAGE                      */ /* ============================================= */ export function CampaignsIQ({ campaignData, isLoading: externalLoading, clubId }: { campaignData?: any; isLoading?: boolean; clubId?: string } = {}) {
+/* ============================================= */ /*            CAMPAIGNS PAGE                      */ /* ============================================= */ export function CampaignsIQ({ campaignData, campaignListData, isLoading: externalLoading, clubId }: { campaignData?: any; campaignListData?: any; isLoading?: boolean; clubId?: string } = {}) {
   const { isDark } = useTheme();
   const [statusFilter, setStatusFilter] = useState<'all' | CampaignStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
