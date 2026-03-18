@@ -2,6 +2,8 @@
 
 import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import { useBrand } from '@/components/BrandProvider'
+import { SettingsIQ } from '../_components/iq-pages/SettingsIQ'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -204,7 +206,7 @@ function RadioOption({ label, value, selected, onSelect }: { label: string; valu
 
 // ══════════ MAIN PAGE ══════════
 
-export default function SettingsPage() {
+function PiqleSettingsPage() {
   const params = useParams()
   const clubId = params.id as string
   const isDemo = useIsDemo()
@@ -733,4 +735,10 @@ export default function SettingsPage() {
       </div>
     </div>
   )
+}
+
+export default function SettingsPage() {
+  const brand = useBrand()
+  if (brand.key === 'iqsport') return <SettingsIQ />
+  return <PiqleSettingsPage />
 }
