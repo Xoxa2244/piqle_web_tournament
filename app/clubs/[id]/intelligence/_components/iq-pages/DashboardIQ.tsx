@@ -14,6 +14,9 @@ import {
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { useParams, useRouter } from "next/navigation";
+import { IQFileDropZone } from "./IQFileDropZone";
+import { AILoadingAnimation } from "./AILoadingAnimation";
+import { X } from "lucide-react";
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
@@ -244,6 +247,8 @@ export function DashboardIQ() {
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
+  const [importFileName, setImportFileName] = useState<string | null>(null);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -545,9 +550,21 @@ export function DashboardIQ() {
 
         {/* Data Upload History */}
         <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <Upload className="w-4 h-4" style={{ color: "var(--t3)" }} />
-            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Data Uploads</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Upload className="w-4 h-4" style={{ color: "var(--t3)" }} />
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Data Uploads</h3>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setImportModal("upload")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px]"
+              style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600, boxShadow: "0 2px 10px rgba(139,92,246,0.3)" }}
+            >
+              <Upload className="w-3 h-3" />
+              Import CSV/XLSX
+            </motion.button>
           </div>
           <div className="space-y-2.5">
             {dataUploadHistory.map((u, i) => (
@@ -631,6 +648,92 @@ export function DashboardIQ() {
           })}
         </div>
       </Card>
+
+      {/* Import Modal */}
+      <AnimatePresence>
+        {importModal !== "closed" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+            onClick={(e) => { if (e.target === e.currentTarget && importModal !== "processing") setImportModal("closed"); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-2xl rounded-2xl overflow-hidden"
+              style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", boxShadow: "0 25px 80px rgba(0,0,0,0.5)" }}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--divider)" }}>
+                <h2 className="text-base" style={{ fontWeight: 700, color: "var(--heading)" }}>
+                  {importModal === "upload" ? "Import Data" : importModal === "processing" ? "Training AI..." : "Import Complete"}
+                </h2>
+                {importModal !== "processing" && (
+                  <button onClick={() => setImportModal("closed")} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--t4)" }}>
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6">
+                {importModal === "upload" && (
+                  <IQFileDropZone
+                    onFile={(file) => {
+                      setImportFileName(file.name);
+                      setImportModal("processing");
+                    }}
+                  />
+                )}
+
+                {importModal === "processing" && (
+                  <AILoadingAnimation
+                    onComplete={() => setImportModal("done")}
+                  />
+                )}
+
+                {importModal === "done" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center space-y-4 py-6"
+                  >
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
+                    >
+                      <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #059669)", boxShadow: "0 8px 30px rgba(16,185,129,0.3)" }}>
+                        <CheckCircle2 className="w-8 h-8 text-white" />
+                      </div>
+                    </motion.div>
+                    <div>
+                      <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>Data Imported Successfully</h3>
+                      <p className="text-sm" style={{ color: "var(--t3)" }}>
+                        <strong style={{ color: "var(--t1)" }}>{importFileName}</strong> has been processed.
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>AI model retrained with new data — insights updated.</p>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => { setImportModal("closed"); setImportFileName(null); }}
+                      className="px-6 py-2.5 rounded-xl text-sm text-white mx-auto"
+                      style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+                    >
+                      Done
+                    </motion.button>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
