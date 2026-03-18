@@ -786,20 +786,55 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                       setImportFileName(file.name);
                       setImportModal("processing");
 
-                      // Actually upload the file to the import API
                       if (clubId) {
                         try {
                           const text = await file.text();
-                          const response = await fetch('/api/ai/import-sessions', {
+
+                          // Step 1: Smart parse CSV with LLM column mapping
+                          console.log('[Import] Parsing CSV with smart mapper...');
+                          const parseResponse = await fetch('/api/ai/parse-csv', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ clubId, csvContent: text, fileName: file.name }),
+                            body: JSON.stringify({ csvContent: text, fileName: file.name }),
                           });
-                          if (!response.ok) {
-                            console.error('[Import] API error:', response.status);
+
+                          if (!parseResponse.ok) {
+                            console.error('[Import] Parse failed:', parseResponse.status);
+                            return;
+                          }
+
+                          const parseResult = await parseResponse.json();
+                          console.log(`[Import] Parsed ${parseResult.totalParsed} sessions (${parseResult.totalErrors} errors)`);
+                          if (parseResult.notes) console.log('[Import] Notes:', parseResult.notes);
+
+                          if (!parseResult.sessions?.length) {
+                            console.error('[Import] No sessions parsed');
+                            return;
+                          }
+
+                          // Step 2: Import parsed sessions
+                          console.log('[Import] Importing sessions to database...');
+                          const importResponse = await fetch('/api/ai/import-sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ clubId, sessions: parseResult.sessions, fileName: file.name }),
+                          });
+
+                          if (!importResponse.ok) {
+                            console.error('[Import] Import API error:', importResponse.status);
                           } else {
-                            const result = await response.json();
-                            console.log('[Import] Success:', result);
+                            // SSE stream — read progress
+                            const reader = importResponse.body?.getReader();
+                            if (reader) {
+                              const decoder = new TextDecoder();
+                              while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                const text = decoder.decode(value);
+                                console.log('[Import]', text.trim());
+                              }
+                            }
+                            console.log('[Import] Complete!');
                           }
                         } catch (err) {
                           console.error('[Import] Failed:', err);
