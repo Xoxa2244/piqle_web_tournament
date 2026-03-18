@@ -235,6 +235,19 @@ export function ReactivationIQ({ reactivationData, isLoading: externalLoading, s
   const realCandidates = mapRealCandidates(reactivationData);
   const allMembers = realCandidates.length > 0 ? realCandidates : atRiskMembers;
 
+  const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
+    if (sendReactivation && clubId) {
+      sendReactivation.mutate({
+        clubId,
+        candidates: [{ memberId, channel }],
+      }, {
+        onSuccess: () => setSentOutreach(prev => ({ ...prev, [memberId]: channel })),
+      });
+    } else {
+      setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
+    }
+  };
+
   const filtered = allMembers.filter((m) => {
     if (riskFilter !== "all" && m.risk !== riskFilter) return false;
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -504,7 +517,7 @@ export function ReactivationIQ({ reactivationData, isLoading: externalLoading, s
                               </div>
                               {!sentOutreach[member.id] && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "email" })); }}
+                                  onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
                                   style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                                 >
@@ -529,14 +542,14 @@ export function ReactivationIQ({ reactivationData, isLoading: externalLoading, s
                               {!sentOutreach[member.id] && (
                                 <div className="flex items-center gap-1.5">
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "email" })); }}
+                                    onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                                   >
                                     <Mail className="w-3 h-3" /> Email
                                   </button>
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); setSentOutreach((prev) => ({ ...prev, [member.id]: "sms" })); }}
+                                    onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "sms"); }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
                                   >

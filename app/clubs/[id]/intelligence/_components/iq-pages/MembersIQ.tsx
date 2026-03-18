@@ -199,8 +199,27 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [sentMessages, setSentMessages] = useState<Record<string, string>>({});
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+
+  const handleOutreach = (memberId: string, channel: "email" | "sms", member: Member) => {
+    if (sendOutreach && clubId) {
+      sendOutreach.mutate({
+        clubId,
+        memberId,
+        type: "CHECK_IN",
+        channel,
+        healthScore: member.healthScore,
+        riskLevel: member.segment === "at-risk" ? "at_risk" : member.segment === "critical" ? "critical" : "healthy",
+      }, {
+        onSuccess: () => setSentMessages(prev => ({ ...prev, [memberId]: channel })),
+      });
+    } else {
+      // Mock mode — just show sent state
+      setSentMessages(prev => ({ ...prev, [memberId]: channel }));
+    }
+  };
 
   // Use real data if available, otherwise fall back to mocks
   const realMembers = mapRealMembers(memberHealthData);
@@ -459,12 +478,20 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
                 <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--divider)" }}>
                   <span className="text-[10px]" style={{ color: "var(--t4)" }}>Prefers: {member.favoriteTime} {"\u2022"} {member.favoriteFormat}</span>
                   <div className="ml-auto flex items-center gap-1.5">
-                    <button className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}>
-                      <Mail className="w-3 h-3" /> Email
-                    </button>
-                    <button className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
-                      <Smartphone className="w-3 h-3" /> SMS
-                    </button>
+                    {sentMessages[member.id] ? (
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                        ✓ Sent via {sentMessages[member.id]}
+                      </span>
+                    ) : (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "email", member); }} className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}>
+                          <Mail className="w-3 h-3" /> Email
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "sms", member); }} className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                          <Smartphone className="w-3 h-3" /> SMS
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -532,12 +559,16 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
                 <div className="hidden lg:block"><HealthBar score={member.healthScore} /></div>
                 <div className="text-[11px] hidden lg:block" style={{ color: "var(--t3)" }}>{member.lastPlayed}</div>
                 <div className="flex items-center gap-1.5 justify-end">
-                  <button className="px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}>
+                  {sentMessages[member.id] ? (
+                    <span className="px-2 py-0.5 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>✓ {sentMessages[member.id]}</span>
+                  ) : (<>
+                  <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "email", member); }} className="px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}>
                     <Mail className="w-3 h-3" /> Email
                   </button>
-                  <button className="px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                  <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "sms", member); }} className="px-2 py-0.5 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
                     <Smartphone className="w-3 h-3" /> SMS
                   </button>
+                  </>)}
                 </div>
               </motion.div>
             );
