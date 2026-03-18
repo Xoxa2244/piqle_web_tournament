@@ -254,13 +254,14 @@ export async function POST(req: Request) {
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o'
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022'
 
+    // Tools disabled — Zod/AI SDK schema serialization breaks on Vercel.
+    // Onboarding conversation works without tools; settings saved via Settings page.
     let result
     try {
       result = streamText({
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: onboardingTools,
         maxOutputTokens: 1500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       })
@@ -271,7 +272,6 @@ export async function POST(req: Request) {
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: onboardingTools,
         maxOutputTokens: 1500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       })
