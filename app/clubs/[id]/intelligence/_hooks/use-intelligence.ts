@@ -447,3 +447,23 @@ export function useUploadHistory(clubId: string) {
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
 }
+
+export function usePricingOpportunities(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getPricingOpportunities.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useRevenueForecast(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getRevenueForecast.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}

@@ -157,11 +157,48 @@ const dataUploadHistory = [
   { id: "u5", date: "Feb 15, 2026", records: 1042, quality: 88, status: "warning" as const, source: "Manual Upload", duration: "4.2s" },
 ];
 
-const aiInsights = [
+const defaultAiInsights = [
   { title: "Weekend Peak Optimization", desc: "Saturday 3-6PM is at 98% capacity. Consider adding overflow courts or waitlist pricing.", priority: "high", icon: TrendingUp },
   { title: "Tuesday Morning Gap", desc: "Only 38% occupancy Tue 9-12. Recommend a beginner clinic — 23 eligible members identified.", priority: "medium", icon: Target },
   { title: "Reactivation Opportunity", desc: "12 members haven't played in 30+ days. Personalized win-back campaign ready to launch.", priority: "medium", icon: Users },
 ];
+
+function generateInsights(dashboardData: any, healthData: any, heatmapData: any): typeof defaultAiInsights {
+  const insights: typeof defaultAiInsights = [];
+  // 1. Find peak slots from heatmap
+  if (heatmapData?.heatmap) {
+    let peakSlot = { day: '', time: '', value: 0 };
+    let lowSlot = { day: '', time: '', value: 100 };
+    heatmapData.heatmap.forEach((row: any) => {
+      row.slots?.forEach((slot: any) => {
+        if (slot.value > peakSlot.value) peakSlot = { day: row.day, time: slot.time, value: slot.value };
+        if (slot.value > 0 && slot.value < lowSlot.value) lowSlot = { day: row.day, time: slot.time, value: slot.value };
+      });
+    });
+    if (peakSlot.value > 80) {
+      insights.push({ title: "Peak Hour Detected", desc: `${peakSlot.day} ${peakSlot.time} is at ${peakSlot.value}% capacity. Consider adding a session or raising price.`, priority: "high", icon: TrendingUp });
+    }
+    if (lowSlot.value < 40 && lowSlot.value > 0) {
+      insights.push({ title: "Low Demand Slot", desc: `${lowSlot.day} ${lowSlot.time} is only ${lowSlot.value}% full. Try moving to peak hours or send targeted invites.`, priority: "medium", icon: Target });
+    }
+  }
+  // 2. At-risk members
+  if (healthData?.summary) {
+    const total = (healthData.summary.healthy || 0) + (healthData.summary.watch || 0) + (healthData.summary.atRisk || 0) + (healthData.summary.critical || 0);
+    const atRiskPct = total > 0 ? Math.round(((healthData.summary.atRisk || 0) + (healthData.summary.critical || 0)) / total * 100) : 0;
+    if (atRiskPct > 10) {
+      insights.push({ title: "Reactivation Opportunity", desc: `${(healthData.summary.atRisk || 0) + (healthData.summary.critical || 0)} members at risk (${atRiskPct}%). Launch a personalized win-back campaign.`, priority: "high", icon: Users });
+    }
+  }
+  // 3. Lost revenue
+  if (dashboardData?.metrics?.lostRevenue) {
+    const lost = dashboardData.metrics.lostRevenue;
+    if (lost.value && typeof lost.value === 'string' && parseInt(lost.value.replace(/[^0-9]/g, '')) > 500) {
+      insights.push({ title: "Revenue Recovery", desc: `You're losing ${lost.value} from empty slots. Slot Filler can recover up to 60% of this.`, priority: "medium", icon: DollarSign });
+    }
+  }
+  return insights.length > 0 ? insights.slice(0, 3) : defaultAiInsights;
+}
 
 /* --- Sparkline Mini Chart --- */
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -313,6 +350,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         duration: "—",
       }))
     : dataUploadHistory;
+
+  // AI Insights — generated from real data
+  const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
 
   return (
     <motion.div
@@ -502,7 +542,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </div>
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
-              {aiInsights.map((insight) => (
+              {displayInsights.map((insight) => (
                 <div
                   key={insight.title}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] cursor-pointer transition-all hover:scale-105"

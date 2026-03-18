@@ -2252,4 +2252,122 @@ export const intelligenceRouter = createTRPCRouter({
 
       return { uploads, totalUploads: uploads.length }
     }),
+
+  // 2.1 Pricing Opportunities (demand-based price suggestions)
+  getPricingOpportunities: protectedProcedure
+    .input(z.object({ clubId: z.string(), days: z.number().optional().default(90) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date()
+      since.setDate(since.getDate() - input.days)
+
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: { clubId: input.clubId, date: { gte: since } },
+        select: { date: true, startTime: true, maxPlayers: true, registeredCount: true, pricePerSlot: true },
+      })
+
+      // Group by day × time slot
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const slots: Record<string, { occSum: number; priceSum: number; regSum: number; count: number }> = {}
+
+      sessions.forEach((s: any) => {
+        const dayIdx = s.date.getDay()
+        const dayName = days[(dayIdx + 6) % 7]
+        const hour = parseInt(s.startTime?.split(':')[0] || '0')
+        const timeLabel = hour < 12 ? (hour < 9 ? 'Morning' : 'Late Morning') : (hour < 17 ? 'Afternoon' : 'Evening')
+        const key = `${dayName} ${timeLabel}`
+        if (!slots[key]) slots[key] = { occSum: 0, priceSum: 0, regSum: 0, count: 0 }
+        const occ = s.maxPlayers > 0 ? ((s.registeredCount ?? 0) / s.maxPlayers) * 100 : 0
+        slots[key].occSum += occ
+        slots[key].priceSum += (s.pricePerSlot ?? 0)
+        slots[key].regSum += (s.registeredCount ?? 0)
+        slots[key].count++
+      })
+
+      const opportunities = Object.entries(slots)
+        .map(([slot, data]) => {
+          const avgOcc = Math.round(data.occSum / data.count)
+          const avgPrice = Math.round(data.priceSum / data.count)
+          const avgReg = Math.round(data.regSum / data.count)
+          if (avgPrice === 0) return null
+
+          // Price elasticity formula
+          const priceMultiplier = 1 + (avgOcc - 60) / 100
+          const suggested = Math.max(5, Math.round(avgPrice * priceMultiplier))
+          const diff = suggested - avgPrice
+          if (Math.abs(diff) < 2) return null // not worth suggesting
+
+          const impact = diff * avgReg * 4 // monthly estimate
+          const demand = avgOcc > 80 ? 'Very High' : avgOcc > 60 ? 'High' : avgOcc > 40 ? 'Medium' : 'Low'
+          const confidence = Math.min(95, avgOcc + 10)
+
+          return { slot, current: avgPrice, suggested, demand, impact: `${impact > 0 ? '+' : ''}$${Math.abs(impact)}/mo`, confidence }
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => Math.abs(parseInt(b.impact.replace(/[^0-9-]/g, ''))) - Math.abs(parseInt(a.impact.replace(/[^0-9-]/g, ''))))
+        .slice(0, 4)
+
+      return { opportunities }
+    }),
+
+  // 2.2 Revenue Forecast (linear regression)
+  getRevenueForecast: protectedProcedure
+    .input(z.object({ clubId: z.string(), monthsBack: z.number().optional().default(6), monthsForward: z.number().optional().default(3) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date()
+      since.setMonth(since.getMonth() - input.monthsBack)
+
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: { clubId: input.clubId, date: { gte: since } },
+        select: { date: true, pricePerSlot: true, registeredCount: true },
+      })
+
+      // Aggregate monthly revenue
+      const monthlyRevenue = new Map<string, number>()
+      sessions.forEach((s: any) => {
+        const month = s.date.toISOString().slice(0, 7)
+        monthlyRevenue.set(month, (monthlyRevenue.get(month) || 0) + (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0))
+      })
+
+      const sortedMonths = Array.from(monthlyRevenue.entries()).sort(([a], [b]) => a.localeCompare(b))
+      if (sortedMonths.length < 2) {
+        return { actual: [], forecast: [] }
+      }
+
+      // Linear regression
+      const n = sortedMonths.length
+      const xs = sortedMonths.map((_, i) => i)
+      const ys = sortedMonths.map(([, rev]) => rev)
+      const sumX = xs.reduce((s, x) => s + x, 0)
+      const sumY = ys.reduce((s, y) => s + y, 0)
+      const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0)
+      const sumX2 = xs.reduce((s, x) => s + x * x, 0)
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+      const intercept = (sumY - slope * sumX) / n
+
+      // Actual months
+      const actual = sortedMonths.map(([month, rev]) => ({
+        month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+        actual: Math.round(rev),
+      }))
+
+      // Forecast months
+      const forecast: Array<{ month: string; forecast: number; low: number; high: number }> = []
+      const lastDate = new Date(sortedMonths[sortedMonths.length - 1][0] + '-01')
+      for (let m = 1; m <= input.monthsForward; m++) {
+        const futureDate = new Date(lastDate)
+        futureDate.setMonth(futureDate.getMonth() + m)
+        const predicted = Math.max(0, Math.round(intercept + slope * (n - 1 + m)))
+        const spread = 0.1 + m * 0.05 // wider confidence for further out
+        forecast.push({
+          month: futureDate.toLocaleDateString('en-US', { month: 'short' }),
+          forecast: predicted,
+          low: Math.round(predicted * (1 - spread)),
+          high: Math.round(predicted * (1 + spread)),
+        })
+      }
+
+      return { actual, forecast }
+    }),
 })

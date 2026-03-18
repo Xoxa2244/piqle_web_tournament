@@ -12,7 +12,7 @@ import { MetricCard } from '../_components/metric-card'
 import { HorizontalBarChart, VerticalBarChart } from '../_components/charts'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useDashboardV2, useRevenueAnalytics } from '../_hooks/use-intelligence'
+import { useDashboardV2, useRevenueAnalytics, usePricingOpportunities, useRevenueForecast } from '../_hooks/use-intelligence'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { RevenueIQ } from '../_components/iq-pages/RevenueIQ'
@@ -37,6 +37,8 @@ export default function RevenueIntelligencePage() {
 
   const { data: dashboard, isLoading } = useDashboardV2(clubId)
   const { data: revenueData } = useRevenueAnalytics(clubId)
+  const { data: pricingData } = usePricingOpportunities(clubId)
+  const { data: forecastData } = useRevenueForecast(clubId)
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function RevenueIntelligencePage() {
   }, [dashboard, setPageContext])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <RevenueIQ revenueData={revenueData} dashboardData={dashboard} isLoading={isLoading} clubId={clubId} />
+  if (brand.key === 'iqsport') return <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading) return <DashboardSkeleton />
 

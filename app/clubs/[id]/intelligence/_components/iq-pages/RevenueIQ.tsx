@@ -127,7 +127,7 @@ function getRevPeriodLabel(p: RevPeriod): { current: string; previous: string } 
 /* ============================================= */
 /*              REVENUE PAGE                      */
 /* ============================================= */
-export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoading, clubId }: { revenueData?: any; dashboardData?: any; isLoading?: boolean; clubId?: string } = {}) {
+export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastData: forecastProp, isLoading: externalLoading, clubId }: { revenueData?: any; dashboardData?: any; pricingData?: any; forecastData?: any; isLoading?: boolean; clubId?: string } = {}) {
   const { isDark } = useTheme();
   const [period, setPeriod] = useState<RevPeriod>("year");
   const [customFrom, setCustomFrom] = useState("");
@@ -176,8 +176,18 @@ export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoadi
       ]
     : periodComparison;
 
-  // Pricing opportunities — derive from revenue data (high-demand low-price slots)
-  const displayPricingOpportunities = pricingOpportunities; // Keep mock for now — needs ML model
+  // Pricing opportunities from real endpoint
+  const displayPricingOpportunities = pricingData?.opportunities?.length
+    ? pricingData.opportunities
+    : pricingOpportunities;
+
+  // Revenue forecast from real endpoint
+  const displayFullForecast = forecastProp?.actual?.length
+    ? [
+        ...forecastProp.actual.map((a: any) => ({ month: a.month, actual: a.actual })),
+        ...forecastProp.forecast.map((f: any) => ({ month: f.month, forecast: f.forecast, low: f.low, high: f.high })),
+      ]
+    : fullForecast;
 
   return (
     <motion.div
@@ -440,7 +450,7 @@ export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoadi
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Dynamic Pricing Suggestions</h3>
           </div>
           <div className="space-y-3">
-            {displayPricingOpportunities.map((opp) => (
+            {displayPricingOpportunities.map((opp: any) => (
               <div
                 key={opp.slot}
                 className="p-3 rounded-xl"
@@ -491,7 +501,7 @@ export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoadi
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Revenue Forecast</h3>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={fullForecast}>
+            <AreaChart data={displayFullForecast}>
               <defs>
                 <linearGradient id="foreGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.2} />
