@@ -246,6 +246,94 @@ export const userRouter = createTRPCRouter({
       }
     }),
 
+  linkDupr: protectedProcedure
+    .input(
+      z.object({
+        duprId: z.string().optional(),
+        numericId: z.number().int().optional(),
+        accessToken: z.string().min(10),
+        refreshToken: z.string().min(10),
+        stats: z.any().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      // Parse ratings if included in DUPR postMessage payload.
+      const parseRating = (value: any): number | null => {
+        if (value === undefined || value === null) return null
+        const str = String(value).trim()
+        if (!str || str === 'NR' || str.toLowerCase() === 'not rated') return null
+        const parsed = parseFloat(str)
+        return Number.isFinite(parsed) ? parsed : null
+      }
+
+      let duprRatingSingles: number | null = null
+      let duprRatingDoubles: number | null = null
+      const stats = input.stats
+      if (stats && typeof stats === 'object') {
+        duprRatingSingles =
+          parseRating((stats as any).singlesRating) ??
+          parseRating((stats as any).singles) ??
+          parseRating((stats as any).ratings?.singles) ??
+          parseRating((stats as any).stats?.singlesRating) ??
+          parseRating((stats as any).stats?.singles) ??
+          null
+
+        duprRatingDoubles =
+          parseRating((stats as any).doublesRating) ??
+          parseRating((stats as any).doubles) ??
+          parseRating((stats as any).ratings?.doubles) ??
+          parseRating((stats as any).stats?.doublesRating) ??
+          parseRating((stats as any).stats?.doubles) ??
+          null
+      }
+
+      const updated = await ctx.prisma.user.update({
+        where: { id: userId },
+        data: {
+          duprId: input.duprId || undefined,
+          duprNumericId: input.numericId != null ? BigInt(input.numericId) : undefined,
+          duprAccessToken: input.accessToken,
+          duprRefreshToken: input.refreshToken,
+          duprRatingSingles,
+          duprRatingDoubles,
+        },
+        select: {
+          id: true,
+          duprId: true,
+          duprRatingSingles: true,
+          duprRatingDoubles: true,
+        },
+      })
+
+      return {
+        success: true,
+        duprId: updated.duprId,
+        duprLinked: Boolean(updated.duprId),
+        duprRatingSingles: decimalToNumber(updated.duprRatingSingles),
+        duprRatingDoubles: decimalToNumber(updated.duprRatingDoubles),
+      }
+    }),
+
+  unlinkDupr: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id
+      await ctx.prisma.user.update({
+        where: { id: userId },
+        data: {
+          duprId: null,
+          duprNumericId: null,
+          duprAccessToken: null,
+          duprRefreshToken: null,
+          duprRatingSingles: null,
+          duprRatingDoubles: null,
+        },
+        select: { id: true },
+      })
+      return { success: true }
+    }),
+
   updateProfile: protectedProcedure
     .input(z.object({
       name: z.string().min(1).optional(),

@@ -1,12 +1,14 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useMemo } from 'react'
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useMemo, useState } from 'react'
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { WebView } from 'react-native-webview'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
+import { DUPR_CLIENT_KEY } from '../../src/lib/config'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -35,6 +37,29 @@ const parseNumberish = (value: unknown) => {
     return Number.isFinite(parsed) ? parsed : null
   }
   return null
+}
+
+const toBase64 = (value: string) => {
+  try {
+    // @ts-ignore - btoa exists in many JS runtimes
+    if (typeof btoa === 'function') return btoa(value)
+  } catch {}
+
+  // Fallback base64 encoder for ASCII-ish keys.
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  let out = ''
+  let i = 0
+  while (i < value.length) {
+    const c1 = value.charCodeAt(i++) & 0xff
+    const c2 = i < value.length ? value.charCodeAt(i++) & 0xff : NaN
+    const c3 = i < value.length ? value.charCodeAt(i++) & 0xff : NaN
+
+    out += chars[c1 >> 2]
+    out += chars[((c1 & 3) << 4) | (Number.isNaN(c2) ? 0 : (c2 as number) >> 4)]
+    out += Number.isNaN(c2) ? '=' : chars[(((c2 as number) & 15) << 2) | (Number.isNaN(c3) ? 0 : (c3 as number) >> 6)]
+    out += Number.isNaN(c3) ? '=' : chars[(c3 as number) & 63]
+  }
+  return out
 }
 
 const statusMeta = (status?: string | null, hasPrivilegedAccess = false) => {
@@ -115,6 +140,52 @@ export default function ProfileTab() {
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
+  const utils = trpc.useUtils() as any
+  const [showDuprConnect, setShowDuprConnect] = useState(false)
+  const linkDupr = api.user.linkDupr.useMutation({
+    onSuccess: async () => {
+      await utils.user.getProfile.invalidate()
+      setShowDuprConnect(false)
+      Alert.alert('DUPR connected', 'Your DUPR account is now linked.')
+    },
+    onError: (err: any) => {
+      Alert.alert('DUPR connect failed', err?.message || 'Unable to connect DUPR right now.')
+    },
+  })
+
+  const startDuprConnect = () => {
+    if (!DUPR_CLIENT_KEY) {
+      Alert.alert(
+        'DUPR not configured',
+        'Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.'
+      )
+      return
+    }
+    setShowDuprConnect(true)
+  }
+
+  const duprLoginUrl = useMemo(() => {
+    if (!DUPR_CLIENT_KEY) return null
+    const base64 = toBase64(DUPR_CLIENT_KEY)
+    return `https://dashboard.dupr.com/login-external-app/${base64}`
+  }, [DUPR_CLIENT_KEY])
+
+  const duprBridgeJs = `
+    (function () {
+      try {
+        window.addEventListener('message', function (event) {
+          try {
+            var data = event && event.data ? event.data : event;
+            window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+              origin: event && event.origin ? event.origin : null,
+              data: data
+            }));
+          } catch (e) {}
+        });
+      } catch (e) {}
+      true;
+    })();
+  `
 
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
   const tournamentsQuery = api.public.listBoards.useQuery(undefined, { enabled: isAuthenticated })
@@ -207,17 +278,6 @@ export default function ProfileTab() {
   const handleLabel = `@${String(profile.email || '').split('@')[0] || 'piqle'}`
   const memberSinceLabel = profile.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
   const locationLabel = formatLocation([profile.city])
-  const duprLink = profile.duprLink as string | null | undefined
-  const openDupr = async () => {
-    if (!duprLink) {
-      router.push('/profile/edit')
-      return
-    }
-
-    try {
-      await Linking.openURL(duprLink)
-    } catch {}
-  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -266,18 +326,81 @@ export default function ProfileTab() {
 
                 <View style={styles.duprStatusBadge}>
                   <Text style={styles.duprStatusText}>
-                    {profile.duprLinked ? 'Synced from web' : duprLink ? 'Profile link saved' : 'Connect to sync'}
+                    {profile.duprLinked ? 'Connected' : 'Connect to sync'}
                   </Text>
                 </View>
               </View>
 
-              <ProfileActionButton
-                label={duprLink ? 'View on DUPR' : 'Add DUPR link'}
-                icon="external-link"
-                onPress={() => void openDupr()}
-              />
+              {!profile.duprLinked ? (
+                <ProfileActionButton
+                  label={linkDupr.isPending ? 'Connecting...' : 'Connect DUPR'}
+                  icon="link"
+                  onPress={startDuprConnect}
+                />
+              ) : null}
             </SurfaceCard>
           </View>
+
+          <Modal
+            animationType="slide"
+            transparent
+            visible={showDuprConnect}
+            onRequestClose={() => setShowDuprConnect(false)}
+          >
+            <View style={styles.duprModalOverlay}>
+              <View style={styles.duprModal}>
+                <View style={styles.duprModalHeader}>
+                  <Text style={styles.duprModalTitle}>Connect DUPR</Text>
+                  <Pressable
+                    onPress={() => setShowDuprConnect(false)}
+                    style={({ pressed }) => [styles.duprModalClose, pressed && { opacity: 0.85 }]}
+                  >
+                    <Feather name="x" size={18} color={palette.textMuted} />
+                  </Pressable>
+                </View>
+
+                {duprLoginUrl ? (
+                  <WebView
+                    source={{ uri: duprLoginUrl }}
+                    originWhitelist={['*']}
+                    injectedJavaScript={duprBridgeJs}
+                    onMessage={(event) => {
+                      try {
+                        const payload = JSON.parse(event.nativeEvent.data)
+                        const data = payload?.data ?? {}
+                        const numericId = data.id || data.userId
+                        const duprId = data.duprId || data.dupr_id
+                        const accessToken = data.userToken || data.accessToken || data.access_token
+                        const refreshToken = data.refreshToken || data.refresh_token
+                        const stats = data.stats || {
+                          rating: data.rating,
+                          singlesRating: data.singlesRating || data.singles_rating,
+                          doublesRating: data.doublesRating || data.doubles_rating,
+                          name: data.name,
+                        }
+
+                        if ((duprId || numericId) && accessToken && refreshToken) {
+                          linkDupr.mutate({
+                            duprId: duprId ? String(duprId) : undefined,
+                            numericId: numericId ? Number(numericId) : undefined,
+                            accessToken: String(accessToken),
+                            refreshToken: String(refreshToken),
+                            stats,
+                          })
+                        }
+                      } catch {}
+                    }}
+                  />
+                ) : (
+                  <View style={{ padding: spacing.lg }}>
+                    <Text style={{ color: palette.textMuted }}>
+                      DUPR client key is missing.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Modal>
 
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>Recent Tournaments</Text>
@@ -519,6 +642,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  duprModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 10, 10, 0.28)',
+    justifyContent: 'flex-end',
+  },
+  duprModal: {
+    height: '85%',
+    backgroundColor: palette.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    overflow: 'hidden',
+  },
+  duprModalHeader: {
+    height: 54,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
+    backgroundColor: palette.surfaceOverlay,
+  },
+  duprModalTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  duprModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionBlock: {
     gap: spacing.md,

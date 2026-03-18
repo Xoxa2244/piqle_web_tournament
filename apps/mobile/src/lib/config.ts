@@ -7,5 +7,12 @@ const normalizeBaseUrl = (value?: string | null) => {
 export const API_BASE_URL = normalizeBaseUrl(process.env.EXPO_PUBLIC_API_URL)
 export const WEB_BASE_URL = API_BASE_URL
 
+// Prefer Expo public var, but also support DUPR_CLIENT_KEY for convenience.
+export const DUPR_CLIENT_KEY = String(
+  process.env.EXPO_PUBLIC_DUPR_CLIENT_KEY ??
+    process.env.DUPR_CLIENT_KEY ??
+    ''
+).trim()
+
 export const buildApiUrl = (path: string) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 export const buildWebUrl = (path: string) => `${WEB_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
