@@ -271,10 +271,10 @@ export default function ProfileTab() {
     )
   }
 
-  const bestRating = [parseNumberish(profile.duprRatingSingles), parseNumberish(profile.duprRatingDoubles)]
-    .filter((value): value is number => value !== null)
-    .sort((left, right) => right - left)[0]
-  const bestRatingLabel = bestRating === undefined ? '—' : bestRating.toFixed(2)
+  const singlesNum = parseNumberish(profile.duprRatingSingles)
+  const doublesNum = parseNumberish(profile.duprRatingDoubles)
+  const singlesRatingLabel = singlesNum !== null ? singlesNum.toFixed(2) : '—'
+  const doublesRatingLabel = doublesNum !== null ? doublesNum.toFixed(2) : '—'
   const handleLabel = `@${String(profile.email || '').split('@')[0] || 'piqle'}`
   const memberSinceLabel = profile.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
   const locationLabel = formatLocation([profile.city])
@@ -313,21 +313,22 @@ export default function ProfileTab() {
               </View>
             </View>
 
-            <SurfaceCard style={styles.duprCard}>
-              <View style={styles.duprTopRow}>
-                <View style={styles.duprBadgeIcon}>
+            <View style={styles.duprCardOuter}>
+              <View style={styles.duprHeaderRow}>
+                <View style={styles.duprCircleIcon}>
                   <Feather name="trending-up" size={20} color={palette.white} />
                 </View>
+                <Text style={styles.duprRatingTitle}>DUPR Rating</Text>
+              </View>
 
-                <View style={styles.duprRatingBlock}>
-                  <Text style={styles.duprLabel}>DUPR Rating</Text>
-                  <Text style={styles.duprValue}>{bestRatingLabel}</Text>
+              <View style={styles.duprPillsRow}>
+                <View style={styles.duprPill}>
+                  <Text style={styles.duprPillLabel}>Singles</Text>
+                  <Text style={styles.duprPillValue}>{singlesRatingLabel}</Text>
                 </View>
-
-                <View style={styles.duprStatusBadge}>
-                  <Text style={styles.duprStatusText}>
-                    {profile.duprLinked ? 'Connected' : 'Connect to sync'}
-                  </Text>
+                <View style={styles.duprPill}>
+                  <Text style={styles.duprPillLabel}>Doubles</Text>
+                  <Text style={styles.duprPillValue}>{doublesRatingLabel}</Text>
                 </View>
               </View>
 
@@ -338,7 +339,7 @@ export default function ProfileTab() {
                   onPress={startDuprConnect}
                 />
               ) : null}
-            </SurfaceCard>
+            </View>
           </View>
 
           <Modal
@@ -596,52 +597,63 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     fontSize: 13,
   },
-  duprCard: {
+  /** DUPR card — match design spec (mint container, white rating pills) */
+  duprCardOuter: {
+    backgroundColor: '#f0faf4',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 199, 89, 0.28)',
+    borderRadius: radius.lg,
+    padding: spacing.md,
     gap: spacing.md,
-    backgroundColor: 'rgba(40, 205, 65, 0.05)',
-    borderColor: palette.brandPrimaryBorder,
   },
-  duprTopRow: {
+  duprHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  duprBadgeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  duprCircleIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: '#34d399',
   },
-  duprRatingBlock: {
+  duprRatingTitle: {
+    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '500',
+    letterSpacing: -0.2,
+  },
+  duprPillsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  duprPill: {
     flex: 1,
-  },
-  duprLabel: {
-    color: palette.textMuted,
-    fontSize: 13,
-  },
-  duprValue: {
-    color: palette.text,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.7,
-    marginTop: 2,
-  },
-  duprStatusBadge: {
-    maxWidth: 120,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    backgroundColor: palette.surface,
+    minWidth: 0,
+    backgroundColor: palette.white,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
+    borderColor: 'rgba(10, 10, 10, 0.07)',
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: 14,
+    paddingBottom: 18,
   },
-  duprStatusText: {
-    color: palette.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
+  duprPillLabel: {
+    color: '#9ca3af',
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  duprPillValue: {
+    color: palette.text,
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+    fontVariant: ['tabular-nums'],
   },
   duprModalOverlay: {
     flex: 1,

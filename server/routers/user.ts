@@ -34,6 +34,33 @@ const decimalToNumber = (value: any): number | null => {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/** Public DUPR dashboard profile URL (numeric id from OAuth) or fallback search by DUPR code. */
+const buildDuprWebProfileUrl = (opts: {
+  duprLink: string | null | undefined
+  duprId: string | null | undefined
+  duprNumericId: bigint | null | undefined
+}): string | null => {
+  const manual = opts.duprLink?.trim()
+  if (manual && /^https?:\/\//i.test(manual)) return manual
+
+  const numeric =
+    opts.duprNumericId != null && opts.duprNumericId !== undefined
+      ? String(opts.duprNumericId)
+      : null
+  if (numeric && /^\d+$/.test(numeric)) {
+    return `https://dashboard.dupr.com/dashboard/player/${numeric}/profile`
+  }
+
+  const code = opts.duprId?.trim()
+  if (code && /^\d{6,}$/.test(code)) {
+    return `https://dashboard.dupr.com/dashboard/player/${code}/profile`
+  }
+  if (code) {
+    return `https://dashboard.dupr.com/dashboard/browse/players?search=${encodeURIComponent(code)}`
+  }
+  return null
+}
+
 export const userRouter = createTRPCRouter({
   search: protectedProcedure
     .input(
@@ -174,6 +201,7 @@ export const userRouter = createTRPCRouter({
           city: true,
           duprLink: true,
           duprId: true,
+          duprNumericId: true,
           duprRatingSingles: true,
           duprRatingDoubles: true,
           role: true,
@@ -192,10 +220,16 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
-      const { _count, ...rest } = user
+      const { _count, duprNumericId: _duprNum, ...rest } = user
+      const duprWebProfileUrl = buildDuprWebProfileUrl({
+        duprLink: user.duprLink,
+        duprId: user.duprId,
+        duprNumericId: user.duprNumericId,
+      })
       return {
         ...rest,
-        duprLinked: !!user.duprId,
+        duprLinked: !!user.duprId || user.duprNumericId != null,
+        duprWebProfileUrl,
         clubsJoinedCount: _count.clubFollows,
         tournamentsPlayedCount: _count.players,
         tournamentsCreatedCount: _count.tournaments,
@@ -302,6 +336,8 @@ export const userRouter = createTRPCRouter({
         select: {
           id: true,
           duprId: true,
+          duprNumericId: true,
+          duprLink: true,
           duprRatingSingles: true,
           duprRatingDoubles: true,
         },
@@ -310,7 +346,12 @@ export const userRouter = createTRPCRouter({
       return {
         success: true,
         duprId: updated.duprId,
-        duprLinked: Boolean(updated.duprId),
+        duprLinked: Boolean(updated.duprId) || updated.duprNumericId != null,
+        duprWebProfileUrl: buildDuprWebProfileUrl({
+          duprLink: updated.duprLink,
+          duprId: updated.duprId,
+          duprNumericId: updated.duprNumericId,
+        }),
         duprRatingSingles: decimalToNumber(updated.duprRatingSingles),
         duprRatingDoubles: decimalToNumber(updated.duprRatingDoubles),
       }
