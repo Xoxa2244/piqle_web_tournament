@@ -739,6 +739,29 @@ function PiqleSettingsPage() {
 
 export default function SettingsPage() {
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SettingsIQ />
+  const params = useParams()
+  const clubId = params.id as string
+
+  if (brand.key === 'iqsport') {
+    return <SettingsIQWrapper clubId={clubId} />
+  }
   return <PiqleSettingsPage />
+}
+
+function SettingsIQWrapper({ clubId }: { clubId: string }) {
+  const { data: intelligenceData, isLoading } = useIntelligenceSettings(clubId)
+  const { data: automationData } = useAutomationSettings(clubId)
+  const saveMutation = useSaveIntelligenceSettings()
+  const saveAutoMutation = useSaveAutomationSettings()
+
+  return (
+    <SettingsIQ
+      intelligenceData={intelligenceData}
+      automationData={automationData}
+      saveMutation={saveMutation}
+      saveAutoMutation={saveAutoMutation}
+      isLoading={isLoading}
+      clubId={clubId}
+    />
+  )
 }

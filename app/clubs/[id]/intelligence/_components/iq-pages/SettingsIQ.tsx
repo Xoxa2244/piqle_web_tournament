@@ -73,8 +73,21 @@ function Chip({ selected, onClick, children }: { selected: boolean; onClick: () 
   );
 }
 
-export function SettingsIQ() {
+type SettingsIQProps = {
+  intelligenceData?: any;
+  automationData?: any;
+  saveMutation?: any;
+  saveAutoMutation?: any;
+  isLoading?: boolean;
+  clubId?: string;
+};
+
+export function SettingsIQ({ intelligenceData, automationData, saveMutation, saveAutoMutation, isLoading: externalLoading, clubId }: SettingsIQProps = {}) {
   const { isDark } = useTheme();
+
+  // Hydrate from real data or use defaults
+  const realSettings = intelligenceData?.settings;
+  const realAutomation = automationData?.settings;
 
   // Club Profile
   const [timezone, setTimezone] = useState("America/New_York");
@@ -101,6 +114,68 @@ export function SettingsIQ() {
   const [goals, setGoals] = useState(["fill_sessions", "improve_retention"]);
 
   const [saved, setSaved] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate from server data once
+  if (realSettings && !hydrated) {
+    if (realSettings.timezone) setTimezone(realSettings.timezone);
+    if (realSettings.sportTypes?.length) setSports(realSettings.sportTypes);
+    if (realSettings.courtCount) setCourts(realSettings.courtCount);
+    if (realSettings.operatingDays?.length) setOperatingDays(realSettings.operatingDays);
+    if (realSettings.operatingHoursStart) setOpenTime(realSettings.operatingHoursStart);
+    if (realSettings.operatingHoursEnd) setCloseTime(realSettings.operatingHoursEnd);
+    if (realSettings.pricingModel) setPricingModel(realSettings.pricingModel);
+    if (realSettings.avgSessionPriceCents) setSessionPrice(realSettings.avgSessionPriceCents / 100);
+    if (realSettings.communicationPreferences?.preferredChannel) setChannel(realSettings.communicationPreferences.preferredChannel);
+    if (realSettings.communicationPreferences?.tone) setTone(realSettings.communicationPreferences.tone);
+    if (realSettings.communicationPreferences?.maxMessagesPerWeek) setMaxMessages(realSettings.communicationPreferences.maxMessagesPerWeek);
+    if (realSettings.goals?.length) setGoals(realSettings.goals);
+    setHydrated(true);
+  }
+  if (realAutomation && !hydrated) {
+    if (realAutomation.healthyToWatch !== undefined) setAutoHealthyWatch(realAutomation.healthyToWatch);
+    if (realAutomation.watchToAtRisk !== undefined) setAutoWatchRisk(realAutomation.watchToAtRisk);
+    if (realAutomation.atRiskToCritical !== undefined) setAutoRiskCritical(realAutomation.atRiskToCritical);
+    if (realAutomation.churned !== undefined) setAutoChurned(realAutomation.churned);
+  }
+
+  const handleSave = () => {
+    if (saveMutation && clubId) {
+      saveMutation.mutate({
+        clubId,
+        settings: {
+          timezone,
+          sportTypes: sports,
+          courtCount: courts,
+          operatingDays,
+          operatingHoursStart: openTime,
+          operatingHoursEnd: closeTime,
+          pricingModel,
+          avgSessionPriceCents: Math.round(sessionPrice * 100),
+          goals,
+          communicationPreferences: { preferredChannel: channel, tone, maxMessagesPerWeek: maxMessages },
+        },
+      }, { onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2000); } });
+    }
+    if (saveAutoMutation && clubId) {
+      saveAutoMutation.mutate({
+        clubId,
+        settings: {
+          enabled: true,
+          healthyToWatch: autoHealthyWatch,
+          watchToAtRisk: autoWatchRisk,
+          atRiskToCritical: autoRiskCritical,
+          churned: autoChurned,
+          channel,
+        },
+      });
+    }
+    if (!saveMutation) {
+      // Mock mode
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+  };
 
   const toggleSport = (id: string) => setSports(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   const toggleDay = (d: string) => setOperatingDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
@@ -266,7 +341,7 @@ export function SettingsIQ() {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }}
+          onClick={handleSave}
           className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm text-white"
           style={{
             background: saved ? "linear-gradient(135deg, #10B981, #059669)" : "linear-gradient(135deg, #8B5CF6, #06B6D4)",
