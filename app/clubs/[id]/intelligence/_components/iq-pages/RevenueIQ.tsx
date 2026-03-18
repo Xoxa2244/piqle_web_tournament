@@ -127,7 +127,7 @@ function getRevPeriodLabel(p: RevPeriod): { current: string; previous: string } 
 /* ============================================= */
 /*              REVENUE PAGE                      */
 /* ============================================= */
-export function RevenueIQ() {
+export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoading, clubId }: { revenueData?: any; dashboardData?: any; isLoading?: boolean; clubId?: string } = {}) {
   const { isDark } = useTheme();
   const [period, setPeriod] = useState<RevPeriod>("year");
   const [customFrom, setCustomFrom] = useState("");
@@ -135,9 +135,24 @@ export function RevenueIQ() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const totalRevenue = 19450;
-  const totalLost = lostRevenue.reduce((s, l) => s + l.amount, 0);
-  const totalRecoverable = lostRevenue.reduce((s, l) => s + l.recoverable, 0);
+  // Use real data when available
+  const displayRevenueByFormat = revenueData?.revenueByFormat?.length
+    ? revenueData.revenueByFormat.map((f: any) => ({ name: f.format, value: f.revenue, pct: f.pct, color: ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899"][revenueData.revenueByFormat.indexOf(f) % 6] }))
+    : revenueByFormat;
+  const displayDailyRevenue = revenueData?.dailyRevenue?.length
+    ? revenueData.dailyRevenue.slice(-7).map((d: any) => ({ day: new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' }), revenue: d.revenue, target: Math.round(d.revenue * 1.15) }))
+    : dailyRevenue;
+  const displayLostRevenue = revenueData?.lostRevenue
+    ? [
+        { category: "Empty Slots", amount: revenueData.lostRevenue.emptySlots, pct: 0, recoverable: Math.round(revenueData.lostRevenue.emptySlots * 0.6) },
+        { category: "Cancelled", amount: revenueData.lostRevenue.cancelled, pct: 0, recoverable: Math.round(revenueData.lostRevenue.cancelled * 0.3) },
+        { category: "No-Shows", amount: revenueData.lostRevenue.noShows, pct: 0, recoverable: Math.round(revenueData.lostRevenue.noShows * 0.5) },
+      ].map(l => ({ ...l, pct: revenueData.lostRevenue.total > 0 ? Math.round((l.amount / revenueData.lostRevenue.total) * 100) : 0 }))
+    : lostRevenue;
+
+  const totalRevenue = revenueData?.totalRevenue ?? 19450;
+  const totalLost = displayLostRevenue.reduce((s: number, l: any) => s + l.amount, 0);
+  const totalRecoverable = displayLostRevenue.reduce((s: number, l: any) => s + l.recoverable, 0);
 
   return (
     <motion.div
@@ -300,15 +315,15 @@ export function RevenueIQ() {
           <div className="flex items-center justify-center" style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={revenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                  {revenueByFormat.map((e) => <Cell key={e.name} fill={e.color} />)}
+                <Pie data={displayRevenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                  {displayRevenueByFormat.map((e) => <Cell key={e.name} fill={e.color} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="space-y-2.5 mt-2">
-            {revenueByFormat.map((s) => (
+            {displayRevenueByFormat.map((s) => (
               <div key={s.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
@@ -330,7 +345,7 @@ export function RevenueIQ() {
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Daily Revenue vs Target</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={dailyRevenue}>
+            <ComposedChart data={displayDailyRevenue}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
               <XAxis dataKey="day" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
               <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} tickFormatter={(v) => `$${v / 1000}k`} />
@@ -351,7 +366,7 @@ export function RevenueIQ() {
             </div>
           </div>
           <div className="space-y-4">
-            {lostRevenue.map((item) => (
+            {displayLostRevenue.map((item) => (
               <div key={item.category}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs" style={{ color: "var(--t2)", fontWeight: 500 }}>{item.category}</span>

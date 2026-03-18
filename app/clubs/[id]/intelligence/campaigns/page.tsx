@@ -16,7 +16,7 @@ import { useSetPageContext } from '../_hooks/usePageContext'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useCampaignAnalytics, useVariantAnalytics, useSequenceAnalytics, useIsDemo } from '../_hooks/use-intelligence'
+import { useCampaignAnalytics, useVariantAnalytics, useSequenceAnalytics, useIsDemo, useCampaignList } from '../_hooks/use-intelligence'
 import { useBrand } from '@/components/BrandProvider'
 import { CampaignsIQ } from '../_components/iq-pages/CampaignsIQ'
 
@@ -207,6 +207,7 @@ export default function CampaignsPage() {
   const { data, isLoading, error } = useCampaignAnalytics(clubId, days)
   const { data: variantData } = useVariantAnalytics(clubId, days)
   const { data: sequenceData } = useSequenceAnalytics(clubId)
+  const { data: campaignListData } = useCampaignList(clubId)
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -231,7 +232,7 @@ export default function CampaignsPage() {
   }, [data, days, variantData, sequenceData, setPageContext])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <CampaignsIQ campaignData={data} isLoading={isLoading} clubId={clubId} />
+  if (brand.key === 'iqsport') return <CampaignsIQ campaignData={data} campaignListData={campaignListData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading) return <ListSkeleton />
 

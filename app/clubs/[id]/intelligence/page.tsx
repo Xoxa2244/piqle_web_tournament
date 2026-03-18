@@ -17,7 +17,7 @@ import { SessionTable } from './_components/session-table'
 import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary } from './_hooks/use-intelligence'
+import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary, useOccupancyHeatmap, useMemberGrowth, useUploadHistory } from './_hooks/use-intelligence'
 import { WeeklySummaryCard } from './_components/weekly-summary-card'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from './_hooks/usePageContext'
@@ -68,6 +68,9 @@ export default function IntelligenceDashboardPage() {
 
   const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
   const { data: healthData } = useMemberHealth(clubId)
+  const { data: heatmapData } = useOccupancyHeatmap(clubId)
+  const { data: memberGrowthData } = useMemberGrowth(clubId)
+  const { data: uploadHistoryData } = useUploadHistory(clubId)
   const { data: settingsData } = useIntelligenceSettings(clubId)
   const { data: summaryData, isLoading: summaryLoading } = useWeeklySummary(clubId)
   const generateSummary = useGenerateWeeklySummary()
@@ -98,7 +101,7 @@ export default function IntelligenceDashboardPage() {
   const brand = useBrand()
   if (brand.key === 'iqsport') {
     if (!isDemo && !hasOnboarded) return <OnboardingChatIQ clubId={clubId} onComplete={() => window.location.reload()} />
-    return <DashboardIQ dashboardData={data} healthData={healthData} isLoading={isLoading} clubId={clubId} />
+    return <DashboardIQ dashboardData={data} healthData={healthData} heatmapData={heatmapData} memberGrowthData={memberGrowthData} uploadHistoryData={uploadHistoryData} isLoading={isLoading} clubId={clubId} />
   }
 
   if (isLoading) return <DashboardSkeleton />
