@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { router, usePathname } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import type { ReactNode } from 'react'
 
 import { palette, spacing } from '../../lib/theme'
 import { useAuth } from '../../providers/AuthProvider'
@@ -24,7 +25,7 @@ const IconBubble = ({ icon, onPress, showDot }: { icon: keyof typeof Feather.gly
   </Pressable>
 )
 
-export const TopBar = () => {
+export const TopBar = ({ titleAccessory }: { titleAccessory?: ReactNode }) => {
   const pathname = usePathname()
   const { user } = useAuth()
   const title = getTitle(pathname)
@@ -37,7 +38,10 @@ export const TopBar = () => {
 
   return (
     <View style={styles.header}>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>{title}</Text>
+        {titleAccessory ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
+      </View>
       <View style={styles.actions}>
         <IconBubble icon="search" onPress={() => router.push('/search')} />
         <IconBubble icon="bell" onPress={() => router.push('/notifications')} showDot />
@@ -59,6 +63,16 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surfaceOverlay,
     borderBottomWidth: 1,
     borderBottomColor: palette.border,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  titleAccessory: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 20,

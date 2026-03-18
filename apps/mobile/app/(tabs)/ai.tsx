@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
-import { useEffect, useMemo, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -35,11 +35,71 @@ const formatClock = (dateLike?: string | Date) => {
   }
 }
 
+type InlineToken =
+  | { type: 'text'; value: string }
+  | { type: 'bold'; value: string }
+  | { type: 'italic'; value: string }
+
+const tokenizeInlineMarkdown = (input: string): InlineToken[] => {
+  const tokens: InlineToken[] = []
+  let i = 0
+
+  const pushText = (value: string) => {
+    if (!value) return
+    const last = tokens[tokens.length - 1]
+    if (last?.type === 'text') last.value += value
+    else tokens.push({ type: 'text', value })
+  }
+
+  while (i < input.length) {
+    const ch = input[i]
+    const next = input[i + 1]
+
+    // Bold: **text**
+    if (ch === '*' && next === '*') {
+      const end = input.indexOf('**', i + 2)
+      if (end !== -1) {
+        const value = input.slice(i + 2, end)
+        tokens.push({ type: 'bold', value })
+        i = end + 2
+        continue
+      }
+    }
+
+    // Italic: *text*
+    if (ch === '*') {
+      const end = input.indexOf('*', i + 1)
+      if (end !== -1) {
+        const value = input.slice(i + 1, end)
+        tokens.push({ type: 'italic', value })
+        i = end + 1
+        continue
+      }
+    }
+
+    pushText(ch)
+    i += 1
+  }
+
+  return tokens
+}
+
+const renderInlineMarkdown = (input: string, keyPrefix: string) => {
+  const tokens = tokenizeInlineMarkdown(input)
+  return tokens.map((token, idx) => {
+    const key = `${keyPrefix}-${idx}`
+    if (token.type === 'bold') return <Text key={key} style={styles.inlineBold}>{token.value}</Text>
+    if (token.type === 'italic') return <Text key={key} style={styles.inlineItalic}>{token.value}</Text>
+    return token.value
+  })
+}
+
 export default function AITab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
   const insets = useSafeAreaInsets()
+  const scrollRef = useRef<ScrollView | null>(null)
   const initialMessages = useMemo(() => {
     const history = (historyQuery.data ?? []) as Array<{
       id: string
@@ -88,6 +148,7 @@ export default function AITab() {
       ])
     },
   })
+  const resetMutation = trpc.aiCoach.reset.useMutation()
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -123,16 +184,62 @@ export default function AITab() {
   }
 
   const typing = chatMutation.isPending
+  const resetPending = resetMutation.isPending
+
+  const scrollToBottom = (animated = true) => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated })
+    })
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    // Auto-follow new messages and typing indicator.
+    scrollToBottom(true)
+  }, [isAuthenticated, messages.length, typing])
+
+  const resetChat = () => {
+    if (resetPending) return
+    Alert.alert(
+      'Reset AI Coach?',
+      'This will delete your AI Coach chat history and saved memory for onboarding questions. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: resetPending ? 'Resetting...' : 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await resetMutation.mutateAsync()
+              setInput('')
+              setMessages([
+                {
+                  id: 'welcome',
+                  role: 'assistant',
+                  content: WELCOME_MESSAGE,
+                  time: 'now',
+                },
+              ])
+              await historyQuery.refetch()
+              scrollToBottom(false)
+            } catch (err: any) {
+              Alert.alert('Reset failed', err?.message || 'Unable to reset right now. Please try again.')
+            }
+          },
+        },
+      ]
+    )
+  }
 
   if (!isAuthenticated) {
     return (
       <PageLayout>
         <View style={styles.unauthWrap}>
-          <Text style={styles.unauthTitle}>AI Assistant</Text>
-          <Text style={styles.unauthBody}>
-            Sign in to chat with your pickleball AI coach.
-          </Text>
-          <Pressable onPress={() => router.push('/sign-in')} style={({ pressed }) => [styles.signInBtn, pressed && { opacity: 0.9 }]}>
+          <Text style={styles.unauthBody}>Sign in to chat with your pickleball AI coach.</Text>
+          <Pressable
+            onPress={() => router.push('/sign-in')}
+            style={({ pressed }) => [styles.signInBtn, pressed && { opacity: 0.9 }]}
+          >
             <Text style={styles.signInText}>Sign in</Text>
           </Pressable>
         </View>
@@ -141,16 +248,35 @@ export default function AITab() {
   }
 
   return (
-    <PageLayout scroll={false} contentStyle={styles.screen}>
+    <PageLayout
+      scroll={false}
+      contentStyle={styles.screen}
+      topBarTitleAccessory={
+        <Pressable
+          onPress={resetChat}
+          disabled={resetPending}
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.resetIconBtn,
+            resetPending && { opacity: 0.55 },
+            pressed && !resetPending && { opacity: 0.8 },
+          ]}
+        >
+          <Feather name="trash-2" size={18} color={palette.textMuted} />
+        </Pressable>
+      }
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollToBottom(false)}
         >
           <View style={styles.messages}>
             {messages.map((msg) => (
@@ -181,8 +307,10 @@ export default function AITab() {
                       msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
                     ]}
                   >
-                    <Text style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}>
-                      {msg.content}
+                    <Text
+                      style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
+                    >
+                      {renderInlineMarkdown(msg.content, msg.id)}
                     </Text>
                   </OptionalLinearGradient>
                   <Text style={styles.time}>{msg.time}</Text>
@@ -282,6 +410,13 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: 0,
   },
+  resetIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
@@ -340,6 +475,12 @@ const styles = StyleSheet.create({
   bubbleTextMine: {
     color: palette.white,
     fontWeight: '600',
+  },
+  inlineBold: {
+    fontWeight: '800',
+  },
+  inlineItalic: {
+    fontStyle: 'italic',
   },
   time: {
     color: palette.textMuted,
@@ -432,12 +573,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   unauthWrap: {
+    padding: spacing.lg,
     gap: spacing.md,
-  },
-  unauthTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: palette.primary,
   },
   unauthBody: {
     color: palette.textMuted,

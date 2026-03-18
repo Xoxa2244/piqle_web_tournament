@@ -174,6 +174,15 @@ export const aiCoachRouter = createTRPCRouter({
       }))
     }),
 
+  reset: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = ctx.session.user.id
+    await ctx.prisma.$transaction([
+      ctx.prisma.aiCoachMessage.deleteMany({ where: { userId } }),
+      ctx.prisma.aiCoachState.deleteMany({ where: { userId } }),
+    ])
+    return { success: true }
+  }),
+
   chat: protectedProcedure
     .input(
       z.object({

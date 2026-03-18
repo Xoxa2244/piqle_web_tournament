@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react'
+import React from 'react'
 import { ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -9,10 +10,11 @@ export const PageLayout = ({
   children,
   scroll = true,
   contentStyle,
-}: PropsWithChildren<{ scroll?: boolean; contentStyle?: StyleProp<ViewStyle> }>) => {
+  topBarTitleAccessory,
+}: PropsWithChildren<{ scroll?: boolean; contentStyle?: StyleProp<ViewStyle>; topBarTitleAccessory?: React.ReactNode }>) => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <TopBar />
+      <TopBar titleAccessory={topBarTitleAccessory} />
       {scroll ? (
         <ScrollView contentContainerStyle={[styles.content, contentStyle]} showsVerticalScrollIndicator={false}>
           {children}
