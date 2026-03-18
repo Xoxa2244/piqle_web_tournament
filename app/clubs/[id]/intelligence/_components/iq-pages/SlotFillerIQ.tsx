@@ -67,6 +67,37 @@ const emptySlots = [
   },
 ];
 
+/* --- Map real recommendations to SlotFillerIQ format --- */
+function mapRecommendationsToSlots(recommendations: any, dashboardData: any): typeof emptySlots {
+  if (!recommendations?.recommendations?.length || !recommendations?.session) return [];
+  const s = recommendations.session;
+  const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  return [{
+    id: s.id || 'slot-real',
+    court: s.court || 'Court 1',
+    sport: s.format || 'Pickleball',
+    date: s.date || 'Upcoming',
+    time: s.startTime || '',
+    duration: `${s.duration || 60} min`,
+    format: s.format || 'Open Play',
+    spotsNeeded: Math.max(0, (s.capacity || 8) - (s.registered || 0)),
+    spotsTotal: s.capacity || 8,
+    pricePerPlayer: s.pricePerPlayer || 15,
+    matches: recommendations.recommendations.slice(0, 8).map((r: any) => ({
+      id: r.member?.id || r.memberId || `m-${Math.random()}`,
+      name: r.member?.name || 'Unknown',
+      rating: r.member?.duprRating ?? 3.0,
+      matchScore: Math.round((r.score ?? 0.8) * 100),
+      lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
+      preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
+      status: r.score >= 0.9 ? 'available' : 'tentative',
+      avatar: initials(r.member?.name || 'XX'),
+      phone: '',
+      email: r.member?.email || '',
+    })),
+  }];
+}
+
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl p-5 ${className}`} style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}>
@@ -90,13 +121,15 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, sendInvites, clubId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; sendInvites?: any; clubId?: string } = {}) {
   const { isDark } = useTheme();
-  const [selectedSlot, setSelectedSlot] = useState(emptySlots[0].id);
+  const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
+  const displaySlots = realSlots.length > 0 ? realSlots : emptySlots;
+  const [selectedSlot, setSelectedSlot] = useState(displaySlots[0]?.id || emptySlots[0].id);
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const activeSlot = emptySlots.find((s) => s.id === selectedSlot)!;
+  const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0];
 
   const potentialRevenue = activeSlot.spotsNeeded * activeSlot.pricePerPlayer;
 
@@ -139,7 +172,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           <div className="text-right">
             <div className="text-xs" style={{ color: "var(--t3)" }}>Potential Recovery</div>
             <div className="text-emerald-400" style={{ fontSize: "20px", fontWeight: 800 }}>
-              ${emptySlots.reduce((sum, s) => sum + s.spotsNeeded * s.pricePerPlayer, 0)}
+              ${displaySlots.reduce((sum, s) => sum + s.spotsNeeded * s.pricePerPlayer, 0)}
             </div>
           </div>
         </div>
@@ -148,9 +181,9 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Empty Slots", value: emptySlots.length.toString(), icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
-          { label: "Spots to Fill", value: emptySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString(), icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
-          { label: "AI Matches Found", value: emptySlots.reduce((s, sl) => s + sl.matches.length, 0).toString(), icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
+          { label: "Empty Slots", value: displaySlots.length.toString(), icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
+          { label: "Spots to Fill", value: displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString(), icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
+          { label: "AI Matches Found", value: displaySlots.reduce((s, sl) => s + sl.matches.length, 0).toString(), icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
           { label: "Fill Rate (7d)", value: "78%", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "+12% vs last week" },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
@@ -178,7 +211,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         {/* Slot List */}
         <div className="space-y-3">
           <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Empty Slots</h3>
-          {emptySlots.map((slot) => {
+          {displaySlots.map((slot) => {
             const active = slot.id === selectedSlot;
             return (
               <motion.div

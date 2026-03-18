@@ -80,6 +80,109 @@ const courtStats = [
   { name: "Court 4", occupancy: 48, sessions: 28, revenue: 2100, sport: "Tennis" },
 ];
 
+/* --- Map real calendarData to SessionsIQ format --- */
+type RealSession = { id: string; date: string; startTime: string; endTime: string; court: string; format: string; registered: number; capacity: number; occupancy: number; pricePerPlayer: number | null; revenue: number | null; status: 'past' | 'today' | 'upcoming'; recommendations: any[] };
+
+function mapCalendarToSessions(calendarData: any): typeof recentSessions {
+  if (!calendarData?.sessions?.length) return [];
+  const now = new Date();
+  return calendarData.sessions
+    .sort((a: RealSession, b: RealSession) => {
+      const da = new Date(`${a.date}T${a.startTime}`);
+      const db = new Date(`${b.date}T${b.startTime}`);
+      return db.getTime() - da.getTime();
+    })
+    .slice(0, 20)
+    .map((s: RealSession, i: number) => {
+      const dt = new Date(`${s.date}T${s.startTime}`);
+      const diff = Math.round((dt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      let dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      if (diff === 0) dateStr = `Today, ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      else if (diff === 1) dateStr = `Tomorrow, ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      else if (diff === -1) dateStr = `Yesterday, ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      else dateStr += `, ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+
+      const status = s.status === 'past' ? 'completed' : s.status === 'today' ? 'active' : 'upcoming';
+      const durationMin = (() => {
+        try {
+          const [sh, sm] = s.startTime.split(':').map(Number);
+          const [eh, em] = s.endTime.split(':').map(Number);
+          return (eh * 60 + em) - (sh * 60 + sm);
+        } catch { return 60; }
+      })();
+
+      return {
+        id: s.id || `S-${1000 + i}`,
+        court: s.court,
+        format: s.format,
+        date: dateStr,
+        players: s.registered,
+        maxPlayers: s.capacity,
+        duration: `${durationMin} min`,
+        revenue: s.revenue ?? 0,
+        status,
+      };
+    });
+}
+
+function deriveWeeklyData(calendarData: any) {
+  if (!calendarData?.sessions?.length) return weeklyData;
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const buckets: Record<string, { count: number; occSum: number; revSum: number }> = {};
+  days.forEach(d => buckets[d] = { count: 0, occSum: 0, revSum: 0 });
+  calendarData.sessions.forEach((s: RealSession) => {
+    const d = days[new Date(s.date).getDay()];
+    if (buckets[d]) { buckets[d].count++; buckets[d].occSum += s.occupancy; buckets[d].revSum += s.revenue ?? 0; }
+  });
+  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+    day,
+    sessions: buckets[day].count,
+    occupancy: buckets[day].count > 0 ? Math.round(buckets[day].occSum / buckets[day].count) : 0,
+    revenue: Math.round(buckets[day].revSum),
+  }));
+}
+
+function deriveFormatBreakdown(calendarData: any) {
+  if (!calendarData?.sessions?.length) return formatBreakdown;
+  const buckets: Record<string, { sessions: number; revenue: number }> = {};
+  calendarData.sessions.forEach((s: RealSession) => {
+    if (!buckets[s.format]) buckets[s.format] = { sessions: 0, revenue: 0 };
+    buckets[s.format].sessions++;
+    buckets[s.format].revenue += s.revenue ?? 0;
+  });
+  const total = Object.values(buckets).reduce((s, b) => s + b.sessions, 0);
+  return Object.entries(buckets)
+    .sort(([, a], [, b]) => b.sessions - a.sessions)
+    .map(([format, data]) => ({
+      format,
+      sessions: data.sessions,
+      pct: Math.round((data.sessions / total) * 100),
+      revenue: Math.round(data.revenue),
+      trend: "+0%",
+      up: true,
+    }));
+}
+
+function deriveCourtStats(calendarData: any) {
+  if (!calendarData?.sessions?.length) return courtStats;
+  const buckets: Record<string, { sessions: number; occSum: number; revSum: number }> = {};
+  calendarData.sessions.forEach((s: RealSession) => {
+    if (!buckets[s.court]) buckets[s.court] = { sessions: 0, occSum: 0, revSum: 0 };
+    buckets[s.court].sessions++;
+    buckets[s.court].occSum += s.occupancy;
+    buckets[s.court].revSum += s.revenue ?? 0;
+  });
+  return Object.entries(buckets)
+    .sort(([, a], [, b]) => b.sessions - a.sessions)
+    .map(([name, data]) => ({
+      name,
+      occupancy: Math.round(data.occSum / data.sessions),
+      sessions: data.sessions,
+      revenue: Math.round(data.revSum),
+      sport: "Pickleball",
+    }));
+}
+
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
@@ -146,8 +249,15 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
   const activeFilterCount = [filterFormat, filterCourt, filterStatus].filter(Boolean).length;
 
+  // Use real data if available, otherwise mocks
+  const realSessions = useMemo(() => mapCalendarToSessions(calendarData), [calendarData]);
+  const displaySessions = realSessions.length > 0 ? realSessions : recentSessions;
+  const displayWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
+  const displayFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
+  const displayCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
+
   const filteredSessions = useMemo(() => {
-    return recentSessions.filter((s) => {
+    return displaySessions.filter((s) => {
       const matchesSearch =
         s.court.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.format.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -232,7 +342,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Weekly Sessions</h3>
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={weeklyData}>
+                <BarChart data={displayWeekly}>
                   <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
                   <XAxis dataKey="day" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
                   <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
@@ -269,7 +379,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Format Breakdown</h3>
               <div className="space-y-3">
-                {formatBreakdown.map((f) => (
+                {displayFormats.map((f) => (
                   <div key={f.format} className="flex items-center gap-4">
                     <div className="w-28 text-xs truncate" style={{ color: "var(--t2)", fontWeight: 500 }}>{f.format}</div>
                     <div className="flex-1">
@@ -296,7 +406,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Court Performance</h3>
               <div className="space-y-3">
-                {courtStats.map((court) => (
+                {displayCourts.map((court) => (
                   <div
                     key={court.name}
                     className="flex items-center gap-4 p-3 rounded-xl transition-colors"

@@ -321,16 +321,15 @@ function ChannelIcon({ channel }: { channel: string }) {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
-  const totalSent = campaigns.reduce((s, c) => s + c.sent, 0);
-  const totalRevenue = campaigns.reduce((s, c) => s + c.revenue, 0);
-  const avgOpenRate = Math.round(
-    campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.opened / c.sent) * 100, 0) /
-      campaigns.filter((c) => c.sent > 0).length,
-  );
-  const avgConvRate = Math.round(
-    campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.converted / c.sent) * 100, 0) /
-      campaigns.filter((c) => c.sent > 0).length,
-  );
+  // Use real data for KPIs if available, otherwise derive from mocks
+  const totalSent = campaignData?.totalSent ?? campaigns.reduce((s, c) => s + c.sent, 0);
+  const totalRevenue = campaignData?.totalRevenue ?? campaigns.reduce((s, c) => s + c.revenue, 0);
+  const avgOpenRate = campaignData?.totalSent
+    ? Math.round((campaignData.totalOpened / campaignData.totalSent) * 100)
+    : Math.round(campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.opened / c.sent) * 100, 0) / campaigns.filter((c) => c.sent > 0).length);
+  const avgConvRate = campaignData?.totalSent
+    ? Math.round((campaignData.totalConverted / campaignData.totalSent) * 100)
+    : Math.round(campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.converted / c.sent) * 100, 0) / campaigns.filter((c) => c.sent > 0).length);
   return (
     <motion.div
       ref={ref}
