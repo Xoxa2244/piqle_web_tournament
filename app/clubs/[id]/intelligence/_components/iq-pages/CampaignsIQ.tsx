@@ -604,7 +604,177 @@ function ChannelIcon({ channel }: { channel: string }) {
           ))}{' '}
         </div>{' '}
       </Card>{' '}
-      {/* Campaign List */}{' '}
+      {/* Message Variant Performance */}
+      <Card>
+        <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Message Variant Performance</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--divider)" }}>
+                {["Variant", "Source", "Sent", "Open Rate", "Click Rate", "Score"].map((h) => (
+                  <th key={h} className="text-left text-[10px] uppercase tracking-wider pb-3 px-2" style={{ color: "var(--t4)", fontWeight: 600 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { name: "Friendly Check-in v2", source: "LLM", sent: 234, openRate: 68, clickRate: 42, score: 8.5 },
+                { name: "Standard Check-in", source: "Template", sent: 189, openRate: 54, clickRate: 31, score: 6.8 },
+                { name: "Retention Boost - Personalized", source: "LLM", sent: 156, openRate: 72, clickRate: 48, score: 9.1 },
+                { name: "Retention Boost - Standard", source: "Template", sent: 143, openRate: 58, clickRate: 35, score: 7.2 },
+              ].map((v) => (
+                <tr key={v.name} style={{ borderBottom: "1px solid var(--divider)" }}>
+                  <td className="py-3 px-2 text-sm" style={{ color: "var(--t1)", fontWeight: 600 }}>{v.name}</td>
+                  <td className="py-3 px-2">
+                    <span className="px-2 py-0.5 rounded text-[10px]" style={{
+                      background: v.source === "LLM" ? "rgba(6,182,212,0.15)" : "rgba(255,255,255,0.06)",
+                      color: v.source === "LLM" ? "#22D3EE" : "var(--t3)",
+                      fontWeight: 600,
+                    }}>{v.source}</span>
+                  </td>
+                  <td className="py-3 px-2 text-sm" style={{ color: "var(--t2)" }}>{v.sent}</td>
+                  <td className="py-3 px-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                        <div className="h-full rounded-full" style={{ background: "#10B981", width: `${v.openRate}%` }} />
+                      </div>
+                      <span className="text-xs" style={{ color: "var(--t2)" }}>{v.openRate}%</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                        <div className="h-full rounded-full" style={{ background: "#8B5CF6", width: `${v.clickRate}%` }} />
+                      </div>
+                      <span className="text-xs" style={{ color: "var(--t2)" }}>{v.clickRate}%</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-2 text-sm" style={{ color: v.score >= 8.5 ? "#10B981" : "var(--t1)", fontWeight: 700 }}>{v.score}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* LLM vs Template Comparison */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card className="relative">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #06B6D4, #8B5CF6)" }}>
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>LLM-Generated</h3>
+              <p className="text-[11px]" style={{ color: "var(--t4)" }}>Personalized messages</p>
+            </div>
+            <span className="ml-auto px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 700 }}>WINNER</span>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs" style={{ color: "var(--t3)" }}>Open Rate</span>
+                <span className="text-sm" style={{ color: "var(--t1)", fontWeight: 700 }}>70%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                <div className="h-full rounded-full" style={{ background: "linear-gradient(90deg, #06B6D4, #10B981)", width: "70%" }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs" style={{ color: "var(--t3)" }}>Click Rate</span>
+                <span className="text-sm" style={{ color: "var(--t1)", fontWeight: 700 }}>45%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                <div className="h-full rounded-full" style={{ background: "linear-gradient(90deg, #06B6D4, #10B981)", width: "45%" }} />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+              <span className="text-sm" style={{ color: "var(--t3)", fontWeight: 700 }}>T</span>
+            </div>
+            <div>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Template</h3>
+              <p className="text-[11px]" style={{ color: "var(--t4)" }}>Standard messages</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs" style={{ color: "var(--t3)" }}>Open Rate</span>
+                <span className="text-sm" style={{ color: "var(--t1)", fontWeight: 700 }}>56%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                <div className="h-full rounded-full" style={{ background: "var(--t4)", width: "56%" }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs" style={{ color: "var(--t3)" }}>Click Rate</span>
+                <span className="text-sm" style={{ color: "var(--t1)", fontWeight: 700 }}>33%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                <div className="h-full rounded-full" style={{ background: "var(--t4)", width: "33%" }} />
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
+      <Card>
+        <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Recent Activity</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--divider)" }}>
+                {["Date", "Member", "Type", "Channel", "Status"].map((h) => (
+                  <th key={h} className="text-left text-[10px] uppercase tracking-wider pb-3 px-2" style={{ color: "var(--t4)", fontWeight: 600 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { date: "Mar 16, 2:34 PM", member: "Sarah Johnson", type: "CHECK IN", channel: "Email", status: "Opened" },
+                { date: "Mar 16, 1:22 PM", member: "Mike Chen", type: "SLOT FILLER", channel: "SMS", status: "Delivered" },
+                { date: "Mar 16, 11:05 AM", member: "Lisa Park", type: "REACTIVATION", channel: "Email", status: "Clicked" },
+                { date: "Mar 15, 6:45 PM", member: "Tom Rivera", type: "SLOT FILLER", channel: "SMS", status: "Converted" },
+                { date: "Mar 15, 4:12 PM", member: "Anna Garcia", type: "REACTIVATION", channel: "Email", status: "Opened" },
+                { date: "Mar 15, 2:30 PM", member: "James Wilson", type: "CHECK IN", channel: "Email", status: "Delivered" },
+                { date: "Mar 15, 10:15 AM", member: "Rachel Kim", type: "EVENT", channel: "Email", status: "Clicked" },
+                { date: "Mar 14, 5:20 PM", member: "David Brown", type: "REACTIVATION", channel: "SMS", status: "Delivered" },
+              ].map((a, i) => {
+                const statusColors: Record<string, { bg: string; text: string }> = {
+                  Opened: { bg: "rgba(16,185,129,0.1)", text: "#10B981" },
+                  Clicked: { bg: "rgba(139,92,246,0.1)", text: "#A78BFA" },
+                  Converted: { bg: "rgba(6,182,212,0.1)", text: "#22D3EE" },
+                  Delivered: { bg: "rgba(255,255,255,0.04)", text: "var(--t3)" },
+                };
+                const sc = statusColors[a.status] || statusColors.Delivered;
+                return (
+                  <tr key={i} style={{ borderBottom: "1px solid var(--divider)" }}>
+                    <td className="py-3 px-2 text-xs" style={{ color: "var(--t4)" }}>{a.date}</td>
+                    <td className="py-3 px-2 text-sm" style={{ color: "var(--t1)", fontWeight: 600 }}>{a.member}</td>
+                    <td className="py-3 px-2">
+                      <span className="px-2 py-0.5 rounded text-[10px]" style={{ background: "rgba(255,255,255,0.04)", color: "var(--t3)", fontWeight: 600 }}>{a.type}</span>
+                    </td>
+                    <td className="py-3 px-2 text-xs" style={{ color: "var(--t2)" }}>{a.channel}</td>
+                    <td className="py-3 px-2">
+                      <span className="px-2 py-0.5 rounded text-[10px]" style={{ background: sc.bg, color: sc.text, fontWeight: 600 }}>{a.status}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Campaign List */}
       <div>
         {' '}
         <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
