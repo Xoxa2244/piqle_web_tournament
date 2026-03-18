@@ -133,7 +133,7 @@ function StatusBadge({ status }: { status: string }) {
 /* ============================================= */
 export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" | "events" } = {}) {
   const { isDark } = useTheme();
-  const [view, setView] = useState<"list" | "analytics" | "events">(initialTab || "analytics");
+  const [view, setView] = useState<"list" | "analytics">(initialTab === "events" ? "analytics" : (initialTab || "analytics"));
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -175,7 +175,7 @@ export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" |
         </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-            {(["analytics", "list", "events"] as const).map((v) => (
+            {(["analytics", "list"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -186,7 +186,7 @@ export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" |
                   fontWeight: view === v ? 600 : 500,
                 }}
               >
-                {v === "analytics" ? "Analytics" : v === "list" ? "Sessions" : "Events"}
+                {v === "analytics" ? "Analytics" : "All Sessions"}
               </button>
             ))}
           </div>
@@ -326,6 +326,9 @@ export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" |
               </div>
             </Card>
           </div>
+
+          {/* Events Section */}
+          <EventsIQ embedded />
         </>
       ) : (
         /* Session List View */
@@ -632,9 +635,6 @@ export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" |
         </>
       )}
 
-      {view === "events" && (
-        <EventsIQ embedded />
-      )}
     </motion.div>
   );
 }
