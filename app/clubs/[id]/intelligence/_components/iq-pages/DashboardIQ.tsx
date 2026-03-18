@@ -239,11 +239,40 @@ function formatValue(v: number, fmt: "currency" | "number" | "percent") {
 /* ============================================= */
 /*              DASHBOARD PAGE                    */
 /* ============================================= */
-export function DashboardIQ() {
+type DashboardIQProps = {
+  dashboardData?: any; // DashboardV2Data from tRPC
+  healthData?: any; // MemberHealthResult from tRPC
+  isLoading?: boolean;
+  clubId?: string;
+};
+
+function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof periodData["month"] | null {
+  if (!dashboardData) return null;
+  const m = dashboardData.metrics;
+  const hs = healthData?.summary;
+  return {
+    kpis: [
+      { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
+      { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
+      { label: "Revenue", value: m.bookings.value, change: `${m.bookings.trend.direction === 'up' ? '+' : ''}${m.bookings.trend.changePercent}%`, up: m.bookings.trend.direction === 'up', icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: m.bookings.trend.sparkline || [] },
+      { label: "Lost Revenue", value: m.lostRevenue.value, change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`, up: m.lostRevenue.trend.direction === 'down', icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: m.lostRevenue.trend.sparkline || [] },
+    ],
+    health: hs ? [
+      { level: "Healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
+      { level: "Watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
+      { level: "At-Risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
+      { level: "Critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
+    ] : periodData.month.health,
+    healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : periodData.month.healthMetrics,
+    comparison: periodData.month.comparison, // comparison requires previous period — keep mock for now
+  };
+}
+
+export function DashboardIQ({ dashboardData, healthData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
   const { isDark } = useTheme();
   const params = useParams();
   const router = useRouter();
-  const clubId = params.id as string;
+  const clubId = propClubId || (params.id as string);
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -252,7 +281,9 @@ export function DashboardIQ() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const data = periodData[period];
+  // Use real data if available, otherwise fall back to mocks
+  const realData = mapRealDataToPeriod(dashboardData, healthData);
+  const data = realData || periodData[period];
   const labels = getPeriodLabel(period);
 
   return (

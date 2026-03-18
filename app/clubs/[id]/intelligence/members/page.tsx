@@ -142,8 +142,9 @@ export default function MembersPage() {
     }
   }
 
+  const sendOutreach = useSendOutreach()
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <MembersIQ />
+  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} isLoading={isLoading} sendOutreach={sendOutreach} clubId={clubId} />
 
   return (
     <div className="space-y-6">

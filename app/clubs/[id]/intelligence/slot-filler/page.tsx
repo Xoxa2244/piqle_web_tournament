@@ -191,7 +191,7 @@ export default function SlotFillerPage() {
   }
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SlotFillerIQ />
+  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={loadingDashboard || loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} />
 
   // ── Session selector state ──
   if (!selectedSessionId) {

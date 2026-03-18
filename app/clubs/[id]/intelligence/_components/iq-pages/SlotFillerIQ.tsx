@@ -88,7 +88,7 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 /*            SLOT FILLER PAGE                    */
 /* ============================================= */
-export function SlotFillerIQ() {
+export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, sendInvites, clubId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; sendInvites?: any; clubId?: string } = {}) {
   const { isDark } = useTheme();
   const [selectedSlot, setSelectedSlot] = useState(emptySlots[0].id);
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"

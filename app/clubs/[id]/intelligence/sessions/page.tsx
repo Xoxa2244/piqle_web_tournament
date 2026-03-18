@@ -475,7 +475,7 @@ export default function SessionsCalendarPage() {
   const monthStart = getMonthStart(navDate)
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SessionsIQ />
+  if (brand.key === 'iqsport') return <SessionsIQ calendarData={calendarData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading) return <DashboardSkeleton />
 

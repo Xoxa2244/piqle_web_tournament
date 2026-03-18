@@ -186,7 +186,44 @@ function HealthBar({ score }: { score: number }) {
 /* ============================================= */
 /*           REACTIVATION PAGE                    */
 /* ============================================= */
-export function ReactivationIQ() {
+type ReactivationIQProps = {
+  reactivationData?: any;
+  isLoading?: boolean;
+  sendReactivation?: any;
+  clubId?: string;
+};
+
+function mapRealCandidates(data: any): AtRiskMember[] {
+  if (!data?.candidates) return [];
+  return data.candidates.map((c: any) => ({
+    id: c.member?.id || c.memberId || String(Math.random()),
+    name: c.member?.name || c.member?.email || "Unknown",
+    avatar: (c.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
+    rating: c.member?.duprRatingDoubles || 0,
+    risk: c.score < 20 ? "high" as const : c.score < 50 ? "medium" as const : "low" as const,
+    healthScore: c.score || 0,
+    daysSincePlay: c.daysSinceLastActivity || 0,
+    totalSessions: c.totalHistoricalBookings || 0,
+    memberSince: "N/A",
+    revenue: 0,
+    churnReason: c.reasoning?.summary || "Declining engagement",
+    suggestedAction: c.suggestedSessions?.[0]?.title ? `Invite to ${c.suggestedSessions[0].title}` : "Send personalized win-back message",
+    email: c.member?.email || "",
+    phone: "",
+    contacted: !!c.lastContactedAt,
+    responded: c.lastContactStatus === "responded",
+    healthFactors: c.reasoning?.components
+      ? Object.entries(c.reasoning.components).map(([key, comp]: [string, any]) => ({
+          name: key.charAt(0).toUpperCase() + key.slice(1),
+          score: comp.score || 0,
+          weight: 20,
+          label: `Score: ${comp.score || 0}`,
+        }))
+      : [],
+  }));
+}
+
+export function ReactivationIQ({ reactivationData, isLoading: externalLoading, sendReactivation, clubId }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -195,7 +232,10 @@ export function ReactivationIQ() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const filtered = atRiskMembers.filter((m) => {
+  const realCandidates = mapRealCandidates(reactivationData);
+  const allMembers = realCandidates.length > 0 ? realCandidates : atRiskMembers;
+
+  const filtered = allMembers.filter((m) => {
     if (riskFilter !== "all" && m.risk !== riskFilter) return false;
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;

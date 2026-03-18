@@ -131,7 +131,7 @@ function StatusBadge({ status }: { status: string }) {
 /* ============================================= */
 /*              SESSIONS PAGE                     */
 /* ============================================= */
-export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" | "events" } = {}) {
+export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoading, clubId }: { initialTab?: "analytics" | "list" | "events"; calendarData?: any; isLoading?: boolean; clubId?: string } = {}) {
   const { isDark } = useTheme();
   const [view, setView] = useState<"list" | "analytics">(initialTab === "events" ? "analytics" : (initialTab || "analytics"));
   const [searchQuery, setSearchQuery] = useState("");

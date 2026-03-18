@@ -98,7 +98,7 @@ export default function IntelligenceDashboardPage() {
   const brand = useBrand()
   if (brand.key === 'iqsport') {
     if (!isDemo && !hasOnboarded) return <OnboardingChatIQ clubId={clubId} onComplete={() => window.location.reload()} />
-    return <DashboardIQ />
+    return <DashboardIQ dashboardData={data} healthData={healthData} isLoading={isLoading} clubId={clubId} />
   }
 
   if (isLoading) return <DashboardSkeleton />

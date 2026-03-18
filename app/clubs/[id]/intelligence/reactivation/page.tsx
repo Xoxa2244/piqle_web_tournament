@@ -130,7 +130,7 @@ export default function ReactivationPage() {
       : 0
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <ReactivationIQ />
+  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} isLoading={isLoading} sendReactivation={sendReactivation} clubId={clubId} />
 
   return (
     <div className="space-y-6">

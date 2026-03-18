@@ -143,7 +143,53 @@ function getPeriodLabel(p: Period): string {
   return "Custom Range";
 }
 
-export function MembersIQ() {
+type MembersIQProps = {
+  memberHealthData?: any; // from useMemberHealth
+  isLoading?: boolean;
+  sendOutreach?: any;
+  clubId?: string;
+};
+
+function riskToSegment(risk: string): Exclude<Segment, "all"> {
+  if (risk === "healthy") return "power";
+  if (risk === "watch") return "regular";
+  if (risk === "at_risk") return "at-risk";
+  if (risk === "critical") return "critical";
+  return "casual";
+}
+
+function lifecycleToSegment(stage: string): Exclude<Segment, "all"> {
+  if (stage === "active") return "power";
+  if (stage === "ramping" || stage === "onboarding") return "regular";
+  if (stage === "at_risk") return "at-risk";
+  if (stage === "critical" || stage === "churned") return "critical";
+  return "casual";
+}
+
+function mapRealMembers(data: any): Member[] {
+  if (!data?.members) return [];
+  return data.members.map((m: any) => ({
+    id: m.memberId,
+    name: m.member?.name || m.member?.email || "Unknown",
+    avatar: (m.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
+    email: m.member?.email || "",
+    phone: "",
+    rating: m.member?.duprRatingDoubles || 0,
+    sport: "Pickleball",
+    segment: riskToSegment(m.riskLevel),
+    healthScore: m.healthScore,
+    sessionsThisMonth: m.totalBookings || 0,
+    totalSessions: m.totalBookings || 0,
+    memberSince: m.joinedDaysAgo ? `${Math.round(m.joinedDaysAgo / 30)}mo ago` : "N/A",
+    lastPlayed: m.daysSinceLastBooking != null ? (m.daysSinceLastBooking === 0 ? "Today" : m.daysSinceLastBooking === 1 ? "Yesterday" : `${m.daysSinceLastBooking} days ago`) : "N/A",
+    revenue: 0, // not available in health data
+    trend: m.trend === "improving" ? "up" as const : m.trend === "declining" ? "down" as const : "stable" as const,
+    favoriteTime: "",
+    favoriteFormat: "",
+  }));
+}
+
+export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOutreach, clubId }: MembersIQProps = {}) {
   const { isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<Segment>("all");
@@ -156,7 +202,11 @@ export function MembersIQ() {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const filtered = members
+  // Use real data if available, otherwise fall back to mocks
+  const realMembers = mapRealMembers(memberHealthData);
+  const allMembers = realMembers.length > 0 ? realMembers : members;
+
+  const filtered = allMembers
     .filter((m) => {
       if (segmentFilter !== "all" && m.segment !== segmentFilter) return false;
       if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -170,7 +220,7 @@ export function MembersIQ() {
       return 0;
     });
 
-  const activeMember = members.find((m) => m.id === selectedMember);
+  const activeMember = allMembers.find((m) => m.id === selectedMember);
 
   return (
     <motion.div
@@ -497,7 +547,7 @@ export function MembersIQ() {
 
       {/* Summary */}
       <div className="text-center text-xs py-4" style={{ color: "var(--t4)" }}>
-        Showing {filtered.length} of {members.length} members
+        Showing {filtered.length} of {allMembers.length} members
       </div>
     </motion.div>
   );
