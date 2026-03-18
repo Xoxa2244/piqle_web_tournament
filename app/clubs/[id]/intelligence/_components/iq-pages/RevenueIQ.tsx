@@ -316,14 +316,14 @@ export function RevenueIQ({ revenueData, dashboardData, isLoading: externalLoadi
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={displayRevenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                  {displayRevenueByFormat.map((e) => <Cell key={e.name} fill={e.color} />)}
+                  {displayRevenueByFormat.map((e: any) => <Cell key={e.name} fill={e.color} />)}
                 </Pie>
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <div className="space-y-2.5 mt-2">
-            {displayRevenueByFormat.map((s) => (
+            {displayRevenueByFormat.map((s: any) => (
               <div key={s.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />

@@ -533,10 +533,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 <div key={t} className="flex-1 text-center text-[9px]" style={{ color: "var(--t4)" }}>{t}</div>
               ))}
             </div>
-            {displayHeatmap.map((row) => (
+            {displayHeatmap.map((row: any) => (
               <div key={row.day} className="flex items-center gap-1.5">
                 <div className="w-8 text-right text-[10px] shrink-0" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.day}</div>
-                {row.slots.map((val, i) => (
+                {row.slots.map((val: any, i: number) => (
                   <motion.div
                     key={i}
                     className="flex-1 rounded-md flex items-center justify-center text-[9px] cursor-pointer"
@@ -626,7 +626,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </motion.button>
           </div>
           <div className="space-y-2.5">
-            {displayUploads.map((u, i) => (
+            {displayUploads.map((u: any, i: number) => (
               <motion.div
                 key={u.id}
                 initial={{ opacity: 0, x: -10 }}

@@ -188,6 +188,8 @@ function HealthBar({ score }: { score: number }) {
 /* ============================================= */
 type ReactivationIQProps = {
   reactivationData?: any;
+  churnTrendData?: any;
+  campaignListData?: any;
   isLoading?: boolean;
   sendReactivation?: any;
   clubId?: string;
@@ -223,7 +225,7 @@ function mapRealCandidates(data: any): AtRiskMember[] {
   }));
 }
 
-export function ReactivationIQ({ reactivationData, isLoading: externalLoading, sendReactivation, clubId }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, sendReactivation, clubId }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
