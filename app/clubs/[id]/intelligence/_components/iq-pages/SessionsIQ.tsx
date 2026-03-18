@@ -11,6 +11,7 @@ import {
   ResponsiveContainer, LineChart, Line, AreaChart, Area,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
+import { EventsIQ } from "./EventsIQ";
 
 /* --- Mock Data --- */
 const weeklyData = [
@@ -130,9 +131,9 @@ function StatusBadge({ status }: { status: string }) {
 /* ============================================= */
 /*              SESSIONS PAGE                     */
 /* ============================================= */
-export function SessionsIQ() {
+export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" | "events" } = {}) {
   const { isDark } = useTheme();
-  const [view, setView] = useState<"list" | "analytics">("analytics");
+  const [view, setView] = useState<"list" | "analytics" | "events">(initialTab || "analytics");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -169,12 +170,12 @@ export function SessionsIQ() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Sessions</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Track and analyze all court sessions</p>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Sessions & Events</h1>
+          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Manage recurring sessions and special events</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-            {(["analytics", "list"] as const).map((v) => (
+            {(["analytics", "list", "events"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -185,7 +186,7 @@ export function SessionsIQ() {
                   fontWeight: view === v ? 600 : 500,
                 }}
               >
-                {v === "analytics" ? "Analytics" : "All Sessions"}
+                {v === "analytics" ? "Analytics" : v === "list" ? "Sessions" : "Events"}
               </button>
             ))}
           </div>
@@ -629,6 +630,10 @@ export function SessionsIQ() {
             </div>
           </Card>
         </>
+      )}
+
+      {view === "events" && (
+        <EventsIQ embedded />
       )}
     </motion.div>
   );

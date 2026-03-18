@@ -20,13 +20,12 @@ import './iqsport-theme.css'
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
-  { label: 'Sessions', href: '/sessions', icon: Calendar },
+  { label: 'Sessions & Events', href: '/sessions', icon: Calendar },
   { label: 'AI Advisor', href: '/advisor', icon: MessageSquare },
   { label: 'Slot Filler', href: '/slot-filler', icon: TrendingUp },
   { label: 'Reactivation', href: '/reactivation', icon: UserMinus },
   { label: 'Revenue', href: '/revenue', icon: DollarSign },
   { label: 'Members', href: '/members', icon: Users },
-  { label: 'Events', href: '/events', icon: CalendarPlus },
   { label: 'Campaigns', href: '/campaigns', icon: Send },
 ]
 

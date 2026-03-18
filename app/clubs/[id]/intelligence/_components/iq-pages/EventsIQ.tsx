@@ -358,7 +358,9 @@ function TypeIcon({ type }: { type: string }) {
     </div>
   );
 }
-/* ============================================= */ /*              EVENTS PAGE                       */ /* ============================================= */ export function EventsIQ() {
+/* ============================================= */ /*              EVENTS PAGE                       */ /* ============================================= */
+
+export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
   const { isDark } = useTheme();
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -379,21 +381,18 @@ function TypeIcon({ type }: { type: string }) {
       initial={{ opacity: 0, y: 20 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.5 }}
-      className="space-y-6 max-w-[1400px] mx-auto"
+      className={embedded ? "space-y-6" : "space-y-6 max-w-[1400px] mx-auto"}
     >
-      {' '}
-      {/* Header */}{' '}
+      {!embedded && (
       <div className="flex items-center justify-between flex-wrap gap-4">
-        {' '}
         <div>
-          {' '}
           <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--heading)' }}>
             Event Intelligence
-          </h1>{' '}
+          </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
             Plan, promote, and analyze events with AI-powered predictions
-          </p>{' '}
-        </div>{' '}
+          </p>
+        </div>
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -404,10 +403,10 @@ function TypeIcon({ type }: { type: string }) {
             boxShadow: '0 4px 15px rgba(139,92,246,0.3)',
           }}
         >
-          {' '}
-          <Plus className="w-4 h-4" /> Create Event{' '}
-        </motion.button>{' '}
-      </div>{' '}
+          <Plus className="w-4 h-4" /> Create Event
+        </motion.button>
+      </div>
+      )}{' '}
       {/* KPI Row */}{' '}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {' '}
