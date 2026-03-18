@@ -575,7 +575,7 @@ export function SessionsIQ({ initialTab }: { initialTab?: "analytics" | "list" |
                                               style={{ background: "var(--subtle)" }}
                                             >
                                               <div className="flex items-center gap-2.5">
-                                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px]" style={{ background: "var(--pill-active)", color: isDark ? "#C4B5FD" : "#7C3AED", fontWeight: 700 }}>
+                                                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[11px]" style={{ background: "linear-gradient(135deg, #8B5CF622, #8B5CF644)", color: "#8B5CF6", fontWeight: 700 }}>
                                                   {name.split(" ").map((n) => n[0]).join("")}
                                                 </div>
                                                 <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 500 }}>{name}</span>

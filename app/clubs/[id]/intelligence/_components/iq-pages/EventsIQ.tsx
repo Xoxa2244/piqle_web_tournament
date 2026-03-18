@@ -102,7 +102,7 @@ const events: ClubEvent[] = [
   {
     id: 'e2',
     name: 'Friday Night Social Mixer',
-    type: 'Mixer',
+    type: 'Open Play',
     status: 'upcoming',
     date: 'Mar 21, 2026',
     time: '6:30 PM',
@@ -180,7 +180,7 @@ const events: ClubEvent[] = [
   {
     id: 'e6',
     name: "Valentine's Doubles Mixer",
-    type: 'Mixer',
+    type: 'Open Play',
     status: 'completed',
     date: 'Feb 14, 2026',
     time: '7:00 PM',
@@ -342,7 +342,7 @@ function CapacityBar({
 function TypeIcon({ type }: { type: string }) {
   const map: Record<string, { icon: any; gradient: string }> = {
     Tournament: { icon: Trophy, gradient: 'from-violet-500 to-purple-600' },
-    Mixer: { icon: Music, gradient: 'from-cyan-500 to-teal-500' },
+    'Open Play': { icon: Music, gradient: 'from-cyan-500 to-teal-500' },
     Clinic: { icon: Target, gradient: 'from-emerald-500 to-green-500' },
     League: { icon: Star, gradient: 'from-amber-500 to-yellow-500' },
     Special: { icon: PartyPopper, gradient: 'from-pink-500 to-rose-500' },
