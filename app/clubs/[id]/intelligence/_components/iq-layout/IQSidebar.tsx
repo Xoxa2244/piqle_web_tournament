@@ -237,6 +237,20 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
           </button>
 
           <button
+            onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)}
+            className="w-full flex items-center gap-3 rounded-xl transition-all"
+            style={{
+              padding: expanded ? "10px 12px" : "10px 0",
+              justifyContent: expanded ? "flex-start" : "center",
+              color: pathname.endsWith("/settings") ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+              background: pathname.endsWith("/settings") ? "var(--pill-active)" : "transparent",
+            }}
+          >
+            <Settings className="w-5 h-5 shrink-0" />
+            {expanded && <span className="text-sm" style={{ fontWeight: 500 }}>Settings</span>}
+          </button>
+
+          <button
             onClick={() => setCollapsed((p) => !p)}
             className="w-full flex items-center gap-3 rounded-xl transition-all"
             style={{
@@ -277,7 +291,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
               <Bell className="w-5 h-5" />
               <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
             </button>
-            <button className="p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
+            <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
               <Settings className="w-5 h-5" />
             </button>
             <div
