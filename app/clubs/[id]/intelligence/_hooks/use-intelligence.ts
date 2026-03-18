@@ -375,3 +375,75 @@ export function useGenerateWeeklySummary() {
   }
   return mutation
 }
+
+// ══════ NEW HOOKS (Tier 1 endpoints) ══════
+
+export function useRevenueAnalytics(clubId: string, days = 30) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getRevenueAnalytics.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useCampaignList(clubId: string, days = 90) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getCampaignList.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useOccupancyHeatmap(clubId: string, days = 90) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getOccupancyHeatmap.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useMemberGrowth(clubId: string, months = 6) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getMemberGrowth.useQuery(
+    { clubId, months },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useChurnTrend(clubId: string, months = 6) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getChurnTrend.useQuery(
+    { clubId, months },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useEventsList(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getEventsList.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useUploadHistory(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getUploadHistory.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}

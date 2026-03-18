@@ -594,17 +594,17 @@ export const intelligenceRouter = createTRPCRouter({
         }
 
         // If sessions have registeredCount (CSV import), use that for bookings metric
-        const hasRegisteredCount = completedSessions30d.some((s: any) => s.registeredCount != null)
+        const hasRegisteredCount = completedSessions30d.some((s: any) => (s.registeredCount ?? 0) != null)
         const effectiveBookings30d = hasRegisteredCount
-          ? completedSessions30d.reduce((sum: number, s: any) => sum + (s.registeredCount ?? 0), 0)
+          ? completedSessions30d.reduce((sum: number, s: any) => sum + ((s.registeredCount ?? 0) ?? 0), 0)
           : bookings30d
         const effectiveBookingsPrev30d = hasRegisteredCount
-          ? completedSessionsPrev30d.reduce((sum: number, s: any) => sum + (s.registeredCount ?? 0), 0)
+          ? completedSessionsPrev30d.reduce((sum: number, s: any) => sum + ((s.registeredCount ?? 0) ?? 0), 0)
           : bookingsPrev30d
 
         // ── Helper: prefer registeredCount from CSV over booking count ──
         const getRegistered = (s: { registeredCount?: number | null; _count: { bookings: number } }) =>
-          s.registeredCount ?? s._count.bookings
+          (s.registeredCount ?? 0) ?? s._count.bookings
 
         // ── Compute occupancy metrics ──
         const calcAvgOcc = (sessions: Array<{ maxPlayers: number; registeredCount?: number | null; _count: { bookings: number } }>) => {
@@ -1912,5 +1912,344 @@ export const intelligenceRouter = createTRPCRouter({
         bookingsMatched: rematchResult.matched,
         totalProcessed: input.members.length,
       }
+    }),
+
+  // ══════════════════════════════════════════════════
+  // ══════ NEW ANALYTICS ENDPOINTS (Tier 1) ═════════
+  // ══════════════════════════════════════════════════
+
+  // 1.1 Revenue Analytics
+  getRevenueAnalytics: protectedProcedure
+    .input(z.object({ clubId: z.string(), days: z.number().optional().default(30) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const now = new Date()
+      const startDate = new Date(now)
+      startDate.setDate(startDate.getDate() - input.days)
+      const prevStart = new Date(startDate)
+      prevStart.setDate(prevStart.getDate() - input.days)
+
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: { clubId: input.clubId, date: { gte: startDate } },
+        include: { bookings: true },
+      })
+      const prevSessions = await ctx.prisma.playSession.findMany({
+        where: { clubId: input.clubId, date: { gte: prevStart, lt: startDate } },
+        include: { bookings: true },
+      })
+
+      // Revenue by format
+      const formatBuckets: Record<string, { revenue: number; sessions: number }> = {}
+      sessions.forEach(s => {
+        const rev = (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0)
+        if (!formatBuckets[s.format]) formatBuckets[s.format] = { revenue: 0, sessions: 0 }
+        formatBuckets[s.format].revenue += rev
+        formatBuckets[s.format].sessions++
+      })
+      const totalRevenue = Object.values(formatBuckets).reduce((s, b) => s + b.revenue, 0)
+      const revenueByFormat = Object.entries(formatBuckets)
+        .sort(([, a], [, b]) => b.revenue - a.revenue)
+        .map(([format, data]) => ({
+          format,
+          revenue: Math.round(data.revenue),
+          sessions: data.sessions,
+          pct: totalRevenue > 0 ? Math.round((data.revenue / totalRevenue) * 100) : 0,
+        }))
+
+      // Daily revenue (last N days)
+      const dailyRevenue: Array<{ date: string; revenue: number }> = []
+      for (let d = 0; d < input.days; d++) {
+        const dt = new Date(startDate)
+        dt.setDate(dt.getDate() + d)
+        const dateStr = dt.toISOString().slice(0, 10)
+        const dayRev = sessions
+          .filter(s => s.date.toISOString().slice(0, 10) === dateStr)
+          .reduce((sum, s) => sum + (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0), 0)
+        dailyRevenue.push({ date: dateStr, revenue: Math.round(dayRev) })
+      }
+
+      // Lost revenue
+      const lostFromEmpty = sessions.reduce((sum, s) => {
+        const empty = Math.max(0, s.maxPlayers - (s.registeredCount ?? 0))
+        return sum + empty * (s.pricePerSlot ?? 0)
+      }, 0)
+      const cancelledBookings = sessions.reduce((sum, s) => {
+        const cancelled = s.bookings.filter((b: any) => b.status === 'CANCELLED').length
+        return sum + cancelled * (s.pricePerSlot ?? 0)
+      }, 0)
+      const noShows = sessions.reduce((sum, s) => {
+        const ns = s.bookings.filter((b: any) => b.status === 'NO_SHOW').length
+        return sum + ns * (s.pricePerSlot ?? 0)
+      }, 0)
+
+      // Period comparison
+      const prevRevenue = prevSessions.reduce((sum, s) => sum + (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0), 0)
+      const prevActiveMembers = new Set(prevSessions.flatMap(s => s.bookings.filter((b: any) => b.status === 'CONFIRMED').map((b: any) => b.userId))).size
+      const activeMembers = new Set(sessions.flatMap(s => s.bookings.filter((b: any) => b.status === 'CONFIRMED').map((b: any) => b.userId))).size
+
+      return {
+        totalRevenue: Math.round(totalRevenue),
+        prevTotalRevenue: Math.round(prevRevenue),
+        revenueByFormat,
+        dailyRevenue,
+        lostRevenue: {
+          emptySlots: Math.round(lostFromEmpty),
+          cancelled: Math.round(cancelledBookings),
+          noShows: Math.round(noShows),
+          total: Math.round(lostFromEmpty + cancelledBookings + noShows),
+        },
+        activeMembers,
+        prevActiveMembers,
+        totalSessions: sessions.length,
+        prevTotalSessions: prevSessions.length,
+        avgOccupancy: sessions.length > 0
+          ? Math.round(sessions.reduce((s, sess) => s + ((sess.registeredCount ?? 0) / Math.max(1, sess.maxPlayers)) * 100, 0) / sessions.length)
+          : 0,
+      }
+    }),
+
+  // 1.2 Campaign List (from AIRecommendationLog)
+  getCampaignList: protectedProcedure
+    .input(z.object({ clubId: z.string(), days: z.number().optional().default(90) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date()
+      since.setDate(since.getDate() - input.days)
+
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId, createdAt: { gte: since }, sequenceStep: 0 },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      // Group by type + date (day granularity) to form "campaigns"
+      const campaignMap = new Map<string, any[]>()
+      logs.forEach((log: any) => {
+        const dateKey = log.createdAt.toISOString().slice(0, 10)
+        const key = `${log.type}-${dateKey}`
+        if (!campaignMap.has(key)) campaignMap.set(key, [])
+        campaignMap.get(key)!.push(log)
+      })
+
+      const campaigns = Array.from(campaignMap.entries()).map(([key, entries]) => {
+        const [type, date] = key.split('-', 2)
+        const sent = entries.length
+        const opened = entries.filter((e: any) => e.openedAt).length
+        const clicked = entries.filter((e: any) => e.clickedAt).length
+        const converted = entries.filter((e: any) => e.respondedAt).length
+        const channels = Array.from(new Set(entries.map((e: any) => e.channel)))
+        return {
+          id: key,
+          type,
+          date,
+          name: `${type === 'CHECK_IN' ? 'Friendly Check-in' : type === 'RETENTION_BOOST' ? 'Retention Boost' : type} — ${date}`,
+          sent,
+          opened,
+          clicked,
+          converted,
+          openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
+          clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
+          convRate: sent > 0 ? Math.round((converted / sent) * 100) : 0,
+          channels,
+          status: 'completed' as const,
+        }
+      })
+
+      return { campaigns, totalCampaigns: campaigns.length }
+    }),
+
+  // 1.3 Occupancy Heatmap
+  getOccupancyHeatmap: protectedProcedure
+    .input(z.object({ clubId: z.string(), days: z.number().optional().default(90) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date()
+      since.setDate(since.getDate() - input.days)
+
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: { clubId: input.clubId, date: { gte: since } },
+        select: { date: true, startTime: true, registeredCount: true, maxPlayers: true },
+      })
+
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const timeSlots = ['6AM', '8AM', '10AM', '12PM', '2PM', '4PM', '6PM', '8PM']
+
+      // Build heatmap: day × timeSlot → avg occupancy
+      const buckets: Record<string, { sum: number; count: number }> = {}
+      days.forEach(d => timeSlots.forEach(t => { buckets[`${d}-${t}`] = { sum: 0, count: 0 } }))
+
+      sessions.forEach((s: any) => {
+        const dayIdx = s.date.getDay() // 0=Sun, 1=Mon...
+        const dayName = days[(dayIdx + 6) % 7] // shift so Mon=0
+        const hour = parseInt(s.startTime?.split(':')[0] || '0')
+        const slotIdx = Math.max(0, Math.min(timeSlots.length - 1, Math.floor((hour - 6) / 2)))
+        const slot = timeSlots[slotIdx]
+        const key = `${dayName}-${slot}`
+        if (buckets[key]) {
+          const occ = s.maxPlayers > 0 ? ((s.registeredCount ?? 0) / s.maxPlayers) * 100 : 0
+          buckets[key].sum += occ
+          buckets[key].count++
+        }
+      })
+
+      const heatmap = days.map(day => ({
+        day,
+        slots: timeSlots.map(time => ({
+          time,
+          value: buckets[`${day}-${time}`]?.count > 0
+            ? Math.round(buckets[`${day}-${time}`].sum / buckets[`${day}-${time}`].count)
+            : 0,
+        })),
+      }))
+
+      return { heatmap, timeSlots, days }
+    }),
+
+  // 1.4 Member Growth
+  getMemberGrowth: protectedProcedure
+    .input(z.object({ clubId: z.string(), months: z.number().optional().default(6) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Get snapshots grouped by month
+      const since = new Date()
+      since.setMonth(since.getMonth() - input.months)
+
+      const snapshots = await ctx.prisma.memberHealthSnapshot.findMany({
+        where: { clubId: input.clubId, date: { gte: since } },
+        select: { date: true, userId: true, riskLevel: true, lifecycleStage: true },
+        orderBy: { date: 'asc' },
+      })
+
+      // Group by month
+      const monthBuckets = new Map<string, { total: Set<string>; new: Set<string>; churned: Set<string> }>()
+      snapshots.forEach((s: any) => {
+        const month = s.date.toISOString().slice(0, 7) // YYYY-MM
+        if (!monthBuckets.has(month)) monthBuckets.set(month, { total: new Set(), new: new Set(), churned: new Set() })
+        const b = monthBuckets.get(month)!
+        b.total.add(s.userId)
+        if (s.lifecycleStage === 'onboarding') b.new.add(s.userId)
+        if (s.riskLevel === 'critical' || s.lifecycleStage === 'churned') b.churned.add(s.userId)
+      })
+
+      const growth = Array.from(monthBuckets.entries()).map(([month, data]) => ({
+        month,
+        total: data.total.size,
+        new: data.new.size,
+        churned: data.churned.size,
+      }))
+
+      return { growth }
+    }),
+
+  // 1.5 Churn Trend
+  getChurnTrend: protectedProcedure
+    .input(z.object({ clubId: z.string(), months: z.number().optional().default(6) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date()
+      since.setMonth(since.getMonth() - input.months)
+
+      const snapshots = await ctx.prisma.memberHealthSnapshot.findMany({
+        where: { clubId: input.clubId, date: { gte: since } },
+        select: { date: true, userId: true, riskLevel: true },
+        orderBy: { date: 'asc' },
+      })
+
+      const monthBuckets = new Map<string, { atRisk: Set<string>; churned: Set<string>; reactivated: Set<string> }>()
+      snapshots.forEach((s: any) => {
+        const month = s.date.toISOString().slice(0, 7)
+        if (!monthBuckets.has(month)) monthBuckets.set(month, { atRisk: new Set(), churned: new Set(), reactivated: new Set() })
+        const b = monthBuckets.get(month)!
+        if (s.riskLevel === 'at_risk') b.atRisk.add(s.userId)
+        if (s.riskLevel === 'critical') b.churned.add(s.userId)
+        if (s.riskLevel === 'healthy') b.reactivated.add(s.userId) // simplified: healthy after being tracked
+      })
+
+      const trend = Array.from(monthBuckets.entries()).map(([month, data]) => ({
+        month,
+        atRisk: data.atRisk.size,
+        churned: data.churned.size,
+        reactivated: data.reactivated.size,
+      }))
+
+      return { trend }
+    }),
+
+  // 1.6 Events List
+  getEventsList: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Events = sessions with specific formats (SOCIAL, LEAGUE_PLAY) or one-off sessions
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: {
+          clubId: input.clubId,
+          format: { in: ['SOCIAL', 'LEAGUE_PLAY'] },
+        },
+        include: { bookings: true },
+        orderBy: { date: 'desc' },
+        take: 50,
+      })
+
+      const events = sessions.map((s: any) => ({
+        id: s.id,
+        name: s.title || `${s.format} — ${s.date.toISOString().slice(0, 10)}`,
+        type: s.format,
+        date: s.date.toISOString().slice(0, 10),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        court: s.courtId || 'TBD',
+        registered: (s.registeredCount ?? 0),
+        capacity: s.maxPlayers,
+        revenue: (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0),
+        status: s.status,
+      }))
+
+      // Revenue by month
+      const monthRevenue = new Map<string, { revenue: number; events: number }>()
+      sessions.forEach((s: any) => {
+        const month = s.date.toISOString().slice(0, 7)
+        if (!monthRevenue.has(month)) monthRevenue.set(month, { revenue: 0, events: 0 })
+        const b = monthRevenue.get(month)!
+        b.revenue += (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0)
+        b.events++
+      })
+      const eventRevenue = Array.from(monthRevenue.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, data]) => ({ month, revenue: Math.round(data.revenue), events: data.events }))
+
+      return { events, eventRevenue, totalEvents: events.length }
+    }),
+
+  // 1.7 Upload History
+  getUploadHistory: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const embeddings = await ctx.prisma.documentEmbedding.findMany({
+        where: { clubId: input.clubId },
+        select: { id: true, contentType: true, createdAt: true, sourceId: true, sourceTable: true },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      // Group by sourceId to form "uploads"
+      const uploadMap = new Map<string, any[]>()
+      embeddings.forEach((e: any) => {
+        const key = e.sourceId || e.id
+        if (!uploadMap.has(key)) uploadMap.set(key, [])
+        uploadMap.get(key)!.push(e)
+      })
+
+      const uploads = Array.from(uploadMap.entries()).map(([sourceId, entries]) => ({
+        id: sourceId,
+        date: entries[0].createdAt.toISOString(),
+        records: entries.length,
+        contentType: entries[0].contentType,
+        source: entries[0].sourceTable || 'CSV Import',
+      }))
+
+      return { uploads, totalUploads: uploads.length }
     }),
 })
