@@ -1,7 +1,4 @@
 import { NextRequest } from 'next/server'
-import OpenAI from 'openai'
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 // Target schema
 interface ParsedSession {
@@ -83,14 +80,27 @@ For skill mapping: "beginner"/"intro"/"1.0-2.5" → BEGINNER, "intermediate"/"in
 
 IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: mappingPrompt }],
-      temperature: 0,
-      max_tokens: 1000,
+    const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: mappingPrompt }],
+        temperature: 0,
+        max_tokens: 1000,
+      }),
     })
 
-    const mappingText = completion.choices[0]?.message?.content?.trim() || ''
+    if (!llmResponse.ok) {
+      const err = await llmResponse.text()
+      return Response.json({ error: 'LLM API failed', details: err }, { status: 500 })
+    }
+
+    const llmResult = await llmResponse.json()
+    const mappingText = llmResult.choices?.[0]?.message?.content?.trim() || ''
     let mapping: any
     try {
       // Strip markdown code fences if present
