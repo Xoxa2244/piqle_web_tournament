@@ -8,62 +8,64 @@ datasource db {
 }
 
 model User {
-  id                       String                    @id @default(uuid())
-  email                    String                    @unique
-  name                     String?
-  image                    String?
-  emailVerified            DateTime?
-  passwordHash             String?                   @map("password_hash")
-  role                     UserRole                  @default(TD)
-  organizerTier            OrganizerTier             @default(PRO) @map("organizer_tier")
-  isActive                 Boolean                   @default(true)
-  gender                   Gender?
-  city                     String?
-  duprLink                 String?
-  duprId                   String?                   @map("dupr_id")
-  duprNumericId            BigInt?                   @map("dupr_numeric_id")
-  duprAccessToken          String?                   @map("dupr_access_token")
-  duprRefreshToken         String?                   @map("dupr_refresh_token")
-  duprRatingSingles        Decimal?                  @map("dupr_rating_singles") @db.Decimal(4, 2)
-  duprRatingDoubles        Decimal?                  @map("dupr_rating_doubles") @db.Decimal(4, 2)
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  accounts                 Account[]
-  assistantAssignments     AssistantAssignment[]
-  auditLogs                AuditLog[]
-  clubFollows              ClubFollower[]
-  clubAdminRoles           ClubAdmin[]
-  clubAnnouncementsCreated ClubAnnouncement[]         @relation("ClubAnnouncementCreatedBy")
-  clubBookingRequestsCreated ClubBookingRequest[]     @relation("ClubBookingRequestRequestedBy")
-  clubChatMessages         ClubChatMessage[]
-  clubChatReadStates       ClubChatReadState[]
-  tournamentChatMessages   TournamentChatMessage[]
-  tournamentChatReadStates TournamentChatReadState[]
-  divisionChatMessages     DivisionChatMessage[]
-  divisionChatReadStates   DivisionChatReadState[]
-  clubInvitesSent          ClubInvite[]              @relation("ClubInviteInviter")
-  clubInvitesReceived      ClubInvite[]              @relation("ClubInviteInvitee")
-  clubJoinRequests         ClubJoinRequest[]
-  clubJoinRequestSeen      ClubJoinRequestSeen[]
-  clubBans                 ClubBan[]
-  clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
-  clubTournamentTemplatesCreated ClubTournamentTemplate[] @relation("ClubTournamentTemplateCreatedBy")
-  clubTournamentTemplatesUpdated ClubTournamentTemplate[] @relation("ClubTournamentTemplateUpdatedBy")
-  players                  Player[]
-  sessions                 Session[]
-  tournaments              Tournament[]
-  tournamentAccesses       TournamentAccess[]
-  tournamentAccessRequests TournamentAccessRequest[]
-  tournamentRatings        TournamentRating[]
-  tournamentComments       TournamentComment[]
-  partnerDirectorships     Partner[] // Partners where this user is the director
-  organizerStripeAccountId String?                   @map("organizer_stripe_account_id")
-  stripeOnboardingComplete Boolean                   @default(false) @map("stripe_onboarding_complete")
-  tournamentInvitationsReceived TournamentInvitation[] @relation("InvitedUser")
-  stripeCustomerId         String?                   @map("stripe_customer_id")
-  stripeDefaultPaymentMethodId String?               @map("stripe_default_payment_method_id")
-  stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
-  stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
+  id                             String                    @id @default(uuid())
+  email                          String                    @unique
+  name                           String?
+  image                          String?
+  emailVerified                  DateTime?
+  passwordHash                   String?                   @map("password_hash")
+  role                           UserRole                  @default(TD)
+  organizerTier                  OrganizerTier             @default(PRO) @map("organizer_tier")
+  isActive                       Boolean                   @default(true)
+  gender                         Gender?
+  city                           String?
+  duprLink                       String?
+  duprId                         String?                   @map("dupr_id")
+  duprNumericId                  BigInt?                   @map("dupr_numeric_id")
+  duprAccessToken                String?                   @map("dupr_access_token")
+  duprRefreshToken               String?                   @map("dupr_refresh_token")
+  duprRatingSingles              Decimal?                  @map("dupr_rating_singles") @db.Decimal(4, 2)
+  duprRatingDoubles              Decimal?                  @map("dupr_rating_doubles") @db.Decimal(4, 2)
+  createdAt                      DateTime                  @default(now())
+  updatedAt                      DateTime                  @updatedAt
+  accounts                       Account[]
+  assistantAssignments           AssistantAssignment[]
+  auditLogs                      AuditLog[]
+  clubFollows                    ClubFollower[]
+  clubAdminRoles                 ClubAdmin[]
+  clubAnnouncementsCreated       ClubAnnouncement[]        @relation("ClubAnnouncementCreatedBy")
+  clubBookingRequestsCreated     ClubBookingRequest[]      @relation("ClubBookingRequestRequestedBy")
+  clubChatMessages               ClubChatMessage[]
+  clubChatReadStates             ClubChatReadState[]
+  tournamentChatMessages         TournamentChatMessage[]
+  tournamentChatReadStates       TournamentChatReadState[]
+  divisionChatMessages           DivisionChatMessage[]
+  divisionChatReadStates         DivisionChatReadState[]
+  clubInvitesSent                ClubInvite[]              @relation("ClubInviteInviter")
+  clubInvitesReceived            ClubInvite[]              @relation("ClubInviteInvitee")
+  clubJoinRequests               ClubJoinRequest[]
+  clubJoinRequestSeen            ClubJoinRequestSeen[]
+  clubBans                       ClubBan[]
+  clubBansIssued                 ClubBan[]                 @relation("ClubBanBannedBy")
+  clubTournamentTemplatesCreated ClubTournamentTemplate[]  @relation("ClubTournamentTemplateCreatedBy")
+  clubTournamentTemplatesUpdated ClubTournamentTemplate[]  @relation("ClubTournamentTemplateUpdatedBy")
+  players                        Player[]
+  sessions                       Session[]
+  tournaments                    Tournament[]
+  tournamentAccesses             TournamentAccess[]
+  tournamentAccessRequests       TournamentAccessRequest[]
+  tournamentRatings              TournamentRating[]
+  tournamentComments             TournamentComment[]
+  partnerDirectorships           Partner[] // Partners where this user is the director
+  organizerStripeAccountId       String?                   @map("organizer_stripe_account_id")
+  stripeOnboardingComplete       Boolean                   @default(false) @map("stripe_onboarding_complete")
+  tournamentInvitationsReceived  TournamentInvitation[]    @relation("InvitedUser")
+  stripeCustomerId               String?                   @map("stripe_customer_id")
+  stripeDefaultPaymentMethodId   String?                   @map("stripe_default_payment_method_id")
+  stripeDefaultCardBrand         String?                   @map("stripe_default_card_brand")
+  stripeDefaultCardLast4         String?                   @map("stripe_default_card_last4")
+  aiCoachMessages                AiCoachMessage[]
+  aiCoachState                   AiCoachState?
 
   @@map("users")
 }
@@ -155,7 +157,7 @@ model Tournament {
   rrGroups                RoundRobinGroup[]
   tournamentAccesses      TournamentAccess[]
   tournamentRatings       TournamentRating[]
-  tournamentComments     TournamentComment[]
+  tournamentComments      TournamentComment[]
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
   matchDays               MatchDay[]
@@ -172,49 +174,49 @@ model Tournament {
 }
 
 model TournamentInvitation {
-  id             String                 @id @default(uuid())
-  tournamentId   String                 @map("tournament_id")
-  invitedUserId  String                 @map("invited_user_id")
-  email          String                 // Denormalized for the email we sent
-  status         TournamentInvitationStatus @default(PENDING)
-  createdAt      DateTime               @default(now()) @map("created_at")
-  updatedAt      DateTime               @updatedAt @map("updated_at")
-  tournament     Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  invitedUser    User                   @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+  id            String                     @id @default(uuid())
+  tournamentId  String                     @map("tournament_id")
+  invitedUserId String                     @map("invited_user_id")
+  email         String // Denormalized for the email we sent
+  status        TournamentInvitationStatus @default(PENDING)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  tournament    Tournament                 @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  invitedUser   User                       @relation("InvitedUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, invitedUserId])
   @@map("tournament_invitations")
 }
 
 model Club {
-  id                 String               @id @default(uuid())
-  name               String
-  kind               ClubKind             @default(VENUE)
-  joinPolicy         ClubJoinPolicy       @default(OPEN) @map("join_policy")
-  description        String?
-  logoUrl            String?              @map("logo_url")
-  address            String?
-  city               String?
-  state              String?
-  country            String?
-  isVerified         Boolean              @default(false) @map("is_verified")
-  courtReserveUrl    String?              @map("court_reserve_url")
-  bookingRequestEmail String?             @map("booking_request_email")
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
+  id                  String         @id @default(uuid())
+  name                String
+  kind                ClubKind       @default(VENUE)
+  joinPolicy          ClubJoinPolicy @default(OPEN) @map("join_policy")
+  description         String?
+  logoUrl             String?        @map("logo_url")
+  address             String?
+  city                String?
+  state               String?
+  country             String?
+  isVerified          Boolean        @default(false) @map("is_verified")
+  courtReserveUrl     String?        @map("court_reserve_url")
+  bookingRequestEmail String?        @map("booking_request_email")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
-  tournaments        Tournament[]
+  tournaments         Tournament[]
   tournamentTemplates ClubTournamentTemplate[]
-  followers          ClubFollower[]
-  joinRequests       ClubJoinRequest[]
-  joinRequestSeen    ClubJoinRequestSeen[]
-  admins             ClubAdmin[]
-  announcements      ClubAnnouncement[]
-  bookingRequests    ClubBookingRequest[]
-  chatMessages       ClubChatMessage[]
-  chatReadStates     ClubChatReadState[]
-  invites            ClubInvite[]
-  bans               ClubBan[]
+  followers           ClubFollower[]
+  joinRequests        ClubJoinRequest[]
+  joinRequestSeen     ClubJoinRequestSeen[]
+  admins              ClubAdmin[]
+  announcements       ClubAnnouncement[]
+  bookingRequests     ClubBookingRequest[]
+  chatMessages        ClubChatMessage[]
+  chatReadStates      ClubChatReadState[]
+  invites             ClubInvite[]
+  bans                ClubBan[]
 
   @@map("clubs")
 }
@@ -225,8 +227,8 @@ model ClubFollower {
   userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([clubId, userId])
   @@index([userId])
@@ -239,8 +241,8 @@ model ClubJoinRequest {
   userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([clubId, userId])
   @@index([clubId, createdAt])
@@ -249,10 +251,10 @@ model ClubJoinRequest {
 }
 
 model ClubJoinRequestSeen {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  clubId    String   @map("club_id")
-  seenAt    DateTime @default(now()) @map("seen_at")
+  id     String   @id @default(uuid())
+  userId String   @map("user_id")
+  clubId String   @map("club_id")
+  seenAt DateTime @default(now()) @map("seen_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
@@ -270,8 +272,8 @@ model ClubAdmin {
   role      ClubAdminRole @default(ADMIN)
   createdAt DateTime      @default(now()) @map("created_at")
 
-  club      Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([clubId, userId])
   @@index([userId])
@@ -287,30 +289,30 @@ model ClubAnnouncement {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  createdByUser   User?    @relation("ClubAnnouncementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  club          Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  createdByUser User? @relation("ClubAnnouncementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@index([clubId, createdAt])
   @@map("club_announcements")
 }
 
 model ClubBookingRequest {
-  id              String                  @id @default(uuid())
-  clubId          String                  @map("club_id")
-  requesterUserId String?                 @map("requester_user_id")
-  requesterName   String                  @map("requester_name")
-  requesterEmail  String                  @map("requester_email")
-  requesterPhone  String?                 @map("requester_phone")
-  desiredStart    DateTime?               @map("desired_start")
-  durationMinutes Int?                    @map("duration_minutes")
-  playersCount    Int?                    @map("players_count")
-  message         String?                 @map("message")
+  id              String                   @id @default(uuid())
+  clubId          String                   @map("club_id")
+  requesterUserId String?                  @map("requester_user_id")
+  requesterName   String                   @map("requester_name")
+  requesterEmail  String                   @map("requester_email")
+  requesterPhone  String?                  @map("requester_phone")
+  desiredStart    DateTime?                @map("desired_start")
+  durationMinutes Int?                     @map("duration_minutes")
+  playersCount    Int?                     @map("players_count")
+  message         String?                  @map("message")
   status          ClubBookingRequestStatus @default(NEW)
-  createdAt       DateTime                @default(now()) @map("created_at")
-  updatedAt       DateTime                @updatedAt @map("updated_at")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
 
-  club            Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  requesterUser   User?                   @relation("ClubBookingRequestRequestedBy", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  club          Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  requesterUser User? @relation("ClubBookingRequestRequestedBy", fields: [requesterUserId], references: [id], onDelete: SetNull)
 
   @@index([clubId, createdAt])
   @@index([requesterUserId])
@@ -318,14 +320,14 @@ model ClubBookingRequest {
 }
 
 model ClubChatMessage {
-  id              String   @id @default(uuid())
-  clubId          String   @map("club_id")
-  userId          String   @map("user_id")
+  id              String    @id @default(uuid())
+  clubId          String    @map("club_id")
+  userId          String    @map("user_id")
   text            String
   deletedAt       DateTime? @map("deleted_at")
-  deletedByUserId String?  @map("deleted_by_user_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedByUserId String?   @map("deleted_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -419,6 +421,33 @@ model DivisionChatReadState {
   @@map("division_chat_read_states")
 }
 
+model AiCoachMessage {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  role      String
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_coach_messages")
+}
+
+model AiCoachState {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  // JSON with stable keys (goal, health, schedule, experience, etc.)
+  memory    Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@map("ai_coach_state")
+}
+
 model ClubInvite {
   id            String   @id @default(uuid())
   clubId        String   @map("club_id")
@@ -428,8 +457,8 @@ model ClubInvite {
   delivered     Boolean  @default(false)
   createdAt     DateTime @default(now()) @map("created_at")
 
-  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  inviter User @relation("ClubInviteInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
+  club    Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  inviter User  @relation("ClubInviteInviter", fields: [inviterUserId], references: [id], onDelete: Cascade)
   invitee User? @relation("ClubInviteInvitee", fields: [inviteeUserId], references: [id], onDelete: SetNull)
 
   @@index([clubId, createdAt])
@@ -446,8 +475,8 @@ model ClubBan {
   reason         String?
   createdAt      DateTime @default(now()) @map("created_at")
 
-  club        Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club         Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
   bannedByUser User @relation("ClubBanBannedBy", fields: [bannedByUserId], references: [id], onDelete: Cascade)
 
   @@unique([clubId, userId])
@@ -478,12 +507,12 @@ model ClubTournamentTemplate {
 }
 
 model Court {
-  id           String      @id @default(uuid())
-  tournamentId String      @map("tournament_id")
+  id           String        @id @default(uuid())
+  tournamentId String        @map("tournament_id")
   name         String
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  tournament   Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matchups     IndyMatchup[]
   matches      Match[]
 
@@ -507,22 +536,22 @@ model Prize {
 }
 
 model Division {
-  id                    String                @id @default(uuid())
+  id                    String                  @id @default(uuid())
   tournamentId          String
   name                  String
   teamKind              TeamKind
   pairingMode           PairingMode
   maxTeams              Int?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  stage                 DivisionStage?        @default(RR_IN_PROGRESS)
-  poolCount             Int                   @default(1)
-  isMerged              Boolean               @default(false)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  stage                 DivisionStage?          @default(RR_IN_PROGRESS)
+  poolCount             Int                     @default(1)
+  isMerged              Boolean                 @default(false)
   mergedFromDivisionIds Json? // Array of division IDs that were merged into this division
   assistantAssignments  AssistantAssignment[]
   constraints           DivisionConstraints?
   rrBindings            DivisionRRBinding[]
-  tournament            Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournament            Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matches               Match[]
   pools                 Pool[]
   prizes                Prize[]
@@ -538,19 +567,19 @@ model Division {
 }
 
 model DivisionConstraints {
-  id         String           @id @default(uuid())
-  divisionId String           @unique
-  minDupr    Decimal?         @db.Decimal(4, 2)
-  maxDupr    Decimal?         @db.Decimal(4, 2)
-  minTeamDupr Decimal?        @db.Decimal(4, 2)
-  maxTeamDupr Decimal?        @db.Decimal(4, 2)
-  minAge     Int?
-  maxAge     Int?
-  genders    GenderConstraint @default(ANY)
+  id          String                @id @default(uuid())
+  divisionId  String                @unique
+  minDupr     Decimal?              @db.Decimal(4, 2)
+  maxDupr     Decimal?              @db.Decimal(4, 2)
+  minTeamDupr Decimal?              @db.Decimal(4, 2)
+  maxTeamDupr Decimal?              @db.Decimal(4, 2)
+  minAge      Int?
+  maxAge      Int?
+  genders     GenderConstraint      @default(ANY)
   enforcement ConstraintEnforcement @default(INFO)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  division    Division              @relation(fields: [divisionId], references: [id], onDelete: Cascade)
 
   @@map("division_constraints")
 }
@@ -584,55 +613,55 @@ model Pool {
 }
 
 model Team {
-  id          String       @id @default(uuid())
-  divisionId  String
-  poolId      String?
-  name        String
-  seed        Int?
-  note        String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  matchesAsA          Match[]         @relation("TeamA")
-  matchesAsB          Match[]         @relation("TeamB")
-  homeMatchups        IndyMatchup[]   @relation("HomeTeam")
-  awayMatchups        IndyMatchup[]   @relation("AwayTeam")
+  id                     String        @id @default(uuid())
+  divisionId             String
+  poolId                 String?
+  name                   String
+  seed                   Int?
+  note                   String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  matchesAsA             Match[]       @relation("TeamA")
+  matchesAsB             Match[]       @relation("TeamB")
+  homeMatchups           IndyMatchup[] @relation("HomeTeam")
+  awayMatchups           IndyMatchup[] @relation("AwayTeam")
   tieBreakWinnerMatchups IndyMatchup[] @relation("TieBreakWinnerTeam")
-  standings           Standing[]
-  teamPlayers         TeamPlayer[]
-  dayRosters          DayRoster[]
-  payments            Payment[]
-  division            Division        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool                Pool?           @relation(fields: [poolId], references: [id])
+  standings              Standing[]
+  teamPlayers            TeamPlayer[]
+  dayRosters             DayRoster[]
+  payments               Payment[]
+  division               Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool                   Pool?         @relation(fields: [poolId], references: [id])
 
   @@map("teams")
 }
 
 model Player {
-  id                String       @id @default(uuid())
-  firstName         String       @map("firstName")
-  lastName          String       @map("lastName")
-  email             String?
-  userId            String?      @map("user_id")
-  gender            Gender?
-  birthDate         DateTime?    @map("birthDate")
-  externalId        String?      @map("externalId")
-  createdAt         DateTime     @default(now()) @map("createdAt")
-  updatedAt         DateTime     @updatedAt @map("updatedAt")
-  duprRating        Decimal?     @map("dupr_rating") @db.Decimal(3, 2)
-  isPaid            Boolean?     @default(false) @map("is_paid")
-  isWaitlist        Boolean?     @default(false) @map("is_waitlist")
-  dupr              String?      @db.VarChar
-  tournamentId      String?      @map("tournament_id")
-  user              User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  tournament        Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  waitlistEntries   WaitlistEntry[]
-  teamPlayers       TeamPlayer[]
-  dayRosters        DayRoster[]
-  indyGamesAsHome1  IndyGame[]   @relation("IndyGameHomePlayer1")
-  indyGamesAsHome2  IndyGame[]   @relation("IndyGameHomePlayer2")
-  indyGamesAsAway1  IndyGame[]   @relation("IndyGameAwayPlayer1")
-  indyGamesAsAway2  IndyGame[]   @relation("IndyGameAwayPlayer2")
-  payments          Payment[]
+  id               String          @id @default(uuid())
+  firstName        String          @map("firstName")
+  lastName         String          @map("lastName")
+  email            String?
+  userId           String?         @map("user_id")
+  gender           Gender?
+  birthDate        DateTime?       @map("birthDate")
+  externalId       String?         @map("externalId")
+  createdAt        DateTime        @default(now()) @map("createdAt")
+  updatedAt        DateTime        @updatedAt @map("updatedAt")
+  duprRating       Decimal?        @map("dupr_rating") @db.Decimal(3, 2)
+  isPaid           Boolean?        @default(false) @map("is_paid")
+  isWaitlist       Boolean?        @default(false) @map("is_waitlist")
+  dupr             String?         @db.VarChar
+  tournamentId     String?         @map("tournament_id")
+  user             User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tournament       Tournament?     @relation(fields: [tournamentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  waitlistEntries  WaitlistEntry[]
+  teamPlayers      TeamPlayer[]
+  dayRosters       DayRoster[]
+  indyGamesAsHome1 IndyGame[]      @relation("IndyGameHomePlayer1")
+  indyGamesAsHome2 IndyGame[]      @relation("IndyGameHomePlayer2")
+  indyGamesAsAway1 IndyGame[]      @relation("IndyGameAwayPlayer1")
+  indyGamesAsAway2 IndyGame[]      @relation("IndyGameAwayPlayer2")
+  payments         Payment[]
 
   @@unique([userId, tournamentId])
   @@map("players")
@@ -660,10 +689,10 @@ model Payment {
   playerId                String        @map("player_id")
   teamId                  String?       @map("team_id")
   slotIndex               Int?          @map("slot_index")
-  entryFeeAmount          Decimal       @db.Decimal(10, 2) @map("entry_fee_amount")
-  platformFeeAmount       Decimal       @db.Decimal(10, 2) @map("platform_fee_amount")
-  stripeFeeAmount         Decimal       @db.Decimal(10, 2) @map("stripe_fee_amount")
-  totalAmount             Decimal       @db.Decimal(10, 2) @map("total_amount")
+  entryFeeAmount          Decimal       @map("entry_fee_amount") @db.Decimal(10, 2)
+  platformFeeAmount       Decimal       @map("platform_fee_amount") @db.Decimal(10, 2)
+  stripeFeeAmount         Decimal       @map("stripe_fee_amount") @db.Decimal(10, 2)
+  totalAmount             Decimal       @map("total_amount") @db.Decimal(10, 2)
   currency                String        @default("usd")
   status                  PaymentStatus @default(PENDING)
   dueAt                   DateTime?     @map("due_at")
@@ -741,40 +770,40 @@ model DivisionRRBinding {
 }
 
 model Match {
-  id                    String                @id @default(uuid())
-  rrGroupId             String?
-  divisionId            String?
-  poolId                String?
-  roundIndex            Int
-  stage                 MatchStage
-  teamAId               String
-  teamBId               String
-  bestOfMode            BestOfMode
-  gamesCount            Int
-  targetPoints          Int
-  winBy                 Int
-  winnerTeamId          String?
-  locked                Boolean                @default(false)
-  sendToDupr            Boolean                @default(false) @map("send_to_dupr")
-  duprSubmissionStatus  DuprSubmissionStatus?  @default(PENDING) @map("dupr_submission_status")
-  duprMatchId           String?               @map("dupr_match_id")
-  duprSubmissionError   String?               @map("dupr_submission_error")
-  duprSubmittedAt       DateTime?             @map("dupr_submitted_at")
-  duprRetryCount        Int                   @default(0) @map("dupr_retry_count")
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  note                  String?                @db.VarChar(255)
-  matchDayId            String?                @map("match_day_id")
-  courtId               String?                @map("court_id")
-  games                 Game[]
-  tiebreaker            Tiebreaker?
-  division     Division?        @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  pool         Pool?            @relation(fields: [poolId], references: [id], onDelete: Cascade)
-  rrGroup      RoundRobinGroup? @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
-  matchDay     MatchDay?        @relation(fields: [matchDayId], references: [id], onDelete: SetNull)
-  court        Court?           @relation(fields: [courtId], references: [id], onDelete: SetNull)
-  teamA        Team             @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
-  teamB        Team             @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
+  id                   String                @id @default(uuid())
+  rrGroupId            String?
+  divisionId           String?
+  poolId               String?
+  roundIndex           Int
+  stage                MatchStage
+  teamAId              String
+  teamBId              String
+  bestOfMode           BestOfMode
+  gamesCount           Int
+  targetPoints         Int
+  winBy                Int
+  winnerTeamId         String?
+  locked               Boolean               @default(false)
+  sendToDupr           Boolean               @default(false) @map("send_to_dupr")
+  duprSubmissionStatus DuprSubmissionStatus? @default(PENDING) @map("dupr_submission_status")
+  duprMatchId          String?               @map("dupr_match_id")
+  duprSubmissionError  String?               @map("dupr_submission_error")
+  duprSubmittedAt      DateTime?             @map("dupr_submitted_at")
+  duprRetryCount       Int                   @default(0) @map("dupr_retry_count")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  note                 String?               @db.VarChar(255)
+  matchDayId           String?               @map("match_day_id")
+  courtId              String?               @map("court_id")
+  games                Game[]
+  tiebreaker           Tiebreaker?
+  division             Division?             @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  pool                 Pool?                 @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  rrGroup              RoundRobinGroup?      @relation(fields: [rrGroupId], references: [id], onDelete: Cascade)
+  matchDay             MatchDay?             @relation(fields: [matchDayId], references: [id], onDelete: SetNull)
+  court                Court?                @relation(fields: [courtId], references: [id], onDelete: SetNull)
+  teamA                Team                  @relation("TeamA", fields: [teamAId], references: [id], onDelete: Cascade)
+  teamB                Team                  @relation("TeamB", fields: [teamBId], references: [id], onDelete: Cascade)
 
   @@map("matches")
 }
@@ -911,12 +940,12 @@ model TournamentRating {
 }
 
 model TournamentComment {
-  id           String     @id @default(uuid())
+  id           String   @id @default(uuid())
   tournamentId String
   userId       String
   text         String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -926,40 +955,40 @@ model TournamentComment {
 }
 
 model MatchDay {
-  id           String          @id @default(uuid())
-  tournamentId String           @map("tournament_id")
-  date         DateTime         @db.Date
-  status       MatchDayStatus   @default(DRAFT)
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
-  tournament   Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid())
+  tournamentId String         @map("tournament_id")
+  date         DateTime       @db.Date
+  status       MatchDayStatus @default(DRAFT)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  tournament   Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matchups     IndyMatchup[]
-  rrMatches    Match[]          // League Round Robin: RR matches for this day
+  rrMatches    Match[] // League Round Robin: RR matches for this day
 
   @@unique([tournamentId, date])
   @@map("match_days")
 }
 
 model IndyMatchup {
-  id                  String          @id @default(uuid())
-  matchDayId          String           @map("match_day_id")
-  divisionId          String           @map("division_id")
-  homeTeamId          String           @map("home_team_id")
-  awayTeamId          String           @map("away_team_id")
-  courtId             String?          @map("court_id")
-  tieBreakWinnerTeamId String?         @map("tie_break_winner_team_id")
-  gamesWonHome        Int             @default(0) @map("games_won_home")
-  gamesWonAway        Int             @default(0) @map("games_won_away")
-  status              MatchupStatus   @default(PENDING)
-  createdAt           DateTime        @default(now()) @map("created_at")
-  updatedAt           DateTime        @updatedAt @map("updated_at")
-  matchDay            MatchDay         @relation(fields: [matchDayId], references: [id], onDelete: Cascade)
-  division            Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  homeTeam            Team             @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
-  awayTeam            Team             @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
-  court               Court?           @relation(fields: [courtId], references: [id], onDelete: SetNull)
-  tieBreakWinnerTeam  Team?            @relation("TieBreakWinnerTeam", fields: [tieBreakWinnerTeamId], references: [id], onDelete: SetNull)
-  rosters             DayRoster[]
+  id                   String        @id @default(uuid())
+  matchDayId           String        @map("match_day_id")
+  divisionId           String        @map("division_id")
+  homeTeamId           String        @map("home_team_id")
+  awayTeamId           String        @map("away_team_id")
+  courtId              String?       @map("court_id")
+  tieBreakWinnerTeamId String?       @map("tie_break_winner_team_id")
+  gamesWonHome         Int           @default(0) @map("games_won_home")
+  gamesWonAway         Int           @default(0) @map("games_won_away")
+  status               MatchupStatus @default(PENDING)
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  matchDay             MatchDay      @relation(fields: [matchDayId], references: [id], onDelete: Cascade)
+  division             Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  homeTeam             Team          @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
+  awayTeam             Team          @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
+  court                Court?        @relation(fields: [courtId], references: [id], onDelete: SetNull)
+  tieBreakWinnerTeam   Team?         @relation("TieBreakWinnerTeam", fields: [tieBreakWinnerTeamId], references: [id], onDelete: SetNull)
+  rosters              DayRoster[]
   games                IndyGame[]
 
   @@map("indy_matchups")
@@ -983,17 +1012,17 @@ model DayRoster {
 }
 
 model IndyGame {
-  id        String      @id @default(uuid())
-  matchupId String      @map("matchup_id")
-  order     Int         // 1-12
-  court     Int         // 1 or 2
-  homePair  String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
-  awayPair  String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
-  homeScore Int?        @map("home_score")
-  awayScore Int?        @map("away_score")
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  matchup   IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  matchupId     String      @map("matchup_id")
+  order         Int // 1-12
+  court         Int // 1 or 2
+  homePair      String      @map("home_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  awayPair      String      @map("away_pair") @db.VarChar(2) // AB, CD, AC, BD, AD, BC
+  homeScore     Int?        @map("home_score")
+  awayScore     Int?        @map("away_score")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  matchup       IndyMatchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
   homePlayer1Id String?     @map("home_player1_id") // Player ID for first letter in homePair
   homePlayer2Id String?     @map("home_player2_id") // Player ID for second letter in homePair
   awayPlayer1Id String?     @map("away_player1_id") // Player ID for first letter in awayPair
@@ -1211,54 +1240,54 @@ enum PartnerWebhookEvent {
 }
 
 model Partner {
-  id              String       @id @default(uuid())
-  name            String
-  code            String       @unique // Short unique identifier
-  contactEmail    String?      @map("contact_email")
-  contactName     String?      @map("contact_name")
-  directorUserId  String?      @map("director_user_id") // Tournament director who manages tournaments
-  status          PartnerStatus @default(ACTIVE)
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-  apps            PartnerApp[]
+  id               String              @id @default(uuid())
+  name             String
+  code             String              @unique // Short unique identifier
+  contactEmail     String?             @map("contact_email")
+  contactName      String?             @map("contact_name")
+  directorUserId   String?             @map("director_user_id") // Tournament director who manages tournaments
+  status           PartnerStatus       @default(ACTIVE)
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  apps             PartnerApp[]
   externalMappings ExternalIdMapping[]
-  apiRequestLogs  ApiRequestLog[]
-  webhooks        PartnerWebhook[]
-  director        User?        @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
+  apiRequestLogs   ApiRequestLog[]
+  webhooks         PartnerWebhook[]
+  director         User?               @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
 
   @@index([directorUserId])
   @@map("partners")
 }
 
 model PartnerWebhook {
-  id        String               @id @default(uuid())
-  partnerId String               @map("partner_id")
-  eventType PartnerWebhookEvent  @map("event_type")
+  id        String              @id @default(uuid())
+  partnerId String              @map("partner_id")
+  eventType PartnerWebhookEvent @map("event_type")
   url       String
   secret    String
-  isActive  Boolean              @default(true) @map("is_active")
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
-  partner   Partner              @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  isActive  Boolean             @default(true) @map("is_active")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+  partner   Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@unique([partnerId, eventType])
   @@map("partner_webhooks")
 }
 
 model PartnerApp {
-  id              String       @id @default(uuid())
-  partnerId       String       @map("partner_id")
+  id              String             @id @default(uuid())
+  partnerId       String             @map("partner_id")
   environment     PartnerEnvironment
-  keyId           String       @unique @map("key_id") // Public identifier
-  secretHash      String       @map("secret_hash") // Hashed secret (bcrypt)
-  lastUsedAt      DateTime?    @map("last_used_at")
-  status          PartnerAppStatus @default(ACTIVE)
-  allowedIps      String[]    @default([]) @map("allowed_ips") // IP allowlist (empty = no restriction)
-  rateLimitRpm    Int         @default(60) @map("rate_limit_rpm") // Requests per minute
-  scopes          String[]    @default([]) // e.g., ["indyleague:write", "indyleague:read"]
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  keyId           String             @unique @map("key_id") // Public identifier
+  secretHash      String             @map("secret_hash") // Hashed secret (bcrypt)
+  lastUsedAt      DateTime?          @map("last_used_at")
+  status          PartnerAppStatus   @default(ACTIVE)
+  allowedIps      String[]           @default([]) @map("allowed_ips") // IP allowlist (empty = no restriction)
+  rateLimitRpm    Int                @default(60) @map("rate_limit_rpm") // Requests per minute
+  scopes          String[]           @default([]) // e.g., ["indyleague:write", "indyleague:read"]
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  partner         Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   apiRequestLogs  ApiRequestLog[]
   idempotencyKeys IdempotencyKey[]
 
@@ -1266,14 +1295,14 @@ model PartnerApp {
 }
 
 model ExternalIdMapping {
-  id              String       @id @default(uuid())
-  partnerId       String       @map("partner_id")
-  entityType      ExternalEntityType @map("entity_type")
-  externalId      String       @map("external_id") // Partner's external ID
-  internalId      String       @map("internal_id") // Our internal ID
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
-  partner         Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  id         String             @id @default(uuid())
+  partnerId  String             @map("partner_id")
+  entityType ExternalEntityType @map("entity_type")
+  externalId String             @map("external_id") // Partner's external ID
+  internalId String             @map("internal_id") // Our internal ID
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  partner    Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@unique([partnerId, entityType, externalId])
   @@index([partnerId, entityType, externalId])
@@ -1282,23 +1311,23 @@ model ExternalIdMapping {
 }
 
 model ApiRequestLog {
-  id              String       @id @default(uuid())
-  partnerId       String?      @map("partner_id")
-  partnerAppId    String?      @map("partner_app_id")
-  endpoint        String
-  method          String
-  statusCode      Int           @map("status_code")
-  duration        Int         // milliseconds
-  idempotencyKey  String?       @map("idempotency_key")
-  correlationId   String?       @map("correlation_id")
-  requestBody     Json?         @map("request_body")
-  responseBody    Json?         @map("response_body")
-  errorMessage    String?       @map("error_message")
-  ipAddress       String?       @map("ip_address")
-  userAgent       String?       @map("user_agent")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  partner         Partner?     @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerApp      PartnerApp?  @relation(fields: [partnerAppId], references: [id], onDelete: SetNull)
+  id             String      @id @default(uuid())
+  partnerId      String?     @map("partner_id")
+  partnerAppId   String?     @map("partner_app_id")
+  endpoint       String
+  method         String
+  statusCode     Int         @map("status_code")
+  duration       Int // milliseconds
+  idempotencyKey String?     @map("idempotency_key")
+  correlationId  String?     @map("correlation_id")
+  requestBody    Json?       @map("request_body")
+  responseBody   Json?       @map("response_body")
+  errorMessage   String?     @map("error_message")
+  ipAddress      String?     @map("ip_address")
+  userAgent      String?     @map("user_agent")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  partner        Partner?    @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerApp     PartnerApp? @relation(fields: [partnerAppId], references: [id], onDelete: SetNull)
 
   @@index([partnerId, createdAt])
   @@index([partnerAppId, createdAt])
@@ -1308,17 +1337,17 @@ model ApiRequestLog {
 }
 
 model IdempotencyKey {
-  id              String       @id @default(uuid())
-  partnerAppId    String       @map("partner_app_id")
-  key             String       // The idempotency key (UUID)
-  endpoint        String
-  method          String
-  requestHash     String?       @map("request_hash") // Hash of request body for validation
-  responseStatus  Int           @map("response_status")
-  responseBody    Json?         @map("response_body")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  expiresAt       DateTime     @map("expires_at") // Default 24 hours
-  partnerApp      PartnerApp   @relation(fields: [partnerAppId], references: [id], onDelete: Cascade)
+  id             String     @id @default(uuid())
+  partnerAppId   String     @map("partner_app_id")
+  key            String // The idempotency key (UUID)
+  endpoint       String
+  method         String
+  requestHash    String?    @map("request_hash") // Hash of request body for validation
+  responseStatus Int        @map("response_status")
+  responseBody   Json?      @map("response_body")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  expiresAt      DateTime   @map("expires_at") // Default 24 hours
+  partnerApp     PartnerApp @relation(fields: [partnerAppId], references: [id], onDelete: Cascade)
 
   @@unique([partnerAppId, key])
   @@index([expiresAt])
