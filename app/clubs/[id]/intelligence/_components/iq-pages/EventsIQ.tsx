@@ -53,7 +53,7 @@ import { useTheme } from '../IQThemeProvider';
 ];
 const eventTypes = [
   { name: 'Tournaments', value: 35, color: '#8B5CF6' },
-  { name: 'Mixers', value: 25, color: '#06B6D4' },
+  { name: 'Open Play', value: 25, color: '#06B6D4' },
   { name: 'Clinics', value: 20, color: '#10B981' },
   { name: 'League Nights', value: 15, color: '#F59E0B' },
   { name: 'Special', value: 5, color: '#EF4444' },
