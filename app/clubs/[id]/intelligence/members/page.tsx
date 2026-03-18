@@ -14,7 +14,7 @@ import {
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo } from '../_hooks/use-intelligence'
+import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo, useMemberGrowth } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
@@ -84,6 +84,7 @@ export default function MembersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const { data, isLoading, error } = useMemberHealth(clubId)
+  const { data: memberGrowthData } = useMemberGrowth(clubId)
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -144,7 +145,7 @@ export default function MembersPage() {
 
   const sendOutreach = useSendOutreach()
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} isLoading={isLoading} sendOutreach={sendOutreach} clubId={clubId} />
+  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} memberGrowthData={memberGrowthData} isLoading={isLoading} sendOutreach={sendOutreach} clubId={clubId} />
 
   return (
     <div className="space-y-6">

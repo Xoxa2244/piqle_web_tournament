@@ -145,6 +145,7 @@ function getPeriodLabel(p: Period): string {
 
 type MembersIQProps = {
   memberHealthData?: any; // from useMemberHealth
+  memberGrowthData?: any; // from useMemberGrowth
   isLoading?: boolean;
   sendOutreach?: any;
   clubId?: string;
@@ -189,7 +190,7 @@ function mapRealMembers(data: any): Member[] {
   }));
 }
 
-export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOutreach, clubId }: MembersIQProps = {}) {
+export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: externalLoading, sendOutreach, clubId }: MembersIQProps = {}) {
   const { isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<Segment>("all");
@@ -224,6 +225,22 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
   // Use real data if available, otherwise fall back to mocks
   const realMembers = mapRealMembers(memberHealthData);
   const allMembers = realMembers.length > 0 ? realMembers : members;
+
+  // Member growth chart — from real data or mocks
+  const displayMemberGrowth = memberGrowthData?.growth?.length
+    ? memberGrowthData.growth.map((g: any) => ({
+        month: new Date(g.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+        total: g.total, new: g.new, churned: g.churned,
+      }))
+    : memberGrowth;
+
+  // Activity distribution — derive from real member sessions data
+  const displayActivityDistribution = realMembers.length > 0
+    ? (() => {
+        const ranges = [{ range: "0", min: 0, max: 0 }, { range: "1-2", min: 1, max: 2 }, { range: "3-4", min: 3, max: 4 }, { range: "5-6", min: 5, max: 6 }, { range: "7-8", min: 7, max: 8 }, { range: "9+", min: 9, max: 999 }];
+        return ranges.map(r => ({ range: r.range, count: realMembers.filter((m: any) => m.sessionsThisMonth >= r.min && m.sessionsThisMonth <= r.max).length }));
+      })()
+    : activityDistribution;
 
   const filtered = allMembers
     .filter((m) => {
@@ -326,7 +343,7 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Growth</h3>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={memberGrowth}>
+            <LineChart data={displayMemberGrowth}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
               <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
               <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
@@ -342,7 +359,7 @@ export function MembersIQ({ memberHealthData, isLoading: externalLoading, sendOu
           <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>How Often Members Play</h3>
           <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>Members grouped by sessions per week (last 30 days)</p>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={activityDistribution}>
+            <BarChart data={displayActivityDistribution}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
               <XAxis dataKey="range" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} label={{ value: "Sessions/week", position: "insideBottom", offset: -2, style: { fill: "var(--chart-tick)", fontSize: 10 } }} />
               <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />

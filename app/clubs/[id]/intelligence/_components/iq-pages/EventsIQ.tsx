@@ -360,21 +360,55 @@ function TypeIcon({ type }: { type: string }) {
 }
 /* ============================================= */ /*              EVENTS PAGE                       */ /* ============================================= */
 
-export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
+export function EventsIQ({ embedded = false, eventsListData }: { embedded?: boolean; eventsListData?: any }) {
   const { isDark } = useTheme();
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
-  const filtered = events.filter((e) => {
+
+  // Use real events data when available
+  const displayEvents: ClubEvent[] = eventsListData?.events?.length
+    ? eventsListData.events.map((e: any) => ({
+        id: e.id, name: e.name, type: e.type === 'SOCIAL' ? 'Mixer' : e.type === 'LEAGUE_PLAY' ? 'League Night' : e.type,
+        status: (e.status === 'SCHEDULED' ? 'upcoming' : e.status === 'IN_PROGRESS' ? 'active' : e.status === 'COMPLETED' ? 'completed' : 'cancelled') as EventStatus,
+        date: new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        time: e.startTime ? `${e.startTime} - ${e.endTime || ''}` : '',
+        court: e.court || 'TBD', registered: e.registered, capacity: e.capacity,
+        revenue: e.revenue, waitlisted: 0, format: e.type === 'SOCIAL' ? 'Social' : 'Competitive',
+        description: '', aiPrediction: null,
+      }))
+    : events;
+
+  const displayEventRevenue = eventsListData?.eventRevenue?.length
+    ? eventsListData.eventRevenue.map((r: any) => ({
+        month: new Date(r.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+        revenue: r.revenue, events: r.events,
+      }))
+    : eventRevenue;
+
+  const displayEventTypes = eventsListData?.events?.length
+    ? (() => {
+        const types: Record<string, number> = {};
+        eventsListData.events.forEach((e: any) => { types[e.type] = (types[e.type] || 0) + 1; });
+        const total = Object.values(types).reduce((s, v) => s + v, 0);
+        const colors = ['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444'];
+        return Object.entries(types).map(([name, count], i) => ({
+          name: name === 'SOCIAL' ? 'Mixers' : name === 'LEAGUE_PLAY' ? 'League Nights' : name,
+          value: Math.round((count / total) * 100), color: colors[i % colors.length],
+        }));
+      })()
+    : eventTypes;
+
+  const filtered = displayEvents.filter((e) => {
     if (statusFilter !== 'all' && e.status !== statusFilter) return false;
     if (searchQuery && !e.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
-  const totalRevenue = events.reduce((s, e) => s + e.revenue, 0);
-  const totalRegistered = events.reduce((s, e) => s + e.registered, 0);
-  const upcomingCount = events.filter((e) => e.status === 'upcoming').length;
+  const totalRevenue = displayEvents.reduce((s, e) => s + e.revenue, 0);
+  const totalRegistered = displayEvents.reduce((s, e) => s + e.registered, 0);
+  const upcomingCount = displayEvents.filter((e) => e.status === 'upcoming').length;
   return (
     <motion.div
       ref={ref}
@@ -490,7 +524,7 @@ export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
           </h3>{' '}
           <ResponsiveContainer width="100%" height={240}>
             {' '}
-            <BarChart data={eventRevenue}>
+            <BarChart data={displayEventRevenue}>
               {' '}
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />{' '}
               <XAxis
@@ -530,7 +564,7 @@ export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
               <PieChart>
                 {' '}
                 <Pie
-                  data={eventTypes}
+                  data={displayEventTypes}
                   cx="50%"
                   cy="50%"
                   innerRadius={45}
@@ -540,7 +574,7 @@ export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
                   strokeWidth={0}
                 >
                   {' '}
-                  {eventTypes.map((e) => (
+                  {displayEventTypes.map((e) => (
                     <Cell key={e.name} fill={e.color} />
                   ))}{' '}
                 </Pie>{' '}
@@ -550,7 +584,7 @@ export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
           </div>{' '}
           <div className="space-y-2 mt-2">
             {' '}
-            {eventTypes.map((t) => (
+            {displayEventTypes.map((t) => (
               <div key={t.name} className="flex items-center justify-between text-xs">
                 {' '}
                 <div className="flex items-center gap-2">
@@ -923,7 +957,7 @@ export function EventsIQ({ embedded = false }: { embedded?: boolean }) {
       {/* Summary */}{' '}
       <div className="text-center text-xs py-4" style={{ color: 'var(--t4)' }}>
         {' '}
-        Showing {filtered.length} of {events.length} events{' '}
+        Showing {filtered.length} of {displayEvents.length} events{' '}
       </div>{' '}
     </motion.div>
   );

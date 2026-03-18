@@ -183,6 +183,19 @@ function deriveCourtStats(calendarData: any) {
     }));
 }
 
+function deriveHourlyPattern(calendarData: any) {
+  if (!calendarData?.sessions?.length) return hourlyPattern;
+  const times = ['6AM','7AM','8AM','9AM','10AM','11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM'];
+  const buckets: Record<string, { sum: number; count: number }> = {};
+  times.forEach(t => { buckets[t] = { sum: 0, count: 0 }; });
+  calendarData.sessions.forEach((s: RealSession) => {
+    const hour = parseInt(s.startTime?.split(':')[0] || '0');
+    const label = hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour - 12}PM`;
+    if (buckets[label]) { buckets[label].sum += s.occupancy; buckets[label].count++; }
+  });
+  return times.map(t => ({ time: t, avg: buckets[t].count > 0 ? Math.round(buckets[t].sum / buckets[t].count) : 0 }));
+}
+
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
@@ -255,6 +268,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   const displayWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
   const displayFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
   const displayCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
+  const displayHourly = useMemo(() => deriveHourlyPattern(calendarData), [calendarData]);
 
   const filteredSessions = useMemo(() => {
     return displaySessions.filter((s) => {
@@ -356,7 +370,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Hourly Occupancy Pattern</h3>
               <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={hourlyPattern}>
+                <AreaChart data={displayHourly}>
                   <defs>
                     <linearGradient id="hourGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.3} />

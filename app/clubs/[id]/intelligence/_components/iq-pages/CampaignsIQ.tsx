@@ -316,13 +316,37 @@ function ChannelIcon({ channel }: { channel: string }) {
   const [ncSent, setNcSent] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
-  const filtered = campaigns.filter((c) => {
+  // Map real campaign list to display format
+  const displayCampaigns = campaignListData?.campaigns?.length
+    ? campaignListData.campaigns.map((c: any) => ({
+        id: c.id, name: c.name, type: c.type === 'CHECK_IN' ? 'check-in' : c.type === 'RETENTION_BOOST' ? 'retention' : 'reactivation',
+        status: 'completed' as CampaignStatus, channel: c.channels?.[0] || 'email',
+        sent: c.sent, opened: c.opened, clicked: c.clicked, converted: c.converted, revenue: 0,
+        date: c.date, audience: `${c.sent} members`,
+      }))
+    : campaigns;
+
+  const displayCampaignPerformance = campaignListData?.campaigns?.length
+    ? (() => {
+        const weeks = new Map<string, { sent: number; opened: number; clicked: number; converted: number }>();
+        campaignListData.campaigns.forEach((c: any) => {
+          const d = new Date(c.date);
+          const weekNum = `W${Math.ceil(d.getDate() / 7)}`;
+          if (!weeks.has(weekNum)) weeks.set(weekNum, { sent: 0, opened: 0, clicked: 0, converted: 0 });
+          const w = weeks.get(weekNum)!;
+          w.sent += c.sent; w.opened += c.opened; w.clicked += c.clicked; w.converted += c.converted;
+        });
+        return Array.from(weeks.entries()).map(([week, data]) => ({ week, ...data }));
+      })()
+    : campaignPerformance;
+
+  const filtered = displayCampaigns.filter((c: any) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
-  // Use real data for KPIs if available, otherwise derive from mocks
-  const totalSent = campaignData?.totalSent ?? campaigns.reduce((s, c) => s + c.sent, 0);
+  // Use real data for KPIs if available, otherwise derive from display campaigns
+  const totalSent = campaignData?.totalSent ?? displayCampaigns.reduce((s: number, c: any) => s + c.sent, 0);
   const totalRevenue = campaignData?.totalRevenue ?? campaigns.reduce((s, c) => s + c.revenue, 0);
   const avgOpenRate = campaignData?.totalSent
     ? Math.round((campaignData.totalOpened / campaignData.totalSent) * 100)
@@ -449,7 +473,7 @@ function ChannelIcon({ channel }: { channel: string }) {
           </h3>{' '}
           <ResponsiveContainer width="100%" height={240}>
             {' '}
-            <BarChart data={campaignPerformance}>
+            <BarChart data={displayCampaignPerformance}>
               {' '}
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />{' '}
               <XAxis
@@ -825,7 +849,7 @@ function ChannelIcon({ channel }: { channel: string }) {
           </div>{' '}
         </div>{' '}
         <Card className="!p-0 overflow-hidden">
-          {filtered.map((campaign, i) => {
+          {filtered.map((campaign: any, i: number) => {
             const isExpanded = expandedCampaign === campaign.id;
             const openRate =
               campaign.sent > 0 ? Math.round((campaign.opened / campaign.sent) * 100) : 0;
