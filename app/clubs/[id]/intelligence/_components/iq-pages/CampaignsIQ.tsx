@@ -29,6 +29,9 @@ import {
   MessageSquare,
   Bell,
   Calendar,
+  Smartphone,
+  X,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -304,6 +307,13 @@ function ChannelIcon({ channel }: { channel: string }) {
   const [statusFilter, setStatusFilter] = useState<'all' | CampaignStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
+  const [showNewCampaign, setShowNewCampaign] = useState(false);
+  const [ncStep, setNcStep] = useState(0); // 0=audience, 1=message, 2=preview
+  const [ncAudience, setNcAudience] = useState<string>('at-risk');
+  const [ncChannel, setNcChannel] = useState<'email' | 'sms' | 'both'>('email');
+  const [ncSubject, setNcSubject] = useState('');
+  const [ncMessage, setNcMessage] = useState('');
+  const [ncSent, setNcSent] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
   const filtered = campaigns.filter((c) => {
@@ -345,6 +355,7 @@ function ChannelIcon({ channel }: { channel: string }) {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
+          onClick={() => { setShowNewCampaign(true); setNcStep(0); setNcSent(false); setNcSubject(''); setNcMessage(''); }}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm text-white"
           style={{
             background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
@@ -352,8 +363,7 @@ function ChannelIcon({ channel }: { channel: string }) {
             boxShadow: '0 4px 15px rgba(139,92,246,0.3)',
           }}
         >
-          {' '}
-          <Plus className="w-4 h-4" /> New Campaign{' '}
+          <Plus className="w-4 h-4" /> New Campaign
         </motion.button>{' '}
       </div>{' '}
       {/* KPI Row */}{' '}
@@ -806,8 +816,246 @@ function ChannelIcon({ channel }: { channel: string }) {
               </div>
             );
           })}
-        </Card>{' '}
-      </div>{' '}
+        </Card>
+      </div>
+
+      {/* New Campaign Modal */}
+      <AnimatePresence>
+        {showNewCampaign && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+            onClick={() => setShowNewCampaign(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg rounded-2xl overflow-hidden"
+              style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", boxShadow: "0 25px 60px rgba(0,0,0,0.5)" }}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--card-border)" }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
+                    <Megaphone className="w-4 h-4 text-white" />
+                  </div>
+                  <h2 style={{ fontSize: "15px", fontWeight: 700, color: "var(--heading)" }}>New Campaign</h2>
+                </div>
+                <button onClick={() => setShowNewCampaign(false)} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--t3)" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Steps indicator */}
+              <div className="px-6 pt-4 flex items-center gap-2">
+                {["Audience", "Message", "Preview"].map((step, i) => (
+                  <div key={step} className="flex items-center gap-2 flex-1">
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]"
+                      style={{
+                        background: i <= ncStep ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
+                        color: i <= ncStep ? "#fff" : "var(--t4)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {ncSent && i === 2 ? "✓" : i + 1}
+                    </div>
+                    <span className="text-[11px]" style={{ color: i <= ncStep ? "var(--t1)" : "var(--t4)", fontWeight: i === ncStep ? 600 : 400 }}>{step}</span>
+                    {i < 2 && <div className="flex-1 h-px" style={{ background: i < ncStep ? "#8B5CF6" : "var(--card-border)" }} />}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step Content */}
+              <div className="px-6 py-5 space-y-4" style={{ minHeight: 240 }}>
+                {ncStep === 0 && (
+                  <>
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider mb-2 block" style={{ color: "var(--t4)", fontWeight: 600 }}>Target Audience</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: "at-risk", label: "At-Risk Members", count: 18, icon: AlertTriangle, color: "#F59E0B" },
+                          { id: "critical", label: "Critical Members", count: 12, icon: AlertTriangle, color: "#EF4444" },
+                          { id: "inactive-14d", label: "Inactive 14+ Days", count: 22, icon: Clock, color: "#06B6D4" },
+                          { id: "all", label: "All Members", count: 127, icon: Users, color: "#8B5CF6" },
+                        ].map((a) => {
+                          const Icon = a.icon;
+                          return (
+                            <button
+                              key={a.id}
+                              onClick={() => setNcAudience(a.id)}
+                              className="flex items-center gap-2.5 p-3 rounded-xl text-left transition-all"
+                              style={{
+                                background: ncAudience === a.id ? "rgba(139,92,246,0.1)" : "var(--subtle)",
+                                border: `1px solid ${ncAudience === a.id ? "rgba(139,92,246,0.4)" : "var(--card-border)"}`,
+                              }}
+                            >
+                              <Icon className="w-4 h-4 shrink-0" style={{ color: a.color }} />
+                              <div>
+                                <div className="text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>{a.label}</div>
+                                <div className="text-[10px]" style={{ color: "var(--t4)" }}>{a.count} members</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider mb-2 block" style={{ color: "var(--t4)", fontWeight: 600 }}>Channel</label>
+                      <div className="flex gap-2">
+                        {([
+                          { id: "email" as const, label: "Email", icon: Mail },
+                          { id: "sms" as const, label: "SMS", icon: Smartphone },
+                          { id: "both" as const, label: "Both", icon: Send },
+                        ]).map((ch) => {
+                          const Icon = ch.icon;
+                          return (
+                            <button
+                              key={ch.id}
+                              onClick={() => setNcChannel(ch.id)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs transition-all"
+                              style={{
+                                background: ncChannel === ch.id ? "rgba(139,92,246,0.15)" : "var(--subtle)",
+                                border: `1px solid ${ncChannel === ch.id ? "rgba(139,92,246,0.4)" : "var(--card-border)"}`,
+                                color: ncChannel === ch.id ? "#A78BFA" : "var(--t3)",
+                                fontWeight: ncChannel === ch.id ? 600 : 400,
+                              }}
+                            >
+                              <Icon className="w-3.5 h-3.5" /> {ch.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {ncStep === 1 && (
+                  <>
+                    {(ncChannel === "email" || ncChannel === "both") && (
+                      <div>
+                        <label className="text-[11px] uppercase tracking-wider mb-2 block" style={{ color: "var(--t4)", fontWeight: 600 }}>Subject Line</label>
+                        <input
+                          value={ncSubject}
+                          onChange={(e) => setNcSubject(e.target.value)}
+                          placeholder="e.g. We miss you at the club!"
+                          className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                          style={{ border: "1px solid var(--card-border)", color: "var(--t1)" }}
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-[11px] uppercase tracking-wider mb-2 block" style={{ color: "var(--t4)", fontWeight: 600 }}>Message</label>
+                      <textarea
+                        value={ncMessage}
+                        onChange={(e) => setNcMessage(e.target.value)}
+                        placeholder={ncChannel === "sms" ? "Hey {name}, we have 3 open sessions this week..." : "Hi {name},\n\nWe noticed you haven't played in a while..."}
+                        rows={5}
+                        className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none resize-none"
+                        style={{ border: "1px solid var(--card-border)", color: "var(--t1)" }}
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px]" style={{ color: "var(--t4)" }}>Use {"{ name }"} for personalization</p>
+                        <button
+                          onClick={() => {
+                            if (ncChannel === "sms") {
+                              setNcMessage("[IQSport] Hey {name}, we have open sessions this week that match your preferences. Book now at app.iqsport.ai. Reply STOP to opt out.");
+                              setNcSubject("");
+                            } else {
+                              setNcSubject("We miss you at the club, {name}!");
+                              setNcMessage("Hi {name},\n\nWe noticed you haven't played in a while and wanted to reach out.\n\nWe have 3 open sessions this week that match your preferences:\n- Thursday Open Play at 6 PM (4 spots left)\n- Saturday Clinic at 9 AM (6 spots left)\n- Sunday Round Robin at 10 AM (2 spots left)\n\nBook now and get back on the court!\n\nBest,\nYour Club Team");
+                            }
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-all"
+                          style={{ background: "rgba(139,92,246,0.1)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
+                        >
+                          <Sparkles className="w-3 h-3" /> AI Generate
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {ncStep === 2 && !ncSent && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span style={{ color: "var(--t4)" }}>Audience:</span>
+                          <span className="ml-1" style={{ color: "var(--t1)", fontWeight: 600 }}>
+                            {ncAudience === "at-risk" ? "At-Risk Members (18)" : ncAudience === "critical" ? "Critical Members (12)" : ncAudience === "inactive-14d" ? "Inactive 14+ Days (22)" : "All Members (127)"}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: "var(--t4)" }}>Channel:</span>
+                          <span className="ml-1" style={{ color: "var(--t1)", fontWeight: 600 }}>{ncChannel === "both" ? "Email + SMS" : ncChannel.toUpperCase()}</span>
+                        </div>
+                      </div>
+                      {ncSubject && (
+                        <div className="mt-2 text-xs">
+                          <span style={{ color: "var(--t4)" }}>Subject:</span>
+                          <span className="ml-1" style={{ color: "var(--t1)", fontWeight: 600 }}>{ncSubject}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                      <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--t4)", fontWeight: 600 }}>Message Preview</div>
+                      <div className="text-xs whitespace-pre-wrap" style={{ color: "var(--t2)", lineHeight: 1.6 }}>
+                        {ncMessage.replace(/\{name\}/g, "Sarah Mitchell")}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {ncStep === 2 && ncSent && (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(16,185,129,0.15)" }}>
+                      <CheckCircle2 className="w-7 h-7" style={{ color: "#10B981" }} />
+                    </div>
+                    <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Campaign Sent!</h3>
+                    <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>
+                      {ncAudience === "at-risk" ? "18" : ncAudience === "critical" ? "12" : ncAudience === "inactive-14d" ? "22" : "127"} members will receive your message shortly.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid var(--card-border)" }}>
+                <button
+                  onClick={() => { if (ncStep > 0 && !ncSent) setNcStep(ncStep - 1); else setShowNewCampaign(false); }}
+                  className="px-4 py-2 rounded-xl text-xs"
+                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", fontWeight: 500 }}
+                >
+                  {ncStep === 0 || ncSent ? "Close" : "Back"}
+                </button>
+                {!ncSent && (
+                  <button
+                    onClick={() => {
+                      if (ncStep < 2) setNcStep(ncStep + 1);
+                      else setNcSent(true);
+                    }}
+                    disabled={ncStep === 1 && !ncMessage.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-all"
+                    style={{
+                      background: (ncStep === 1 && !ncMessage.trim()) ? "var(--subtle)" : "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                      fontWeight: 600,
+                      opacity: (ncStep === 1 && !ncMessage.trim()) ? 0.4 : 1,
+                    }}
+                  >
+                    {ncStep === 2 ? <><Send className="w-3.5 h-3.5" /> Send Campaign</> : <>Next <ChevronRight className="w-3.5 h-3.5" /></>}
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
