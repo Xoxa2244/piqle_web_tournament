@@ -92,9 +92,9 @@ export function AILoadingAnimation({ onComplete }: Props) {
   const progress = ((currentStage + 1) / stages.length) * 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-3xl mx-auto">
       {/* Neural Network Visualization */}
-      <div className="relative h-60 rounded-2xl overflow-hidden" style={{
+      <div className="relative h-[420px] rounded-2xl overflow-hidden" style={{
         background: "linear-gradient(180deg, #080A14, #0B0D17)",
         border: "1px solid rgba(139, 92, 246, 0.15)",
       }}>
@@ -113,7 +113,7 @@ export function AILoadingAnimation({ onComplete }: Props) {
               animate={{ opacity: [0, 0.6, 0], y: "110%" }}
               exit={{ opacity: 0 }}
               transition={{ duration: item.speed * 2, ease: "linear" }}
-              className="absolute text-[10px] font-mono"
+              className="absolute text-sm font-mono"
               style={{ left: `${item.x}%`, color: "#8B5CF6", textShadow: "0 0 8px rgba(139, 92, 246, 0.8)" }}
             >
               {item.char}
@@ -144,29 +144,29 @@ export function AILoadingAnimation({ onComplete }: Props) {
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div animate={{ scale: [1, 1.05, 1], opacity: [0.9, 1, 0.9] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative">
             {/* Outer rings */}
-            {[0, 1, 2].map((i) => (
-              <motion.div key={i} animate={{ rotate: i % 2 === 0 ? 360 : -360 }} transition={{ duration: 12 + i * 4, repeat: Infinity, ease: "linear" }} className="absolute rounded-full" style={{ inset: -(20 + i * 25), border: `1px solid rgba(139, 92, 246, ${0.15 - i * 0.04})` }} />
+            {[0, 1, 2, 3].map((i) => (
+              <motion.div key={i} animate={{ rotate: i % 2 === 0 ? 360 : -360 }} transition={{ duration: 12 + i * 4, repeat: Infinity, ease: "linear" }} className="absolute rounded-full" style={{ inset: -(30 + i * 35), border: `1px solid rgba(139, 92, 246, ${0.2 - i * 0.04})` }} />
             ))}
 
             {/* Glow */}
             <div className="absolute inset-0 rounded-full blur-3xl scale-[2]" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.2), rgba(6,182,212,0.1), transparent)" }} />
 
             {/* Core */}
-            <div className="relative w-24 h-24 rounded-full flex items-center justify-center" style={{
+            <div className="relative w-36 h-36 rounded-full flex items-center justify-center" style={{
               background: "linear-gradient(135deg, #8B5CF6, #6D28D9, #06B6D4)",
-              boxShadow: "0 0 60px rgba(139, 92, 246, 0.5), 0 0 120px rgba(6, 182, 212, 0.2)",
+              boxShadow: "0 0 80px rgba(139, 92, 246, 0.6), 0 0 160px rgba(6, 182, 212, 0.3)",
             }}>
-              <Brain className="w-12 h-12 text-white" />
+              <Brain className="w-16 h-16 text-white" />
             </div>
 
             {/* Orbiting nodes */}
-            {[0, 1, 2, 3, 4, 5].map((i) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
               <motion.div key={i} animate={{ rotate: 360 }} transition={{ duration: 6 + i * 0.5, repeat: Infinity, ease: "linear", delay: i * 0.4 }} className="absolute inset-0">
                 <div className="absolute rounded-full" style={{
-                  width: 5, height: 5, top: "50%", left: "50%",
-                  transform: `translate(-50%, -50%) translateY(-${60 + i * 10}px)`,
+                  width: 7 - (i % 3), height: 7 - (i % 3), top: "50%", left: "50%",
+                  transform: `translate(-50%, -50%) translateY(-${90 + i * 14}px)`,
                   background: i % 2 === 0 ? "linear-gradient(135deg, #8B5CF6, #A78BFA)" : "linear-gradient(135deg, #06B6D4, #22D3EE)",
-                  boxShadow: i % 2 === 0 ? "0 0 12px rgba(139,92,246,0.8)" : "0 0 12px rgba(6,182,212,0.8)",
+                  boxShadow: i % 2 === 0 ? "0 0 16px rgba(139,92,246,0.8)" : "0 0 16px rgba(6,182,212,0.8)",
                 }} />
               </motion.div>
             ))}
@@ -175,7 +175,7 @@ export function AILoadingAnimation({ onComplete }: Props) {
 
         {/* Synaptic connections */}
         <svg className="absolute inset-0 w-full h-full">
-          {[...Array(12)].map((_, i) => (
+          {[...Array(18)].map((_, i) => (
             <motion.line
               key={i}
               x1={`${10 + Math.random() * 80}%`} y1={`${10 + Math.random() * 80}%`}
@@ -191,11 +191,11 @@ export function AILoadingAnimation({ onComplete }: Props) {
       </div>
 
       {/* Progress Bar */}
-      <div className="space-y-1.5">
-        <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+      <div className="space-y-2">
+        <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
           <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5 }} style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", boxShadow: "0 0 20px rgba(139, 92, 246, 0.5)" }} />
         </div>
-        <div className="text-right text-xs" style={{ fontWeight: 500, color: "var(--t4)" }}>{Math.round(progress)}%</div>
+        <div className="text-right text-sm" style={{ fontWeight: 600, color: "var(--t3)" }}>{Math.round(progress)}%</div>
       </div>
 
       {/* Current Stage */}
@@ -206,16 +206,16 @@ export function AILoadingAnimation({ onComplete }: Props) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl p-5"
+          className="rounded-2xl p-6"
           style={{ background: "var(--card-bg)", border: "1px solid rgba(139, 92, 246, 0.1)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}
         >
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 4px 20px rgba(139, 92, 246, 0.3)" }}>
-              {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-5 h-5 text-white" />; })()}
+          <div className="flex items-start gap-5">
+            <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 4px 20px rgba(139, 92, 246, 0.3)" }}>
+              {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-7 h-7 text-white" />; })()}
             </div>
             <div className="flex-1">
-              <h3 className="text-sm mb-0.5" style={{ fontWeight: 600, color: "var(--heading)" }}>{stages[currentStage].title}</h3>
-              <p className="text-xs" style={{ color: "var(--t4)" }}>{stages[currentStage].description}</p>
+              <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>{stages[currentStage].title}</h3>
+              <p className="text-sm" style={{ color: "var(--t3)" }}>{stages[currentStage].description}</p>
             </div>
           </div>
         </motion.div>
@@ -228,14 +228,14 @@ export function AILoadingAnimation({ onComplete }: Props) {
           const isComplete = idx < currentStage;
           const isCurrent = idx === currentStage;
           return (
-            <motion.div key={idx} className="flex flex-col items-center gap-1.5" animate={isCurrent ? { scale: [1, 1.1, 1] } : {}} transition={{ duration: 1.5, repeat: Infinity }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all" style={{
+            <motion.div key={idx} className="flex flex-col items-center gap-2" animate={isCurrent ? { scale: [1, 1.1, 1] } : {}} transition={{ duration: 1.5, repeat: Infinity }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center transition-all" style={{
                 background: isComplete ? "linear-gradient(135deg, #10B981, #059669)" : isCurrent ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "rgba(255,255,255,0.05)",
                 boxShadow: isCurrent ? "0 4px 20px rgba(139, 92, 246, 0.4)" : isComplete ? "0 4px 15px rgba(16, 185, 129, 0.3)" : "none",
               }}>
-                <Icon className={`w-4 h-4 ${isComplete || isCurrent ? "text-white" : "text-white/20"}`} />
+                <Icon className={`w-5 h-5 ${isComplete || isCurrent ? "text-white" : "text-white/20"}`} />
               </div>
-              <div className="text-[10px] text-center max-w-[56px]" style={{ fontWeight: isCurrent ? 600 : 400, color: isCurrent ? "var(--t1)" : "var(--t5)" }}>
+              <div className="text-xs text-center max-w-[72px]" style={{ fontWeight: isCurrent ? 600 : 400, color: isCurrent ? "var(--t1)" : "var(--t5)" }}>
                 {stage.title.replace("...", "")}
               </div>
             </motion.div>
@@ -244,12 +244,12 @@ export function AILoadingAnimation({ onComplete }: Props) {
       </div>
 
       {/* Terminal */}
-      <div className="rounded-2xl p-4 font-mono text-xs overflow-hidden" style={{ background: "rgba(8, 10, 20, 0.9)", border: "1px solid rgba(139, 92, 246, 0.1)" }}>
-        <div className="flex items-center gap-2 mb-2.5 pb-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
-          <span className="text-[10px] text-white/20 ml-2">iqsport-ai-engine</span>
+      <div className="rounded-2xl p-6 font-mono text-sm overflow-hidden" style={{ background: "rgba(8, 10, 20, 0.9)", border: "1px solid rgba(139, 92, 246, 0.1)" }}>
+        <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="w-3 h-3 rounded-full bg-red-500/60" />
+          <div className="w-3 h-3 rounded-full bg-amber-500/60" />
+          <div className="w-3 h-3 rounded-full bg-emerald-500/60" />
+          <span className="text-xs text-white/20 ml-2">iqsport-ai-engine</span>
         </div>
         <div className="space-y-1.5">
           {visibleLines.map((line, idx) => (
