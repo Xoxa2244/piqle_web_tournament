@@ -6,12 +6,10 @@
  * formats into a human-readable response.
  */
 
-import { tool, type ToolSet } from 'ai'
-import { z } from 'zod'
+import { tool, jsonSchema, type ToolSet } from 'ai'
 import { prisma } from '@/lib/prisma'
 
-// AI SDK tool() has strict overload types that reject union return types from try/catch.
-// Cast to bypass TS while keeping runtime behavior correct.
+// AI SDK tool() overloads are strict with jsonSchema — cast to bypass TS
 const t = tool as (...args: any[]) => any
 
 export function createChatTools(clubId: string): ToolSet {
@@ -19,10 +17,13 @@ export function createChatTools(clubId: string): ToolSet {
     getMemberHealth: t({
       description:
         'Get member health scores and churn risk for all club members. Returns summary (total, healthy, watch, at_risk, critical counts) and top at-risk members with their scores. Use when the user asks about member health, churn risk, at-risk members, engagement, or who hasn\'t been coming.',
-      parameters: z.object({
-        filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).describe('Filter by risk level. Default: all'),
-        limit: z.number().describe('Max members to return. Default: 10'),
-      }).partial(),
+      parameters: jsonSchema({
+        type: 'object',
+        properties: {
+          filter: { type: 'string', enum: ['all', 'at_risk', 'critical', 'watch', 'healthy'], description: 'Filter by risk level. Default: all' },
+          limit: { type: 'number', description: 'Max members to return. Default: 10' },
+        },
+      }),
       execute: async ({ filter, limit }: { filter?: string; limit?: number }) => {
         const f = filter ?? 'all'
         const l = limit ?? 10
@@ -130,10 +131,13 @@ export function createChatTools(clubId: string): ToolSet {
     getUpcomingSessions: t({
       description:
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
-      parameters: z.object({
-        onlyUnderfilled: z.boolean().describe('Only return sessions below 50% capacity. Default: false'),
-        limit: z.number().describe('Max sessions to return. Default: 10'),
-      }).partial(),
+      parameters: jsonSchema({
+        type: 'object',
+        properties: {
+          onlyUnderfilled: { type: 'boolean', description: 'Only return sessions below 50% capacity. Default: false' },
+          limit: { type: 'number', description: 'Max sessions to return. Default: 10' },
+        },
+      }),
       execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
         const l = limit ?? 10
@@ -189,7 +193,7 @@ export function createChatTools(clubId: string): ToolSet {
     getClubMetrics: t({
       description:
         'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
-      parameters: z.object({}),
+      parameters: jsonSchema({ type: 'object', properties: {} }),
       execute: async () => {
         try {
           const now = new Date()
@@ -264,9 +268,12 @@ export function createChatTools(clubId: string): ToolSet {
     getReactivationCandidates: t({
       description:
         'Get members who have been inactive and are candidates for re-engagement outreach. Use when the user asks about inactive members, who to re-engage, reactivation, or members who stopped coming.',
-      parameters: z.object({
-        limit: z.number().describe('Max candidates to return. Default: 10'),
-      }).partial(),
+      parameters: jsonSchema({
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'Max candidates to return. Default: 10' },
+        },
+      }),
       execute: async ({ limit }: { limit?: number }) => {
         const l = limit ?? 10
         try {

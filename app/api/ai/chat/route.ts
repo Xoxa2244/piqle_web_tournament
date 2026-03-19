@@ -324,8 +324,8 @@ Use the data above to answer the user's question. If the data doesn't contain re
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
-    // Tools disabled — Zod/AI SDK schema serialization breaks on Vercel with OpenAI.
-    // Club data is already available via RAG context in the system prompt.
+    // Tools re-enabled — using jsonSchema() instead of Zod to bypass schema issue
+    const chatTools = createChatTools(clubId);
 
     let result;
     try {
@@ -333,6 +333,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
@@ -343,6 +344,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: chatTools,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
