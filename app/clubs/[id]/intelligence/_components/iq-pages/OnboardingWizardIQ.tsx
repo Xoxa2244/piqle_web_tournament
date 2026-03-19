@@ -81,7 +81,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   const handleComplete = async () => {
     setProcessing(true)
 
-    // Save settings
+    // Save settings — try full save first, fallback to minimal save
     try {
       await saveMutation.mutateAsync({
         clubId,
@@ -92,18 +92,32 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
           hasIndoorCourts: indoor,
           hasOutdoorCourts: outdoor,
           operatingDays: days as any,
-          operatingHoursStart: openTime,
-          operatingHoursEnd: closeTime,
+          operatingHours: { open: openTime, close: closeTime },
+          peakHours: { start: '17:00', end: '20:00' },
           typicalSessionDurationMinutes: sessionDuration,
           pricingModel: pricingModel as any,
-          avgSessionPriceCents: Math.round(price * 100),
+          avgSessionPriceCents: pricingModel === 'free' ? null : Math.round(price * 100),
           communicationPreferences: { preferredChannel: channel as any, tone: tone as any, maxMessagesPerWeek: 4 },
           goals: goals as any,
           onboardingCompletedAt: new Date().toISOString(),
+          onboardingVersion: 1,
         },
       })
+      console.log('[Onboarding] Settings saved successfully')
     } catch (err) {
-      console.error('[Onboarding] Save failed:', err)
+      console.error('[Onboarding] Full save failed, trying minimal:', err)
+      // Fallback: at least mark onboarding as complete
+      try {
+        await saveMutation.mutateAsync({
+          clubId,
+          settings: {
+            onboardingCompletedAt: new Date().toISOString(),
+          },
+        })
+        console.log('[Onboarding] Minimal save (onboardingCompletedAt) succeeded')
+      } catch (err2) {
+        console.error('[Onboarding] Even minimal save failed:', err2)
+      }
     }
 
     // Upload CSV if provided
