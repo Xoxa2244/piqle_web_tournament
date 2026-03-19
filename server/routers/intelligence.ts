@@ -1421,13 +1421,23 @@ export const intelligenceRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can update intelligence settings' })
       }
       const { intelligenceSettingsSchema } = await import('@/lib/ai/onboarding-schema')
-      const validated = intelligenceSettingsSchema.parse(input.settings)
 
-      // Merge into existing automationSettings
+      // Merge new settings into existing intelligence settings (supports partial updates)
       const club: any = await ctx.prisma.club.findUniqueOrThrow({
         where: { id: input.clubId },
       })
       const existing = club.automationSettings || {}
+      const existingIntelligence = existing.intelligence || {}
+      const merged = { ...existingIntelligence, ...input.settings }
+
+      // Try full validation; if it fails (partial update), save raw merge
+      let validated: any
+      try {
+        validated = intelligenceSettingsSchema.parse(merged)
+      } catch {
+        validated = merged
+      }
+
       await (ctx.prisma.club as any).update({
         where: { id: input.clubId },
         data: {

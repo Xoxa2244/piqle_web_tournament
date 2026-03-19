@@ -100,7 +100,10 @@ export default function IntelligenceDashboardPage() {
 
   const brand = useBrand()
   if (brand.key === 'iqsport') {
-    if (!isDemo && !hasOnboarded) return <OnboardingWizardIQ clubId={clubId} onComplete={() => window.location.reload()} />
+    if (!isDemo && !hasOnboarded) return <OnboardingWizardIQ clubId={clubId} onComplete={() => {
+      // Force full page reload to clear tRPC cache and re-fetch settings
+      window.location.href = window.location.pathname + window.location.search
+    }} />
     return <DashboardIQ dashboardData={data} healthData={healthData} heatmapData={heatmapData} memberGrowthData={memberGrowthData} uploadHistoryData={uploadHistoryData} isLoading={isLoading} clubId={clubId} />
   }
 
