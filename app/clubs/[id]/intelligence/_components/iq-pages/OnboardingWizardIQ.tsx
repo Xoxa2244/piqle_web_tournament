@@ -56,7 +56,8 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   // Form state
   const [timezone, setTimezone] = useState('America/New_York')
   const [sports, setSports] = useState<string[]>(['pickleball'])
-  const [courts, setCourts] = useState(4)
+  const [courtsStr, setCourtsStr] = useState('4')
+  const courts = Number(courtsStr) || 1
   const [indoor, setIndoor] = useState(true)
   const [outdoor, setOutdoor] = useState(false)
   const [days, setDays] = useState<string[]>(DAYS)
@@ -64,7 +65,8 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   const [closeTime, setCloseTime] = useState('22:00')
   const [sessionDuration, setSessionDuration] = useState(90)
   const [pricingModel, setPricingModel] = useState('per_session')
-  const [price, setPrice] = useState(15)
+  const [priceStr, setPriceStr] = useState('15')
+  const price = Number(priceStr) || 0
   const [channel, setChannel] = useState('email')
   const [tone, setTone] = useState('friendly')
   const [goals, setGoals] = useState<string[]>(['fill_sessions', 'improve_retention'])
@@ -143,11 +145,29 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
       </div>
 
       <div>
-        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Timezone</label>
+        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Where is your club located?</label>
         <select value={timezone} onChange={e => setTimezone(e.target.value)}
           className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}>
-          {['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Phoenix', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'Australia/Sydney'].map(tz => (
-            <option key={tz} value={tz}>{tz.replace('_', ' ')}</option>
+          {[
+            { tz: 'America/New_York', label: 'Eastern US (New York, Miami, Atlanta)' },
+            { tz: 'America/Chicago', label: 'Central US (Chicago, Dallas, Houston)' },
+            { tz: 'America/Denver', label: 'Mountain US (Denver, Phoenix, Salt Lake)' },
+            { tz: 'America/Los_Angeles', label: 'Pacific US (Los Angeles, Seattle, San Francisco)' },
+            { tz: 'America/Anchorage', label: 'Alaska' },
+            { tz: 'Pacific/Honolulu', label: 'Hawaii' },
+            { tz: 'America/Toronto', label: 'Eastern Canada (Toronto, Montreal)' },
+            { tz: 'America/Vancouver', label: 'Pacific Canada (Vancouver)' },
+            { tz: 'Europe/London', label: 'UK (London, Manchester)' },
+            { tz: 'Europe/Berlin', label: 'Central Europe (Berlin, Paris, Madrid)' },
+            { tz: 'Europe/Moscow', label: 'Moscow, Russia' },
+            { tz: 'Asia/Dubai', label: 'Gulf (Dubai, Abu Dhabi)' },
+            { tz: 'Asia/Tokyo', label: 'Japan (Tokyo)' },
+            { tz: 'Asia/Shanghai', label: 'China (Shanghai, Beijing)' },
+            { tz: 'Asia/Kolkata', label: 'India (Mumbai, Delhi)' },
+            { tz: 'Australia/Sydney', label: 'Australia (Sydney, Melbourne)' },
+            { tz: 'Pacific/Auckland', label: 'New Zealand (Auckland)' },
+          ].map(({ tz, label }) => (
+            <option key={tz} value={tz}>{label}</option>
           ))}
         </select>
       </div>
@@ -166,7 +186,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
 
       <div>
         <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Number of courts</label>
-        <input type="number" value={courts} onChange={e => setCourts(Number(e.target.value))} min={1} max={50}
+        <input type="text" inputMode="numeric" value={courtsStr} onChange={e => setCourtsStr(e.target.value.replace(/[^0-9]/g, ''))}
           className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
       </div>
 
@@ -214,7 +234,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
       {pricingModel !== 'free' && (
         <div>
           <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Average price per player ($)</label>
-          <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} min={0} max={200}
+          <input type="text" inputMode="numeric" value={priceStr} onChange={e => setPriceStr(e.target.value.replace(/[^0-9.]/g, ''))}
             className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
         </div>
       )}
