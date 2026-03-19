@@ -16,7 +16,7 @@ import { useTheme } from "../IQThemeProvider";
 import { useParams, useRouter } from "next/navigation";
 import { IQFileDropZone } from "./IQFileDropZone";
 import { AILoadingAnimation } from "./AILoadingAnimation";
-import { X } from "lucide-react";
+import { X, Check, ChevronRight } from "lucide-react";
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
@@ -354,6 +354,21 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // AI Insights — generated from real data
   const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
 
+  // Determine if club has real data or is still empty
+  const hasRealData = !!realData;
+  const hasSessions = dashboardData?.metrics?.occupancy?.value !== "0%";
+  const hasMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0) > 0;
+  const hasUploads = !!uploadHistoryData?.uploads?.length;
+
+  const quickStartSteps = [
+    { id: "settings", label: "Configure club settings", done: true, href: `/clubs/${clubId}/intelligence/settings`, icon: "⚙️" },
+    { id: "import", label: "Import session history", done: hasUploads || hasSessions, action: () => setImportModal("upload"), icon: "📊" },
+    { id: "members", label: "Members detected", done: hasMembers, href: `/clubs/${clubId}/intelligence/members`, icon: "👥" },
+    { id: "ai", label: "AI insights ready", done: hasRealData && hasSessions, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
+  ];
+  const quickStartProgress = quickStartSteps.filter(s => s.done).length;
+  const showQuickStart = quickStartProgress < quickStartSteps.length;
+
   return (
     <motion.div
       ref={ref}
@@ -415,6 +430,78 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           )}
         </div>
       </div>
+
+      {/* Quick Start Checklist — shown when club has incomplete setup */}
+      {showQuickStart && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="rounded-2xl p-6"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 style={{ fontWeight: 700, color: "var(--heading)" }}>Quick Start</h3>
+              <p className="text-sm mt-0.5" style={{ color: "var(--t3)" }}>Complete these steps to unlock AI-powered insights</p>
+            </div>
+            <div className="text-sm" style={{ fontWeight: 600, color: "#8B5CF6" }}>
+              {quickStartProgress}/{quickStartSteps.length}
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-2 rounded-full overflow-hidden mb-5" style={{ background: "var(--subtle)" }}>
+            <motion.div
+              className="h-full rounded-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${(quickStartProgress / quickStartSteps.length) * 100}%` }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)" }}
+            />
+          </div>
+
+          <div className="space-y-2">
+            {quickStartSteps.map((s) => {
+              const Wrapper = s.href ? 'a' : 'button';
+              const wrapperProps = s.href
+                ? { href: s.href } as any
+                : { onClick: s.action } as any;
+              return (
+                <Wrapper
+                  key={s.id}
+                  {...wrapperProps}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left"
+                  style={{
+                    background: s.done ? "rgba(16,185,129,0.06)" : "var(--subtle)",
+                    border: s.done ? "1px solid rgba(16,185,129,0.15)" : "1px solid transparent",
+                    cursor: s.done ? "default" : "pointer",
+                  }}
+                >
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{
+                    background: s.done ? "rgba(16,185,129,0.15)" : "rgba(139,92,246,0.1)",
+                  }}>
+                    {s.done
+                      ? <Check className="w-4 h-4" style={{ color: "#10B981" }} />
+                      : <span className="text-sm">{s.icon}</span>
+                    }
+                  </div>
+                  <span className="text-sm" style={{
+                    fontWeight: s.done ? 500 : 600,
+                    color: s.done ? "var(--t3)" : "var(--t1)",
+                    textDecoration: s.done ? "line-through" : "none",
+                  }}>
+                    {s.label}
+                  </span>
+                  {!s.done && (
+                    <ChevronRight className="w-4 h-4 ml-auto" style={{ color: "var(--t4)" }} />
+                  )}
+                </Wrapper>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
