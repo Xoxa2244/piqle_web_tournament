@@ -139,7 +139,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
           <Sparkles className="w-10 h-10 text-white" />
         </motion.div>
         <h2 className="text-2xl mb-2" style={{ fontWeight: 800, color: 'var(--heading)' }}>Welcome to IQSport</h2>
-        <p className="text-sm" style={{ color: 'var(--t3)' }}>Let's set up your club in under 2 minutes</p>
+        <p className="text-sm" style={{ color: 'var(--t3)' }}>Set up your club in under 2 minutes</p>
       </div>
 
       <div>
