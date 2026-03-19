@@ -1,15 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import {
-  Globe, MapPin, Calendar, DollarSign, Target, ChevronRight, ChevronLeft,
-  Check, Upload, Sparkles,
+  MapPin, Calendar, DollarSign, Target, ChevronRight, ChevronLeft,
+  Check, Upload, Sparkles, Building2, Dumbbell,
 } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import { AILoadingAnimation } from './AILoadingAnimation'
 import { IQFileDropZone } from './IQFileDropZone'
 import { trpc } from '@/lib/trpc'
+import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 
 type Props = {
   clubId: string
@@ -25,6 +26,31 @@ const GOALS = [
   { id: 'increase_revenue', label: 'Grow revenue', icon: '💰' },
   { id: 'reduce_no_shows', label: 'Cut down on no-shows', icon: '✅' },
 ]
+
+// Map Google timezone IDs from lat/lng (simple lookup by country)
+const COUNTRY_TZ: Record<string, string> = {
+  'United States': 'America/New_York',
+  'Canada': 'America/Toronto',
+  'United Kingdom': 'Europe/London',
+  'Germany': 'Europe/Berlin',
+  'France': 'Europe/Berlin',
+  'Spain': 'Europe/Berlin',
+  'Russia': 'Europe/Moscow',
+  'Japan': 'Asia/Tokyo',
+  'China': 'Asia/Shanghai',
+  'India': 'Asia/Kolkata',
+  'Australia': 'Australia/Sydney',
+  'New Zealand': 'Pacific/Auckland',
+  'United Arab Emirates': 'Asia/Dubai',
+}
+
+// Refine US timezone by state
+const US_STATE_TZ: Record<string, string> = {
+  'HI': 'Pacific/Honolulu', 'AK': 'America/Anchorage',
+  'WA': 'America/Los_Angeles', 'OR': 'America/Los_Angeles', 'CA': 'America/Los_Angeles', 'NV': 'America/Los_Angeles',
+  'ID': 'America/Boise', 'MT': 'America/Denver', 'WY': 'America/Denver', 'UT': 'America/Denver', 'CO': 'America/Denver', 'AZ': 'America/Phoenix', 'NM': 'America/Denver',
+  'ND': 'America/Chicago', 'SD': 'America/Chicago', 'NE': 'America/Chicago', 'KS': 'America/Chicago', 'MN': 'America/Chicago', 'IA': 'America/Chicago', 'MO': 'America/Chicago', 'WI': 'America/Chicago', 'IL': 'America/Chicago', 'TX': 'America/Chicago', 'OK': 'America/Chicago', 'AR': 'America/Chicago', 'LA': 'America/Chicago', 'MS': 'America/Chicago', 'AL': 'America/Chicago', 'TN': 'America/Chicago',
+}
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -48,30 +74,121 @@ function Chip({ selected, onClick, children }: { selected: boolean; onClick: () 
   )
 }
 
+function InputField({ label, value, onChange, placeholder, type = 'text', inputMode, ref: inputRef }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; inputMode?: 'numeric' | 'text'; ref?: React.Ref<HTMLInputElement>
+}) {
+  return (
+    <div>
+      <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>{label}</label>
+      <input
+        ref={inputRef}
+        type={type}
+        inputMode={inputMode}
+        value={value}
+        onChange={e => onChange(type === 'text' && inputMode === 'numeric' ? e.target.value.replace(/[^0-9.]/g, '') : e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all focus:ring-2 focus:ring-violet-500/30"
+        style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+      />
+    </div>
+  )
+}
+
 export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   const { isDark } = useTheme()
   const [step, setStep] = useState(0)
   const [processing, setProcessing] = useState(false)
 
-  // Form state
-  const [timezone, setTimezone] = useState('America/New_York')
+  // Step 1: Club Info
+  const [clubName, setClubName] = useState('')
+  const [clubKind, setClubKind] = useState<'VENUE' | 'COMMUNITY'>('VENUE')
+  const [address, setAddress] = useState('')
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
+  const [country, setCountry] = useState('')
+  const [timezone, setTimezone] = useState('')
+  const [addressSelected, setAddressSelected] = useState(false)
+
+  // Step 2: Sports & Courts
   const [sports, setSports] = useState<string[]>(['pickleball'])
   const [courtsStr, setCourtsStr] = useState('4')
   const courts = Number(courtsStr) || 1
   const [indoor, setIndoor] = useState(true)
   const [outdoor, setOutdoor] = useState(false)
+
+  // Step 3: Schedule
   const [days, setDays] = useState<string[]>(DAYS)
   const [openTime, setOpenTime] = useState('06:00')
   const [closeTime, setCloseTime] = useState('22:00')
-  const [sessionDuration, setSessionDuration] = useState(90)
+
+  // Step 4: Pricing & CSV
   const [pricingModel, setPricingModel] = useState('per_session')
   const [priceStr, setPriceStr] = useState('15')
   const price = Number(priceStr) || 0
   const [channel, setChannel] = useState('email')
   const [tone, setTone] = useState('friendly')
-  const [goals, setGoals] = useState<string[]>(['fill_sessions', 'improve_retention'])
   const [csvFile, setCsvFile] = useState<File | null>(null)
 
+  // Step 5: Goals
+  const [goals, setGoals] = useState<string[]>(['fill_sessions', 'improve_retention'])
+
+  // Google Maps autocomplete
+  const addressInputRef = useRef<HTMLInputElement | null>(null)
+  const autocompleteRef = useRef<any>(null)
+  const listenerRef = useRef<any>(null)
+
+  const setupAutocomplete = useCallback(async () => {
+    if (!addressInputRef.current) return
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
+    if (!apiKey) return
+    try {
+      const googleApi = await loadGoogleMaps({ apiKey, libraries: ['places'] })
+      if (!autocompleteRef.current) {
+        autocompleteRef.current = new googleApi.maps.places.Autocomplete(addressInputRef.current, {
+          fields: ['formatted_address', 'geometry', 'place_id', 'address_components'],
+          types: ['geocode'],
+        })
+      }
+      listenerRef.current?.remove?.()
+      listenerRef.current = autocompleteRef.current.addListener('place_changed', () => {
+        const place = autocompleteRef.current?.getPlace()
+        if (!place?.formatted_address) return
+        const components = place.address_components ?? []
+        const find = (type: string) => components.find((c: any) => c.types?.includes(type))
+        const newCity = find('locality')?.long_name ?? find('postal_town')?.long_name ?? find('sublocality')?.long_name ?? ''
+        const newState = find('administrative_area_level_1')?.short_name ?? ''
+        const newCountry = find('country')?.long_name ?? ''
+
+        setAddress(place.formatted_address)
+        setCity(newCity)
+        setState(newState)
+        setCountry(newCountry)
+        setAddressSelected(true)
+
+        // Auto-detect timezone
+        let tz = COUNTRY_TZ[newCountry] || 'America/New_York'
+        if (newCountry === 'United States' && newState) {
+          tz = US_STATE_TZ[newState] || tz
+        }
+        setTimezone(tz)
+      })
+    } catch (err) {
+      console.warn('[Onboarding] Google Maps failed:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (step === 0) {
+      const id = requestAnimationFrame(() => setupAutocomplete())
+      return () => {
+        cancelAnimationFrame(id)
+        listenerRef.current?.remove?.()
+      }
+    }
+  }, [step, setupAutocomplete])
+
+  // Mutations
+  const updateClub = trpc.club.update.useMutation()
   const saveMutation = trpc.intelligence.saveIntelligenceSettings.useMutation()
 
   const toggleSport = (s: string) => setSports(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
@@ -81,12 +198,29 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   const handleComplete = async () => {
     setProcessing(true)
 
-    // Save settings — try full save first, fallback to minimal save
+    // 1. Update club info
+    try {
+      await updateClub.mutateAsync({
+        id: clubId,
+        name: clubName || 'My Club',
+        kind: clubKind,
+        joinPolicy: 'OPEN',
+        address: address || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        country: country || 'United States',
+      })
+      console.log('[Onboarding] Club updated')
+    } catch (err) {
+      console.error('[Onboarding] Club update failed:', err)
+    }
+
+    // 2. Save intelligence settings
     try {
       await saveMutation.mutateAsync({
         clubId,
         settings: {
-          timezone,
+          timezone: timezone || 'America/New_York',
           sportTypes: sports,
           courtCount: courts,
           hasIndoorCourts: indoor,
@@ -94,7 +228,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
           operatingDays: days as any,
           operatingHours: { open: openTime, close: closeTime },
           peakHours: { start: '17:00', end: '20:00' },
-          typicalSessionDurationMinutes: sessionDuration,
+          typicalSessionDurationMinutes: 90,
           pricingModel: pricingModel as any,
           avgSessionPriceCents: pricingModel === 'free' ? null : Math.round(price * 100),
           communicationPreferences: { preferredChannel: channel as any, tone: tone as any, maxMessagesPerWeek: 4 },
@@ -103,24 +237,17 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
           onboardingVersion: 1,
         },
       })
-      console.log('[Onboarding] Settings saved successfully')
+      console.log('[Onboarding] Intelligence settings saved')
     } catch (err) {
-      console.error('[Onboarding] Full save failed, trying minimal:', err)
-      // Fallback: at least mark onboarding as complete
+      console.error('[Onboarding] Settings save failed, trying minimal:', err)
       try {
-        await saveMutation.mutateAsync({
-          clubId,
-          settings: {
-            onboardingCompletedAt: new Date().toISOString(),
-          },
-        })
-        console.log('[Onboarding] Minimal save (onboardingCompletedAt) succeeded')
+        await saveMutation.mutateAsync({ clubId, settings: { onboardingCompletedAt: new Date().toISOString() } })
       } catch (err2) {
-        console.error('[Onboarding] Even minimal save failed:', err2)
+        console.error('[Onboarding] Minimal save failed:', err2)
       }
     }
 
-    // Upload CSV if provided
+    // 3. Upload CSV if provided
     if (csvFile) {
       try {
         const text = await csvFile.text()
@@ -146,9 +273,9 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   }
 
   const steps = [
-    // Step 0: Welcome + Sports
+    // Step 0: Club Info + Address
     <div key="0" className="space-y-6">
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}
           className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center"
           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', boxShadow: '0 8px 30px rgba(139,92,246,0.3)' }}>
@@ -158,33 +285,42 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
         <p className="text-sm" style={{ color: 'var(--t3)' }}>Set up your club in under 2 minutes</p>
       </div>
 
+      <InputField label="Club name" value={clubName} onChange={setClubName} placeholder="Sunset Pickleball Club" />
+
       <div>
-        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Where is your club located?</label>
-        <select value={timezone} onChange={e => setTimezone(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}>
-          {[
-            { tz: 'America/New_York', label: 'Eastern US (New York, Miami, Atlanta)' },
-            { tz: 'America/Chicago', label: 'Central US (Chicago, Dallas, Houston)' },
-            { tz: 'America/Denver', label: 'Mountain US (Denver, Phoenix, Salt Lake)' },
-            { tz: 'America/Los_Angeles', label: 'Pacific US (Los Angeles, Seattle, San Francisco)' },
-            { tz: 'America/Anchorage', label: 'Alaska' },
-            { tz: 'Pacific/Honolulu', label: 'Hawaii' },
-            { tz: 'America/Toronto', label: 'Eastern Canada (Toronto, Montreal)' },
-            { tz: 'America/Vancouver', label: 'Pacific Canada (Vancouver)' },
-            { tz: 'Europe/London', label: 'UK (London, Manchester)' },
-            { tz: 'Europe/Berlin', label: 'Central Europe (Berlin, Paris, Madrid)' },
-            { tz: 'Europe/Moscow', label: 'Moscow, Russia' },
-            { tz: 'Asia/Dubai', label: 'Gulf (Dubai, Abu Dhabi)' },
-            { tz: 'Asia/Tokyo', label: 'Japan (Tokyo)' },
-            { tz: 'Asia/Shanghai', label: 'China (Shanghai, Beijing)' },
-            { tz: 'Asia/Kolkata', label: 'India (Mumbai, Delhi)' },
-            { tz: 'Australia/Sydney', label: 'Australia (Sydney, Melbourne)' },
-            { tz: 'Pacific/Auckland', label: 'New Zealand (Auckland)' },
-          ].map(({ tz, label }) => (
-            <option key={tz} value={tz}>{label}</option>
-          ))}
-        </select>
+        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>
+          <MapPin className="w-3.5 h-3.5 inline mr-1" /> Address
+        </label>
+        <input
+          ref={addressInputRef}
+          type="text"
+          value={address}
+          onChange={e => { setAddress(e.target.value); setAddressSelected(false) }}
+          placeholder="Start typing your address..."
+          className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all focus:ring-2 focus:ring-violet-500/30"
+          style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+        />
+        {addressSelected && city && (
+          <p className="text-xs mt-1.5" style={{ color: '#10B981' }}>
+            ✓ {city}{state ? `, ${state}` : ''}{country ? ` — ${country}` : ''}
+          </p>
+        )}
       </div>
+
+      <div>
+        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Club type</label>
+        <div className="flex gap-3">
+          <Chip selected={clubKind === 'VENUE'} onClick={() => setClubKind('VENUE')}>🏟 Venue</Chip>
+          <Chip selected={clubKind === 'COMMUNITY'} onClick={() => setClubKind('COMMUNITY')}>👥 Community</Chip>
+        </div>
+      </div>
+    </div>,
+
+    // Step 1: Sports & Courts
+    <div key="1" className="space-y-6">
+      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+        <Dumbbell className="w-5 h-5 inline mr-2" />Sports & Courts
+      </h3>
 
       <div>
         <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>What sports do you offer?</label>
@@ -192,27 +328,23 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
           {SPORTS.map(s => <Chip key={s} selected={sports.includes(s)} onClick={() => toggleSport(s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</Chip>)}
         </div>
       </div>
-    </div>,
 
-    // Step 1: Courts
-    <div key="1" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Court Setup</h3>
+      <InputField label="Number of courts" value={courtsStr} onChange={v => setCourtsStr(v.replace(/[^0-9]/g, ''))} inputMode="numeric" />
 
       <div>
-        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Number of courts</label>
-        <input type="text" inputMode="numeric" value={courtsStr} onChange={e => setCourtsStr(e.target.value.replace(/[^0-9]/g, ''))}
-          className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
-      </div>
-
-      <div className="flex gap-4">
-        <Chip selected={indoor} onClick={() => setIndoor(!indoor)}>🏢 Indoor</Chip>
-        <Chip selected={outdoor} onClick={() => setOutdoor(!outdoor)}>🌤 Outdoor</Chip>
+        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Court type</label>
+        <div className="flex gap-3">
+          <Chip selected={indoor} onClick={() => setIndoor(!indoor)}>🏢 Indoor</Chip>
+          <Chip selected={outdoor} onClick={() => setOutdoor(!outdoor)}>🌤 Outdoor</Chip>
+        </div>
       </div>
     </div>,
 
     // Step 2: Schedule
     <div key="2" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Operating Schedule</h3>
+      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+        <Calendar className="w-5 h-5 inline mr-2" />Operating Schedule
+      </h3>
 
       <div>
         <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Operating days</label>
@@ -225,49 +357,60 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
         <div>
           <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Open</label>
           <input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+            className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+            style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)', colorScheme: isDark ? 'dark' : 'light' }} />
         </div>
         <div>
           <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Close</label>
           <input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+            className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+            style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)', colorScheme: isDark ? 'dark' : 'light' }} />
         </div>
       </div>
     </div>,
 
-    // Step 3: Pricing + Data Upload
+    // Step 3: Pricing + Communication + CSV
     <div key="3" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Pricing & Data</h3>
+      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+        <DollarSign className="w-5 h-5 inline mr-2" />Pricing & Data
+      </h3>
 
-      <div className="flex flex-wrap gap-2">
-        {[['per_session', '💳 Per Session'], ['membership', '🎫 Membership'], ['free', '🆓 Free'], ['hybrid', '🔀 Hybrid']].map(([id, label]) => (
-          <Chip key={id} selected={pricingModel === id} onClick={() => setPricingModel(id)}>{label}</Chip>
-        ))}
+      <div>
+        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Pricing model</label>
+        <div className="flex flex-wrap gap-2">
+          {[['per_session', '💳 Per Session'], ['membership', '🎫 Membership'], ['free', '🆓 Free'], ['hybrid', '🔀 Hybrid']].map(([id, label]) => (
+            <Chip key={id} selected={pricingModel === id} onClick={() => setPricingModel(id)}>{label}</Chip>
+          ))}
+        </div>
       </div>
 
       {pricingModel !== 'free' && (
-        <div>
-          <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Average price per player ($)</label>
-          <input type="text" inputMode="numeric" value={priceStr} onChange={e => setPriceStr(e.target.value.replace(/[^0-9.]/g, ''))}
-            className="w-full px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
-        </div>
+        <InputField label="Average price per player ($)" value={priceStr} onChange={v => setPriceStr(v.replace(/[^0-9.]/g, ''))} inputMode="numeric" />
       )}
+
+      <div>
+        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Communication channel</label>
+        <div className="flex flex-wrap gap-2">
+          {[['email', '📧 Email'], ['sms', '💬 SMS'], ['both', '📧💬 Both']].map(([id, label]) => (
+            <Chip key={id} selected={channel === id} onClick={() => setChannel(id)}>{label}</Chip>
+          ))}
+        </div>
+      </div>
 
       <div>
         <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>
           <Upload className="w-4 h-4 inline mr-1" />
-          Import your session history (optional)
+          Import session history (optional)
         </label>
-        <IQFileDropZone
-          onFile={(file) => setCsvFile(file)}
-          loadedFileName={csvFile?.name}
-        />
+        <IQFileDropZone onFile={(file) => setCsvFile(file)} loadedFileName={csvFile?.name} />
       </div>
     </div>,
 
     // Step 4: Goals
     <div key="4" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>What are your goals?</h3>
+      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+        <Target className="w-5 h-5 inline mr-2" />What are your goals?
+      </h3>
       <p className="text-sm" style={{ color: 'var(--t3)' }}>Select what matters most — AI will prioritize these.</p>
 
       <div className="space-y-2">
@@ -296,6 +439,7 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   }
 
   const isLast = step === steps.length - 1
+  const canProceed = step === 0 ? clubName.trim().length >= 2 : true
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
@@ -327,10 +471,17 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
               </button>
             ) : <div />}
 
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              onClick={() => isLast ? handleComplete() : setStep(step + 1)}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm text-white"
-              style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600, boxShadow: '0 4px 15px rgba(139,92,246,0.3)' }}>
+            <motion.button
+              whileHover={canProceed ? { scale: 1.05 } : {}}
+              whileTap={canProceed ? { scale: 0.95 } : {}}
+              onClick={() => canProceed && (isLast ? handleComplete() : setStep(step + 1))}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm text-white transition-all"
+              style={{
+                background: canProceed ? 'linear-gradient(135deg, #8B5CF6, #06B6D4)' : 'rgba(139,92,246,0.3)',
+                fontWeight: 600,
+                boxShadow: canProceed ? '0 4px 15px rgba(139,92,246,0.3)' : 'none',
+                cursor: canProceed ? 'pointer' : 'not-allowed',
+              }}>
               {isLast ? <><Sparkles className="w-4 h-4" /> Launch AI</> : <>Next <ChevronRight className="w-4 h-4" /></>}
             </motion.button>
           </div>
