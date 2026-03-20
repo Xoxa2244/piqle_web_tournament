@@ -322,7 +322,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const inView = useInView(ref, { once: true });
 
   // Use real data if available, otherwise fall back to mocks
-  const realData = mapRealDataToPeriod(dashboardData, healthData);
+  let realData: ReturnType<typeof mapRealDataToPeriod> = null;
+  try {
+    realData = mapRealDataToPeriod(dashboardData, healthData);
+  } catch (err) {
+    console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { dashboardData, healthData });
+  }
   const data = realData || periodData[period];
   const labels = getPeriodLabel(period);
 
