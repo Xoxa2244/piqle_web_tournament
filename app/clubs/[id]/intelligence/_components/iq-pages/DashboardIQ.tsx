@@ -360,9 +360,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
 
   // Determine if club has real data or is still empty
-  const hasRealData = !!realData;
-  const hasSessions = dashboardData?.metrics?.occupancy?.value !== "0%";
-  const hasMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0) > 0;
+  const hasRealData = !!realData && !!dashboardData;
+  const hasSessions = hasRealData && dashboardData?.metrics?.occupancy?.value !== "0%";
+  const hasMembers = hasRealData && ((healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0) > 0);
   const hasUploads = !!uploadHistoryData?.uploads?.length;
 
   const quickStartSteps = [
@@ -508,7 +508,37 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </motion.div>
       )}
 
-      {/* KPI Cards */}
+      {/* Empty state hero for clubs with no data */}
+      {!hasRealData && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="rounded-2xl p-10 text-center"
+          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)" }}
+        >
+          <div className="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15))", border: "1px solid rgba(139,92,246,0.1)" }}>
+            <BarChart3 className="w-10 h-10" style={{ color: "#8B5CF6" }} />
+          </div>
+          <h3 className="text-xl mb-2" style={{ fontWeight: 700, color: "var(--heading)" }}>Your dashboard is ready</h3>
+          <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+            Import your session history to unlock AI-powered insights, revenue analytics, and member health tracking.
+          </p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setImportModal("upload")}
+            className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-sm text-white"
+            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 20px rgba(139,92,246,0.3)" }}
+          >
+            <Upload className="w-5 h-5" /> Import CSV / XLSX
+          </motion.button>
+        </motion.div>
+      )}
+
+      {/* All data sections — only show with real data */}
+      {hasRealData && <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {data.kpis.map((kpi, i) => {
           const Icon = kpi.icon;
@@ -842,6 +872,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           })}
         </div>
       </Card>
+
+      </>}
 
       {/* Import Modal */}
       <AnimatePresence>
