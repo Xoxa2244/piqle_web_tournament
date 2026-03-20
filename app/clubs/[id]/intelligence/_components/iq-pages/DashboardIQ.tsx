@@ -328,14 +328,17 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  // Use real data if available, otherwise fall back to mocks
+  // Use real data if available, otherwise fall back to mocks only in demo mode
   let realData: ReturnType<typeof mapRealDataToPeriod> = null;
   try {
     realData = mapRealDataToPeriod(dashboardData, healthData);
   } catch (err) {
     console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { dashboardData, healthData });
   }
-  const data = realData || periodData[period];
+  // Check if this is a demo/IQ preview (no real clubId or demo route)
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
+  const data = realData || (isDemo ? periodData[period] : null);
+  const isEmptyClub = !data;
   const labels = getPeriodLabel(period);
 
   // Map real heatmap data
@@ -367,9 +370,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
 
   // Determine if club has real data or is still empty
-  const hasRealData = !!realData && !!dashboardData;
-  const hasSessions = hasRealData && dashboardData?.metrics?.occupancy?.value !== "0%";
-  const hasMembers = hasRealData && ((healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0) > 0);
+  // Check actual session count — if 0 sessions, treat as empty regardless of what metrics say
+  const totalSessions = dashboardData?.metrics?.bookings?.raw ?? dashboardData?.totalSessions ?? 0;
+  const totalMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0);
+  const hasRealData = !!realData && !!dashboardData && (totalSessions > 0 || totalMembers > 5);
+  const hasSessions = hasRealData && totalSessions > 0;
+  const hasMembers = totalMembers > 0;
   const hasUploads = !!uploadHistoryData?.uploads?.length;
 
   const quickStartSteps = [
@@ -545,7 +551,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       )}
 
       {/* All data sections — only show with real data */}
-      {hasRealData && <>
+      {hasRealData && data && <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {data.kpis.map((kpi, i) => {
           const Icon = kpi.icon;
