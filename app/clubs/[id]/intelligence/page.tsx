@@ -108,7 +108,11 @@ export default function IntelligenceDashboardPage() {
     if (!isDemo && !hasOnboarded) return <OnboardingWizardIQ clubId={clubId} onComplete={() => {
       window.location.href = window.location.pathname + window.location.search
     }} />
-    return <DashboardIQ dashboardData={data} healthData={healthData} heatmapData={heatmapData} memberGrowthData={memberGrowthData} uploadHistoryData={uploadHistoryData} isLoading={isLoading} clubId={clubId} />
+    // Catch any rendering errors gracefully
+    if (error) {
+      console.error('[IQ Dashboard] tRPC error:', error.message)
+    }
+    return <DashboardIQ dashboardData={data || undefined} healthData={healthData || undefined} heatmapData={heatmapData || undefined} memberGrowthData={memberGrowthData || undefined} uploadHistoryData={uploadHistoryData || undefined} isLoading={isLoading || !!error} clubId={clubId} />
   }
 
   if (isLoading) return <DashboardSkeleton />
