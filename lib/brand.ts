@@ -79,7 +79,7 @@ export const BRANDS: Record<BrandKey, BrandConfig> = {
     fallbackColorClass: 'text-blue-600',
     metaTitle: 'IQSport.ai — AI Intelligence for Clubs',
     metaDescription: 'AI-powered revenue optimization and member engagement platform for racquet sports clubs',
-    postClubCreateRoute: (clubId) => `/clubs/${clubId}/intelligence`,
+    postClubCreateRoute: (clubId) => `/clubs/${clubId}/intelligence?setup=true`,
     ctaLabel: 'Create Club',
     ctaHref: '/clubs?create=1',
     showTournamentSearch: false,

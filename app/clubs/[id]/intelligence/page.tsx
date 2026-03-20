@@ -105,8 +105,10 @@ export default function IntelligenceDashboardPage() {
 
   // IQ brand — early return
   if (brand.key === 'iqsport') {
-    if (!isDemo && !hasOnboarded) return <OnboardingWizardIQ clubId={clubId} onComplete={() => {
-      window.location.href = window.location.pathname + window.location.search
+    const isSetup = searchParams.get('setup') === 'true'
+    if (isSetup) return <OnboardingWizardIQ clubId={clubId} onComplete={() => {
+      // Remove ?setup=true from URL and reload
+      window.location.href = window.location.pathname
     }} />
     // Catch any rendering errors gracefully
     if (error) {
