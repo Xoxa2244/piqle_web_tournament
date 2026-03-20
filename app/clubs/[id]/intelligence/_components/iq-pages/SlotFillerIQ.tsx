@@ -7,6 +7,7 @@ import {
   Sparkles, AlertCircle, CheckCircle2, X, Mail, Smartphone, Bell,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { EmptyStateIQ } from "./EmptyStateIQ";
 
 /* --- Mock Data --- */
 const emptySlots = [
@@ -121,8 +122,9 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, sendInvites, clubId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; sendInvites?: any; clubId?: string } = {}) {
   const { isDark } = useTheme();
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
-  const displaySlots = realSlots.length > 0 ? realSlots : emptySlots;
+  const displaySlots = realSlots.length > 0 ? realSlots : (isDemo ? emptySlots : []);
   const [selectedSlot, setSelectedSlot] = useState(displaySlots[0]?.id || emptySlots[0].id);
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
@@ -130,6 +132,11 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   const inView = useInView(ref, { once: true });
 
   const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0];
+
+  const hasData = displaySlots.length > 0;
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
 
   const potentialRevenue = activeSlot.spotsNeeded * activeSlot.pricePerPlayer;
 

@@ -47,6 +47,7 @@ import {
   Area,
 } from 'recharts';
 import { useTheme } from '../IQThemeProvider';
+import { EmptyStateIQ } from './EmptyStateIQ';
 /* --- Mock Data --- */ const campaignPerformance = [
   { week: 'W1', sent: 120, opened: 78, clicked: 34, converted: 12 },
   { week: 'W2', sent: 95, opened: 62, clicked: 28, converted: 10 },
@@ -316,6 +317,7 @@ function ChannelIcon({ channel }: { channel: string }) {
   const [ncSent, setNcSent] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   // Map real campaign list to display format
   const displayCampaigns = campaignListData?.campaigns?.length
     ? campaignListData.campaigns.map((c: any) => ({
@@ -324,7 +326,7 @@ function ChannelIcon({ channel }: { channel: string }) {
         sent: c.sent, opened: c.opened, clicked: c.clicked, converted: c.converted, revenue: 0,
         date: c.date, audience: `${c.sent} members`,
       }))
-    : campaigns;
+    : (isDemo ? campaigns : []);
 
   const displayCampaignPerformance = campaignListData?.campaigns?.length
     ? (() => {
@@ -338,7 +340,7 @@ function ChannelIcon({ channel }: { channel: string }) {
         });
         return Array.from(weeks.entries()).map(([week, data]) => ({ week, ...data }));
       })()
-    : campaignPerformance;
+    : (isDemo ? campaignPerformance : []);
 
   const filtered = displayCampaigns.filter((c: any) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -354,6 +356,12 @@ function ChannelIcon({ channel }: { channel: string }) {
   const avgConvRate = campaignData?.totalSent
     ? Math.round((campaignData.totalConverted / campaignData.totalSent) * 100)
     : Math.round(campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.converted / c.sent) * 100, 0) / campaigns.filter((c) => c.sent > 0).length);
+
+  const hasData = displayCampaigns.length > 0;
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={Send} title="No campaigns yet" description="Start tracking member outreach to see campaign performance, open rates, and conversion analytics." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
+
   return (
     <motion.div
       ref={ref}

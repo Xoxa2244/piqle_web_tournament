@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EventsIQ } from "./EventsIQ";
+import { EmptyStateIQ } from "./EmptyStateIQ";
 
 /* --- Mock Data --- */
 const weeklyData = [
@@ -262,9 +263,11 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
   const activeFilterCount = [filterFormat, filterCourt, filterStatus].filter(Boolean).length;
 
-  // Use real data if available, otherwise mocks
+  // Use real data — no mock fallback for real clubs
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   const realSessions = useMemo(() => mapCalendarToSessions(calendarData), [calendarData]);
-  const displaySessions = realSessions.length > 0 ? realSessions : recentSessions;
+  const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
+  const hasData = displaySessions.length > 0;
   const displayWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
   const displayFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
   const displayCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
@@ -282,6 +285,10 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
       return matchesSearch && matchesFormat && matchesCourt && matchesStatus;
     });
   }, [searchQuery, filterFormat, filterCourt, filterStatus]);
+
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
+  }
 
   return (
     <motion.div

@@ -12,6 +12,7 @@ import {
   ComposedChart,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
+import { EmptyStateIQ } from "./EmptyStateIQ";
 
 /* --- Mock Data --- */
 const playerHealthDistribution = [
@@ -134,21 +135,22 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
   const [customTo, setCustomTo] = useState("");
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
-  // Use real data when available
+  // Use real data when available, mocks only in demo mode
   const displayRevenueByFormat = revenueData?.revenueByFormat?.length
     ? revenueData.revenueByFormat.map((f: any) => ({ name: f.format, value: f.revenue, pct: f.pct, color: ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899"][revenueData.revenueByFormat.indexOf(f) % 6] }))
-    : revenueByFormat;
+    : (isDemo ? revenueByFormat : []);
   const displayDailyRevenue = revenueData?.dailyRevenue?.length
     ? revenueData.dailyRevenue.slice(-7).map((d: any) => ({ day: new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' }), revenue: d.revenue, target: Math.round(d.revenue * 1.15) }))
-    : dailyRevenue;
+    : (isDemo ? dailyRevenue : []);
   const displayLostRevenue = revenueData?.lostRevenue
     ? [
         { category: "Empty Slots", amount: revenueData.lostRevenue.emptySlots, pct: 0, recoverable: Math.round(revenueData.lostRevenue.emptySlots * 0.6) },
         { category: "Cancelled", amount: revenueData.lostRevenue.cancelled, pct: 0, recoverable: Math.round(revenueData.lostRevenue.cancelled * 0.3) },
         { category: "No-Shows", amount: revenueData.lostRevenue.noShows, pct: 0, recoverable: Math.round(revenueData.lostRevenue.noShows * 0.5) },
       ].map(l => ({ ...l, pct: revenueData.lostRevenue.total > 0 ? Math.round((l.amount / revenueData.lostRevenue.total) * 100) : 0 }))
-    : lostRevenue;
+    : (isDemo ? lostRevenue : []);
 
   const totalRevenue = revenueData?.totalRevenue ?? 19450;
   const totalLost = displayLostRevenue.reduce((s: number, l: any) => s + l.amount, 0);
@@ -162,7 +164,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         { level: "At-Risk", count: Math.round(revenueData?.activeMembers * 0.14 || 18), pct: 14, color: "#F97316" },
         { level: "Critical", count: Math.round(revenueData?.activeMembers * 0.09 || 12), pct: 9, color: "#EF4444" },
       ]
-    : playerHealthDistribution;
+    : (isDemo ? playerHealthDistribution : []);
 
   // Period comparison from revenue data (values must be numbers for delta calc)
   const displayPeriodComparison = revenueData
@@ -174,12 +176,12 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         { metric: "Total Sessions", current: revenueData.totalSessions, previous: revenueData.prevTotalSessions || 1, format: "number" },
         { metric: "Lost Revenue", current: revenueData.lostRevenue?.total || 0, previous: 1, format: "currency" },
       ]
-    : periodComparison;
+    : (isDemo ? periodComparison : []);
 
   // Pricing opportunities from real endpoint
   const displayPricingOpportunities = pricingData?.opportunities?.length
     ? pricingData.opportunities
-    : pricingOpportunities;
+    : (isDemo ? pricingOpportunities : []);
 
   // Revenue forecast from real endpoint
   const displayFullForecast = forecastProp?.actual?.length
@@ -187,7 +189,12 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         ...forecastProp.actual.map((a: any) => ({ month: a.month, actual: a.actual })),
         ...forecastProp.forecast.map((f: any) => ({ month: f.month, forecast: f.forecast, low: f.low, high: f.high })),
       ]
-    : fullForecast;
+    : (isDemo ? fullForecast : []);
+
+  const hasData = displayRevenueByFormat.length > 0;
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={DollarSign} title="No revenue data yet" description="Import session data with pricing to unlock revenue analytics, forecasts, and pricing optimization." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
 
   return (
     <motion.div

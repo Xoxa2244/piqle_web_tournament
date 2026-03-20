@@ -13,6 +13,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
+import { EmptyStateIQ } from "./EmptyStateIQ";
 
 /* --- Mock Data --- */
 const churnTrend = [
@@ -234,8 +235,10 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
+
   const realCandidates = mapRealCandidates(reactivationData);
-  const allMembers = realCandidates.length > 0 ? realCandidates : atRiskMembers;
+  const allMembers = realCandidates.length > 0 ? realCandidates : (isDemo ? atRiskMembers : []);
 
   const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
     if (sendReactivation && clubId) {
@@ -256,7 +259,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         month: new Date(t.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
         atRisk: t.atRisk, churned: t.churned, reactivated: t.reactivated,
       }))
-    : churnTrend;
+    : (isDemo ? churnTrend : []);
 
   // Risk segments from real reactivation data
   const displayRiskSegments = reactivationData?.candidates
@@ -272,7 +275,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
           { name: "Healthy", value: healthy > 0 ? healthy : 72, color: "#10B981" },
         ];
       })()
-    : riskSegments;
+    : (isDemo ? riskSegments : []);
 
   // Campaign history from real data
   const displayCampaignHistory = campaignListData?.campaigns?.length
@@ -280,13 +283,18 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         name: c.name, date: c.date, sent: c.sent, opened: c.opened,
         responded: c.converted, returned: c.clicked, revenue: 0,
       }))
-    : campaignHistory;
+    : (isDemo ? campaignHistory : []);
 
   const filtered = allMembers.filter((m) => {
     if (riskFilter !== "all" && m.risk !== riskFilter) return false;
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
+
+  const hasData = allMembers.length > 0;
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={AlertTriangle} title="No at-risk members" description="Once you have member data, AI will automatically detect members at risk of churning and suggest win-back campaigns." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
 
   return (
     <motion.div

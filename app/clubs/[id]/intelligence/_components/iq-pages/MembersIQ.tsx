@@ -12,6 +12,7 @@ import {
   ResponsiveContainer, LineChart, Line,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
+import { EmptyStateIQ } from "./EmptyStateIQ";
 
 /* --- Mock Data --- */
 const memberGrowth = [
@@ -222,9 +223,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
     }
   };
 
-  // Use real data if available, otherwise fall back to mocks
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
+
+  // Use real data if available, otherwise fall back to mocks (only in demo mode)
   const realMembers = mapRealMembers(memberHealthData);
-  const allMembers = realMembers.length > 0 ? realMembers : members;
+  const allMembers = realMembers.length > 0 ? realMembers : (isDemo ? members : []);
 
   // Member growth chart — from real data or mocks
   const displayMemberGrowth = memberGrowthData?.growth?.length
@@ -232,7 +235,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         month: new Date(g.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
         total: g.total, new: g.new, churned: g.churned,
       }))
-    : memberGrowth;
+    : (isDemo ? memberGrowth : []);
 
   // Activity distribution — derive from real member sessions data
   const displayActivityDistribution = realMembers.length > 0
@@ -257,6 +260,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
     });
 
   const activeMember = allMembers.find((m) => m.id === selectedMember);
+
+  const hasData = allMembers.length > 0;
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
 
   return (
     <motion.div
