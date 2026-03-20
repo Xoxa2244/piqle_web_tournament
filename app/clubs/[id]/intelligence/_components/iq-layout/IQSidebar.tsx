@@ -11,6 +11,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
 import { useTheme } from "../IQThemeProvider";
+import { useSession, signOut } from "next-auth/react";
+import { trpc } from "@/lib/trpc";
+import { LogOut, UserCircle, UsersRound, Plus, Check } from "lucide-react";
 
 interface NavItem {
   icon: LucideIcon;
@@ -63,10 +66,18 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpand, setHoverExpand] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [profileOpen, setProfileOpen] = useState(false);
   const { theme, toggleTheme, isDark } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const { data: clubs } = trpc.club.list.useQuery({}, { staleTime: 60_000 });
+
+  const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
+  const userEmail = session?.user?.email || "";
+  const userInitials = userName.split(/\s+/).map((w: string) => w[0]?.toUpperCase()).join("").slice(0, 2) || "U";
+  const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing);
 
   const basePath = `/clubs/${clubId}/intelligence`;
   const demoParam = searchParams.get("demo") === "true" ? "?demo=true" : "";
@@ -294,11 +305,125 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
             <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
               <Settings className="w-5 h-5" />
             </button>
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-xs text-white"
-              style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}
-            >
-              JD
+            {/* User Avatar + Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setProfileOpen(!profileOpen)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-xs text-white transition-all hover:scale-105"
+                style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}
+              >
+                {userInitials}
+              </button>
+
+              <AnimatePresence>
+                {profileOpen && (
+                  <>
+                    {/* Backdrop */}
+                    <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+
+                    {/* Dropdown */}
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-12 w-72 z-50 rounded-2xl overflow-hidden"
+                      style={{
+                        background: "var(--card-bg)",
+                        border: "1px solid var(--card-border)",
+                        backdropFilter: "blur(20px)",
+                        boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      {/* User info */}
+                      <div className="p-4" style={{ borderBottom: "1px solid var(--divider)" }}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}>
+                            {userInitials}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate" style={{ fontWeight: 600, color: "var(--heading)" }}>{userName}</div>
+                            <div className="text-xs truncate" style={{ color: "var(--t4)" }}>{userEmail}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* My Clubs */}
+                      {myClubs.length > 0 && (
+                        <div className="p-2" style={{ borderBottom: "1px solid var(--divider)" }}>
+                          <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>My Clubs</div>
+                          {myClubs.map((club: any) => (
+                            <button
+                              key={club.id}
+                              onClick={() => { router.push(`/clubs/${club.id}/intelligence`); setProfileOpen(false); }}
+                              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                              style={{ background: club.id === clubId ? "var(--pill-active)" : "transparent" }}
+                            >
+                              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] text-white flex-shrink-0" style={{ background: club.id === clubId ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "rgba(139,92,246,0.2)", fontWeight: 700 }}>
+                                {(club.name || "C").charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-sm truncate" style={{ fontWeight: club.id === clubId ? 600 : 400, color: club.id === clubId ? "var(--heading)" : "var(--t2)" }}>{club.name}</span>
+                              {club.id === clubId && <Check className="w-4 h-4 ml-auto flex-shrink-0" style={{ color: "#8B5CF6" }} />}
+                            </button>
+                          ))}
+                          <button
+                            onClick={async () => {
+                              setProfileOpen(false);
+                              router.push("/clubs");
+                            }}
+                            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                          >
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ border: "1px dashed rgba(139,92,246,0.3)" }}>
+                              <Plus className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
+                            </div>
+                            <span className="text-sm" style={{ color: "#A78BFA", fontWeight: 500 }}>Add Club</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Menu items */}
+                      <div className="p-2">
+                        <button
+                          onClick={() => { router.push(`/clubs/${clubId}/intelligence/settings`); setProfileOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                          style={{ color: "var(--t2)" }}
+                        >
+                          <Settings className="w-4 h-4" style={{ color: "var(--t3)" }} />
+                          <span className="text-sm" style={{ fontWeight: 500 }}>Club Settings</span>
+                        </button>
+                        <button
+                          onClick={() => { router.push(`/clubs/${clubId}/intelligence/team`); setProfileOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                          style={{ color: "var(--t2)" }}
+                        >
+                          <UsersRound className="w-4 h-4" style={{ color: "var(--t3)" }} />
+                          <span className="text-sm" style={{ fontWeight: 500 }}>Team Management</span>
+                        </button>
+                        <button
+                          onClick={toggleTheme}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                          style={{ color: "var(--t2)" }}
+                        >
+                          {isDark ? <Sun className="w-4 h-4" style={{ color: "var(--t3)" }} /> : <Moon className="w-4 h-4" style={{ color: "var(--t3)" }} />}
+                          <span className="text-sm" style={{ fontWeight: 500 }}>{isDark ? "Light Mode" : "Dark Mode"}</span>
+                        </button>
+                      </div>
+
+                      {/* Sign out */}
+                      <div className="p-2" style={{ borderTop: "1px solid var(--divider)" }}>
+                        <button
+                          onClick={() => signOut({ callbackUrl: "/" })}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
+                          style={{ color: "#EF4444" }}
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span className="text-sm" style={{ fontWeight: 500 }}>Sign Out</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>

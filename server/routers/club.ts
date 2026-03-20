@@ -1762,4 +1762,82 @@ If you weren’t expecting this, you can ignore this email.`
 
       return { success: true }
     }),
+
+  addAdmin: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Check caller is admin
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+      })
+      if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can add other admins' })
+
+      // Create admin record (upsert to handle duplicates)
+      await ctx.prisma.clubAdmin.upsert({
+        where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+        update: { role: 'ADMIN' },
+        create: { clubId: input.clubId, userId: input.userId, role: 'ADMIN' },
+      })
+      return { success: true }
+    }),
+
+  removeAdmin: protectedProcedure
+    .input(z.object({ clubId: z.string(), userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Check caller is admin
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+      })
+      if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can remove admins' })
+
+      // Can't remove yourself if you're the last admin
+      const adminCount = await ctx.prisma.clubAdmin.count({ where: { clubId: input.clubId } })
+      if (adminCount <= 1) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot remove the last admin' })
+
+      // Can't remove yourself
+      if (input.userId === ctx.session.user.id) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot remove yourself. Transfer ownership first.' })
+
+      await ctx.prisma.clubAdmin.delete({
+        where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+      })
+      return { success: true }
+    }),
+
+  listAdmins: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+      })
+      if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can view admin list' })
+
+      const admins = await ctx.prisma.clubAdmin.findMany({
+        where: { clubId: input.clubId },
+        include: { user: { select: { id: true, name: true, email: true, image: true } } },
+        orderBy: { createdAt: 'asc' },
+      })
+      return admins
+    }),
+
+  listPendingInvites: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+      })
+      if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN' })
+
+      // Check if ClubInvite table exists before querying
+      try {
+        const invites = await ctx.prisma.clubInvite.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          include: { invitee: { select: { id: true, name: true, email: true } } },
+        })
+        return invites
+      } catch {
+        return []
+      }
+    }),
 })
