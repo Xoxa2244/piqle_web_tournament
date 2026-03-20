@@ -83,8 +83,9 @@ export default function MembersPage() {
   const [sortAsc, setSortAsc] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const { data, isLoading, error } = useMemberHealth(clubId)
-  const { data: memberGrowthData } = useMemberGrowth(clubId)
+  const { data, isLoading: healthLoading, error } = useMemberHealth(clubId)
+  const { data: memberGrowthData, isLoading: growthLoading } = useMemberGrowth(clubId)
+  const isLoading = healthLoading || growthLoading
 
   const setPageContext = useSetPageContext()
   useEffect(() => {

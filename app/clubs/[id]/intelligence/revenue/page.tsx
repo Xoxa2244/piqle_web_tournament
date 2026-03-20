@@ -35,10 +35,11 @@ export default function RevenueIntelligencePage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data: dashboard, isLoading } = useDashboardV2(clubId)
-  const { data: revenueData } = useRevenueAnalytics(clubId)
-  const { data: pricingData } = usePricingOpportunities(clubId)
-  const { data: forecastData } = useRevenueForecast(clubId)
+  const { data: dashboard, isLoading: dashLoading } = useDashboardV2(clubId)
+  const { data: revenueData, isLoading: revLoading } = useRevenueAnalytics(clubId)
+  const { data: pricingData, isLoading: priceLoading } = usePricingOpportunities(clubId)
+  const { data: forecastData, isLoading: fcLoading } = useRevenueForecast(clubId)
+  const isLoading = dashLoading || revLoading || priceLoading || fcLoading
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
