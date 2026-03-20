@@ -78,30 +78,34 @@ export default function IntelligenceDashboardPage() {
   const isDemo = searchParams.get('demo') === 'true'
 
   const setPageContext = useSetPageContext()
+  const brand = useBrand()
+
+  // Set page context for AI chat (safe — wraps in try/catch for empty clubs)
   useEffect(() => {
-    if (!data) return
-    const { metrics, occupancy, sessions, players } = data
-    const ctx = [
-      'Page: Dashboard Overview',
-      `Members: ${metrics.members.value} (${metrics.members.subtitle})`,
-      `Occupancy: ${metrics.occupancy.value} (${metrics.occupancy.subtitle})`,
-      `Lost Revenue: ${metrics.lostRevenue.value} (${metrics.lostRevenue.subtitle})`,
-      `Bookings: ${metrics.bookings.value} (${metrics.bookings.subtitle})`,
-      `Active players: ${players.activeCount}, Inactive: ${players.inactiveCount}, New this month: ${players.newThisMonth}`,
-      `Top sessions: ${sessions.topSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ')}`,
-      `Problematic sessions: ${sessions.problematicSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ') || 'none'}`,
-      `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
-    ]
-    if (healthData) {
-      ctx.push(`Member health: ${healthData.summary.healthy} healthy, ${healthData.summary.watch} watch, ${healthData.summary.atRisk} at-risk, ${healthData.summary.critical} critical`)
-    }
-    setPageContext(ctx.join('\n'))
+    if (!data?.metrics) return
+    try {
+      const { metrics, occupancy, sessions, players } = data
+      const ctx = [
+        'Page: Dashboard Overview',
+        `Members: ${metrics.members.value} (${metrics.members.subtitle})`,
+        `Occupancy: ${metrics.occupancy.value} (${metrics.occupancy.subtitle})`,
+        `Lost Revenue: ${metrics.lostRevenue.value} (${metrics.lostRevenue.subtitle})`,
+        `Bookings: ${metrics.bookings.value} (${metrics.bookings.subtitle})`,
+        `Active players: ${players.activeCount}, Inactive: ${players.inactiveCount}, New this month: ${players.newThisMonth}`,
+        `Top sessions: ${sessions.topSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ')}`,
+        `Problematic sessions: ${sessions.problematicSessions.map((s: any) => s.title + ' ' + s.occupancyPercent + '%').join(', ') || 'none'}`,
+        `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
+      ]
+      if (healthData) {
+        ctx.push(`Member health: ${healthData.summary.healthy} healthy, ${healthData.summary.watch} watch, ${healthData.summary.atRisk} at-risk, ${healthData.summary.critical} critical`)
+      }
+      setPageContext(ctx.join('\n'))
+    } catch { /* ignore context errors for empty clubs */ }
   }, [data, healthData, setPageContext])
 
-  const brand = useBrand()
+  // IQ brand — early return
   if (brand.key === 'iqsport') {
     if (!isDemo && !hasOnboarded) return <OnboardingWizardIQ clubId={clubId} onComplete={() => {
-      // Force full page reload to clear tRPC cache and re-fetch settings
       window.location.href = window.location.pathname + window.location.search
     }} />
     return <DashboardIQ dashboardData={data} healthData={healthData} heatmapData={heatmapData} memberGrowthData={memberGrowthData} uploadHistoryData={uploadHistoryData} isLoading={isLoading} clubId={clubId} />
