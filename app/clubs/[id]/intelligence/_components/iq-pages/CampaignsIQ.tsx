@@ -347,15 +347,16 @@ function ChannelIcon({ channel }: { channel: string }) {
     if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
-  // Use real data for KPIs if available, otherwise derive from display campaigns
-  const totalSent = campaignData?.totalSent ?? displayCampaigns.reduce((s: number, c: any) => s + c.sent, 0);
-  const totalRevenue = campaignData?.totalRevenue ?? campaigns.reduce((s, c) => s + c.revenue, 0);
+  // Use real data for KPIs — no mock fallback
+  const totalSent = campaignData?.totalSent ?? displayCampaigns.reduce((s: number, c: any) => s + (c.sent || 0), 0);
+  const totalRevenue = campaignData?.totalRevenue ?? displayCampaigns.reduce((s: number, c: any) => s + (c.revenue || 0), 0);
+  const sentCampaigns = displayCampaigns.filter((c: any) => c.sent > 0);
   const avgOpenRate = campaignData?.totalSent
     ? Math.round((campaignData.totalOpened / campaignData.totalSent) * 100)
-    : Math.round(campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.opened / c.sent) * 100, 0) / campaigns.filter((c) => c.sent > 0).length);
+    : sentCampaigns.length > 0 ? Math.round(sentCampaigns.reduce((s: number, c: any) => s + ((c.opened || 0) / c.sent) * 100, 0) / sentCampaigns.length) : 0;
   const avgConvRate = campaignData?.totalSent
     ? Math.round((campaignData.totalConverted / campaignData.totalSent) * 100)
-    : Math.round(campaigns.filter((c) => c.sent > 0).reduce((s, c) => s + (c.converted / c.sent) * 100, 0) / campaigns.filter((c) => c.sent > 0).length);
+    : sentCampaigns.length > 0 ? Math.round(sentCampaigns.reduce((s: number, c: any) => s + ((c.converted || 0) / c.sent) * 100, 0) / sentCampaigns.length) : 0;
 
   const hasData = displayCampaigns.length > 0;
   if (!hasData && !isDemo) {

@@ -267,12 +267,12 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         const high = reactivationData.candidates.filter((c: any) => c.score?.total < 30).length;
         const medium = reactivationData.candidates.filter((c: any) => c.score?.total >= 30 && c.score?.total < 60).length;
         const low = reactivationData.candidates.filter((c: any) => c.score?.total >= 60 && c.score?.total < 80).length;
-        const healthy = (reactivationData.totalClubMembers || 127) - high - medium - low;
+        const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
-          { name: "High Risk", value: high || 12, color: "#EF4444" },
-          { name: "Medium Risk", value: medium || 18, color: "#F59E0B" },
-          { name: "Low Risk", value: low || 25, color: "#06B6D4" },
-          { name: "Healthy", value: healthy > 0 ? healthy : 72, color: "#10B981" },
+          { name: "High Risk", value: high, color: "#EF4444" },
+          { name: "Medium Risk", value: medium, color: "#F59E0B" },
+          { name: "Low Risk", value: low, color: "#06B6D4" },
+          { name: "Healthy", value: Math.max(0, healthy), color: "#10B981" },
         ];
       })()
     : (isDemo ? riskSegments : []);
@@ -315,12 +315,17 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "At-Risk Members", value: "12", icon: AlertTriangle, gradient: "from-red-500 to-orange-500", change: "-2 vs last month", up: true },
-          { label: "Reactivated (30d)", value: "5", icon: UserPlus, gradient: "from-emerald-500 to-green-500", change: "+3 vs last month", up: true },
-          { label: "Revenue Recovered", value: "$3.8K", icon: DollarSign, gradient: "from-violet-500 to-purple-600", change: "+42% vs last month", up: true },
-          { label: "Avg Health Score", value: "38", icon: Heart, gradient: "from-pink-500 to-rose-500", change: "At-risk segment", up: false },
-        ].map((kpi, i) => {
+        {(() => {
+          const atRiskCount = allMembers.filter(m => m.risk === "high" || m.risk === "medium").length;
+          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
+          const totalRevenue = allMembers.reduce((s, m) => s + (m.revenue || 0), 0);
+          return [
+            { label: "At-Risk Members", value: String(atRiskCount), icon: AlertTriangle, gradient: "from-red-500 to-orange-500", change: `${allMembers.length} tracked`, up: false },
+            { label: "Reactivated (30d)", value: "—", icon: UserPlus, gradient: "from-emerald-500 to-green-500", change: "tracking", up: true },
+            { label: "Revenue at Risk", value: totalRevenue > 0 ? `$${(totalRevenue / 1000).toFixed(1)}K` : "$0", icon: DollarSign, gradient: "from-violet-500 to-purple-600", change: "lifetime value", up: false },
+            { label: "Avg Health Score", value: String(avgHealth), icon: Heart, gradient: "from-pink-500 to-rose-500", change: "at-risk segment", up: false },
+          ];
+        })().map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>

@@ -320,12 +320,20 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total Members", value: "127", change: "+14 this month", icon: Users, gradient: "from-violet-500 to-purple-600" },
-          { label: "Avg Health Score", value: "68", change: "+3 vs last month", icon: Heart, gradient: "from-emerald-500 to-green-500" },
-          { label: "Active This Week", value: "84", change: "66% of total", icon: Target, gradient: "from-cyan-500 to-teal-500" },
-          { label: "Avg Revenue/Member", value: "$153", change: "+6.3% MoM", icon: DollarSign, gradient: "from-amber-500 to-orange-500" },
-        ].map((kpi, i) => {
+        {(() => {
+          const total = allMembers.length;
+          const avgHealth = total > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / total) : 0;
+          const activeCount = allMembers.filter(m => m.sessionsThisMonth > 0).length;
+          const activePct = total > 0 ? Math.round((activeCount / total) * 100) : 0;
+          const totalRev = allMembers.reduce((s, m) => s + m.revenue, 0);
+          const avgRev = total > 0 ? Math.round(totalRev / total) : 0;
+          return [
+            { label: "Total Members", value: String(total), change: `${total} tracked`, icon: Users, gradient: "from-violet-500 to-purple-600" },
+            { label: "Avg Health Score", value: String(avgHealth), change: "current period", icon: Heart, gradient: "from-emerald-500 to-green-500" },
+            { label: "Active This Week", value: String(activeCount), change: `${activePct}% of total`, icon: Target, gradient: "from-cyan-500 to-teal-500" },
+            { label: "Avg Revenue/Member", value: `$${avgRev}`, change: "current period", icon: DollarSign, gradient: "from-amber-500 to-orange-500" },
+          ];
+        })().map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
