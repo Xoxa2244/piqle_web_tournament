@@ -21,6 +21,7 @@ export default function SignInClient() {
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+  const [smsConsent, setSmsConsent] = useState(false)
 
   useEffect(() => {
     const modeParam = searchParams.get('mode')
@@ -393,6 +394,25 @@ export default function SignInClient() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
+
+              {/* SMS Consent — shown for IQSport brand */}
+              {brand.key === 'iqsport' && (
+                <div className="flex items-start gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50">
+                  <input
+                    type="checkbox"
+                    id="sms-consent"
+                    checked={smsConsent}
+                    onChange={(e) => setSmsConsent(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="sms-consent" className="text-xs text-gray-600 leading-relaxed">
+                    I agree to receive recurring automated SMS notifications from IQSport about my club activity including booking reminders, session invites, and event updates. Message frequency: 2-8 msgs/month. Msg&amp;data rates may apply. Reply STOP to opt out anytime.{' '}
+                    <a href="https://iqsport.ai/sms-terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">SMS Terms</a>
+                    {' · '}
+                    <a href="https://iqsport.ai/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Privacy Policy</a>
+                  </label>
+                </div>
+              )}
 
               <Button
                 type="submit"
