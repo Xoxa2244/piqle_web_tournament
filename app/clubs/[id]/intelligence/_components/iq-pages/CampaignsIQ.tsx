@@ -359,7 +359,7 @@ function ChannelIcon({ channel }: { channel: string }) {
     : sentCampaigns.length > 0 ? Math.round(sentCampaigns.reduce((s: number, c: any) => s + ((c.converted || 0) / c.sent) * 100, 0) / sentCampaigns.length) : 0;
 
   const hasData = displayCampaigns.length > 0;
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={Send} title="No campaigns yet" description="Start tracking member outreach to see campaign performance, open rates, and conversion analytics." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

@@ -134,7 +134,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0];
 
   const hasData = displaySlots.length > 0;
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

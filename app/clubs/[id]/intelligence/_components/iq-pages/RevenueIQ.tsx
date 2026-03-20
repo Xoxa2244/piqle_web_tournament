@@ -192,7 +192,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
     : (isDemo ? fullForecast : []);
 
   const hasData = displayRevenueByFormat.length > 0;
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={DollarSign} title="No revenue data yet" description="Import session data with pricing to unlock revenue analytics, forecasts, and pricing optimization." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

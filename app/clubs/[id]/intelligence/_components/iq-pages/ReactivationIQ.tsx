@@ -292,7 +292,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   });
 
   const hasData = allMembers.length > 0;
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={AlertTriangle} title="No at-risk members" description="Once you have member data, AI will automatically detect members at risk of churning and suggest win-back campaigns." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

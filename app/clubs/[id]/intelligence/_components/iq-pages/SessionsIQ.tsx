@@ -286,7 +286,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
     });
   }, [searchQuery, filterFormat, filterCourt, filterStatus]);
 
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
   }
 

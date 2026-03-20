@@ -262,7 +262,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
   const activeMember = allMembers.find((m) => m.id === selectedMember);
 
   const hasData = allMembers.length > 0;
-  if (!hasData && !isDemo) {
+  if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
