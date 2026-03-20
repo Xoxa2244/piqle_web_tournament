@@ -36,6 +36,25 @@ function ClubsPageContent() {
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null)
   const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
   const [cancelRequestClubId, setCancelRequestClubId] = useState<string | null>(null)
+  const [isCreatingClub, setIsCreatingClub] = useState(false)
+  const createClubMutation = trpc.club.create.useMutation()
+
+  // IQ brand: skip modal, create empty club and go to wizard
+  const handleIQCreateClub = async () => {
+    if (isCreatingClub) return
+    setIsCreatingClub(true)
+    try {
+      const club = await createClubMutation.mutateAsync({
+        name: 'My Club',
+        kind: 'VENUE',
+        joinPolicy: 'OPEN',
+      })
+      router.push(`/clubs/${club.id}/intelligence?setup=true`)
+    } catch (err) {
+      console.error('[IQ] Failed to create club:', err)
+      setIsCreatingClub(false)
+    }
+  }
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setCreateClubModalOpen(true)
@@ -152,15 +171,16 @@ function ClubsPageContent() {
 
             <div className="space-y-3">
               <button
-                onClick={() => setCreateClubModalOpen(true)}
+                onClick={handleIQCreateClub}
+                disabled={isCreatingClub}
                 className="w-full flex items-center gap-3 p-5 rounded-2xl text-left transition-all hover:scale-[1.02]"
-                style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))', border: '1px solid rgba(139,92,246,0.2)' }}
+                style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))', border: '1px solid rgba(139,92,246,0.2)', opacity: isCreatingClub ? 0.6 : 1 }}
               >
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
-                  <Plus className="w-6 h-6 text-white" />
+                  {isCreatingClub ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Plus className="w-6 h-6 text-white" />}
                 </div>
                 <div>
-                  <div className="text-sm font-semibold text-white">Create New Club</div>
+                  <div className="text-sm font-semibold text-white">{isCreatingClub ? 'Creating...' : 'Create New Club'}</div>
                   <div className="text-xs text-gray-400">Set up your venue and start getting AI insights</div>
                 </div>
               </button>
@@ -181,14 +201,6 @@ function ClubsPageContent() {
             </div>
           </div>
 
-          <CreateClubModal
-            isOpen={createClubModalOpen}
-            onClose={() => setCreateClubModalOpen(false)}
-            onSuccess={(club) => {
-              utils.club.list.invalidate()
-              router.push(brand.postClubCreateRoute(club.id))
-            }}
-          />
         </div>
       )
     }
@@ -227,21 +239,14 @@ function ClubsPageContent() {
           </div>
 
           <button
-            onClick={() => setCreateClubModalOpen(true)}
+            onClick={handleIQCreateClub}
+            disabled={isCreatingClub}
             className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl text-sm font-medium transition-all"
-            style={{ color: '#A78BFA', border: '1px dashed rgba(139,92,246,0.3)' }}
+            style={{ color: '#A78BFA', border: '1px dashed rgba(139,92,246,0.3)', opacity: isCreatingClub ? 0.6 : 1 }}
           >
-            <Plus className="w-4 h-4" /> Add Another Club
+            {isCreatingClub ? <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> : <Plus className="w-4 h-4" />}
+            {isCreatingClub ? 'Creating...' : 'Add Another Club'}
           </button>
-
-          <CreateClubModal
-            isOpen={createClubModalOpen}
-            onClose={() => setCreateClubModalOpen(false)}
-            onSuccess={(club) => {
-              utils.club.list.invalidate()
-              router.push(brand.postClubCreateRoute(club.id))
-            }}
-          />
         </div>
       </div>
     )
