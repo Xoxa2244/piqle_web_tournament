@@ -123,16 +123,16 @@ function ClubsPageContent() {
     return initials || 'CL'
   }
 
-  // IQ brand: auto-redirect if exactly 1 club, or show welcome screen if 0 clubs
-  useEffect(() => {
-    if (brand.key !== 'iqsport' || !isLoggedIn || isLoading) return
-    const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
-    if (myClubs.length === 1) {
-      router.replace(`/clubs/${myClubs[0].id}/intelligence`)
-    }
-  }, [brand.key, isLoggedIn, isLoading, clubs, router])
+  // IQ brand: dark loading screen while data loads
+  if (brand.key === 'iqsport' && (isLoading || status === 'loading')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0D17' }}>
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </div>
+    )
+  }
 
-  // IQ brand welcome screen
+  // IQ brand welcome/clubs screen (no auto-redirect — always show list with option to create)
   if (brand.key === 'iqsport' && isLoggedIn && !isLoading) {
     const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
 
@@ -193,16 +193,7 @@ function ClubsPageContent() {
       )
     }
 
-    // 1 club — auto-redirect handled by useEffect above, show loading
-    if (myClubs.length === 1) {
-      return (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0D17' }}>
-          <div className="text-gray-400 text-sm">Loading your club...</div>
-        </div>
-      )
-    }
-
-    // 2+ clubs — show IQ-styled list
+    // 1+ clubs — show IQ-styled list
     return (
       <div className="min-h-screen p-8" style={{ background: '#0B0D17' }}>
         <div className="max-w-2xl mx-auto space-y-6">
