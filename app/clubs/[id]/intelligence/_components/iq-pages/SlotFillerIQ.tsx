@@ -170,12 +170,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   /* --- Empty state for real clubs with no data --- */
   const hasData = displaySlots.length > 0;
   if (!hasData && !isDemo) {
-    return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+    return <EmptyStateIQ icon={Zap} title="No underfilled sessions" description="Once you import session and booking data, the AI will identify underfilled court times and suggest the best players to invite." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
   /* If somehow still no activeSlot (shouldn't happen after checks above), bail */
   if (!activeSlot) {
-    return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+    return <EmptyStateIQ icon={Zap} title="No underfilled sessions" description="Once you import session and booking data, the AI will identify underfilled court times and suggest the best players to invite." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
   const potentialRevenue = activeSlot.spotsNeeded * activeSlot.pricePerPlayer;
@@ -219,7 +219,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           <div className="text-right">
             <div className="text-xs" style={{ color: "var(--t3)" }}>Potential Recovery</div>
             <div className="text-emerald-400" style={{ fontSize: "20px", fontWeight: 800 }}>
-              ${displaySlots.reduce((sum, s) => sum + s.spotsNeeded * s.pricePerPlayer, 0)}
+              {displaySlots.length > 0 ? `$${displaySlots.reduce((sum, s) => sum + s.spotsNeeded * s.pricePerPlayer, 0)}` : "--"}
             </div>
           </div>
         </div>
@@ -228,10 +228,10 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Empty Slots", value: displaySlots.length.toString(), icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
-          { label: "Spots to Fill", value: displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString(), icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
-          { label: "AI Matches Found", value: displaySlots.reduce((s, sl) => s + sl.matches.length, 0).toString(), icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
-          { label: "Fill Rate (7d)", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / slot.spotsTotal) * 100, 0) / displaySlots.length)}%` : "—", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Current period" },
+          { label: "Empty Slots", value: displaySlots.length > 0 ? displaySlots.length.toString() : "--", icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
+          { label: "Spots to Fill", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString() : "--", icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
+          { label: "AI Matches Found", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.matches.length, 0).toString() : "--", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
+          { label: "Fill Rate (7d)", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / slot.spotsTotal) * 100, 0) / displaySlots.length)}%` : "--", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Current period" },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
