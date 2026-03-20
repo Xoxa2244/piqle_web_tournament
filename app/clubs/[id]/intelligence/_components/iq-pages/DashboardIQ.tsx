@@ -318,6 +318,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [customTo, setCustomTo] = useState("");
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    totalParsed: number;
+    totalErrors: number;
+    found: string[];
+    missing: string[];
+    notes?: string;
+  } | null>(null);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -934,6 +941,31 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                           console.log(`[Import] Parsed ${parseResult.totalParsed} sessions (${parseResult.totalErrors} errors)`);
                           if (parseResult.notes) console.log('[Import] Notes:', parseResult.notes);
 
+                          // Analyze what data was found vs missing
+                          const sample = parseResult.sessions?.[0] || {};
+                          const allFields: Array<{ key: string; label: string; impact: string }> = [
+                            { key: 'date', label: 'Session dates', impact: 'trends & scheduling' },
+                            { key: 'startTime', label: 'Start times', impact: 'peak hour analysis' },
+                            { key: 'court', label: 'Court names', impact: 'court utilization' },
+                            { key: 'format', label: 'Session formats', impact: 'format performance' },
+                            { key: 'registered', label: 'Player count', impact: 'occupancy analytics' },
+                            { key: 'capacity', label: 'Max capacity', impact: 'fill rate tracking' },
+                            { key: 'pricePerPlayer', label: 'Pricing data', impact: 'revenue analytics' },
+                            { key: 'playerNames', label: 'Player names/emails', impact: 'member health & retention' },
+                            { key: 'skillLevel', label: 'Skill levels', impact: 'skill-based recommendations' },
+                            { key: 'endTime', label: 'End times', impact: 'duration analytics' },
+                          ];
+                          const found = allFields.filter(f => sample[f.key] != null && sample[f.key] !== '').map(f => f.label);
+                          const missing = allFields.filter(f => sample[f.key] == null || sample[f.key] === '').map(f => `${f.label} → unlocks ${f.impact}`);
+
+                          setImportResult({
+                            totalParsed: parseResult.totalParsed || parseResult.sessions?.length || 0,
+                            totalErrors: parseResult.totalErrors || 0,
+                            found,
+                            missing,
+                            notes: parseResult.notes,
+                          });
+
                           if (!parseResult.sessions?.length) {
                             console.error('[Import] No sessions parsed');
                             return;
@@ -981,33 +1013,86 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-center space-y-4 py-6"
+                    className="space-y-5 py-4"
                   >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-                    >
-                      <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #059669)", boxShadow: "0 8px 30px rgba(16,185,129,0.3)" }}>
-                        <CheckCircle2 className="w-8 h-8 text-white" />
-                      </div>
-                    </motion.div>
-                    <div>
-                      <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>Data Imported Successfully</h3>
+                    {/* Success header */}
+                    <div className="text-center">
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}>
+                        <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #059669)", boxShadow: "0 8px 30px rgba(16,185,129,0.3)" }}>
+                          <CheckCircle2 className="w-8 h-8 text-white" />
+                        </div>
+                      </motion.div>
+                      <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>
+                        {importResult ? `${importResult.totalParsed} sessions imported` : 'Data Imported Successfully'}
+                      </h3>
                       <p className="text-sm" style={{ color: "var(--t3)" }}>
-                        <strong style={{ color: "var(--t1)" }}>{importFileName}</strong> has been processed.
+                        <strong style={{ color: "var(--t1)" }}>{importFileName}</strong> processed
+                        {importResult?.totalErrors ? ` (${importResult.totalErrors} rows skipped)` : ''}
                       </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>AI model retrained with new data — insights updated.</p>
                     </div>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => { setImportModal("closed"); setImportFileName(null); }}
-                      className="px-6 py-2.5 rounded-xl text-sm text-white mx-auto"
-                      style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
-                    >
-                      Done
-                    </motion.button>
+
+                    {/* Gap report */}
+                    {importResult && (
+                      <div className="space-y-3">
+                        {/* Found columns */}
+                        {importResult.found.length > 0 && (
+                          <div className="rounded-xl p-4" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>
+                            <div className="text-xs uppercase tracking-wider mb-2" style={{ color: "#10B981", fontWeight: 600 }}>Data detected</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {importResult.found.map(f => (
+                                <span key={f} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs" style={{ background: "rgba(16,185,129,0.1)", color: "#10B981", fontWeight: 500 }}>
+                                  <Check className="w-3 h-3" /> {f}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing columns */}
+                        {importResult.missing.length > 0 && (
+                          <div className="rounded-xl p-4" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+                            <div className="text-xs uppercase tracking-wider mb-2" style={{ color: "#F59E0B", fontWeight: 600 }}>
+                              Add more data to unlock full AI power
+                            </div>
+                            <div className="space-y-1.5">
+                              {importResult.missing.map(m => (
+                                <div key={m} className="flex items-start gap-2 text-xs" style={{ color: "var(--t3)" }}>
+                                  <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "#F59E0B" }} />
+                                  <span>{m}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {importResult.notes && (
+                          <p className="text-xs px-1" style={{ color: "var(--t4)" }}>{importResult.notes}</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex justify-center gap-3 pt-2">
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => { setImportModal("closed"); setImportFileName(null); setImportResult(null); window.location.reload(); }}
+                        className="px-6 py-2.5 rounded-xl text-sm text-white"
+                        style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+                      >
+                        View Dashboard
+                      </motion.button>
+                      {importResult?.missing?.length ? (
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => { setImportModal("upload"); setImportFileName(null); setImportResult(null); }}
+                          className="px-6 py-2.5 rounded-xl text-sm"
+                          style={{ color: "var(--t2)", fontWeight: 500, border: "1px solid var(--card-border)" }}
+                        >
+                          Upload More Data
+                        </motion.button>
+                      ) : null}
+                    </div>
                   </motion.div>
                 )}
               </div>
